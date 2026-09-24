@@ -401,30 +401,34 @@ package. `VelaNonceDurableObject` is exported from `/durable-objects`; its
 The root package contains no runtime `cloudflare:workers` import and can be
 loaded by Node tooling. Native classes belong to `/durable-objects`.
 
+## Bindings by name
+
+Module options name a binding instead of holding it. `kv`, `r2`, `d1`,
+`queue`, `durableObject` and `rateLimit` each take `{ binding }`, the name
+declared in the Wrangler configuration, and read nothing when declared: calling
+the reference with an application's `ENV` returns the typed native binding, or
+fails naming the binding and the Wrangler key that declares it
+(`ENV.UPLOADS is not set: declare the R2 bucket binding 'UPLOADS' under r2_buckets …`).
+The drivers and stores below are built on them, so one static module graph
+serves every environment.
+
 ## R2 storage and caches
 
-For new object/file storage, prefer the independently imported
-[`@velajs/storage`](../storage/README.md#portable-storage-and-the-cloudflare-proxy)
-with a native R2 or hybrid driver. The storage module below remains the supported
-1.x Worker HMAC proxy API; its signed routes differ from provider-signed URLs.
-
-Configure named disks from an async factory using actual bucket values:
+`StorageModule` from [`@velajs/storage`](../storage/README.md#storage-on-cloudflare-workers)
+is the one file-storage module. Its native R2 driver comes from the
+`@velajs/cloudflare/storage` subpath:
 
 ```ts
-StorageModule.forRootAsync({
-  inject: [ENV],
-  useFactory: (env) => ({
-    defaultDisk: 'uploads',
-    secret: env.APP_SECRET,
-    disks: [{ disk: 'uploads', bucket: env.FILES, root: 'uploads/{year}' }],
-    presignedUrl: { defaultExpiry: 3600, maxExpiry: 86400 },
-  }),
-});
+import { StorageModule } from '@velajs/storage';
+import { r2Storage } from '@velajs/cloudflare/storage';
+
+StorageModule.forRoot({ driver: r2Storage({ binding: 'UPLOADS' }) });
 ```
 
-`StorageService` supports upload, download, delete, existence checks, and expiring
-signed download URLs. The proxy validates signatures, HTTP method, expiry, and
-the configured root; returned files download as attachments.
+The bucket is read from each application's `ENV` on its first storage
+operation. The native binding cannot presign; use `publicBaseUrl`, the storage
+HTTP controller with `http: { download: 'proxy' }`, or the R2 HTTP/hybrid
+drivers for provider-signed URLs.
 
 Construct `KVCacheStore` and `KvFlagDriver` with a native namespace:
 `new KVCacheStore(env.CACHE)` and `new KvFlagDriver(env.CACHE)`. Cache reads and

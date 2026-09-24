@@ -47,6 +47,10 @@
     "./queues": {
       "types": "./dist/queues.d.ts",
       "import": "./dist/queues.js"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "import": "./dist/storage.js"
     }
   },
   "publishConfig": {
@@ -73,6 +77,7 @@
     "@cloudflare/workers-types": "catalog:",
     "@swc/core": "catalog:",
     "@velajs/feature-flags": "workspace:*",
+    "@velajs/storage": "workspace:*",
     "@velajs/testing": "workspace:*",
     "@velajs/vela": "workspace:*",
     "hono": "catalog:",
@@ -88,11 +93,15 @@
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
     "@velajs/feature-flags": "workspace:^",
+    "@velajs/storage": "workspace:^",
     "@velajs/vela": "workspace:^",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {
     "@velajs/feature-flags": {
+      "optional": true
+    },
+    "@velajs/storage": {
       "optional": true
     }
   },

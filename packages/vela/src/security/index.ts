@@ -18,12 +18,7 @@ export { CorsModule, CORS_OPTIONS } from '../cors/index';
 export type { CorsOptions } from '../cors/index';
 
 // Edge-safe HMAC signed-URL primitives
-export {
-  signUrl,
-  verifySignedUrl,
-  HTTP_SIGNED_URL_PURPOSE,
-  STORAGE_SIGNED_URL_PURPOSE,
-} from '../crypto/signed-url';
+export { signUrl, verifySignedUrl, HTTP_SIGNED_URL_PURPOSE } from '../crypto/signed-url';
 export type { SignedUrlOptions, VerifySignedUrlOptions } from '../crypto/signed-url';
 
 // Single-use nonces (signed invocations, WebSocket tickets)

@@ -83,10 +83,6 @@ Object condition order is resolution-significant, so this tree is kept verbatim.
     "types": "./dist/seeder/index.d.ts",
     "import": "./dist/seeder/index.js"
   },
-  "./storage": {
-    "types": "./dist/storage/index.d.ts",
-    "import": "./dist/storage/index.js"
-  },
   "./streaming": {
     "types": "./dist/streaming/index.d.ts",
     "import": "./dist/streaming/index.js"
@@ -944,7 +940,7 @@ Declaration entry: `./dist/module-kit.d.ts`
 
 ```ts
 import { n as getMetadata, t as defineMetadata } from "<internal:metadata.d.ts>";
-import { Et as ParamType, G as Constructor, Q as InferTokens, St as describeToken, Tt as METADATA_KEYS, U as Container, W as CheckedProviders, Y as FactoryInject, Z as InferToken, _t as UnresolvedDependency, a as ExecutionContext, bt as assertFactoryInject, it as ModuleDescription, kt as VelaHono, mt as Type, nt as MissingInjectionMetadataError, ot as ModuleVisibilityError, pt as Token, r as CanActivate, rt as MissingInjectionMetadataReason, s as HttpExecutionContext, st as MultipleProvidersFoundError, vt as UnresolvedDependencyError, wt as HttpMethod, yt as UnresolvedDependencyReason } from "<internal:types-http-hono.types.d.ts>";
+import { Et as ParamType, G as Constructor, H as VelaEnv, Q as InferTokens, St as describeToken, Tt as METADATA_KEYS, U as Container, W as CheckedProviders, Y as FactoryInject, Z as InferToken, _t as UnresolvedDependency, a as ExecutionContext, bt as assertFactoryInject, it as ModuleDescription, kt as VelaHono, mt as Type, nt as MissingInjectionMetadataError, ot as ModuleVisibilityError, pt as Token, r as CanActivate, rt as MissingInjectionMetadataReason, s as HttpExecutionContext, st as MultipleProvidersFoundError, vt as UnresolvedDependencyError, wt as HttpMethod, yt as UnresolvedDependencyReason } from "<internal:types-http-hono.types.d.ts>";
 import { A as registerEntrypointKind, B as DiscoveryService, F as DiscoveredClass, H as DiscoverableDecorator, I as DiscoveredMethodMeta, L as DiscoveredRegisteredMethodMeta, M as Entrypoint, N as EntrypointKind, O as EntrypointRegistry, P as contributesEntrypoints, R as DiscoveredRegistration, U as createDiscoverableDecorator, V as CreateDiscoverableDecoratorOptions, a as AdapterContext, j as ContributesEntrypoints, k as getEntrypointKinds, o as RuntimeAdapter, w as OpenApiPathItem, z as DiscoveryFilter } from "<internal:request-context.d.ts>";
 import { I as InterceptorType, L as MiddlewareType, N as FilterType, P as GuardType, U as PipeType, d as RouteDescription, f as RouteManager, g as DEFAULT_QUERY_PARAMETER_LIMIT, h as DEFAULT_QUERY_DEPTH_LIMIT, m as DEFAULT_QUERY_BYTES_LIMIT, u as DEFAULT_BODY_LIMIT_BYTES } from "<internal:types-registry-types.d.ts>";
 import { At as ExecutionScope, C as resolveErrorReporter, Ct as resolvePipelineComponents, Dt as PipelineRunner, Et as PipelineRunOptions, Ft as runInEntrypointScope, Gt as ModuleEntryList, It as LazyProviderSpec, Kt as UndefinedModuleError, Lt as lazyProvider, Mt as createExecutionScope, Nt as finishExecutionScope, Pt as getExecutionLifetime, Rt as sideEffectModule, S as ErrorReporter, St as getScopedComponents, Tt as resolveScopedComponentsAsync, _n as ReadJsonBodyOptions, bt as PipelineComponentEntry, dn as enableAmbientContainer, fn as getCurrentContainer, jt as ExecutionScopeOptions, pn as getCurrentRequestContext, qt as ROOT_MODULE, vn as readJsonBody, vt as getCatchTypes, wt as resolveScopedComponents, xt as ResolvedComponentMap, yn as createLazyParamDecorator, yt as shouldFilterCatch } from "<internal:index-factory.d.ts>";
@@ -956,6 +952,32 @@ import { Context } from "hono";
 export declare function stableHash(value: unknown): string;
 
 export declare function referenceKey(...values: readonly unknown[]): string;
+
+interface BindingRef {
+  readonly binding: string;
+}
+
+interface BindingKind<T> {
+
+  readonly name: string;
+
+  readonly configKey: string;
+
+  readonly accepts: (value: unknown) => value is T;
+}
+
+type EnvFactory<T> = (env: VelaEnv) => T;
+
+interface Binding<T> extends BindingRef {
+  (env: VelaEnv): T;
+  readonly kind: BindingKind<T>;
+}
+
+export declare function resolveBinding<T>(env: VelaEnv | undefined, ref: BindingRef, kind: BindingKind<T>): T;
+
+export declare function defineBinding<T>(kind: BindingKind<T>): (ref: BindingRef) => Binding<T>;
+
+export declare function readEnv(container: Container): VelaEnv;
 
 interface EntrypointExecutionContext<Kind extends string = string> extends ExecutionContext {
   getType(): Kind;
@@ -1076,7 +1098,7 @@ interface TrustedRequestIdentityStore<T> {
 
 export declare function createTrustedRequestIdentityStore<T>(): TrustedRequestIdentityStore<T>;
 
-export { type AdapterContext, type CheckedProviders, type Constructor, Container, type ContributesEntrypoints, type CreateDiscoverableDecoratorOptions, DEFAULT_BODY_LIMIT_BYTES, DEFAULT_QUERY_BYTES_LIMIT, DEFAULT_QUERY_DEPTH_LIMIT, DEFAULT_QUERY_PARAMETER_LIMIT, type DiscoverableDecorator, type DiscoveredClass, type DiscoveredMethodMeta, type DiscoveredRegisteredMethodMeta, type DiscoveredRegistration, type DiscoveryFilter, DiscoveryService, type Entrypoint, type EntrypointExecutionContext, type EntrypointKind, EntrypointRegistry, type ErrorReporter, type ExecutionScope, type ExecutionScopeOptions, type FactoryInject, type FilterType, type GuardType, HttpMethod, type InferToken, type InferTokens, type InterceptorType, type InvokeScheduledJobOptions, type LazyProviderSpec, METADATA_KEYS, MetadataRegistry, type MiddlewareType, MissingInjectionMetadataError, type MissingInjectionMetadataReason, type ModuleDescription, type ModuleEntryList, ModuleVisibilityError, MultipleProvidersFoundError, ParamType, type PipeType, type PipelineComponentEntry, type PipelineRunOptions, PipelineRunner, ROOT_MODULE, type ReadJsonBodyOptions, type ResolvedComponentMap, type RouteContributor, type RouteContributorContext, type RouteContributorOpenApiContext, type RouteDescription, type RuntimeAdapter, SCHEDULE_INVOCATION_SEED, type ScheduleInvocationSeed, type TrustedRequestIdentity, type TrustedRequestIdentityStore, type TrustedRequestPrincipal, UndefinedModuleError, type UnresolvedDependency, UnresolvedDependencyError, type UnresolvedDependencyReason, assertFactoryInject, buildExecutionContext as buildHttpExecutionContext, contributesEntrypoints, createDiscoverableDecorator, createExecutionScope, createLazyParamDecorator, defineMetadata, describeToken, enableAmbientContainer, finishExecutionScope, getCatchTypes, getCurrentContainer, getCurrentRequestContext, getEntrypointKinds, getExecutionLifetime, getMetadata, getRequestContainer, getScopedComponents, lazyProvider, readJsonBody, registerEntrypointKind, resolveErrorReporter, resolvePipelineComponents, resolveScopedComponents, resolveScopedComponentsAsync, runInEntrypointScope, shouldFilterCatch, sideEffectModule };
+export { type AdapterContext, type Binding, type BindingKind, type BindingRef, type CheckedProviders, type Constructor, Container, type ContributesEntrypoints, type CreateDiscoverableDecoratorOptions, DEFAULT_BODY_LIMIT_BYTES, DEFAULT_QUERY_BYTES_LIMIT, DEFAULT_QUERY_DEPTH_LIMIT, DEFAULT_QUERY_PARAMETER_LIMIT, type DiscoverableDecorator, type DiscoveredClass, type DiscoveredMethodMeta, type DiscoveredRegisteredMethodMeta, type DiscoveredRegistration, type DiscoveryFilter, DiscoveryService, type Entrypoint, type EntrypointExecutionContext, type EntrypointKind, EntrypointRegistry, type EnvFactory, type ErrorReporter, type ExecutionScope, type ExecutionScopeOptions, type FactoryInject, type FilterType, type GuardType, HttpMethod, type InferToken, type InferTokens, type InterceptorType, type InvokeScheduledJobOptions, type LazyProviderSpec, METADATA_KEYS, MetadataRegistry, type MiddlewareType, MissingInjectionMetadataError, type MissingInjectionMetadataReason, type ModuleDescription, type ModuleEntryList, ModuleVisibilityError, MultipleProvidersFoundError, ParamType, type PipeType, type PipelineComponentEntry, type PipelineRunOptions, PipelineRunner, ROOT_MODULE, type ReadJsonBodyOptions, type ResolvedComponentMap, type RouteContributor, type RouteContributorContext, type RouteContributorOpenApiContext, type RouteDescription, type RuntimeAdapter, SCHEDULE_INVOCATION_SEED, type ScheduleInvocationSeed, type TrustedRequestIdentity, type TrustedRequestIdentityStore, type TrustedRequestPrincipal, UndefinedModuleError, type UnresolvedDependency, UnresolvedDependencyError, type UnresolvedDependencyReason, assertFactoryInject, buildExecutionContext as buildHttpExecutionContext, contributesEntrypoints, createDiscoverableDecorator, createExecutionScope, createLazyParamDecorator, defineMetadata, describeToken, enableAmbientContainer, finishExecutionScope, getCatchTypes, getCurrentContainer, getCurrentRequestContext, getEntrypointKinds, getExecutionLifetime, getMetadata, getRequestContainer, getScopedComponents, lazyProvider, readJsonBody, registerEntrypointKind, resolveErrorReporter, resolvePipelineComponents, resolveScopedComponents, resolveScopedComponentsAsync, runInEntrypointScope, shouldFilterCatch, sideEffectModule };
 ```
 
 ## `./observability`
@@ -1868,7 +1890,6 @@ interface SignedUrlOptions {
 }
 type VerifySignedUrlOptions = Pick<SignedUrlOptions, 'method' | 'purpose'>;
 export declare const HTTP_SIGNED_URL_PURPOSE = "vela:http-route";
-export declare const STORAGE_SIGNED_URL_PURPOSE = "vela:storage";
 
 export declare function signUrl(url: string, secret: string, options: SignedUrlOptions): Promise<string>;
 
@@ -1949,58 +1970,6 @@ export declare function runSeeders(app: VelaApplication, options?: {
 export declare const SEEDER_METADATA = "vela:seeder";
 
 export { type Seeder as ISeeder, type RegisteredSeeder, Seeder$1 as Seeder, type SeederMetadata, type SeederResult };
-```
-
-## `./storage`
-
-Type conditions: `types`
-
-Declaration entry: `./dist/storage/index.d.ts`
-
-```ts
-
-export declare function expandPathTemplate(template: string, now?: Date): string;
-
-export declare function joinStoragePath(root: string | undefined, relativePath: string, now?: Date): string;
-
-type StorageBody = ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob | null;
-type PresignMethod = 'GET' | 'PUT' | 'DELETE' | 'HEAD';
-interface UploadOptions {
-  size?: number;
-  mimeType?: string;
-  metadata?: Record<string, string>;
-}
-interface UploadResult {
-  path: string;
-  disk: string;
-  size?: number;
-  mimeType: string;
-  uploadedAt: Date;
-}
-interface DownloadResult {
-  toStream(): ReadableStream;
-  toArrayBuffer(): Promise<ArrayBuffer>;
-  toText(): Promise<string>;
-  contentType: string;
-  size: number;
-  metadata?: Record<string, string>;
-}
-interface PresignedUrlResult {
-  url: string;
-  method: PresignMethod;
-  expiresIn: number;
-  expiresAt: Date;
-}
-
-interface StorageDriver {
-  upload(body: StorageBody, path: string, options: UploadOptions): Promise<UploadResult>;
-  download(path: string): Promise<DownloadResult>;
-  delete(path: string): Promise<void>;
-  exists(path: string): Promise<boolean>;
-  getPresignedUrl(path: string, method: PresignMethod, expiresIn: number): Promise<PresignedUrlResult>;
-}
-
-export type { DownloadResult, PresignMethod, PresignedUrlResult, StorageBody, StorageDriver, UploadOptions, UploadResult };
 ```
 
 ## `./streaming`

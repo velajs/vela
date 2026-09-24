@@ -19,17 +19,6 @@ export type { MountOpenApiOptions } from './cloudflare-application';
 // application's ENV when used
 export { d1, durableObject, kv, queue, r2, rateLimit } from './bindings';
 
-// Storage (multi-disk over R2 + presign proxy)
-export {
-  StorageModule,
-  StorageService,
-  StorageManagerService,
-  StorageController,
-  R2StorageDriver,
-  STORAGE_OPTIONS,
-} from './storage/index';
-export type { StorageModuleOptions, DiskConfig, PresignedUrlConfig } from './storage/index';
-
 // Services
 export { KVCacheStore, KVCacheInvalidationStore } from './services/kv-cache.store';
 

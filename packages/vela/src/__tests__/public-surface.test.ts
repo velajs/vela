@@ -237,7 +237,6 @@ describe('public surface tiers', () => {
   it('installs the Reflect polyfill from every entry that ships decorated classes', () => {
     const withoutDecorators = new Set([
       './observability',
-      './storage',
       './streaming',
       './websocket-node',
     ]);

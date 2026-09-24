@@ -143,4 +143,4 @@ const link = await urls.signedUrl('file.download', {}, { expiresIn: 3600 });
 // requests to `link` pass the guard until it expires; tampered/expired → 403
 ```
 
-`signedUrl(name, params?, { expiresIn?, secret? })` builds the URL then HMAC-signs it (Web Crypto, edge-safe — no `node:crypto`). The guard resolves the secret in order: explicit → `URL_SIGNING_SECRET` token → the string `ENV.URL_SIGNING_SECRET` (non-string values are ignored). The low-level primitives `signUrl(url, secret, { expiresIn? })` and `verifySignedUrl(url, secret)` come from `@velajs/vela/security` (not `@velajs/vela/storage`).
+`signedUrl(name, params?, { expiresIn?, secret? })` builds the URL then HMAC-signs it (Web Crypto, edge-safe — no `node:crypto`). The guard resolves the secret in order: explicit → `URL_SIGNING_SECRET` token → the string `ENV.URL_SIGNING_SECRET` (non-string values are ignored). The low-level primitives `signUrl(url, secret, { expiresIn? })` and `verifySignedUrl(url, secret)` come from `@velajs/vela/security`.

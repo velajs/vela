@@ -54,8 +54,20 @@ parameters may omit it.
 The factory returns the module options. `name` (the bucket, default
 `'default'`) and `http` are structural: they decide the provided tokens and the
 mounted routes, so `forRootAsync` takes them next to the factory. The driver
-may be a function, `driver: () => r2Driver({ bucket: env.UPLOADS })`, which
-builds it on the first storage operation. Each bucket name is one module
+may be a function of the application's `ENV`, which builds it on the first
+storage operation of each application, so a static `forRoot` serves every
+environment without reading a binding at boot. On Cloudflare Workers, name the
+R2 bucket binding with `r2Storage` from `@velajs/cloudflare/storage`:
+
+```ts
+import { r2Storage } from '@velajs/cloudflare/storage';
+
+StorageModule.forRoot({ driver: r2Storage({ binding: 'UPLOADS' }) });
+// equivalent, by hand: StorageModule.forRoot({ driver: (env) => r2Driver({ bucket: env.UPLOADS }) })
+```
+
+A missing or mistyped binding fails that first operation with a message naming
+the binding and the `r2_buckets` key of the Wrangler configuration. Each bucket name is one module
 instance; registering a name again with another driver, `http` block or other
 options fails bootstrap, so two features that each need a bucket give them
 distinct names (`name: 'avatars'`).
@@ -91,7 +103,115 @@ The HTTP control plane's POST endpoints accept only `application/json` or `+json
 |---|---|---|---|
 | Memory (tests) | `@velajs/storage/drivers/memory` | ✅ | ❌ |
 | S3 / S3-compatible | `@velajs/storage/drivers/s3` | ✅ | ✅ |
-| R2 (native binding) | `@velajs/storage/drivers/r2` | ✅ | via hybrid |
+| R2 (native binding) | `@velajs/storage/drivers/r2`, or `r2Storage({ binding })` from `@velajs/cloudflare/storage` | ✅ | via hybrid |
+| R2 (HTTP + hybrid) | `@velajs/storage/drivers/r2-http` | ✅ | ✅ |
+| storagesdk bridge | `@velajs/storage/storagesdk` | Node/Bun only | depends on adapter |
+
+## Testing
+
+There's no separate storage fake — the **memory driver IS the fake**. Build a disk in one line and
+assert against it with the helpers from `@velajs/storage/testing`:
+
+```ts
+import { createStorage } from '@velajs/storage';
+import { memoryDriver } from '@velajs/storage/drivers/memory';
+import { assertExists, assertMissing, assertCount } from '@velajs/storage/testing';
+
+const storage = createStorage({ driver: memoryDriver() });
+await storage.upload('avatars/1.png', bytes);
+
+await assertExists(storage, 'avatars/1.png');
+await assertMissing(storage, 'avatars/2.png');
+await assertCount(storage, 'avatars/', 1); // or assertCount(storage, 1) for the whole disk
+```
+
+The helpers accept anything memory-backed — a `Storage` facade or an injected `StorageService`.
+For DI/integration tests, register the same driver instead: `StorageModule.forRoot({ driver: memoryDriver() })`.
+
+See the docs site for presigned uploads, the HTTP upload controller + browser client, middleware,
+multi-bucket, and the full capability matrix.
+
+## Deadlines and stream ownership
+
+`timeout` bounds the wait for an operation; `signal` stops that wait when aborted.
+Both signal cooperative drivers, but native R2 binding I/O can still complete,
+including a write whose caller has already received `Timeout` or `Aborted`.
+Locally timed-out or cancelled operations are never retried, even with `retries`
+or the retry middleware enabled. A rejected write is not proof that no write
+occurred; reconcile its key before deciding whether to issue another mutation.
+Settled retryable provider errors retain the configured retry policy.
+
+Controls end when the operation returns. A successfully delivered download body
+belongs to the caller: consume or cancel it explicitly. Abandoned downloads cancel
+a body if it arrives later; multipart upload cancellation stops scheduling parts
+and attempts to abort the upload. Cleanup cannot guarantee that an already-issued
+native operation was rolled back. `head()` and `list()` retain their 1.x lazy body
+readers; those later reads are separate from the original operation's deadline.
+
+R2 range reads report the returned byte length, including ranges clipped at EOF,
+without buffering the stream. Invalid ranges fail before binding I/O.
+
+## Metadata and native binding types
+
+Use `stat(key)` or `listMetadata(options)` when browsing metadata. They return
+plain `StoredFileMetadata` snapshots without body readers, while `head()` and
+`list()` keep their existing 1.x lazy readers. Fetch bytes explicitly through
+`download(key, { signal, timeout })` when a later read needs operation controls.
+Metadata methods do not issue extra per-object GET or HEAD requests.
+
+```ts
+import { createStorage } from '@velajs/storage';
+import { r2Driver } from '@velajs/storage/drivers/r2';
+
+// env.FILES uses the R2Bucket type from your generated Workers environment.
+const files = createStorage({
+  driver: r2Driver({ bucket: env.FILES, includeMetadata: true }),
+  prefix: 'uploads',
+});
+const meta = await files.stat('report.csv');
+const page = await files.listMetadata({ delimiter: '/', limit: 100 });
+if (page.hasMore) {
+  const next = await files.listMetadata({ delimiter: '/', cursor: page.cursor });
+}
+```
+
+`includeMetadata: true` is an R2 binding/hybrid driver option requesting HTTP and
+custom metadata in listings. Without it, R2 list results may omit custom metadata
+and use the fallback content type. Other drivers return the metadata already
+available from their listings. Metadata-rich pages can be shorter; follow
+`hasMore` and `cursor`, including when a page contains only folder prefixes.
+
+`files.raw` retains the exact supplied native binding type. `readonly()` views,
+`lazyDriver()`, directly constructed `StorageService` instances, and built-in
+middleware composition preserve that type. Custom `Middleware` remains supported;
+its composition returns unknown raw types unless it implements the additive
+`RawPreservingMiddleware` contract. `raw` is the original handle and bypasses
+prefixes, readonly checks, middleware, and facade controls; use native keys there.
+Named module injection still exposes `StorageService<unknown>`; inject your typed
+`ENV` token when an injected consumer needs full native methods.
+
+## Storage on Cloudflare Workers
+
+`StorageModule` from this package is the one file/object storage module; choose
+a driver through its independent import. On Workers, `r2Storage({ binding })`
+from `@velajs/cloudflare/storage` drives it from the native R2 binding. Keep
+native `env.CACHE`, `env.DB`, and Durable Object storage for KV, SQL and
+per-object transactions; these are separate capabilities, not file-storage
+backends.
+
+The native R2 binding cannot presign. Serve its objects through `publicBaseUrl`,
+through the authorized HTTP controller with `http: { download: 'proxy' }`, or
+presign through the S3 or R2 HTTP/hybrid drivers.
+
+The HTTP control plane's POST endpoints accept only `application/json` or `+json` bodies, because browsers send `text/plain` and form-encoded POSTs cross-site without a CORS preflight. Any other media type is refused with 415 before the authorizer runs, and a malformed or non-object body is a 400 `invalid_request`. The `@velajs/storage/client` browser client already sends JSON.
+
+## Drivers
+
+| Driver | Import | Edge? | Presign |
+|---|---|---|---|
+| Memory (tests) | `@velajs/storage/drivers/memory` | ✅ | ❌ |
+| S3 / S3-compatible | `@velajs/storage/drivers/s3` | ✅ | ✅ |
+| R2 (native binding) | `@velajs/storage/drivers/r2`, or `r2Storage({ binding })` from `@velajs/cloudflare/storage` | ✅ | via hybrid |
 | R2 (HTTP + hybrid) | `@velajs/storage/drivers/r2-http` | ✅ | ✅ |
 | storagesdk bridge | `@velajs/storage/storagesdk` | Node/Bun only | depends on adapter |
 

@@ -6,6 +6,7 @@ import * as queue from '@velajs/vela/queue';
 import * as cloudflare from '../index';
 import * as durableObjects from '../durable-objects';
 import * as queues from '../queues';
+import * as storage from '../storage';
 
 /**
  * Each framework API has one import path. The Cloudflare adapter exports its own
@@ -17,7 +18,7 @@ describe('@velajs/cloudflare public surface', () => {
     const core = [vela, websocket, live, queue].map(
       (entry) => entry as unknown as Record<string, unknown>,
     );
-    const adapter = [cloudflare, durableObjects, queues].map(
+    const adapter = [cloudflare, durableObjects, queues, storage].map(
       (entry) => entry as unknown as Record<string, unknown>,
     );
     const reexported = adapter.flatMap((entry) =>

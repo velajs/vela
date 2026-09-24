@@ -12,7 +12,7 @@ Vela (`@velajs/vela`) provides a NestJS-style framework for **edge runtimes**, b
 
 - The **main export** `@velajs/vela` is edge-safe by contract (no `node:*`, `Buffer`, `process`, `setInterval`) â€” enforced in CI.
 - The root is the **application kit**: `VelaFactory`, modules and DI, controllers and route/param decorators, guards/pipes/interceptors/filters, HTTP exceptions, `ConfigModule`, `Logger` and lifecycle types. Every name has exactly one import path.
-- Feature subpaths: `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/security` (SecurityModule, CORS, signed-URL primitives, nonce store), `/logging`, `/openapi` (`OpenApiModule`, `@Endpoint`, OpenAPI documents), `/dispatch` (signed internal dispatch), `/http-client`, `/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/storage`, `/streaming`, `/observability`, `/schedule-node` and `/websocket-node` (Node/Bun only).
+- Feature subpaths: `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/security` (SecurityModule, CORS, signed-URL primitives, nonce store), `/logging`, `/openapi` (`OpenApiModule`, `@Endpoint`, OpenAPI documents), `/dispatch` (signed internal dispatch), `/http-client`, `/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/streaming`, `/observability`, `/schedule-node` and `/websocket-node` (Node/Bun only).
 - `@velajs/vela/module-kit` holds the seams for module, integration and adapter authors (`Container`, `MetadataRegistry`, `DiscoveryService`, entrypoint kinds, execution scopes, `PipelineRunner`, route contributors, `invokeScheduledJob`); `@velajs/vela/internal` holds bootstrap plumbing for first-party tooling.
 - Sibling packages: `@velajs/cloudflare` (Workers adapter: KV/D1/R2/Queues/DO), `@velajs/crud`, `@velajs/better-auth`, `@velajs/authz`, `@velajs/client` / `@velajs/react`, `@velajs/storage`, `@velajs/testing`, `@velajs/cli`, `@velajs/feature-flags`.
 
@@ -170,7 +170,7 @@ Load a reference when the task needs its depth. **This table is the contract** â
 | `references/cloudflare.md` | `@velajs/cloudflare`: Workers adapter, KV/D1/R2/Queues/Durable Objects, `wrangler.toml`, `nodejs_compat` |
 | `references/crud.md` | `@velajs/crud`: generated CRUD controllers, `RouteContributor` |
 | `references/auth.md` | `@velajs/better-auth` authentication and shared `@velajs/authz/vela` authorization |
-| `references/storage.md` | `@velajs/storage` / `@velajs/vela/storage`: file storage; signed-URL primitives from `@velajs/vela/security` |
+| `references/storage.md` | `@velajs/storage`: the one file-storage module; `r2Storage({ binding })` from `@velajs/cloudflare/storage` on Workers |
 | `references/feature-flags.md` | `@velajs/feature-flags`: flags, parser-validated evaluation, drivers |
 | `references/incremental-adoption.md` | Mounting Vela into an existing Hono app; migrating from NestJS |
 | `assets/project-scaffold.md` | New project template (package.json, tsconfig, module/controller, main.ts) |
