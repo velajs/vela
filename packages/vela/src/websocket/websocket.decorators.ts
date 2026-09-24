@@ -1,4 +1,4 @@
-import { Inject } from '../container/decorators';
+import { getConstructorMetadata, Inject } from '../container/decorators';
 import { createDiscoverableDecorator } from '../discovery/index';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
@@ -15,6 +15,30 @@ import type {
   SubscribeMessageMetadata,
   WebSocketGatewayOptions,
 } from './websocket.types';
+import { gatewayServerToken, isGatewayServerToken } from './ws-server';
+
+const isServerToken = (token: unknown): boolean =>
+  token === WS_SERVER || isGatewayServerToken(token);
+
+/**
+ * Point each server the gateway's constructor injects (`@WebSocketServer()`
+ * or `@Inject(WS_SERVER)`, declared or inherited) at the gateway's own server,
+ * so its pushes reach only the sockets connected through it. Inherited
+ * constructor metadata becomes the gateway's own, so gateways that share a
+ * base constructor each get their own server.
+ */
+function injectGatewayServer(gateway: Constructor): void {
+  const { paramTypes, inject } = getConstructorMetadata(gateway);
+  if (!inject.some((entry) => isServerToken(entry.token))) return;
+  const token = gatewayServerToken(gateway);
+  if (Reflect.getOwnMetadata('design:paramtypes', gateway) === undefined) {
+    Reflect.defineMetadata('design:paramtypes', [...paramTypes], gateway);
+  }
+  MetadataRegistry.setInjectTokens(
+    gateway,
+    inject.map((entry) => (isServerToken(entry.token) ? { ...entry, token } : { ...entry })),
+  );
+}
 
 /**
  * Marks a class as a WebSocket gateway. Mirrors `@Controller` for the socket
@@ -32,6 +56,7 @@ export function WebSocketGateway(options: WebSocketGatewayOptions = {}): ClassDe
     const ctor = target as unknown as Constructor;
     MetadataRegistry.setCustomClassMeta(ctor, WS_GATEWAY_METADATA, options);
     MetadataRegistry.markInjectable(ctor);
+    injectGatewayServer(ctor);
   };
 }
 
@@ -97,7 +122,9 @@ export const ConnectedSocket = wsParamDecorator(WsParamType.SOCKET);
 /**
  * Injects the gateway server handle (`WsServer`). Constructor injection only —
  * the container has no property-injection pass, so this is sugar for
- * `@Inject(WS_SERVER)` on a constructor parameter.
+ * `@Inject(WS_SERVER)` on a constructor parameter. In a `@WebSocketGateway`
+ * class, declared or inherited, it is that gateway's own server: its pushes
+ * reach only the sockets connected through the gateway.
  *
  * @example
  * ```ts

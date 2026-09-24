@@ -65,7 +65,10 @@ function transportAdapter(transport: WebSocketTransport): RuntimeAdapter {
 }
 
 class RecordingServer implements WsServer {
-  emit(): void {}
+  readonly emitted: Array<{ event: string; data?: unknown }> = [];
+  emit(event: string, data?: unknown): void {
+    this.emitted.push({ event, data });
+  }
   to(): BroadcastOperator {
     throw new Error('not used');
   }
@@ -97,9 +100,11 @@ describe('WebSocketModule platform transport', () => {
 
     const app = await VelaFactory.create(AppModule, { adapters: [transportAdapter(transport)] });
     try {
-      expect(app.get(ChatGateway).server).toBe(server);
       expect(app.get(WS_SERVER)).toBe(server);
       expect(drivers).toEqual([app.get(WS_SYNC_DRIVER)]);
+      // A transport server without forGateway is the one every gateway pushes through.
+      await app.get(ChatGateway).server.emit('ping', 1);
+      expect(server.emitted).toEqual([{ event: 'ping', data: 1 }]);
     } finally {
       await app.close();
     }

@@ -57,6 +57,7 @@ describe('shared live query schemas', () => {
       return { n: Number(parsed.n) };
     });
     const definition = defineLiveQuery({
+      name: 'count',
       args: { parse: parseArgs },
       result: z.object({ count: z.number() }),
     });
@@ -64,7 +65,7 @@ describe('shared live query schemas', () => {
     @LiveResolver()
     class Resolver {
       private readonly multiplier = 2;
-      @LiveQuery('count', definition, { tags: (args) => [`n:${args.n}`] })
+      @LiveQuery(definition, { tags: (args) => [`n:${args.n}`] })
       count(args: { n: number }) {
         return { count: args.n * this.multiplier };
       }
@@ -114,6 +115,7 @@ describe('shared live query schemas', () => {
     let corrupt = false;
     let count = 1;
     const definition = defineLiveQuery({
+      name: 'count',
       args: z.unknown(),
       result: z.object({ count: z.number() }),
     });
@@ -128,7 +130,7 @@ describe('shared live query schemas', () => {
     @LiveResolver()
     class Resolver {
       @UseInterceptors(Rewrite)
-      @LiveQuery('count', definition, { tags: ['count'] })
+      @LiveQuery(definition, { tags: ['count'] })
       count() {
         return { count, privateField: 'must be stripped by schema' };
       }

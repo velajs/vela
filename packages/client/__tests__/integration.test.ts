@@ -63,6 +63,7 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
     const todos: Array<{ id: string; text: string }> = [{ id: 't1', text: 'first' }];
 
     const todoList = defineLiveQuery({
+      name: 'todos.list',
       args: { parse: emptyArgs },
       result: {
         parse(value: unknown) {
@@ -85,7 +86,7 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
 
     @LiveResolver()
     class TodoLive {
-      @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
+      @LiveQuery(todoList, { tags: ['crud:todos'] })
       list() {
         return todos;
       }
@@ -179,7 +180,7 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
     }) as typeof fetch;
 
     const client = createLiveClient({
-      queries: { 'todos.list': todoList },
+      queries: [todoList],
       url: 'http://in-memory.test',
       WebSocket: makeSocket,
       fetch: serverFetch,

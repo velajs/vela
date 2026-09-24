@@ -4,6 +4,7 @@ import { defineProvider } from '../container/types';
 import type { DynamicModule } from '../registry/types';
 import { InMemoryCursorLog } from './live.cursor';
 import { LiveEngine } from './live.engine';
+import { LiveInspector } from './live.inspector';
 import { LiveInvalidation, localLive } from './live.invalidation';
 import { LIVE_CURSOR_LOG, LIVE_DRIVER, LIVE_MODULE_OPTIONS, LIVE_PLATFORM } from './live.tokens';
 import type { CursorLog, LiveDriver, LiveModuleOptions, LivePlatform } from './live.types';
@@ -43,10 +44,11 @@ class LivePlatformRef {
  * options leave open (`@velajs/cloudflare` routes Worker invalidations to the
  * gateway's room Durable Object and keeps a SQLite log inside it).
  *
- * App code declares `@LiveResolver` classes with `@LiveQuery(name, definition, { tags })`
+ * App code declares `@LiveResolver` classes with `@LiveQuery(definition, { tags })`
  * methods; clients subscribe over the `$live` reserved WebSocket event; writes
- * invalidate tags via `LiveInvalidation` (the `@velajs/crud` bridge does it
- * automatically per table). See `docs/live-queries.md` for the wire protocol, delivery
+ * invalidate tags with `@LiveInvalidates(tags)` or `LiveInvalidation` (the
+ * `@velajs/crud` bridge does it automatically per table). `LiveInspector`
+ * reads named rooms for admin surfaces. See `docs/live-queries.md` for the wire protocol, delivery
  * guarantees, and the resume story.
  *
  * Deliberately EAGER (like WebSocketModule): the engine self-drives — it
@@ -87,11 +89,19 @@ const { ConfigurableModuleClass } = defineModule<LiveModuleOptions, 'presence'>(
         inject: [LIVE_DRIVER],
       }),
       LiveEngine,
+      LiveInspector,
       // The built-in `$presence.roster` resolver. Skipping it is structural:
       // `presence: false` is visible at the forRoot/forRootAsync call site.
       ...(options.presence === false ? [] : [PresenceResolver]),
     ],
-    exports: [LiveEngine, LiveInvalidation, LIVE_DRIVER, LIVE_CURSOR_LOG, PresenceService],
+    exports: [
+      LiveEngine,
+      LiveInvalidation,
+      LiveInspector,
+      LIVE_DRIVER,
+      LIVE_CURSOR_LOG,
+      PresenceService,
+    ],
   }),
 });
 

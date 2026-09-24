@@ -1,10 +1,10 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
-import { createLiveClient, LiveClient } from '../src';
+import { createLiveClient, defineLiveQuery, LiveClient } from '../src';
 import { emptyListSchema } from './schema-fixtures';
 import { makeSocketFactory, tick } from './harness';
 
-const queries = {
-  'todos.list': {
+const queries = [
+  defineLiveQuery({
     ...emptyListSchema,
     result: {
       parse(value: unknown) {
@@ -13,8 +13,8 @@ const queries = {
         return rows;
       },
     },
-  },
-};
+  }),
+] as const;
 
 async function connected() {
   const sockets = makeSocketFactory();
@@ -89,7 +89,7 @@ describe('runtime live schemas', () => {
 
 function negativeTypes() {
   const client = createLiveClient({ url: 'https://api.test', queries });
-  // @ts-expect-error schema map controls query names
+  // @ts-expect-error the definitions control query names
   client.subscribe('missing', {}, () => {});
   // @ts-expect-error typed clients require parser evidence
   new LiveClient<{ 'todos.list': { args: {}; result: { id: string }[] } }>({

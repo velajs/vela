@@ -20,17 +20,23 @@ export interface LiveQueryContext {
   clientId: string;
   /** Rooms the connection was in when it subscribed. */
   rooms: string[];
+  /**
+   * The route path of the gateway the connection subscribed through. Rooms
+   * of different gateways may share an id; the path tells them apart.
+   */
+  path: string;
 }
 
 export interface LiveQueryOptions<A = unknown> {
   /**
    * Dependency tags this query's result is built from — the invalidation
    * contract. Static for the common case; the function form derives
-   * per-entity tags from the (parsed) subscribe args. Writes invalidate tags
-   * via `LiveInvalidation.invalidate()` (the CRUD bridge does it
-   * automatically with `crud:<table>` tags).
+   * per-entity tags from the (parsed) subscribe args and the subscribing
+   * connection's context. Writes invalidate tags via
+   * `LiveInvalidation.invalidate()` (the CRUD bridge does it automatically
+   * with `crud:<table>` tags).
    */
-  tags: string[] | ((args: A) => string[]);
+  tags: string[] | ((args: A, context: LiveQueryContext) => string[]);
   /** Key field for incremental list deltas (default `'id'`). */
   key?: string;
   /**
@@ -48,9 +54,10 @@ export interface LiveQueryOptions<A = unknown> {
 
 /** One `@LiveQuery` declaration on a `@LiveResolver` class. */
 export interface LiveQueryMetadata {
+  /** The definition's name, which clients subscribe with. */
   name: string;
   methodName: string | symbol;
-  definition: LiveQueryDefinition<unknown, unknown>;
+  definition: LiveQueryDefinition;
   key?: string;
   prepare(input: unknown): PreparedLiveQuery;
 }
@@ -59,7 +66,7 @@ export interface LiveQueryMetadata {
 export interface PreparedLiveQuery {
   readonly input: unknown;
   readonly args: unknown;
-  tags(): string[];
+  tags(context: LiveQueryContext): string[];
   coalesceBy?: (context: LiveQueryContext) => string | undefined;
   invoke(instance: unknown, context: LiveQueryContext): unknown | Promise<unknown>;
 }
@@ -128,6 +135,20 @@ export interface LiveDriver {
   stop?(): void | Promise<void>;
 }
 
+/** Read-only operational metadata; excludes query arguments, results and identity claims. */
+export interface LiveInspection {
+  subscriptions: Array<{
+    id: string;
+    query: string;
+    room: string;
+    clientId: string;
+    tags: string[];
+    /** When this engine attached the connection, including after hibernation. */
+    connectedAt: number;
+  }>;
+  rooms: Array<{ room: string; count: number; members: string[] }>;
+}
+
 /**
  * Platform wiring for `LiveModule`: a runtime adapter registers one as the
  * global `LIVE_PLATFORM`. It supplies the defaults the module's options leave
@@ -144,6 +165,11 @@ export interface LivePlatform {
    * a platform driver reads its bindings and delivery mode here.
    */
   bindDriver?(driver: LiveDriver): void;
+  /**
+   * Read one room's live state where its subscriptions live, for
+   * `LiveInspector`. Omitted means this application's engine holds them.
+   */
+  inspect?(room: string): Promise<LiveInspection>;
 }
 
 /** One live subscription as tracked by the engine (and persisted by transports that survive eviction). */

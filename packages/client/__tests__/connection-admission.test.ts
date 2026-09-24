@@ -11,7 +11,7 @@ describe('browser WebSocket send admission', () => {
     async (mode) => {
       const sockets = makeSocketFactory();
       const client = new LiveClient({
-        queries: {},
+        queries: [],
         url: 'http://api.test',
         WebSocket: sockets.factory,
         sendPolicy: mode === 'rate' ? { maxBytesPerSecond: 1 } : undefined,

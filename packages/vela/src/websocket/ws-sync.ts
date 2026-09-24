@@ -40,6 +40,9 @@ export function broadcastCommandFits(
       (typeof command.origin === 'string' &&
         command.origin.length > 0 &&
         encoder.encode(command.origin).byteLength <= MAX_BROADCAST_SELECTOR_BYTES)) &&
+    (command.gatewayPath === undefined ||
+      (typeof command.gatewayPath === 'string' &&
+        encoder.encode(command.gatewayPath).byteLength <= MAX_BROADCAST_SELECTOR_BYTES)) &&
     typeof command.frame === 'string' &&
     webSocketFrameFits(command.frame, maxFrameBytes)
   );
@@ -92,7 +95,10 @@ export interface RoomRegistry {
   leave(client: WsClient, room: string): void | Promise<void>;
   /** Remove a connection and all its room memberships (called on disconnect). */
   leaveAll(client: WsClient): void | Promise<void>;
-  /** Deliver a command to the sockets THIS node holds, applying every exclusion. */
+  /**
+   * Deliver a command to the sockets THIS node holds, applying every exclusion
+   * and, when the command names one, only to its gateway's sockets.
+   */
   deliverLocal(cmd: BroadcastCommand): void | Promise<void>;
   /** Install the runtime's per-recipient guard recheck before fan-out. */
   setDeliveryAuthorizer?(authorizer: (client: WsClient) => boolean | Promise<boolean>): void;
@@ -208,6 +214,8 @@ export class InMemoryRoomRegistry implements RoomRegistry {
 
     const selected: WsClient[] = [];
     for (const client of candidates) {
+      // A gateway-scoped push skips sockets of other gateways sharing a room id.
+      if (cmd.gatewayPath !== undefined && client.path !== cmd.gatewayPath) continue;
       if (excludeIds.has(client.id)) continue;
       const joined = this.clientRooms.get(client.id);
       if (excludeRooms.some((room) => joined?.has(room))) continue;

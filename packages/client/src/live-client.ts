@@ -1,4 +1,5 @@
 import { COMMIT_CURSOR_HEADER, COMMIT_EPOCH_HEADER } from '@velajs/live-protocol';
+import type { LiveQueryDefinition } from '@velajs/live-protocol';
 import { ClientQueryStore } from './client-query';
 import { RoomConnection } from './connection';
 import { CrossTabCoordinator } from './cross-tab';
@@ -26,7 +27,6 @@ import type {
   LiveClientOptions,
   LiveContract,
   LiveContractShape,
-  LiveQuerySchemas,
   InferLiveContract,
   LiveStore,
   MutateOptions,
@@ -117,10 +117,18 @@ export class LiveClient<C extends LiveContractShape<C> = LiveContract> {
   /** Leader-side: subscription key → set of follower tab ids wanting it. */
   private readonly wanters = new Map<string, Set<string>>();
 
-  constructor(private readonly options: LiveClientOptions<C>) {
-    for (const query in options.queries) {
-      this.resultParsers.set(query, options.queries[query].result);
-      this.argumentParsers.set(query, options.queries[query].args);
+  // `createLiveClient` infers the contract from the definitions; a direct
+  // construction names it or keeps the untyped default.
+  constructor(private readonly options: NoInfer<LiveClientOptions<C>>) {
+    for (const definition of options.queries) {
+      if (this.resultParsers.has(definition.name)) {
+        throw new VelaLiveError(
+          'LIVE_SCHEMA_DUPLICATE',
+          `Two live query definitions are named ${definition.name}`,
+        );
+      }
+      this.resultParsers.set(definition.name, definition.result);
+      this.argumentParsers.set(definition.name, definition.args);
     }
     if (options.offline) {
       if (options.identity === undefined) {
@@ -261,8 +269,16 @@ export class LiveClient<C extends LiveContractShape<C> = LiveContract> {
     return state;
   }
 
-  private querySchema<Q extends keyof C & string>(query: Q) {
-    const schema = this.options.queries[query];
+  private querySchema<Q extends keyof C & string>(
+    query: Q,
+  ): {
+    args: { parse(value: unknown): C[Q]['args'] };
+    result: { parse(value: unknown): C[Q]['result'] };
+  } {
+    const schema = this.options.queries.find(
+      (definition): definition is LiveQueryDefinition<Q, C[Q]['args'], C[Q]['result']> =>
+        definition.name === query,
+    );
     if (!schema)
       throw new VelaLiveError(
         'LIVE_SCHEMA_MISSING',
@@ -1257,12 +1273,12 @@ const isJsonWithin = (value: unknown, maxBytes: number): boolean => {
   }
 };
 
-/** Infer each query's argument and result types from its runtime parsers. */
-export function createLiveClient<const S extends LiveQuerySchemas<LiveContract>>(
-  options: Omit<LiveClientOptions, 'queries'> & { queries: S },
-): LiveClient<InferLiveContract<S>>;
+/** Infer each query's name, argument and result types from its shared definition. */
+export function createLiveClient<const D extends readonly LiveQueryDefinition[]>(
+  options: Omit<LiveClientOptions, 'queries'> & { queries: D },
+): LiveClient<InferLiveContract<D>>;
 export function createLiveClient(options: LiveClientOptions): LiveClient {
-  // The public signature projects this exact parser map. The implementation
+  // The public signature projects these exact definitions. The implementation
   // keeps dynamic dispatch unknown; LiveClient parses before typed publication.
   return new LiveClient(options);
 }

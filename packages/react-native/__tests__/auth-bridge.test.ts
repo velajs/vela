@@ -46,7 +46,7 @@ describe('expoAuthToken', () => {
   it('feeds the bearer into the native client HTTP mutation', async () => {
     const { fetch, calls } = makeFetch();
     const client = createNativeClient({
-      queries: {},
+      queries: [],
       url: 'http://api.test',
       authToken: expoAuthToken(authClient('better-auth.session_token=xyz789')),
       fetch,

@@ -2,6 +2,7 @@ import { defineLiveQuery } from '../query';
 import type { LiveQueryDefinition } from '../query';
 
 const definition = defineLiveQuery({
+  name: 'counters.byId',
   args: {
     parse(value: unknown) {
       if (typeof value !== 'string') throw new TypeError('expected string');
@@ -15,11 +16,20 @@ const definition = defineLiveQuery({
     },
   },
 });
-const inferred: LiveQueryDefinition<{ id: string }, { count: number }> = definition;
+const inferred: LiveQueryDefinition<'counters.byId', { id: string }, { count: number }> =
+  definition;
 void inferred;
+const erased: LiveQueryDefinition = definition;
+void erased;
 
 // @ts-expect-error A query definition must include its result parser.
-defineLiveQuery({ args: { parse: (value: unknown) => value } });
+defineLiveQuery({ name: 'counters.byId', args: { parse: (value: unknown) => value } });
+// @ts-expect-error A query definition declares its wire name.
+defineLiveQuery({ args: definition.args, result: definition.result });
 // @ts-expect-error The result parser determines the result type.
-const mismatched: LiveQueryDefinition<{ id: string }, { count: string }> = definition;
+const mismatched: LiveQueryDefinition<'counters.byId', { id: string }, { count: string }> =
+  definition;
 void mismatched;
+// @ts-expect-error The name is part of the definition's type.
+const renamed: LiveQueryDefinition<'counters.all', { id: string }, { count: number }> = definition;
+void renamed;

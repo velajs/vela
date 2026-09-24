@@ -13,7 +13,7 @@ import {
 } from '@velajs/vela/live';
 import type { CommitStamp, InvalidationCommand, LiveInvalidationSink } from '@velajs/vela/live';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
-import { DoCursorLog } from '../websocket/do-live';
+import { DoCursorLog, liveInvalidateToRoom } from '../websocket/do-live';
 import { durableObjectLive, type LiveNamespace } from '../websocket/live-driver';
 import { DoWebSocketHost } from '../websocket/do-websocket-host';
 import type { DoStateLike, SqlStorageLike, WsLike } from '../websocket/do-state';
@@ -176,9 +176,37 @@ describe('durableObjectLive driver', () => {
   });
 });
 
+describe('liveInvalidateToRoom', () => {
+  it("reaches the room's object, or the one object of a gateway without roomParam", async () => {
+    const calls: Array<{ id: string; cmd: InvalidationCommand }> = [];
+    const ns: LiveNamespace = {
+      idFromName: (name) => ({ name, toString: () => `id:${name}`, equals: () => false }),
+      get: (id) => ({
+        invalidate: async (cmd: InvalidationCommand): Promise<CommitStamp> => {
+          calls.push({ id: id.toString(), cmd });
+          return { cursor: 3, epoch: 'room-epoch' };
+        },
+      }),
+    };
+
+    expect(await liveInvalidateToRoom(ns, '/rooms/:id/ws', 'r1', ['todos'])).toEqual({
+      cursor: 3,
+      epoch: 'room-epoch',
+    });
+    // Every upgrade to a gateway without roomParam joins one room, its path,
+    // so each room it names lives in that one object, as with the driver.
+    await liveInvalidateToRoom(ns, '/lobby', 'l1', ['todos']);
+    expect(calls).toEqual([
+      { id: 'id:vela:ws:v2:%2Frooms%2F%3Aid%2Fws:r1', cmd: { room: 'r1', tags: ['todos'] } },
+      { id: 'id:vela:ws:v2:%2Flobby:%2Flobby', cmd: { room: 'l1', tags: ['todos'] } },
+    ]);
+  });
+});
+
 describe('live queries inside the Durable Object', () => {
   const PATH = '/rooms/:id/ws';
   const todoList = defineLiveQuery({
+    name: 'todos.list',
     args: z.object({}),
     result: z.array(z.object({ id: z.string(), text: z.string() })),
   });
@@ -186,7 +214,7 @@ describe('live queries inside the Durable Object', () => {
   function makeModule(todos: Array<{ id: string; text: string }>) {
     @LiveResolver()
     class TodoLive {
-      @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
+      @LiveQuery(todoList, { tags: ['crud:todos'] })
       list() {
         return todos;
       }

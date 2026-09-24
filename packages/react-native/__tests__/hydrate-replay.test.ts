@@ -25,7 +25,7 @@ describe('createNativeClient — hydrate + replay over the AsyncStorage adapter'
     // The queue hydrates from storage and flushes on construction (the same
     // flush a fresh 'connected' socket would trigger once online).
     const client = createNativeClient({
-      queries: {},
+      queries: [],
       url: 'http://api.test',
       storage,
       offline: true,

@@ -38,9 +38,10 @@ import { WsException } from '../websocket/ws-exception.js';
 import { WebSocketServer } from '../websocket/websocket.decorators.js';
 import { InMemoryRoomRegistry, local } from '../websocket/ws-sync.js';
 import { WsServerImpl } from '../websocket/ws-server.js';
-import { WS_ROOM_REGISTRY } from '../websocket/websocket.tokens.js';
+import { WS_ROOM_REGISTRY, WS_SERVER } from '../websocket/websocket.tokens.js';
 import type {
   BroadcastCommand,
+  BroadcastOperator,
   WsClient,
   WsServer,
   OnGatewayInit,
@@ -58,10 +59,11 @@ const trustedSocketData = (): Record<string, unknown> => ({
   expiresAtMs: Date.now() + 60_000,
 });
 
-function sink(id: string): SinkClient {
+function sink(id: string, path?: string): SinkClient {
   const received: Array<{ event: string; data: unknown }> = [];
   return {
     id,
+    ...(path === undefined ? {} : { path }),
     rooms: new Set(),
     data: trustedSocketData(),
     raw: null,
@@ -565,6 +567,46 @@ describe('rooms + Server handle', () => {
     expect(dispatched).toHaveLength(1);
   });
 
+  it("scopes a gateway's server to its sockets and its frame ceiling", () => {
+    const registry = new InMemoryRoomRegistry();
+    const dispatched: BroadcastCommand[] = [];
+    const inner = local();
+    inner.bind(registry);
+    const driver: SyncDriver = {
+      kind: 'spy',
+      bind() {},
+      dispatch(command) {
+        dispatched.push(command);
+        return inner.dispatch(command);
+      },
+    };
+    const server = new WsServerImpl(driver);
+    const chat = server.forGateway('/chat', 96);
+
+    const member = sink('a', '/chat');
+    const other = sink('b', '/admin');
+    const unscoped = sink('c');
+    for (const client of [member, other, unscoped]) registry.join(client, 'r1');
+
+    chat.to('r1').emit('hello', 1);
+    chat.emit('all', 2);
+    chat.except('r2').emit('rest', 3);
+    expect(member.received).toEqual([
+      { event: 'hello', data: 1 },
+      { event: 'all', data: 2 },
+      { event: 'rest', data: 3 },
+    ]);
+    expect(other.received).toEqual([]);
+    expect(unscoped.received).toEqual([]);
+    expect(dispatched.map((command) => command.gatewayPath)).toEqual(['/chat', '/chat', '/chat']);
+
+    // The gateway's own ceiling bounds its pushes; the module server keeps its own.
+    expect(() => chat.emit('large', 'x'.repeat(100))).toThrow(/exceeds 96/);
+    server.emit('large', 'x'.repeat(100));
+    expect(dispatched.at(-1)).not.toHaveProperty('gatewayPath');
+    expect(unscoped.received).toEqual([{ event: 'large', data: 'x'.repeat(100) }]);
+  });
+
   it('enforces each recipient ceiling during broadcast fan-out', () => {
     const registry = new InMemoryRoomRegistry();
     const driver = local();
@@ -663,13 +705,82 @@ describe('rooms + Server handle', () => {
 
     const app = await VelaFactory.create(AppModule);
     const registry = app.get(WS_ROOM_REGISTRY);
-    const listener = sink('listener');
+    // The gateway's server reaches the sockets connected through its path.
+    const listener = sink('listener', '/rooms');
+    const elsewhere = sink('elsewhere', '/lobby');
     registry.join(listener, 'r1');
+    registry.join(elsewhere, 'r1');
 
     await app.get(WsDispatcher).dispatchMessage('/rooms', new FakeClient(), frame('shout', 'hey'));
 
     expect(listener.received).toEqual([{ event: 'shout', data: 'hey' }]);
+    expect(elsewhere.received).toEqual([]);
     expect(initServers).toHaveLength(1);
+  });
+
+  it("connects a gateway's server to the WS_SERVER its own module provides", async () => {
+    const pushes: Array<{ rooms: string[]; event: string; data: unknown }> = [];
+    const operator = (rooms: string[]): BroadcastOperator => ({
+      to: (room) => operator([...rooms, room]),
+      in: (room) => operator([...rooms, room]),
+      except: () => operator(rooms),
+      emit(event, data) {
+        pushes.push({ rooms, event, data });
+      },
+    });
+    const double: WsServer = {
+      emit(event, data) {
+        pushes.push({ rooms: [], event, data });
+      },
+      to: (room) => operator([room]),
+      in: (room) => operator([room]),
+      except: () => operator([]),
+    };
+
+    @WebSocketGateway({ path: '/rooms' })
+    class RoomGateway {
+      constructor(@WebSocketServer() readonly server: WsServer) {}
+    }
+
+    @Module({
+      imports: [WebSocketModule.forRoot()],
+      providers: [RoomGateway, defineProvider(WS_SERVER, { useValue: double })],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const { server } = app.get(RoomGateway);
+      server.emit('everyone', 1);
+      server.to('r1').emit('room', 2);
+      expect(pushes).toEqual([
+        { rooms: [], event: 'everyone', data: 1 },
+        { rooms: ['r1'], event: 'room', data: 2 },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses a gateway's pushes without WebSocketModule, naming how to serve or substitute it", async () => {
+    @WebSocketGateway({ path: '/rooms' })
+    class RoomGateway {
+      constructor(@WebSocketServer() readonly server: WsServer) {}
+    }
+
+    @Module({ providers: [RoomGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const { server } = app.get(RoomGateway);
+      const guidance =
+        /RoomGateway's @WebSocketServer\(\) is not connected[\s\S]*WebSocketModule\.forRoot\(\)[\s\S]*WS_SERVER/;
+      expect(() => server.emit('everyone')).toThrow(guidance);
+      expect(() => server.to('r1')).toThrow(guidance);
+    } finally {
+      await app.close();
+    }
   });
 });
 
