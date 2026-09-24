@@ -4,7 +4,7 @@ import type { CommitStamp, CursorLog, LivePlatform, ResumeVerdict } from '@velaj
 import { CfWsClient } from './cf-ws-client';
 import type { DoStateLike, SqlStorageLike } from './do-state';
 import { CfLiveDriver, type LiveNamespace } from './live-driver';
-import { roomToDurableId } from './room-id';
+import { gatewayObjectRoom, roomToDurableId } from './room-id';
 
 const DEFAULT_MAX_LOG_ROWS = 4096;
 
@@ -180,7 +180,8 @@ export function initDoLive(
 /**
  * Invalidate live tags in a room from a Worker (controller / cron / queue
  * consumer) through an explicit namespace. Returns the room log scope's
- * commit stamp for `Vela-Commit-Cursor` stamping.
+ * commit stamp for `Vela-Commit-Cursor` stamping. As with the live driver, a
+ * gateway without roomParam keeps every room in one object, named by its path.
  */
 export async function liveInvalidateToRoom(
   ns: LiveNamespace,
@@ -188,6 +189,6 @@ export async function liveInvalidateToRoom(
   room: string,
   tags: string[],
 ): Promise<CommitStamp | undefined> {
-  const stub = ns.get(roomToDurableId(ns, gatewayPath, room));
+  const stub = ns.get(roomToDurableId(ns, gatewayPath, gatewayObjectRoom(gatewayPath, room)));
   return stub.invalidate({ room, tags });
 }

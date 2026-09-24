@@ -35,6 +35,20 @@ export function durableObjectRoomName(gatewayPath: string, roomId: string): stri
   return name;
 }
 
+// A path parameter (`:name`): a gateway declares roomParam exactly when its
+// path has one, which WsDispatcher validates at bootstrap.
+const PATH_PARAM = /:[A-Za-z_]/;
+
+/**
+ * The room whose Durable Object holds `room` of the gateway at `gatewayPath`.
+ * A gateway without roomParam (its path has no parameters) admits every
+ * upgrade into one room, its path, so each room it names lives in that object;
+ * upgrades, `Gateways` pushes and live invalidations resolve the same way.
+ */
+export function gatewayObjectRoom(gatewayPath: string, room: string): string {
+  return PATH_PARAM.test(gatewayPath) ? room : gatewayPath;
+}
+
 /** One Durable Object instance per gateway + room, addressed by name. */
 export function roomToDurableId(
   ns: Pick<DurableObjectNamespace, 'idFromName'>,

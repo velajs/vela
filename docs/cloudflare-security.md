@@ -62,5 +62,7 @@ pushes read the path, binding and room parameter from the gateway's
 `@WebSocketGateway` metadata, so they always reach the object that holds the
 room's sockets. Pass the exact path to
 `liveInvalidateToRoom(namespace, gatewayPath, room, tags)` and
-`durableObjectLive({ gatewayPath, ... })`. The default live driver reads it,
-with the binding, from the application's single binding-backed gateway.
+`durableObjectLive({ gatewayPath, ... })`; for a gateway without `roomParam`
+both reach its one object, named by the path. The default live driver reads
+the path, with the binding, from the application's single binding-backed
+gateway.

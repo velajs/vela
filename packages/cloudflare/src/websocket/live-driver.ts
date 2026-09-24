@@ -8,6 +8,7 @@ import type {
   LivePlatform,
 } from '@velajs/vela/live';
 import { bindingGateways, type BindingGateway } from './binding-gateways';
+import { gatewayObjectRoom } from './room-id';
 import { gatewayRoomObject, type GatewayRoomObject } from './worker-transport';
 
 const DEFAULT_ROOM = 'default';
@@ -45,7 +46,7 @@ export interface LiveNamespace {
 /** @internal What the Worker's live platform hands a driver. */
 interface WorkerLiveContext {
   env: VelaEnv;
-  gateways(): readonly Pick<BindingGateway, 'path' | 'binding' | 'oneRoom'>[];
+  gateways(): readonly Pick<BindingGateway, 'path' | 'binding'>[];
 }
 
 /** Where the Worker delivers invalidations: one gateway's room objects. */
@@ -53,8 +54,6 @@ interface LiveTarget {
   env: VelaEnv;
   binding: string;
   gatewayPath: string;
-  /** The gateway declares no roomParam: one object, named by its path, holds every room. */
-  oneRoom: boolean;
 }
 
 function describeFilter({ binding, gatewayPath }: DurableObjectLiveOptions): string {
@@ -113,8 +112,8 @@ export class CfLiveDriver implements LiveDriver {
    * socket in one room, its path, so each of its rooms is in that object.
    */
   _room(room: string): GatewayRoomObject {
-    const { env, binding, gatewayPath, oneRoom } = this.#resolveTarget();
-    return gatewayRoomObject(env, gatewayPath, binding, oneRoom ? gatewayPath : room);
+    const { env, binding, gatewayPath } = this.#resolveTarget();
+    return gatewayRoomObject(env, gatewayPath, binding, gatewayObjectRoom(gatewayPath, room));
   }
 
   dispatch(cmd: InvalidationCommand): Promise<CommitStamp | undefined> | CommitStamp | undefined {
@@ -165,12 +164,7 @@ export class CfLiveDriver implements LiveDriver {
       binding ??= chosen.binding;
       gatewayPath ??= chosen.path;
     }
-    const target: LiveTarget = {
-      env: context.env,
-      binding,
-      gatewayPath,
-      oneRoom: gateways.some((gateway) => gateway.path === gatewayPath && gateway.oneRoom),
-    };
+    const target: LiveTarget = { env: context.env, binding, gatewayPath };
     this.#target = target;
     return target;
   }

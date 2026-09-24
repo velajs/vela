@@ -164,7 +164,7 @@ file. A Worker configured with `localLive()` warns once: its invalidations would
 never reach the subscriptions the Durable Object holds.
 
 - Declare the DO class SQLite-backed (wrangler `migrations[].new_sqlite_classes`) so its cursor log survives hibernation and eviction. A class declared with `new_classes` keeps an in-memory log, so a client reconnecting after an eviction receives a snapshot.
-- Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the gateway + room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, gatewayPath, room, tags)` does the same through an explicit namespace.
+- Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the gateway + room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, gatewayPath, room, tags)` does the same through an explicit namespace, with the same room rule: for a gateway without `roomParam` (a path without parameters) it reaches the one object named by the path, whatever room it names.
 - Subscriptions persist their original args in the hibernation attachment. Restore validates record fields and data-only identity claims, reparses args through the query definition, and recomputes dependency tags. An eviction is invisible to subscribers; the next update is a snapshot because cached result/cursor baselines are never restored.
 
 ## Inspection

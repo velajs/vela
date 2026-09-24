@@ -10,11 +10,6 @@ import { reportDiagnostic } from '../diagnostics';
 export interface BindingGateway {
   path: string;
   binding: string;
-  /**
-   * The gateway declares no `roomParam`: every upgrade joins one room, its
-   * path, so one Durable Object holds every socket.
-   */
-  oneRoom: boolean;
   /** The gateway class name, for diagnostics. */
   name: string;
 }
@@ -34,7 +29,6 @@ export function bindingGateways(discovery: DiscoveryService): BindingGateway[] {
     gateways.set(path, {
       path,
       binding: meta.binding,
-      oneRoom: meta.roomParam === undefined,
       name: metatype.name,
     });
   }
