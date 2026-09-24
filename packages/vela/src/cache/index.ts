@@ -1,41 +1,26 @@
-// @velajs/vela/cache — the value cache (CacheModule) and the HTTP response
-// cache (ResponseCacheModule).
+// @velajs/vela/cache — the one cache module: scoped values and @CacheResponse()
+// routes over a memory, tiered or remote store.
 import '../metadata';
 
 export { CacheModule } from './cache.module';
 export { CacheService } from './cache.service';
-export { CacheInterceptor } from './cache.interceptor';
+export { CacheInterceptor, CacheResponse } from './cache.interceptor';
+export { CACHE_MODULE_OPTIONS } from './cache.tokens';
 export { MemoryCacheStore } from './cache.store';
 export { TieredCacheStore } from './tiered-cache.store';
-export { Cacheable, CacheKey, CacheTTL } from './cache.decorators';
-export {
-  CACHE_MANAGER,
-  CACHE_MODULE_OPTIONS,
-  CACHEABLE_METADATA,
-  CACHE_KEY_METADATA,
-  CACHE_TTL_METADATA,
-} from './cache.tokens';
-export type {
-  Awaitable,
-  CacheModuleOptions,
-  CacheStore,
-  AsyncCacheStore,
-  AnyCacheStore,
-  CacheEntry,
-  CacheEntryReader,
-  CacheEntryWriter,
-} from './cache.types';
-
-export { ResponseCacheModule } from './response-cache.module';
-export { ResponseCacheService, RESPONSE_CACHE_OPTIONS } from './response-cache.service';
-export { ResponseCacheInterceptor, CacheResponse } from './response-cache.interceptor';
 export { MemoryCacheInvalidationStore } from './cache-invalidation.store';
 export type {
-  ResponseCacheScope,
-  CacheInvalidationStore,
+  Awaitable,
+  CacheEntry,
+  CacheEntryOptions,
+  CacheEntryReader,
+  CacheEntryWriter,
   CacheInvalidationResult,
-  ResponseCacheEntryOptions,
+  CacheInvalidationStore,
+  CacheModuleOptions,
   CacheResponseOptions,
-  ResponseCacheOptions,
-  ScopedResponseCache,
-} from './response-cache.types';
+  CacheScope,
+  CacheStore,
+  ResolvedCacheOptions,
+  ScopedCache,
+} from './cache.types';

@@ -130,36 +130,18 @@ Declaration entry: `./dist/cache/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { a as ExecutionContext, c as NestInterceptor, n as CallHandler, tt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
+import { H as VelaEnv, a as ExecutionContext, c as NestInterceptor, n as CallHandler, tt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { Qt as ConfigurableModuleClassType, ut as Reflector } from "<internal:index-factory.d.ts>";
+import { i as EnvFactory } from "<internal:binding.d.ts>";
 
 type Awaitable<T> = T | Promise<T>;
-interface CacheModuleOptions {
-  ttl?: number;
-  max?: number;
-
-  globalInterceptor?: boolean;
-
-  varyBy?: (request: Request) => Awaitable<string | undefined>;
-
-  store?: CacheStore;
-}
 
 interface CacheStore {
-  get(key: string): unknown;
-  set(key: string, value: unknown, ttl?: number): void;
-  del(key: string): void;
-  clear(): void;
+  get(key: string): Awaitable<unknown>;
+  set(key: string, value: unknown, ttl?: number): Awaitable<void>;
+  del(key: string): Awaitable<void>;
+  clear(): Awaitable<void>;
 }
-
-interface AsyncCacheStore {
-  get(key: string): Promise<unknown>;
-  set(key: string, value: unknown, ttl?: number): Promise<void>;
-  del(key: string): Promise<void>;
-  clear(): Promise<void>;
-}
-
-type AnyCacheStore = CacheStore | AsyncCacheStore;
 interface CacheEntry<T = unknown> {
   value: T;
   expiresAt: number;
@@ -176,29 +158,99 @@ interface CacheEntryWriter {
   setEntry(key: string, entry: CacheEntry): Awaitable<void>;
 }
 
-declare const ConfigurableModuleClass$1: ConfigurableModuleClassType<CacheModuleOptions, "forRoot", "create", {
+type CacheScope = {
+  visibility: 'public';
+  partition: string;
+} | {
+  visibility: 'private';
+  partition: string;
+};
+
+interface CacheInvalidationStore {
+  getVersion(key: string): Awaitable<string>;
+  invalidate(key: string): Awaitable<void>;
+}
+interface CacheEntryOptions {
+
+  ttl?: number;
+
+  tags?: readonly string[];
+}
+interface CacheResponseOptions extends CacheEntryOptions {
+
+  key?: string;
+}
+interface CacheModuleOptions {
+
+  namespace: string;
+
+  scope: (context: ExecutionContext) => Awaitable<CacheScope | undefined>;
+
+  store?: CacheStore | EnvFactory<CacheStore>;
+
+  invalidation?: CacheInvalidationStore | EnvFactory<CacheInvalidationStore>;
+
+  ttl?: number;
+
+  max?: number;
+
+  maxBytes?: number;
+
+  shouldCache?: (value: unknown) => boolean;
+
+  onError?: (operation: 'read' | 'write' | 'invalidate' | 'scope', error: unknown) => void;
+}
+
+interface ResolvedCacheOptions extends Omit<CacheModuleOptions, 'store' | 'invalidation'> {
+  store: CacheStore;
+  invalidation?: CacheInvalidationStore;
+}
+
+type CacheInvalidationResult = {
+  ok: true;
+} | {
+  ok: false;
+  reason: 'unsupported' | 'invalid-input' | 'store-error';
+};
+interface ScopedCache {
+  get(key: string): Promise<unknown>;
+  getParsed<T>(key: string, parse: (value: unknown) => T): Promise<T | undefined>;
+  set(key: string, value: unknown, options?: CacheEntryOptions): Promise<boolean>;
+
+  remember<T>(key: string, load: () => Promise<T>, options?: CacheEntryOptions): Promise<unknown | T>;
+  invalidateKey(key: string): Promise<CacheInvalidationResult>;
+  invalidateTags(tags: readonly string[]): Promise<CacheInvalidationResult>;
+  invalidateAll(): Promise<CacheInvalidationResult>;
+}
+
+declare const ConfigurableModuleClass: ConfigurableModuleClassType<CacheModuleOptions, "forRoot", "create", {
   isGlobal?: boolean;
-}, "globalInterceptor">;
-export declare class CacheModule extends ConfigurableModuleClass$1 {}
+}, never>;
+
+export declare class CacheModule extends ConfigurableModuleClass {}
 
 export declare class CacheService {
-  private store;
-  constructor(store: CacheStore);
-  get(key: string): unknown;
+  readonly options: Readonly<ResolvedCacheOptions>;
+  constructor(options: CacheModuleOptions, env?: VelaEnv);
 
-  getParsed<T>(key: string, parse: (value: unknown) => T): T | undefined;
-  set(key: string, value: unknown, ttl?: number): void;
-  del(key: string): void;
-  clear(): void;
+  scope(scope: CacheScope): ScopedCache;
+  /** @internal */
+  scoped(scope: CacheScope, domain: 'service' | 'http'): ScopedCache;
+  /** @internal */
+  report(operation: 'read' | 'write' | 'invalidate' | 'scope', error: unknown): void;
+  private accept;
 }
+
+export declare function CacheResponse(options?: CacheResponseOptions): (target: object, propertyKey?: string | symbol) => void;
 
 export declare class CacheInterceptor implements NestInterceptor {
-  private cacheStore;
-  private options;
-  private reflector;
-  constructor(cacheStore: CacheStore, options: CacheModuleOptions, reflector: Reflector);
+  private readonly cache;
+  private readonly reflector;
+  constructor(cache: CacheService, reflector: Reflector);
   intercept(context: ExecutionContext, next: CallHandler): Promise<unknown>;
 }
+
+export declare const CACHE_MODULE_OPTIONS: InjectionToken<CacheModuleOptions>;
 
 export declare class MemoryCacheStore implements CacheStore {
   private store;
@@ -214,11 +266,11 @@ export declare class MemoryCacheStore implements CacheStore {
   private evict;
 }
 
-export declare class TieredCacheStore implements AsyncCacheStore, CacheEntryReader, CacheEntryWriter {
+export declare class TieredCacheStore implements CacheStore, CacheEntryReader, CacheEntryWriter {
   private readonly tiers;
   private revision;
   private pending;
-  constructor(tiers: AnyCacheStore[]);
+  constructor(tiers: CacheStore[]);
   get(key: string): Promise<unknown>;
   getEntry(key: string): Promise<{
     value: unknown;
@@ -232,98 +284,6 @@ export declare class TieredCacheStore implements AsyncCacheStore, CacheEntryRead
   private enqueue;
 }
 
-export declare const Cacheable: () => (target: object, propertyKey?: string | symbol) => void;
-export declare const CacheKey: (key: string) => (target: object, propertyKey?: string | symbol) => void;
-export declare const CacheTTL: (seconds: number) => (target: object, propertyKey?: string | symbol) => void;
-
-export declare const CACHE_MANAGER: InjectionToken<CacheStore>;
-export declare const CACHE_MODULE_OPTIONS: InjectionToken<CacheModuleOptions>;
-export declare const CACHEABLE_METADATA = "vela:cacheable";
-export declare const CACHE_KEY_METADATA = "vela:cache-key";
-export declare const CACHE_TTL_METADATA = "vela:cache-ttl";
-
-type ResponseCacheScope = {
-  visibility: 'public';
-  partition: string;
-} | {
-  visibility: 'private';
-  partition: string;
-};
-
-interface CacheInvalidationStore {
-  getVersion(key: string): Awaitable<string>;
-  invalidate(key: string): Awaitable<void>;
-}
-interface ResponseCacheEntryOptions {
-
-  ttl?: number;
-
-  tags?: readonly string[];
-}
-interface CacheResponseOptions extends ResponseCacheEntryOptions {
-
-  key?: string;
-}
-interface ResponseCacheOptions {
-
-  namespace: string;
-  store: AnyCacheStore;
-
-  scope: (context: ExecutionContext) => Awaitable<ResponseCacheScope | undefined>;
-  invalidation?: CacheInvalidationStore;
-  ttl?: number;
-
-  maxBytes?: number;
-
-  shouldCache?: (value: unknown) => boolean;
-
-  onError?: (operation: 'read' | 'write' | 'invalidate' | 'scope', error: unknown) => void;
-}
-
-type CacheInvalidationResult = {
-  ok: true;
-} | {
-  ok: false;
-  reason: 'unsupported' | 'invalid-input' | 'store-error';
-};
-interface ScopedResponseCache {
-  get(key: string): Promise<unknown>;
-  getParsed<T>(key: string, parse: (value: unknown) => T): Promise<T | undefined>;
-  set(key: string, value: unknown, options?: ResponseCacheEntryOptions): Promise<boolean>;
-
-  remember<T>(key: string, load: () => Promise<T>, options?: ResponseCacheEntryOptions): Promise<unknown | T>;
-  invalidateKey(key: string): Promise<CacheInvalidationResult>;
-  invalidateTags(tags: readonly string[]): Promise<CacheInvalidationResult>;
-  invalidateAll(): Promise<CacheInvalidationResult>;
-}
-
-declare const ConfigurableModuleClass: ConfigurableModuleClassType<ResponseCacheOptions, "forRoot", "create", {
-  isGlobal?: boolean;
-}, never>;
-
-export declare class ResponseCacheModule extends ConfigurableModuleClass {}
-
-export declare const RESPONSE_CACHE_OPTIONS: InjectionToken<ResponseCacheOptions>;
-export declare class ResponseCacheService {
-  readonly options: Readonly<ResponseCacheOptions>;
-  constructor(options: ResponseCacheOptions);
-
-  scope(scope: ResponseCacheScope): ScopedResponseCache;
-  /** @internal */
-  scoped(scope: ResponseCacheScope, domain: 'service' | 'http'): ScopedResponseCache;
-  /** @internal */
-  report(operation: 'read' | 'write' | 'invalidate' | 'scope', error: unknown): void;
-  private accept;
-}
-
-export declare function CacheResponse(options?: CacheResponseOptions): (target: object, propertyKey?: string | symbol) => void;
-export declare class ResponseCacheInterceptor implements NestInterceptor {
-  private readonly cache;
-  private readonly reflector;
-  constructor(cache: ResponseCacheService, reflector: Reflector);
-  intercept(context: ExecutionContext, next: CallHandler): Promise<unknown>;
-}
-
 export declare class MemoryCacheInvalidationStore implements CacheInvalidationStore {
   private readonly max;
   private readonly versions;
@@ -332,7 +292,7 @@ export declare class MemoryCacheInvalidationStore implements CacheInvalidationSt
   invalidate(key: string): void;
 }
 
-export type { AnyCacheStore, AsyncCacheStore, Awaitable, CacheEntry, CacheEntryReader, CacheEntryWriter, CacheInvalidationResult, CacheInvalidationStore, CacheModuleOptions, CacheResponseOptions, CacheStore, ResponseCacheEntryOptions, ResponseCacheOptions, ResponseCacheScope, ScopedResponseCache };
+export type { Awaitable, CacheEntry, CacheEntryOptions, CacheEntryReader, CacheEntryWriter, CacheInvalidationResult, CacheInvalidationStore, CacheModuleOptions, CacheResponseOptions, CacheScope, CacheStore, ResolvedCacheOptions, ScopedCache };
 ```
 
 ## `./dispatch`
@@ -940,10 +900,11 @@ Declaration entry: `./dist/module-kit.d.ts`
 
 ```ts
 import { n as getMetadata, t as defineMetadata } from "<internal:metadata.d.ts>";
-import { Et as ParamType, G as Constructor, H as VelaEnv, Q as InferTokens, St as describeToken, Tt as METADATA_KEYS, U as Container, W as CheckedProviders, Y as FactoryInject, Z as InferToken, _t as UnresolvedDependency, a as ExecutionContext, bt as assertFactoryInject, it as ModuleDescription, kt as VelaHono, mt as Type, nt as MissingInjectionMetadataError, ot as ModuleVisibilityError, pt as Token, r as CanActivate, rt as MissingInjectionMetadataReason, s as HttpExecutionContext, st as MultipleProvidersFoundError, vt as UnresolvedDependencyError, wt as HttpMethod, yt as UnresolvedDependencyReason } from "<internal:types-http-hono.types.d.ts>";
+import { Et as ParamType, G as Constructor, Q as InferTokens, St as describeToken, Tt as METADATA_KEYS, U as Container, W as CheckedProviders, Y as FactoryInject, Z as InferToken, _t as UnresolvedDependency, a as ExecutionContext, bt as assertFactoryInject, it as ModuleDescription, kt as VelaHono, mt as Type, nt as MissingInjectionMetadataError, ot as ModuleVisibilityError, pt as Token, r as CanActivate, rt as MissingInjectionMetadataReason, s as HttpExecutionContext, st as MultipleProvidersFoundError, vt as UnresolvedDependencyError, wt as HttpMethod, yt as UnresolvedDependencyReason } from "<internal:types-http-hono.types.d.ts>";
 import { A as registerEntrypointKind, B as DiscoveryService, F as DiscoveredClass, H as DiscoverableDecorator, I as DiscoveredMethodMeta, L as DiscoveredRegisteredMethodMeta, M as Entrypoint, N as EntrypointKind, O as EntrypointRegistry, P as contributesEntrypoints, R as DiscoveredRegistration, U as createDiscoverableDecorator, V as CreateDiscoverableDecoratorOptions, a as AdapterContext, j as ContributesEntrypoints, k as getEntrypointKinds, o as RuntimeAdapter, w as OpenApiPathItem, z as DiscoveryFilter } from "<internal:request-context.d.ts>";
 import { I as InterceptorType, L as MiddlewareType, N as FilterType, P as GuardType, U as PipeType, d as RouteDescription, f as RouteManager, g as DEFAULT_QUERY_PARAMETER_LIMIT, h as DEFAULT_QUERY_DEPTH_LIMIT, m as DEFAULT_QUERY_BYTES_LIMIT, u as DEFAULT_BODY_LIMIT_BYTES } from "<internal:types-registry-types.d.ts>";
 import { At as ExecutionScope, C as resolveErrorReporter, Ct as resolvePipelineComponents, Dt as PipelineRunner, Et as PipelineRunOptions, Ft as runInEntrypointScope, Gt as ModuleEntryList, It as LazyProviderSpec, Kt as UndefinedModuleError, Lt as lazyProvider, Mt as createExecutionScope, Nt as finishExecutionScope, Pt as getExecutionLifetime, Rt as sideEffectModule, S as ErrorReporter, St as getScopedComponents, Tt as resolveScopedComponentsAsync, _n as ReadJsonBodyOptions, bt as PipelineComponentEntry, dn as enableAmbientContainer, fn as getCurrentContainer, jt as ExecutionScopeOptions, pn as getCurrentRequestContext, qt as ROOT_MODULE, vn as readJsonBody, vt as getCatchTypes, wt as resolveScopedComponents, xt as ResolvedComponentMap, yn as createLazyParamDecorator, yt as shouldFilterCatch } from "<internal:index-factory.d.ts>";
+import { a as defineBinding, i as EnvFactory, n as BindingKind, o as readEnv, r as BindingRef, s as resolveBinding, t as Binding } from "<internal:binding.d.ts>";
 import { r as MetadataRegistry, t as getRequestContainer } from "<internal:request-container.d.ts>";
 import { c as ScheduleInvocationSeed, i as IntervalMetadata, n as CronMetadata, s as ScheduleInvocation } from "<internal:schedule.types.d.ts>";
 import { i as SCHEDULE_INVOCATION_SEED } from "<internal:schedule.tokens.d.ts>";
@@ -952,32 +913,6 @@ import { Context } from "hono";
 export declare function stableHash(value: unknown): string;
 
 export declare function referenceKey(...values: readonly unknown[]): string;
-
-interface BindingRef {
-  readonly binding: string;
-}
-
-interface BindingKind<T> {
-
-  readonly name: string;
-
-  readonly configKey: string;
-
-  readonly accepts: (value: unknown) => value is T;
-}
-
-type EnvFactory<T> = (env: VelaEnv) => T;
-
-interface Binding<T> extends BindingRef {
-  (env: VelaEnv): T;
-  readonly kind: BindingKind<T>;
-}
-
-export declare function resolveBinding<T>(env: VelaEnv | undefined, ref: BindingRef, kind: BindingKind<T>): T;
-
-export declare function defineBinding<T>(kind: BindingKind<T>): (ref: BindingRef) => Binding<T>;
-
-export declare function readEnv(container: Container): VelaEnv;
 
 interface EntrypointExecutionContext<Kind extends string = string> extends ExecutionContext {
   getType(): Kind;
@@ -1098,7 +1033,7 @@ interface TrustedRequestIdentityStore<T> {
 
 export declare function createTrustedRequestIdentityStore<T>(): TrustedRequestIdentityStore<T>;
 
-export { type AdapterContext, type Binding, type BindingKind, type BindingRef, type CheckedProviders, type Constructor, Container, type ContributesEntrypoints, type CreateDiscoverableDecoratorOptions, DEFAULT_BODY_LIMIT_BYTES, DEFAULT_QUERY_BYTES_LIMIT, DEFAULT_QUERY_DEPTH_LIMIT, DEFAULT_QUERY_PARAMETER_LIMIT, type DiscoverableDecorator, type DiscoveredClass, type DiscoveredMethodMeta, type DiscoveredRegisteredMethodMeta, type DiscoveredRegistration, type DiscoveryFilter, DiscoveryService, type Entrypoint, type EntrypointExecutionContext, type EntrypointKind, EntrypointRegistry, type EnvFactory, type ErrorReporter, type ExecutionScope, type ExecutionScopeOptions, type FactoryInject, type FilterType, type GuardType, HttpMethod, type InferToken, type InferTokens, type InterceptorType, type InvokeScheduledJobOptions, type LazyProviderSpec, METADATA_KEYS, MetadataRegistry, type MiddlewareType, MissingInjectionMetadataError, type MissingInjectionMetadataReason, type ModuleDescription, type ModuleEntryList, ModuleVisibilityError, MultipleProvidersFoundError, ParamType, type PipeType, type PipelineComponentEntry, type PipelineRunOptions, PipelineRunner, ROOT_MODULE, type ReadJsonBodyOptions, type ResolvedComponentMap, type RouteContributor, type RouteContributorContext, type RouteContributorOpenApiContext, type RouteDescription, type RuntimeAdapter, SCHEDULE_INVOCATION_SEED, type ScheduleInvocationSeed, type TrustedRequestIdentity, type TrustedRequestIdentityStore, type TrustedRequestPrincipal, UndefinedModuleError, type UnresolvedDependency, UnresolvedDependencyError, type UnresolvedDependencyReason, assertFactoryInject, buildExecutionContext as buildHttpExecutionContext, contributesEntrypoints, createDiscoverableDecorator, createExecutionScope, createLazyParamDecorator, defineMetadata, describeToken, enableAmbientContainer, finishExecutionScope, getCatchTypes, getCurrentContainer, getCurrentRequestContext, getEntrypointKinds, getExecutionLifetime, getMetadata, getRequestContainer, getScopedComponents, lazyProvider, readJsonBody, registerEntrypointKind, resolveErrorReporter, resolvePipelineComponents, resolveScopedComponents, resolveScopedComponentsAsync, runInEntrypointScope, shouldFilterCatch, sideEffectModule };
+export { type AdapterContext, type Binding, type BindingKind, type BindingRef, type CheckedProviders, type Constructor, Container, type ContributesEntrypoints, type CreateDiscoverableDecoratorOptions, DEFAULT_BODY_LIMIT_BYTES, DEFAULT_QUERY_BYTES_LIMIT, DEFAULT_QUERY_DEPTH_LIMIT, DEFAULT_QUERY_PARAMETER_LIMIT, type DiscoverableDecorator, type DiscoveredClass, type DiscoveredMethodMeta, type DiscoveredRegisteredMethodMeta, type DiscoveredRegistration, type DiscoveryFilter, DiscoveryService, type Entrypoint, type EntrypointExecutionContext, type EntrypointKind, EntrypointRegistry, type EnvFactory, type ErrorReporter, type ExecutionScope, type ExecutionScopeOptions, type FactoryInject, type FilterType, type GuardType, HttpMethod, type InferToken, type InferTokens, type InterceptorType, type InvokeScheduledJobOptions, type LazyProviderSpec, METADATA_KEYS, MetadataRegistry, type MiddlewareType, MissingInjectionMetadataError, type MissingInjectionMetadataReason, type ModuleDescription, type ModuleEntryList, ModuleVisibilityError, MultipleProvidersFoundError, ParamType, type PipeType, type PipelineComponentEntry, type PipelineRunOptions, PipelineRunner, ROOT_MODULE, type ReadJsonBodyOptions, type ResolvedComponentMap, type RouteContributor, type RouteContributorContext, type RouteContributorOpenApiContext, type RouteDescription, type RuntimeAdapter, SCHEDULE_INVOCATION_SEED, type ScheduleInvocationSeed, type TrustedRequestIdentity, type TrustedRequestIdentityStore, type TrustedRequestPrincipal, UndefinedModuleError, type UnresolvedDependency, UnresolvedDependencyError, type UnresolvedDependencyReason, assertFactoryInject, buildExecutionContext as buildHttpExecutionContext, contributesEntrypoints, createDiscoverableDecorator, createExecutionScope, createLazyParamDecorator, defineBinding, defineMetadata, describeToken, enableAmbientContainer, finishExecutionScope, getCatchTypes, getCurrentContainer, getCurrentRequestContext, getEntrypointKinds, getExecutionLifetime, getMetadata, getRequestContainer, getScopedComponents, lazyProvider, readEnv, readJsonBody, registerEntrypointKind, resolveBinding, resolveErrorReporter, resolvePipelineComponents, resolveScopedComponents, resolveScopedComponentsAsync, runInEntrypointScope, shouldFilterCatch, sideEffectModule };
 ```
 
 ## `./observability`
@@ -2157,6 +2092,40 @@ export type { RedisLiveOptions, RedisPubSubClient, RedisSyncOptions };
 ```
 
 ## Referenced declaration chunks
+
+### `<internal:binding.d.ts>`
+
+```ts
+import { H as VelaEnv, U as Container } from "<internal:types-http-hono.types.d.ts>";
+
+interface BindingRef {
+  readonly binding: string;
+}
+
+interface BindingKind<T> {
+
+  readonly name: string;
+
+  readonly configKey: string;
+
+  readonly accepts: (value: unknown) => value is T;
+}
+
+type EnvFactory<T> = (env: VelaEnv) => T;
+
+interface Binding<T> extends BindingRef {
+  (env: VelaEnv): T;
+  readonly kind: BindingKind<T>;
+}
+
+declare function resolveBinding<T>(env: VelaEnv | undefined, ref: BindingRef, kind: BindingKind<T>): T;
+
+declare function defineBinding<T>(kind: BindingKind<T>): (ref: BindingRef) => Binding<T>;
+
+declare function readEnv(container: Container): VelaEnv;
+
+export { defineBinding as a, EnvFactory as i, BindingKind as n, readEnv as o, BindingRef as r, resolveBinding as s, Binding as t };
+```
 
 ### `<internal:component.manager.d.ts>`
 

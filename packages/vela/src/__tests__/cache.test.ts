@@ -1,564 +1,689 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
-  VelaFactory,
   Controller,
   Get,
-  Headers,
+  Post,
   Res,
+  Headers,
+  Header,
+  HttpCode,
   Module,
-  Injectable,
-  Inject,
-  UseInterceptors,
-} from '../index.js';
+  UseGuards,
+  VelaFactory,
+  type ExecutionContext,
+  type VelaEnv,
+} from '../index';
 import {
   CacheModule,
-  CacheInterceptor,
+  CacheResponse,
   CacheService,
-  Cacheable,
-  CacheKey,
-  CacheTTL,
-  CACHE_MANAGER,
-} from '../cache/index.js';
+  MemoryCacheStore,
+  MemoryCacheInvalidationStore,
+  type CacheInvalidationStore,
+  type CacheModuleOptions,
+  type CacheScope,
+  type CacheStore,
+} from '../cache/index';
+import { setTrustedRequestIdentity } from '../module-kit';
 
-describe('CacheModule', () => {
-  it('should cache GET responses (handler called once for same URL)', async () => {
-    let callCount = 0;
+class AsyncStore implements CacheStore {
+  readonly values = new Map<string, unknown>();
+  async get(key: string): Promise<unknown> {
+    return this.values.get(key);
+  }
+  async set(key: string, value: unknown): Promise<void> {
+    this.values.set(key, structuredClone(value));
+  }
+  async del(key: string): Promise<void> {
+    this.values.delete(key);
+  }
+  async clear(): Promise<void> {
+    this.values.clear();
+  }
+}
+const publicScope = { visibility: 'public', partition: 'catalog' } as const;
+const privateScope = (tenant: string, actor: string): CacheScope => ({
+  visibility: 'private',
+  partition: JSON.stringify([tenant, actor]),
+});
+const createService = (
+  store = new AsyncStore(),
+  invalidation: CacheInvalidationStore | undefined = new MemoryCacheInvalidationStore(),
+) => new CacheService({ namespace: 'test', store, scope: () => publicScope, invalidation });
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { resolve, promise };
+};
+afterEach(() => vi.useRealTimers());
 
-    @Controller('/test')
-    class TestController {
-      @Get('/data')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      getData() {
-        callCount++;
-        return { value: 'hello' };
-      }
-    }
-
-    @Module({
-      imports: [CacheModule.forRoot()],
-      controllers: [TestController],
-    })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    const res1 = await hono.request('/test/data');
-    expect(await res1.json()).toEqual({ value: 'hello' });
-
-    const res2 = await hono.request('/test/data');
-    expect(await res2.json()).toEqual({ value: 'hello' });
-
-    expect(callCount).toBe(1);
+describe('scoped asynchronous cache', () => {
+  it('round trips, validates parsed reads, snapshots values and scopes keys/tags/all invalidation', async () => {
+    const store = new AsyncStore();
+    const service = createService(store);
+    const a = service.scope(privateScope('one', 'a'));
+    const b = service.scope(privateScope('one', 'b'));
+    const c = service.scope(privateScope('two', 'a'));
+    const value = { count: 1 };
+    for (const cache of [a, b, c])
+      expect(await cache.set('same', value, { tags: ['items'] })).toBe(true);
+    value.count = 2;
+    expect(await a.get('same')).toEqual({ count: 1 });
+    expect(
+      await a.getParsed('same', (value) => {
+        if (
+          typeof value !== 'object' ||
+          value === null ||
+          !('count' in value) ||
+          typeof value.count !== 'number'
+        )
+          throw Error('invalid');
+        return value.count;
+      }),
+    ).toBe(1);
+    expect(await a.invalidateTags(['items'])).toEqual({ ok: true });
+    expect(await a.get('same')).toBeUndefined();
+    expect(await b.get('same')).toEqual({ count: 1 });
+    expect(await c.get('same')).toEqual({ count: 1 });
+    await b.invalidateKey('same');
+    expect(await b.get('same')).toBeUndefined();
+    expect(await c.get('same')).toEqual({ count: 1 });
+    await c.invalidateAll();
+    expect(await c.get('same')).toBeUndefined();
+    expect(
+      [...store.values.keys()].every((key) => !key.includes('one') && !key.includes('items')),
+    ).toBe(true);
   });
 
-  it('should cache different URLs separately', async () => {
-    let callCount = 0;
-
-    @Controller('/test')
-    class TestController {
-      @Get('/a')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      getA() {
-        callCount++;
-        return { path: 'a' };
-      }
-
-      @Get('/b')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      getB() {
-        callCount++;
-        return { path: 'b' };
-      }
-    }
-
-    @Module({
-      imports: [CacheModule.forRoot()],
-      controllers: [TestController],
-    })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    await hono.request('/test/a');
-    await hono.request('/test/b');
-    expect(callCount).toBe(2);
-
-    // Cached now
-    await hono.request('/test/a');
-    await hono.request('/test/b');
-    expect(callCount).toBe(2);
+  it('does not extend logical TTL even with a backing store that retains values', async () => {
+    vi.useFakeTimers();
+    const cache = createService().scope(publicScope);
+    await cache.set('short', { count: 1 }, { ttl: 0.05 });
+    expect(await cache.get('short')).toEqual({ count: 1 });
+    vi.advanceTimersByTime(50);
+    expect(await cache.get('short')).toBeUndefined();
+    expect(await cache.set('zero', 1, { ttl: 0 })).toBe(false);
   });
 
-  it('scopes @CacheKey beneath the canonical route path', async () => {
-    let callCount = 0;
-
-    @Controller('/test')
-    class TestController {
-      @Get('/x')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      @CacheKey('custom-key')
-      getX() {
-        callCount++;
-        return { x: true };
-      }
-
-      @Get('/y')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      @CacheKey('custom-key')
-      getY() {
-        callCount++;
-        return { y: true };
-      }
+  it('does not resurrect a slow fill after tag, key or whole-scope invalidation', async () => {
+    for (const operation of ['tags', 'key', 'all'] as const) {
+      const cache = createService().scope(publicScope);
+      const started = deferred<void>();
+      const release = deferred<number>();
+      const fill = cache.remember(
+        'key',
+        async () => {
+          started.resolve();
+          return release.promise;
+        },
+        { tags: ['items'] },
+      );
+      await started.promise;
+      if (operation === 'tags') await cache.invalidateTags(['items']);
+      if (operation === 'key') await cache.invalidateKey('key');
+      if (operation === 'all') await cache.invalidateAll();
+      await cache.set('key', 2, { tags: ['items'] });
+      release.resolve(1);
+      expect(await fill).toBe(1); // The already-running read may finish with its original result.
+      expect(await cache.get('key')).toBe(2);
     }
-
-    @Module({
-      imports: [CacheModule.forRoot()],
-      controllers: [TestController],
-    })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    const res1 = await hono.request('/test/x');
-    expect(await res1.json()).toEqual({ x: true });
-
-    // A duplicate decorator key never lets one route read another route's value.
-    const res2 = await hono.request('/test/y');
-    expect(await res2.json()).toEqual({ y: true });
-    expect(callCount).toBe(2);
-
-    await hono.request('/test/x');
-    await hono.request('/test/y');
-    expect(callCount).toBe(2);
   });
 
-  it('should support @CacheTTL and expire entries', async () => {
-    let callCount = 0;
-
-    @Controller('/test')
-    class TestController {
-      @Get('/ttl')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      @CacheTTL(0) // 0 seconds = expires immediately
-      getTtl() {
-        callCount++;
-        return { count: callCount };
-      }
-    }
-
-    @Module({
-      imports: [CacheModule.forRoot()],
-      controllers: [TestController],
-    })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    const res1 = await hono.request('/test/ttl');
-    expect(await res1.json()).toEqual({ count: 1 });
-
-    // Wait a tiny bit for TTL to expire
-    await new Promise((r) => setTimeout(r, 10));
-
-    const res2 = await hono.request('/test/ttl');
-    expect(await res2.json()).toEqual({ count: 2 });
-    expect(callCount).toBe(2);
-  });
-
-  it('should not cache non-GET requests', async () => {
-    let callCount = 0;
-
-    @Controller('/test')
-    class TestController {
-      @Get('/data')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      getData() {
-        callCount++;
-        return { value: callCount };
-      }
-    }
-
-    @Module({
-      imports: [CacheModule.forRoot()],
-      controllers: [TestController],
-    })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    // GET is cached
-    await hono.request('/test/data');
-    await hono.request('/test/data');
-    expect(callCount).toBe(1);
-  });
-
-  it('should cache only explicitly @Cacheable routes when globalInterceptor: true', async () => {
-    let cacheableCalls = 0;
-    let plainCalls = 0;
-
-    @Controller('/test')
-    class TestController {
-      @Get('/global')
-      @Cacheable()
-      getGlobal() {
-        cacheableCalls++;
-        return { global: true };
-      }
-
-      @Get('/plain')
-      getPlain() {
-        plainCalls++;
-        return { plainCalls };
-      }
-    }
-
-    @Module({
-      imports: [CacheModule.forRoot({ globalInterceptor: true })],
-      controllers: [TestController],
-    })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    await hono.request('/test/global');
-    await hono.request('/test/global');
-    await hono.request('/test/plain');
-    await hono.request('/test/plain');
-    expect(cacheableCalls).toBe(1);
-    expect(plainCalls).toBe(2);
-  });
-
-  it('should evict entries when max is reached', async () => {
-    @Controller('/test')
-    class TestController {
-      @Get('/1')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get1() {
-        return { id: 1 };
-      }
-
-      @Get('/2')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get2() {
-        return { id: 2 };
-      }
-
-      @Get('/3')
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get3() {
-        return { id: 3 };
-      }
-    }
-
-    @Module({
-      imports: [CacheModule.forRoot({ max: 2 })],
-      controllers: [TestController],
-    })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    await hono.request('/test/1');
-    await hono.request('/test/2');
-    await hono.request('/test/3'); // Should evict /test/1
-
-    // Verify /test/3 is cached
-    const store = app.get(CACHE_MANAGER);
-    expect(store.get('cache:GET:localhost/test/3')).toEqual({ id: 3 });
-    // /test/1 should have been evicted
-    expect(store.get('cache:GET:localhost/test/1')).toBeUndefined();
-  });
-
-  it('should support CacheService for programmatic access', async () => {
-    @Controller('/test')
-    class TestController {
-      constructor(private cacheService: CacheService) {}
-
-      @Get('/set')
-      setCache() {
-        this.cacheService.set('manual', { data: 'test' });
-        return { ok: true };
-      }
-
-      @Get('/get')
-      getCache() {
-        return this.cacheService.get('manual') ?? { data: 'not found' };
-      }
-    }
-
-    @Module({
-      imports: [CacheModule.forRoot()],
-      controllers: [TestController],
-    })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    await hono.request('/test/set');
-    const res = await hono.request('/test/get');
-    expect(await res.json()).toEqual({ data: 'test' });
-  });
-
-  it('partitions anonymous cache entries by host and canonical query', async () => {
-    let calls = 0;
-
-    @Controller('/partitioned')
-    class PartitionedController {
-      @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get() {
-        calls++;
-        return { calls };
-      }
-    }
-
-    @Module({ imports: [CacheModule.forRoot()], controllers: [PartitionedController] })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    expect(await (await hono.request('https://a.test/partitioned?page=1&sort=asc')).json()).toEqual(
-      {
-        calls: 1,
-      },
-    );
-    // Equivalent query ordering is one canonical entry.
-    expect(await (await hono.request('https://a.test/partitioned?sort=asc&page=1')).json()).toEqual(
-      {
-        calls: 1,
-      },
-    );
-    expect(await (await hono.request('https://a.test/partitioned?page=2&sort=asc')).json()).toEqual(
-      {
-        calls: 2,
-      },
-    );
-    expect(await (await hono.request('https://b.test/partitioned?page=1&sort=asc')).json()).toEqual(
-      {
-        calls: 3,
-      },
-    );
-  });
-
-  it('bypasses shared caching for bearer and cookie credentials', async () => {
-    let calls = 0;
-
-    @Controller('/private')
-    class PrivateController {
-      @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get(@Headers('authorization') authorization?: string, @Headers('cookie') cookie?: string) {
-        calls++;
-        return { calls, authorization, cookie };
-      }
-    }
-
-    @Module({ imports: [CacheModule.forRoot()], controllers: [PrivateController] })
-    class AppModule {}
-
-    const hono = (await VelaFactory.create(AppModule)).getHonoApp();
-    const a = await hono.request('/private', { headers: { authorization: 'Bearer user-a' } });
-    const b = await hono.request('/private', { headers: { authorization: 'Bearer user-b' } });
-    const cookie = await hono.request('/private', { headers: { cookie: 'session=user-c' } });
-
-    expect(await a.json()).toEqual({ calls: 1, authorization: 'Bearer user-a' });
-    expect(await b.json()).toEqual({ calls: 2, authorization: 'Bearer user-b' });
-    expect(await cookie.json()).toEqual({ calls: 3, cookie: 'session=user-c' });
-  });
-
-  it('does not cache a plain handler result when the Hono context sets a cookie', async () => {
-    let calls = 0;
-
-    @Controller('/cookie-writer')
-    class CookieWriterController {
-      @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get(@Res() c: import('hono').Context) {
-        calls++;
-        c.header('Set-Cookie', `session=${calls}; HttpOnly; Secure`);
-        return { calls };
-      }
-    }
-
-    @Module({ imports: [CacheModule.forRoot()], controllers: [CookieWriterController] })
-    class AppModule {}
-
-    const hono = (await VelaFactory.create(AppModule)).getHonoApp();
-    expect(await (await hono.request('/cookie-writer')).json()).toEqual({ calls: 1 });
-    expect(await (await hono.request('/cookie-writer')).json()).toEqual({ calls: 2 });
-    expect(calls).toBe(2);
-  });
-
-  it('does not cache a Response carrying Set-Cookie', async () => {
-    let calls = 0;
-
-    @Controller('/cookie-response')
-    class CookieResponseController {
-      @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get() {
-        calls++;
-        return new Response(String(calls), {
-          headers: { 'Set-Cookie': `session=${calls}; HttpOnly; Secure` },
-        });
-      }
-    }
-
-    @Module({ imports: [CacheModule.forRoot()], controllers: [CookieResponseController] })
-    class AppModule {}
-
-    const hono = (await VelaFactory.create(AppModule)).getHonoApp();
-    expect(await (await hono.request('/cookie-response')).text()).toBe('1');
-    expect(await (await hono.request('/cookie-response')).text()).toBe('2');
-    expect(calls).toBe(2);
-  });
-
-  it('partitions credentialed entries only through an explicit hashed variation', async () => {
-    let calls = 0;
-    const values = new Map<string, unknown>();
-    const writtenKeys: string[] = [];
-    const store = {
-      get: <T>(key: string): T | undefined => values.get(key) as T | undefined,
-      set: <T>(key: string, value: T): void => {
-        writtenKeys.push(key);
-        values.set(key, value);
-      },
-      del: (key: string): void => void values.delete(key),
-      clear: (): void => values.clear(),
+  it('rejects a late physical write completed after invalidation', async () => {
+    const store = new AsyncStore();
+    const started = deferred<void>();
+    const release = deferred<void>();
+    const originalSet = store.set.bind(store);
+    store.set = async (key, value) => {
+      started.resolve();
+      await release.promise;
+      await originalSet(key, value);
     };
-
-    @Controller('/private-varied')
-    class PrivateController {
-      @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get(@Headers('authorization') authorization?: string) {
-        calls++;
-        return { calls, authorization };
-      }
-    }
-
-    @Module({
-      imports: [
-        CacheModule.forRoot({
-          store,
-          varyBy: (request) => {
-            const authorization = request.headers.get('authorization');
-            return authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;
-          },
-        }),
-      ],
-      controllers: [PrivateController],
-    })
-    class AppModule {}
-
-    const hono = (await VelaFactory.create(AppModule)).getHonoApp();
-    const a1 = await hono.request('/private-varied', {
-      headers: { authorization: 'Bearer user-a' },
-    });
-    const a2 = await hono.request('/private-varied', {
-      headers: { authorization: 'Bearer user-a' },
-    });
-    const b = await hono.request('/private-varied', {
-      headers: { authorization: 'Bearer user-b' },
-    });
-
-    expect(await a1.json()).toEqual({ calls: 1, authorization: 'Bearer user-a' });
-    expect(await a2.json()).toEqual({ calls: 1, authorization: 'Bearer user-a' });
-    expect(await b.json()).toEqual({ calls: 2, authorization: 'Bearer user-b' });
-    expect(writtenKeys).toHaveLength(2);
-    expect(writtenKeys.every((key) => !key.includes('user-a') && !key.includes('user-b'))).toBe(
-      true,
-    );
+    const cache = createService(store).scope(publicScope);
+    const fill = cache.remember('late', async () => 1, { tags: ['items'] });
+    await started.promise;
+    await cache.invalidateTags(['items']);
+    release.resolve();
+    expect(await fill).toBe(1);
+    expect(await cache.get('late')).toBeUndefined();
   });
 
-  it('isolates authenticated cache entries by an explicit trusted tenant variation', async () => {
-    let calls = 0;
-    const values = new Map<string, unknown>();
-    const writtenKeys: string[] = [];
-    const tenantByToken = new Map([
-      ['token-a', 'tenant-a'],
-      ['token-b', 'tenant-b'],
+  it('handles concurrent misses independently without sharing mutable handler results', async () => {
+    const cache = createService().scope(publicScope);
+    const loader = vi.fn(async () => ({ count: 1 }));
+    const results = await Promise.all([
+      cache.remember('key', loader),
+      cache.remember('key', loader),
     ]);
-    const store = {
-      get: <T>(key: string): T | undefined => values.get(key) as T | undefined,
-      set: <T>(key: string, value: T): void => {
-        writtenKeys.push(key);
-        values.set(key, value);
-      },
-      del: (key: string): void => void values.delete(key),
-      clear: (): void => values.clear(),
-    };
-    const resolveTenant = (authorization: string | null): string | undefined => {
-      const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;
-      return token === undefined ? undefined : tenantByToken.get(token);
-    };
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(results[0]).not.toBe(results[1]);
+    const hit = await cache.remember('key', loader);
+    expect(hit).toEqual({ count: 1 });
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
 
-    @Controller('/tenant-private')
-    class TenantPrivateController {
-      @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      get(@Headers('authorization') authorization?: string) {
-        calls += 1;
-        return { calls, tenantId: resolveTenant(authorization ?? null) };
+  it('treats cache failures as misses/false outcomes, while preserving application errors', async () => {
+    const store = new AsyncStore();
+    const onError = vi.fn(() => {
+      throw Error('telemetry unavailable');
+    });
+    const versions = new MemoryCacheInvalidationStore();
+    const service = new CacheService({
+      namespace: 'test',
+      store,
+      scope: () => publicScope,
+      invalidation: versions,
+      onError,
+    });
+    const cache = service.scope(publicScope);
+    store.get = async () => {
+      throw Error('read failed');
+    };
+    expect(await cache.remember('key', async () => 1)).toBe(1);
+    expect(await cache.get('key')).toBeUndefined();
+    store.set = async () => {
+      throw Error('write failed');
+    };
+    expect(await cache.set('key', 2)).toBe(false);
+    versions.invalidate = () => {
+      throw Error('invalidation failed');
+    };
+    expect(await cache.invalidateAll()).toEqual({ ok: false, reason: 'store-error' });
+    expect(onError.mock.calls.length).toBeGreaterThan(0);
+    await expect(
+      cache.remember('key', async () => {
+        throw Error('application failed');
+      }),
+    ).rejects.toThrow('application failed');
+  });
+
+  it('does not cache with a failed generation read or accept malformed stored values', async () => {
+    const store = new AsyncStore();
+    const service = createService(store);
+    const cache = service.scope(publicScope);
+    await cache.set('key', 1);
+    const key = [...store.values.keys()][0]!;
+    store.values.set(key, {
+      version: 1,
+      payload: '{',
+      tags: [],
+      generations: [],
+      expiresAt: Date.now() + 1000,
+    });
+    expect(await cache.get('key')).toBeUndefined();
+    const broken = createService(store, {
+      getVersion: () => {
+        throw Error('offline');
+      },
+      invalidate: () => {},
+    }).scope(publicScope);
+    expect(await broken.remember('key', async () => 2)).toBe(2);
+    expect(await broken.set('key', 2)).toBe(false);
+  });
+
+  it('validates configuration and requires the optional capability for tags', async () => {
+    expect(
+      () =>
+        new CacheService({
+          namespace: '',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+    ).toThrow('namespace');
+    expect(
+      () =>
+        new CacheService({
+          namespace: 'ok',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+          ttl: NaN,
+        }),
+    ).toThrow('TTL');
+    expect(() => CacheResponse({ ttl: -1 })).toThrow('TTL');
+    expect(() => CacheResponse({ tags: [''] })).toThrow('tag');
+    const cache = new CacheService({
+      namespace: 'no-tags',
+      store: new AsyncStore(),
+      scope: () => publicScope,
+    }).scope(publicScope);
+    await expect(cache.set('key', 1, { tags: ['items'] })).rejects.toThrow('invalidation store');
+    expect(await cache.invalidateAll()).toEqual({ ok: false, reason: 'unsupported' });
+    expect(await createService().scope(publicScope).invalidateTags([''])).toEqual({
+      ok: false,
+      reason: 'invalid-input',
+    });
+  });
+
+  it('does not resurrect entries when a bounded local generation store evicts markers', async () => {
+    const cache = createService(new AsyncStore(), new MemoryCacheInvalidationStore(2)).scope(
+      publicScope,
+    );
+    await cache.set('old', 1);
+    await cache.set('new', 2);
+    expect(await cache.get('old')).toBeUndefined();
+  });
+
+  it('rejects secrets, streams, responses, cycles, accessors, sparse arrays and oversized values', async () => {
+    const cache = createService().scope(publicScope);
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    const getter = vi.fn(() => 'secret');
+    const accessor = Object.defineProperty({}, 'value', { get: getter, enumerable: true });
+    class UnsafeArray extends Array {
+      toJSON() {
+        getter();
+        return [1];
       }
     }
+    for (const value of [
+      new Response('one shot'),
+      new ReadableStream(),
+      { access_token: 'private' },
+      { nested: { password: 'private' } },
+      cycle,
+      accessor,
+      new Array(10001),
+      new UnsafeArray(),
+      'a'.repeat(65537),
+      { callback() {} },
+    ]) {
+      expect(await cache.set('key', value)).toBe(false);
+    }
+    expect(getter).not.toHaveBeenCalled();
+  });
+});
 
+describe('response cache pipeline', () => {
+  it('authorizes every hit, isolates trusted actor/tenant scopes and invalidates from a custom service', async () => {
+    let calls = 0;
+    let allowed = true;
+    const resolved = new WeakMap<Request, CacheScope>();
+    const scopes = new Map([
+      ['a', privateScope('one', 'a')],
+      ['b', privateScope('one', 'b')],
+      ['c', privateScope('two', 'a')],
+    ]);
+    class Guard {
+      canActivate(context: ExecutionContext) {
+        const request = context.getRequest();
+        const scope = scopes.get(request.headers.get('authorization') ?? '');
+        if (!scope || !allowed) return false;
+        resolved.set(request, scope);
+        return true;
+      }
+    }
+    @Controller('/items')
+    @UseGuards(Guard)
+    class Items {
+      @Get()
+      @CacheResponse({ tags: ['items'], key: 'same' })
+      list() {
+        return { calls: ++calls };
+      }
+    }
     @Module({
       imports: [
         CacheModule.forRoot({
-          store,
-          varyBy: (request) => {
-            const tenantId = resolveTenant(request.headers.get('authorization'));
-            return tenantId === undefined ? undefined : `tenant:${tenantId}`;
+          namespace: 'routes',
+          store: new AsyncStore(),
+          invalidation: new MemoryCacheInvalidationStore(),
+          scope: (context) => resolved.get(context.getRequest()),
+        }),
+      ],
+      controllers: [Items],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    const request = (token: string) =>
+      app.getHonoApp().request('/items', { headers: { authorization: token } });
+    expect(await (await request('a')).json()).toEqual({ calls: 1 });
+    expect(await (await request('a')).json()).toEqual({ calls: 1 });
+    expect(await (await request('b')).json()).toEqual({ calls: 2 });
+    expect(await (await request('c')).json()).toEqual({ calls: 3 });
+    await app.get(CacheService).scope(scopes.get('a')!).invalidateTags(['items']);
+    expect(await (await request('a')).json()).toEqual({ calls: 4 });
+    expect(await (await request('b')).json()).toEqual({ calls: 2 });
+    allowed = false;
+    expect((await request('a')).status).toBe(403);
+    expect(calls).toBe(4);
+    await app.close();
+  });
+
+  it('keeps route/host/query variants separate and leaves undecorated and non-GET routes uncached', async () => {
+    let calls = 0;
+    @Controller('/cache')
+    class Routes {
+      @Get('/a') @CacheResponse({ key: 'same' }) a() {
+        return ++calls;
+      }
+      @Get('/b') @CacheResponse({ key: 'same' }) b() {
+        return ++calls;
+      }
+      @Get('/plain') plain() {
+        return ++calls;
+      }
+      @Post('/write') @CacheResponse() write() {
+        return ++calls;
+      }
+    }
+    @Module({
+      imports: [
+        CacheModule.forRoot({
+          namespace: 'routes',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+      ],
+      controllers: [Routes],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    const hono = app.getHonoApp();
+    for (const path of [
+      '/cache/a',
+      '/cache/b',
+      'https://other.test/cache/a',
+      '/cache/a?q=1',
+      '/cache/a?q=2',
+    ]) {
+      const first = await (await hono.request(path)).json();
+      expect(await (await hono.request(path)).json()).toBe(first);
+    }
+    expect(calls).toBe(5);
+    for (let i = 0; i < 2; i++) {
+      await hono.request('/cache/plain');
+      await hono.request('/cache/write', { method: 'POST' });
+      await hono.request('/cache/a', { headers: { authorization: 'credential' } });
+      await hono.request('/cache/a', { headers: { cookie: 'session=credential' } });
+    }
+    expect(calls).toBe(13);
+    await app.close();
+  });
+
+  it('bypasses failed scopes and unsafe HTTP output', async () => {
+    let calls = 0;
+    @Controller('/output')
+    class Routes {
+      @Get('/:kind')
+      @CacheResponse()
+      read(@Res() context: import('hono').Context, @Headers('kind') kind: string) {
+        calls++;
+        if (kind === 'cookie') context.header('Set-Cookie', 'session=private');
+        if (kind === 'private') context.header('Cache-Control', 'private');
+        if (kind === 'status') context.res = new Response(null, { status: 202 });
+        if (kind === 'response') return new Response('one shot');
+        if (kind === 'secret') return { access_token: 'private' };
+        return { calls };
+      }
+    }
+    @Module({
+      imports: [
+        CacheModule.forRootAsync({
+          inject: [],
+          useFactory: async () => ({
+            namespace: 'output',
+            store: new AsyncStore(),
+            scope: (context) => {
+              if (context.getRequest().headers.get('kind') === 'scope') throw Error('bad scope');
+              return publicScope;
+            },
+          }),
+        }),
+      ],
+      controllers: [Routes],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    for (const kind of ['cookie', 'private', 'status', 'response', 'secret', 'scope']) {
+      for (let i = 0; i < 2; i++)
+        expect(
+          (await app.getHonoApp().request(`/output/${kind}`, { headers: { kind } })).status,
+        ).toBe(kind === 'status' ? 202 : 200);
+    }
+    expect(calls).toBe(12);
+    await app.close();
+  });
+
+  it('bypasses declared cookie/private headers and non-success status metadata', async () => {
+    let calls = 0;
+    @Controller('/metadata')
+    class Routes {
+      @Get('/cookie') @CacheResponse() @Header('Set-Cookie', 'session=private') cookie() {
+        return ++calls;
+      }
+      @Get('/private') @CacheResponse() @Header('Cache-Control', 'private') privateValue() {
+        return ++calls;
+      }
+      @Get('/status') @CacheResponse() @HttpCode(202) status() {
+        return ++calls;
+      }
+    }
+    const store = new AsyncStore();
+    @Module({
+      imports: [
+        CacheModule.forRoot({ namespace: 'metadata', store, scope: () => publicScope }),
+      ],
+      controllers: [Routes],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    for (const kind of ['cookie', 'private', 'status'])
+      for (let i = 0; i < 2; i++) await app.getHonoApp().request(`/metadata/${kind}`);
+    expect(calls).toBe(6);
+    expect(store.values.size).toBe(0);
+    await app.close();
+  });
+
+  it('rejects missing tag capability and duplicate modules at bootstrap', async () => {
+    @Controller('/tags')
+    class Tagged {
+      @Get() @CacheResponse({ tags: ['items'] }) read() {
+        return 1;
+      }
+    }
+    @Module({
+      imports: [
+        CacheModule.forRoot({
+          namespace: 'tags',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+      ],
+      controllers: [Tagged],
+    })
+    class MissingTags {}
+    await expect(VelaFactory.create(MissingTags)).rejects.toThrow('invalidation store');
+    @Module({
+      imports: [
+        CacheModule.forRoot({
+          namespace: 'first',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+        CacheModule.forRoot({
+          namespace: 'second',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+      ],
+    })
+    class Duplicates {}
+    await expect(VelaFactory.create(Duplicates, { diagnostics: 'throw' })).rejects.toThrow(
+      /CacheModule#\w+ was imported again with different options/,
+    );
+    @Module({
+      imports: [
+        CacheModule.forRoot({
+          key: 'first',
+          namespace: 'first',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+        CacheModule.forRoot({
+          key: 'second',
+          namespace: 'second',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+      ],
+    })
+    class KeyedDuplicates {}
+    await expect(VelaFactory.create(KeyedDuplicates)).rejects.toThrow(
+      'only one CacheModule',
+    );
+  });
+
+  it('bypasses public caching for trusted identities without credential headers', async () => {
+    let calls = 0;
+    class Guard {
+      canActivate(context: ExecutionContext) {
+        setTrustedRequestIdentity(context.getRequest(), {
+          principal: { issuer: 'internal', subject: 'actor', principalType: 'service' },
+        });
+        return true;
+      }
+    }
+    @Controller('/trusted')
+    @UseGuards(Guard)
+    class Routes {
+      @Get() @CacheResponse() read() {
+        return ++calls;
+      }
+    }
+    @Module({
+      imports: [
+        CacheModule.forRoot({
+          namespace: 'trusted',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+      ],
+      controllers: [Routes],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    await app.getHonoApp().request('/trusted');
+    await app.getHonoApp().request('/trusted');
+    expect(calls).toBe(2);
+    await app.close();
+  });
+
+  it('keeps independent application environments isolated', async () => {
+    const makeApp = async (value: number) => {
+      @Controller('/env')
+      class Routes {
+        @Get() @CacheResponse() read() {
+          return value;
+        }
+      }
+      @Module({
+        imports: [
+          CacheModule.forRoot({
+            namespace: 'same',
+            store: new AsyncStore(),
+            scope: () => publicScope,
+          }),
+        ],
+        controllers: [Routes],
+      })
+      class App {}
+      return VelaFactory.create(App);
+    };
+    const [a, b] = await Promise.all([makeApp(1), makeApp(2)]);
+    expect(await (await a.getHonoApp().request('/env')).json()).toBe(1);
+    expect(await (await b.getHonoApp().request('/env')).json()).toBe(2);
+    await Promise.all([a.close(), b.close()]);
+  });
+});
+
+describe('one CacheModule', () => {
+  @Controller('/count')
+  class Counter {
+    calls = 0;
+    @Get() @CacheResponse() read() {
+      return { calls: ++this.calls };
+    }
+  }
+
+  it('caches in a per-application memory store when no store is given', async () => {
+    @Module({
+      imports: [CacheModule.forRoot({ namespace: 'memory', scope: () => publicScope })],
+      controllers: [Counter],
+    })
+    class App {}
+    const first = await VelaFactory.create(App);
+    const second = await VelaFactory.create(App);
+    const read = async (app: Awaited<ReturnType<typeof VelaFactory.create>>) =>
+      (await app.getHonoApp().request('/count')).json();
+    expect(await read(first)).toEqual({ calls: 1 });
+    expect(await read(first)).toEqual({ calls: 1 });
+    // Another application never sees the first one's entries.
+    expect(await read(second)).toEqual({ calls: 1 });
+    expect(first.get(CacheService).options.store).toBeInstanceOf(MemoryCacheStore);
+    expect(first.get(CacheService).options.store).not.toBe(
+      second.get(CacheService).options.store,
+    );
+    await Promise.all([first.close(), second.close()]);
+  });
+
+  it('builds the store and invalidation from each application ENV', async () => {
+    const stores = new Map<string, AsyncStore>();
+    const storeFor = (env: VelaEnv) => {
+      const name = String(Reflect.get(env, 'REGION'));
+      const store = stores.get(name) ?? new AsyncStore();
+      stores.set(name, store);
+      return store;
+    };
+    const generations: VelaEnv[] = [];
+    @Module({
+      imports: [
+        CacheModule.forRoot({
+          namespace: 'env',
+          scope: () => publicScope,
+          store: storeFor,
+          invalidation: (env) => {
+            generations.push(env);
+            return new MemoryCacheInvalidationStore();
           },
         }),
       ],
-      controllers: [TenantPrivateController],
+      controllers: [Counter],
     })
-    class AppModule {}
+    class App {}
+    const east = await VelaFactory.create(App, { env: { REGION: 'east' } });
+    const west = await VelaFactory.create(App, { env: { REGION: 'west' } });
+    await east.getHonoApp().request('/count');
+    expect(stores.get('east')!.values.size).toBe(1);
+    expect(stores.get('west')!.values.size).toBe(0);
+    await west.getHonoApp().request('/count');
+    expect(stores.get('west')!.values.size).toBe(1);
+    expect(generations.map((env) => Reflect.get(env, 'REGION'))).toEqual(['east', 'west']);
+    await Promise.all([east.close(), west.close()]);
+  });
 
-    const hono = (await VelaFactory.create(AppModule)).getHonoApp();
-    const tenantAFirst = await hono.request('/tenant-private', {
-      headers: { authorization: 'Bearer token-a' },
-    });
-    const tenantBFirst = await hono.request('/tenant-private', {
-      headers: { authorization: 'Bearer token-b' },
-    });
-    const tenantASecond = await hono.request('/tenant-private', {
-      headers: { authorization: 'Bearer token-a' },
-    });
-
-    expect(await tenantAFirst.json()).toEqual({ calls: 1, tenantId: 'tenant-a' });
-    expect(await tenantBFirst.json()).toEqual({ calls: 2, tenantId: 'tenant-b' });
-    expect(await tenantASecond.json()).toEqual({ calls: 1, tenantId: 'tenant-a' });
-    expect(writtenKeys).toHaveLength(2);
-    expect(writtenKeys.every((key) => !key.includes('tenant-a') && !key.includes('tenant-b'))).toBe(
-      true,
+  it('keeps namespace and scope mandatory', () => {
+    const missingScope = { namespace: 'x' } as unknown as CacheModuleOptions;
+    expect(() => new CacheService(missingScope)).toThrow('trusted scope resolver');
+    expect(() => new CacheService({ namespace: '', scope: () => publicScope })).toThrow(
+      'Cache namespace',
     );
+    expect(() => new CacheService({ namespace: 'x', scope: () => publicScope, max: 0 })).toThrow(
+      'max must be a positive integer',
+    );
+    // @ts-expect-error namespace is required
+    void (() => CacheModule.forRoot({ scope: () => publicScope }));
+    // @ts-expect-error scope is required
+    void (() => CacheModule.forRoot({ namespace: 'x' }));
+  });
+
+  it('evicts the default memory store at capacity', () => {
+    const store = new MemoryCacheStore(30, 2);
+    store.set('a', 1);
+    store.set('b', 2);
+    store.set('c', 3);
+    expect(store.get('a')).toBeUndefined();
+    expect([store.get('b'), store.get('c')]).toEqual([2, 3]);
   });
 });

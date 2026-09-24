@@ -1,18 +1,33 @@
 import type {
-  AsyncCacheStore,
+  CacheEntry,
   CacheEntryReader,
   CacheEntryWriter,
-  CacheEntry,
   CacheInvalidationStore,
+  CacheStore,
 } from '@velajs/vela/cache';
+import type { EnvFactory } from '@velajs/vela/module-kit';
+import { kv } from '../bindings';
+
+/** A KV namespace, or a function that reads it when an operation needs it. */
+export type KVNamespaceSource = KVNamespace | (() => KVNamespace);
+
+const namespaceOf = (source: KVNamespaceSource): (() => KVNamespace) =>
+  typeof source === 'function' ? source : () => source;
 
 /**
  * Native KV JSON value store. Metadata retains logical expiry even when KV's
  * physical retention rounds up to its 60-second minimum. Legacy values without
  * metadata remain readable, but cannot safely backfill another tier.
  */
-export class KVCacheStore implements AsyncCacheStore, CacheEntryReader, CacheEntryWriter {
-  constructor(private readonly ns: KVNamespace) {}
+export class KVCacheStore implements CacheStore, CacheEntryReader, CacheEntryWriter {
+  readonly #namespace: () => KVNamespace;
+  constructor(namespace: KVNamespaceSource) {
+    this.#namespace = namespaceOf(namespace);
+  }
+
+  private get ns(): KVNamespace {
+    return this.#namespace();
+  }
 
   async get(key: string): Promise<unknown> {
     return (await this.getEntry(key))?.value;
@@ -69,7 +84,15 @@ export class KVCacheStore implements AsyncCacheStore, CacheEntryReader, CacheEnt
  * this is unsuitable for strict read-after-write or authorization revocation.
  */
 export class KVCacheInvalidationStore implements CacheInvalidationStore {
-  constructor(private readonly ns: KVNamespace) {}
+  readonly #namespace: () => KVNamespace;
+  constructor(namespace: KVNamespaceSource) {
+    this.#namespace = namespaceOf(namespace);
+  }
+
+  private get ns(): KVNamespace {
+    return this.#namespace();
+  }
+
   async getVersion(key: string): Promise<string> {
     const value: unknown = await this.ns.get(key, 'json');
     if (value === null) return 'initial';
@@ -80,4 +103,24 @@ export class KVCacheInvalidationStore implements CacheInvalidationStore {
   async invalidate(key: string): Promise<void> {
     await this.ns.put(key, JSON.stringify(crypto.randomUUID()));
   }
+}
+
+/**
+ * `CacheModule`'s value store over the KV namespace named `binding`, read from
+ * each application's `ENV` when an operation needs it:
+ * `CacheModule.forRoot({ namespace, scope, store: kvCache({ binding: 'CACHE' }) })`.
+ */
+export function kvCache(ref: { binding: string }): EnvFactory<CacheStore> {
+  const namespace = kv(ref);
+  return (env) => new KVCacheStore(() => namespace(env));
+}
+
+/**
+ * `CacheModule`'s generation store over a dedicated KV namespace named
+ * `binding`, without TTLs or lifecycle cleanup. Eventually consistent; see
+ * {@link KVCacheInvalidationStore}.
+ */
+export function kvCacheInvalidation(ref: { binding: string }): EnvFactory<CacheInvalidationStore> {
+  const namespace = kv(ref);
+  return (env) => new KVCacheInvalidationStore(() => namespace(env));
 }

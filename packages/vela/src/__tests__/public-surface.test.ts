@@ -125,7 +125,7 @@ const MODULE_KIT = [
 ];
 
 const FEATURES: Record<string, string[]> = {
-  './cache': ['CacheModule', 'ResponseCacheModule', 'CacheResponse', 'Cacheable'],
+  './cache': ['CacheModule', 'CacheService', 'CacheResponse', 'MemoryCacheStore'],
   './throttler': ['ThrottlerModule', 'ThrottlerGuard', 'Throttle', 'SkipThrottle'],
   './schedule': ['ScheduleModule', 'ScheduleRegistry', 'Cron', 'Interval', 'parseCron'],
   './events': ['EventEmitterModule', 'EventEmitter', 'OnEvent', 'defineEvent', 'EventDispatcher'],

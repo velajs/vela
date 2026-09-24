@@ -430,11 +430,26 @@ operation. The native binding cannot presign; use `publicBaseUrl`, the storage
 HTTP controller with `http: { download: 'proxy' }`, or the R2 HTTP/hybrid
 drivers for provider-signed URLs.
 
-Construct `KVCacheStore` and `KvFlagDriver` with a native namespace:
-`new KVCacheStore(env.CACHE)` and `new KvFlagDriver(env.CACHE)`. Cache reads and
-object-valued flag reads return `unknown`; validate them with an application
-parser. Core `CacheService.getParsed(key, parser)` infers the result from that
-parser. Memory and tiered cache reads use the same unknown-value contract.
+`CacheModule` from `@velajs/vela/cache` takes its KV stores by binding name:
+
+```ts
+import { CacheModule } from '@velajs/vela/cache';
+import { kvCache, kvCacheInvalidation } from '@velajs/cloudflare';
+
+CacheModule.forRoot({
+  namespace: 'catalog-v1',
+  scope: trustedCacheScope,
+  store: kvCache({ binding: 'CACHE' }),
+  invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' }),
+});
+```
+
+`KVCacheStore` and `KVCacheInvalidationStore` take a namespace or a function
+returning one, for composition such as
+`store: (env) => new TieredCacheStore([new MemoryCacheStore(), new KVCacheStore(env.CACHE)])`.
+Construct `KvFlagDriver` with a native namespace: `new KvFlagDriver(env.CACHE)`.
+Cache reads and object-valued flag reads return `unknown`; validate them with an
+application parser (`cache.scope(scope).getParsed(key, parser)`).
 
 ## Development
 
@@ -450,13 +465,12 @@ The Workers suite uses real KV, D1, R2, WebSockets, SQLite Durable Objects, and
 cold event dispatch. See the [security guide](https://github.com/velajs/vela/blob/main/docs/cloudflare-security.md) for trusted identity,
 URL signing, and WebSocket boundaries.
 
-### Asynchronous response caches
+### KV caches
 
-`KVCacheStore` works directly in core `ResponseCacheModule` or as a tier beneath
-`TieredCacheStore`. The adapter retains absolute logical expiry in KV metadata;
-KV's minimum physical retention does not extend the requested TTL. For optional
-generic tags/scoped invalidation, configure `KVCacheInvalidationStore` with a
-separate dedicated KV namespace without TTLs or lifecycle cleanup. It is eventually
+`kvCache` works directly as `CacheModule`'s store or, through `KVCacheStore`, as
+a tier beneath `TieredCacheStore`. The adapter retains absolute logical expiry in
+KV metadata; KV's minimum physical retention does not extend the requested TTL.
+For tags and scoped invalidation, configure `kvCacheInvalidation` with a separate
+dedicated KV namespace without TTLs or lifecycle cleanup. It is eventually
 consistent, including concurrent writes and cached negative reads, and does not
-promise globally strong invalidation. Construct both in an environment-injected
-factory. See the [caching guide](../../docs/caching.md).
+promise globally strong invalidation. See the [caching guide](../../docs/caching.md).

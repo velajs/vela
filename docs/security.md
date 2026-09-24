@@ -232,16 +232,12 @@ CSP; customize or explicitly disable individual headers when serving HTML.
 
 ## Response caching
 
-Routes must opt in with `@Cacheable()`, even when `CacheInterceptor` is global.
-Credential-bearing requests bypass caching unless `CacheModule.forRoot` provides
-a stable `varyBy(request)` principal/tenant value. Vela hashes that value before
-keying. `@CacheKey` is a suffix beneath host + canonical path/query, and
-responses that set cookies are never stored.
-
-For asynchronous stores and explicit scoped invalidation, use
-[`ResponseCacheModule` and `@CacheResponse`](caching.md). Its scope resolver runs
-after guards, private scopes require trusted identity/tenant dimensions, and
-cache failures cannot turn committed writes into reported rollbacks.
+Routes opt in with `@CacheResponse()`; `CacheModule` registers its interceptor
+application-wide, and undecorated routes never cache. Its required `scope`
+resolver runs after guards: public scopes bypass requests carrying credentials
+or a trusted identity, private scopes need trusted identity/tenant dimensions,
+responses that set cookies are never stored, and cache failures cannot turn
+committed writes into reported rollbacks. See [the caching guide](caching.md).
 
 ## Signed URLs
 

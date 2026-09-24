@@ -95,12 +95,9 @@ import {
 import { defineDto, ValidationPipe } from '../validation/index.js';
 import {
   CacheModule,
-  CacheInterceptor,
-  Cacheable,
-  CacheKey,
-  CacheTTL,
+  CacheResponse,
   CacheService,
-  CACHE_MANAGER,
+  MemoryCacheInvalidationStore,
 } from '../cache/index.js';
 import {
   EventEmitterModule,
@@ -2866,25 +2863,29 @@ describe('@RawBody() param decorator', () => {
 });
 
 // =============================================================================
-// CacheInterceptor / @CacheKey / @CacheTTL
+// CacheModule / @CacheResponse (Nest's CacheInterceptor + @CacheKey/@CacheTTL)
 // =============================================================================
 
-describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
+const publicCacheScope = () => ({ visibility: 'public', partition: 'parity' }) as const;
+
+describe('CacheModule / @CacheResponse', () => {
   it('caches response — handler called only once for the same URL', async () => {
     let callCount = 0;
 
     @Controller('/cache-test')
     class CacheController {
       @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
+      @CacheResponse()
       getData() {
         callCount++;
         return { n: callCount };
       }
     }
 
-    @Module({ imports: [CacheModule.forRoot()], controllers: [CacheController] })
+    @Module({
+      imports: [CacheModule.forRoot({ namespace: 'parity', scope: publicCacheScope })],
+      controllers: [CacheController],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -2898,22 +2899,23 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
     expect(callCount).toBe(1);
   });
 
-  it('@CacheKey overrides the cache key', async () => {
+  it('@CacheResponse({ key }) adds a variant beneath the route', async () => {
     let callCount = 0;
 
     @Controller('/cache-key')
     class CacheKeyController {
       @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      @CacheKey('my-custom-key')
+      @CacheResponse({ key: 'my-custom-key' })
       getData() {
         callCount++;
         return { n: callCount };
       }
     }
 
-    @Module({ imports: [CacheModule.forRoot()], controllers: [CacheKeyController] })
+    @Module({
+      imports: [CacheModule.forRoot({ namespace: 'parity', scope: publicCacheScope })],
+      controllers: [CacheKeyController],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -2924,22 +2926,23 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
     expect(callCount).toBe(1);
   });
 
-  it('@CacheTTL sets per-route TTL', async () => {
+  it('@CacheResponse({ ttl }) sets per-route TTL', async () => {
     let callCount = 0;
 
     @Controller('/cache-ttl')
     class CacheTTLController {
       @Get()
-      @UseInterceptors(CacheInterceptor)
-      @Cacheable()
-      @CacheTTL(0.05) // 50ms TTL (TTL is in seconds)
+      @CacheResponse({ ttl: 0.05 }) // 50ms TTL (TTL is in seconds)
       getData() {
         callCount++;
         return { n: callCount };
       }
     }
 
-    @Module({ imports: [CacheModule.forRoot()], controllers: [CacheTTLController] })
+    @Module({
+      imports: [CacheModule.forRoot({ namespace: 'parity', scope: publicCacheScope })],
+      controllers: [CacheTTLController],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -4165,19 +4168,21 @@ describe('@Ip() param decorator', () => {
 });
 
 // =============================================================================
-// CacheService / CACHE_MANAGER direct injection
+// CacheService direct injection (Nest's CACHE_MANAGER get/set/del)
 // =============================================================================
 
-describe('CacheService / CACHE_MANAGER direct injection', () => {
-  it('CacheService.set() and .get() store and retrieve values', async () => {
+describe('CacheService direct injection', () => {
+  const scope = { visibility: 'private', partition: 'tenant-1' } as const;
+
+  it('CacheService scopes set() and get() values', async () => {
     @Injectable()
     class ItemService {
       constructor(private cache: CacheService) {}
-      setItem(key: string, val: unknown) {
-        this.cache.set(key, val);
+      async setItem(key: string, val: unknown) {
+        await this.cache.scope(scope).set(key, val);
       }
       getItem(key: string) {
-        return this.cache.get(key);
+        return this.cache.scope(scope).get(key);
       }
     }
 
@@ -4187,18 +4192,18 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
 
       @Post()
       async set(@Body() body: { key: string; value: unknown }) {
-        this.svc.setItem(body.key, body.value);
+        await this.svc.setItem(body.key, body.value);
         return { ok: true };
       }
 
       @Get(':key')
-      get(@Param('key') key: string) {
-        return { value: this.svc.getItem(key) };
+      async get(@Param('key') key: string) {
+        return { value: await this.svc.getItem(key) };
       }
     }
 
     @Module({
-      imports: [CacheModule.forRoot()],
+      imports: [CacheModule.forRoot({ namespace: 'parity', scope: () => scope })],
       providers: [ItemService],
       controllers: [CacheSvcController],
     })
@@ -4218,39 +4223,43 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
     expect(await res.json()).toEqual({ value: 42 });
   });
 
-  it('CacheService.del() removes a cached entry', async () => {
+  it('CacheService invalidateKey() removes a cached entry', async () => {
     @Injectable()
     class StoreService {
       constructor(private cache: CacheService) {}
       put(k: string, v: unknown) {
-        this.cache.set(k, v);
+        return this.cache.scope(scope).set(k, v);
       }
       remove(k: string) {
-        this.cache.del(k);
+        return this.cache.scope(scope).invalidateKey(k);
       }
       read(k: string) {
-        return this.cache.get(k);
+        return this.cache.scope(scope).get(k);
       }
     }
 
     @Controller('/del-cache')
     class DelCacheController {
       constructor(private svc: StoreService) {}
-      @Get('set') setItem() {
-        this.svc.put('x', 'value');
-        return { ok: true };
+      @Get('set') async setItem() {
+        return { ok: await this.svc.put('x', 'value') };
       }
-      @Get('del') delItem() {
-        this.svc.remove('x');
-        return { ok: true };
+      @Get('del') async delItem() {
+        return await this.svc.remove('x');
       }
-      @Get('get') getItem() {
-        return { value: this.svc.read('x') };
+      @Get('get') async getItem() {
+        return { value: (await this.svc.read('x')) ?? null };
       }
     }
 
     @Module({
-      imports: [CacheModule.forRoot()],
+      imports: [
+        CacheModule.forRoot({
+          namespace: 'parity',
+          scope: () => scope,
+          invalidation: new MemoryCacheInvalidationStore(),
+        }),
+      ],
       providers: [StoreService],
       controllers: [DelCacheController],
     })
@@ -4259,36 +4268,11 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
     const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
-    await hono.request('/del-cache/set');
-    await hono.request('/del-cache/del');
+    expect(await (await hono.request('/del-cache/set')).json()).toEqual({ ok: true });
+    expect(await (await hono.request('/del-cache/get')).json()).toEqual({ value: 'value' });
+    expect(await (await hono.request('/del-cache/del')).json()).toEqual({ ok: true });
     const res = await hono.request('/del-cache/get');
-    expect(await res.json()).toEqual({ value: undefined });
-  });
-
-  it('CACHE_MANAGER token injects the raw cache store', async () => {
-    @Controller('/raw-cache')
-    class RawCacheController {
-      constructor(
-        @Inject(CACHE_MANAGER) private store: {
-          get: (k: string) => unknown;
-          set: (k: string, v: unknown) => void;
-        },
-      ) {}
-
-      @Get()
-      handle() {
-        this.store.set('direct', 'works');
-        return { value: this.store.get('direct') };
-      }
-    }
-
-    @Module({ imports: [CacheModule.forRoot()], controllers: [RawCacheController] })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const res = await app.getHonoApp().request('/raw-cache');
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ value: 'works' });
+    expect(await res.json()).toEqual({ value: null });
   });
 });
 

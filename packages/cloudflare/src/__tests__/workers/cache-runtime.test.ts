@@ -1,19 +1,24 @@
 // @ts-expect-error virtual module supplied by @cloudflare/vitest-plugin
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { Controller, Get, ENV, Module } from '@velajs/vela';
+import { Controller, Get, Module } from '@velajs/vela';
 import {
+  CacheModule,
   CacheResponse,
   MemoryCacheInvalidationStore,
   MemoryCacheStore,
-  ResponseCacheModule,
   TieredCacheStore,
 } from '@velajs/vela/cache';
 import { createCloudflareWorker } from '../../cloudflare-factory';
-import { KVCacheStore, KVCacheInvalidationStore } from '../../services/kv-cache.store';
+import {
+  KVCacheStore,
+  KVCacheInvalidationStore,
+  kvCache,
+  kvCacheInvalidation,
+} from '../../services/kv-cache.store';
 
 describe('response caching under workerd', () => {
-  it('uses native KV metadata for logical expiry and tier backfill in an environment factory', async () => {
+  it('uses native KV metadata for logical expiry and tier backfill in a store built from ENV', async () => {
     let calls = 0;
     const l1 = new MemoryCacheStore();
     @Controller('/cached')
@@ -24,15 +29,12 @@ describe('response caching under workerd', () => {
     }
     @Module({
       imports: [
-        ResponseCacheModule.forRootAsync({
-          inject: [ENV],
-          useFactory: (bindings) => ({
-            namespace: `worker-cache-${crypto.randomUUID()}`,
-            store: new TieredCacheStore([l1, new KVCacheStore(bindings.CACHE)]),
-            invalidation: new MemoryCacheInvalidationStore(),
-            scope: () => ({ visibility: 'public' as const, partition: 'counts' }),
-            ttl: 10,
-          }),
+        CacheModule.forRoot({
+          namespace: `worker-cache-${crypto.randomUUID()}`,
+          store: (bindings) => new TieredCacheStore([l1, new KVCacheStore(bindings.CACHE)]),
+          invalidation: new MemoryCacheInvalidationStore(),
+          scope: () => ({ visibility: 'public' as const, partition: 'counts' }),
+          ttl: 10,
         }),
       ],
       controllers: [ReadController],
@@ -47,6 +49,39 @@ describe('response caching under workerd', () => {
       });
     expect(await (await request()).json()).toEqual({ count: 1 });
     l1.clear();
+    expect(await (await request()).json()).toEqual({ count: 1 });
+    expect(calls).toBe(1);
+  });
+
+  it('serves a static CacheModule from kvCache({ binding }) and kvCacheInvalidation({ binding })', async () => {
+    let calls = 0;
+    const partition = crypto.randomUUID();
+    @Controller('/named')
+    class NamedController {
+      @Get() @CacheResponse({ tags: ['named'] }) read() {
+        return { count: ++calls };
+      }
+    }
+    @Module({
+      imports: [
+        CacheModule.forRoot({
+          namespace: 'worker-named',
+          store: kvCache({ binding: 'CACHE' }),
+          invalidation: kvCacheInvalidation({ binding: 'CACHE' }),
+          scope: () => ({ visibility: 'public', partition }),
+        }),
+      ],
+      controllers: [NamedController],
+    })
+    class App {}
+    const worker = createCloudflareWorker(App);
+    const request = () =>
+      worker.fetch(new Request('https://worker.test/named'), env, {
+        waitUntil() {},
+        passThroughOnException() {},
+        props: {},
+      });
+    expect(await (await request()).json()).toEqual({ count: 1 });
     expect(await (await request()).json()).toEqual({ count: 1 });
     expect(calls).toBe(1);
   });

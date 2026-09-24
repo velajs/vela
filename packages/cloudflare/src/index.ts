@@ -20,7 +20,13 @@ export type { MountOpenApiOptions } from './cloudflare-application';
 export { d1, durableObject, kv, queue, r2, rateLimit } from './bindings';
 
 // Services
-export { KVCacheStore, KVCacheInvalidationStore } from './services/kv-cache.store';
+export {
+  KVCacheStore,
+  KVCacheInvalidationStore,
+  kvCache,
+  kvCacheInvalidation,
+} from './services/kv-cache.store';
+export type { KVNamespaceSource } from './services/kv-cache.store';
 
 // Feature-flag drivers (implement @velajs/feature-flags' FeatureFlagDriver contract)
 export { FlagshipFlagDriver, flagshipFlagDriver } from './services/flagship-flag.driver';

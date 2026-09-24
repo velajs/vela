@@ -21,7 +21,7 @@
     "src/__tests__/endpoint-form.test.ts",
     "src/__tests__/endpoint-streaming.test.ts",
     "src/__tests__/observability.test.ts",
-    "src/__tests__/cache-value-safety.test.ts",
+    "src/__tests__/cache.test.ts",
     "src/__tests__/async-endpoint.test.ts",
     "src/__tests__/http-error-edge.test.ts",
     "src/__tests__/request-context.test.ts",

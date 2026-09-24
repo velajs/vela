@@ -1,4 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
+import { Controller, Get, Module } from '@velajs/vela';
+import { CacheModule, CacheResponse, CacheService } from '@velajs/vela/cache';
+import { createCloudflareApp, kvCache, kvCacheInvalidation } from '../index';
 import { KVCacheStore, KVCacheInvalidationStore } from '../services/kv-cache.store';
 
 function fakeKVService() {
@@ -107,5 +110,62 @@ describe('KV cache expiry and invalidation', () => {
     expect(ttls.get('scope')).toBeUndefined();
     store.set('invalid', '42');
     await expect(versions.getVersion('invalid')).rejects.toThrow('generation');
+  });
+});
+
+describe('kvCache({ binding }) and kvCacheInvalidation({ binding })', () => {
+  const scope = () => ({ visibility: 'public', partition: 'kv' }) as const;
+  @Controller('/kv')
+  class Counter {
+    calls = 0;
+    @Get() @CacheResponse({ tags: ['count'] }) read() {
+      return { calls: ++this.calls };
+    }
+  }
+  @Module({
+    imports: [
+      CacheModule.forRoot({
+        namespace: 'kv',
+        scope,
+        store: kvCache({ binding: 'CACHE' }),
+        invalidation: kvCacheInvalidation({ binding: 'GENERATIONS' }),
+      }),
+    ],
+    controllers: [Counter],
+  })
+  class App {}
+
+  it('back one static CacheModule with the KV namespaces of each application ENV', async () => {
+    const a = { values: fakeKVService(), generations: fakeKVService() };
+    const b = { values: fakeKVService(), generations: fakeKVService() };
+    const envA = { CACHE: a.values.service, GENERATIONS: a.generations.service };
+    const envB = { CACHE: b.values.service, GENERATIONS: b.generations.service };
+    const first = await createCloudflareApp(App, { env: envA });
+    const second = await createCloudflareApp(App, { env: envB });
+    const read = async () =>
+      (await first.fetch(new Request('https://app.test/kv'), envA)).json();
+    expect(await read()).toEqual({ calls: 1 });
+    expect(await read()).toEqual({ calls: 1 });
+    expect(a.values.store.size).toBe(1);
+    expect(b.values.store.size).toBe(0);
+    const result = await first
+      .get(CacheService)
+      .scope({ visibility: 'public', partition: 'kv' })
+      .invalidateTags(['count']);
+    expect(result).toEqual({ ok: true });
+    expect(a.generations.store.size).toBeGreaterThan(0);
+    expect(b.generations.store.size).toBe(0);
+    await Promise.all([first.close(), second.close()]);
+  });
+
+  it('read no namespace while the application boots, and name kv_namespaces on first use', async () => {
+    const app = await createCloudflareApp(App, { env: {} });
+    const errors: unknown[] = [];
+    const service = app.get(CacheService);
+    await service.options.store.get('any').catch((error: unknown) => errors.push(error));
+    expect(String(errors[0])).toContain(
+      "ENV.CACHE is not set: declare the KV namespace binding 'CACHE' under kv_namespaces",
+    );
+    await app.close();
   });
 });

@@ -163,7 +163,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/schedule-and-cron.md` | `@velajs/vela/schedule`: `ScheduleModule`, `@Cron`/`@Interval`, edge-safe registry vs `@velajs/vela/schedule-node` executor |
 | `references/events.md` | `@velajs/vela/events`: `EventEmitterModule`, `@OnEvent`, wildcards, lazy note |
 | `references/i18n.md` | `@velajs/vela/i18n`: `I18nModule`, `I18nService.t`, detection middleware, `intl-messageformat` peer |
-| `references/errors-and-health.md` | HTTP exception family, exception filters, `HealthModule` (`@velajs/vela/health`), `ThrottlerModule`/`@Throttle` (`@velajs/vela/throttler`), `CacheModule`/`CacheInterceptor` (`@velajs/vela/cache`) |
+| `references/errors-and-health.md` | HTTP exception family, exception filters, `HealthModule` (`@velajs/vela/health`), `ThrottlerModule`/`@Throttle` (`@velajs/vela/throttler`), `CacheModule`/`@CacheResponse`/`CacheService` (`@velajs/vela/cache`) |
 | `references/seeders.md` | `@velajs/vela/seeder`: `@Seeder`, `SeederRegistry`, `runSeeders`, `vela db seed` |
 | `references/testing.md` | `@velajs/testing`: `Test.createTestingModule()`, `overrideProvider/Guard/...`, HTTP testing |
 | `references/cli-and-introspection.md` | `@velajs/cli` commands, `vela.config`, route/module/entrypoint/openapi introspection |
@@ -193,7 +193,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **`Circular dependency detected: ...`** → Break the cycle with `@Inject(forwardRef(() => Other))` (providers) or `imports: [forwardRef(() => OtherModule)]` (modules).
 
-**`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `CacheModule.forRoot({ ttl: 60, key: 'fast' })` and `forRoot({ ttl: 120, key: 'slow' })`; without keys the second configuration fails bootstrap). Import only one, or use a per-instance accessor.
+**`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `HttpModule.forRoot({ baseURL: a, key: 'a' })` and `forRoot({ baseURL: b, key: 'b' })`; without keys the second configuration fails bootstrap). Import only one, or use a per-instance accessor.
 
 **`lazy module 'X' has async providers or lifecycle hooks and was triggered through a synchronous resolution path.`** → A `lazy: true` module has async work but was reached via `app.get()` or another synchronous resolver. Use `resolveAsync()` or `app.materializeLazyModules()`. The HTTP pipeline supports async resolution.
 
