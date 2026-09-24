@@ -77,8 +77,7 @@ The second type argument lists the options that shape the module graph, and
 registration controls: they never reach the options token and never change the
 key. `isGlobal: true` makes the instance's exports visible to every module;
 it means nothing else on any first-party module. Modules that register an
-application-wide component name that option after it (`globalGuard`,
-`globalInterceptor`).
+application-wide component name that option after it (`globalGuard`).
 
 A factory with parameters declares `inject`; a factory without parameters may
 omit it. `setup` may also return Nest provider literals such as

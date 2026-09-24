@@ -203,119 +203,15 @@ The native R2 binding cannot presign. Serve its objects through `publicBaseUrl`,
 through the authorized HTTP controller with `http: { download: 'proxy' }`, or
 presign through the S3 or R2 HTTP/hybrid drivers.
 
-The HTTP control plane's POST endpoints accept only `application/json` or `+json` bodies, because browsers send `text/plain` and form-encoded POSTs cross-site without a CORS preflight. Any other media type is refused with 415 before the authorizer runs, and a malformed or non-object body is a 400 `invalid_request`. The `@velajs/storage/client` browser client already sends JSON.
+`@velajs/cloudflare` no longer has a storage module of its own. An application
+that used its multi-disk `StorageModule` registers one `StorageModule` per former
+disk:
 
-## Drivers
-
-| Driver | Import | Edge? | Presign |
-|---|---|---|---|
-| Memory (tests) | `@velajs/storage/drivers/memory` | ✅ | ❌ |
-| S3 / S3-compatible | `@velajs/storage/drivers/s3` | ✅ | ✅ |
-| R2 (native binding) | `@velajs/storage/drivers/r2`, or `r2Storage({ binding })` from `@velajs/cloudflare/storage` | ✅ | via hybrid |
-| R2 (HTTP + hybrid) | `@velajs/storage/drivers/r2-http` | ✅ | ✅ |
-| storagesdk bridge | `@velajs/storage/storagesdk` | Node/Bun only | depends on adapter |
-
-## Testing
-
-There's no separate storage fake — the **memory driver IS the fake**. Build a disk in one line and
-assert against it with the helpers from `@velajs/storage/testing`:
-
-```ts
-import { createStorage } from '@velajs/storage';
-import { memoryDriver } from '@velajs/storage/drivers/memory';
-import { assertExists, assertMissing, assertCount } from '@velajs/storage/testing';
-
-const storage = createStorage({ driver: memoryDriver() });
-await storage.upload('avatars/1.png', bytes);
-
-await assertExists(storage, 'avatars/1.png');
-await assertMissing(storage, 'avatars/2.png');
-await assertCount(storage, 'avatars/', 1); // or assertCount(storage, 1) for the whole disk
-```
-
-The helpers accept anything memory-backed — a `Storage` facade or an injected `StorageService`.
-For DI/integration tests, register the same driver instead: `StorageModule.forRoot({ driver: memoryDriver() })`.
-
-See the docs site for presigned uploads, the HTTP upload controller + browser client, middleware,
-multi-bucket, and the full capability matrix.
-
-## Deadlines and stream ownership
-
-`timeout` bounds the wait for an operation; `signal` stops that wait when aborted.
-Both signal cooperative drivers, but native R2 binding I/O can still complete,
-including a write whose caller has already received `Timeout` or `Aborted`.
-Locally timed-out or cancelled operations are never retried, even with `retries`
-or the retry middleware enabled. A rejected write is not proof that no write
-occurred; reconcile its key before deciding whether to issue another mutation.
-Settled retryable provider errors retain the configured retry policy.
-
-Controls end when the operation returns. A successfully delivered download body
-belongs to the caller: consume or cancel it explicitly. Abandoned downloads cancel
-a body if it arrives later; multipart upload cancellation stops scheduling parts
-and attempts to abort the upload. Cleanup cannot guarantee that an already-issued
-native operation was rolled back. `head()` and `list()` retain their 1.x lazy body
-readers; those later reads are separate from the original operation's deadline.
-
-R2 range reads report the returned byte length, including ranges clipped at EOF,
-without buffering the stream. Invalid ranges fail before binding I/O.
-
-## Metadata and native binding types
-
-Use `stat(key)` or `listMetadata(options)` when browsing metadata. They return
-plain `StoredFileMetadata` snapshots without body readers, while `head()` and
-`list()` keep their existing 1.x lazy readers. Fetch bytes explicitly through
-`download(key, { signal, timeout })` when a later read needs operation controls.
-Metadata methods do not issue extra per-object GET or HEAD requests.
-
-```ts
-import { createStorage } from '@velajs/storage';
-import { r2Driver } from '@velajs/storage/drivers/r2';
-
-// env.FILES uses the R2Bucket type from your generated Workers environment.
-const files = createStorage({
-  driver: r2Driver({ bucket: env.FILES, includeMetadata: true }),
-  prefix: 'uploads',
-});
-const meta = await files.stat('report.csv');
-const page = await files.listMetadata({ delimiter: '/', limit: 100 });
-if (page.hasMore) {
-  const next = await files.listMetadata({ delimiter: '/', cursor: page.cursor });
-}
-```
-
-`includeMetadata: true` is an R2 binding/hybrid driver option requesting HTTP and
-custom metadata in listings. Without it, R2 list results may omit custom metadata
-and use the fallback content type. Other drivers return the metadata already
-available from their listings. Metadata-rich pages can be shorter; follow
-`hasMore` and `cursor`, including when a page contains only folder prefixes.
-
-`files.raw` retains the exact supplied native binding type. `readonly()` views,
-`lazyDriver()`, directly constructed `StorageService` instances, and built-in
-middleware composition preserve that type. Custom `Middleware` remains supported;
-its composition returns unknown raw types unless it implements the additive
-`RawPreservingMiddleware` contract. `raw` is the original handle and bypasses
-prefixes, readonly checks, middleware, and facade controls; use native keys there.
-Named module injection still exposes `StorageService<unknown>`; inject your typed
-`ENV` token when an injected consumer needs full native methods.
-
-## Portable storage and the Cloudflare proxy
-
-For new file/object storage, use `StorageModule` from `@velajs/storage` and choose
-a driver through its independent import. Keep native `env.CACHE`, `env.DB`, and
-Durable Object storage for KV, SQL and per-object transactions; these are separate
-capabilities, not file-storage backends.
-
-`@velajs/cloudflare` also exports an older `StorageModule` and `StorageService`.
-That API stays supported in 1.x and signs Worker proxy routes with an application
-HMAC secret. Its signed URLs are not interchangeable with S3/R2 provider-signed
-URLs from the portable package. Migration is explicit:
-
-| Cloudflare proxy API | Portable package |
+| Removed Cloudflare API | This package |
 | --- | --- |
-| Configure `disks` with native buckets | Register a named `StorageModule` per driver |
+| `disks` with native buckets | One named `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })` per disk |
 | Driver `upload(body, path, { mimeType })` | `upload(key, body, { contentType })` |
 | `download(path).toStream()` | `(await download(key)).stream()` |
-| Worker HMAC `getPresignedUrl()` routes | Provider signing through S3 or R2 HTTP/hybrid drivers; optional authorized HTTP controller |
+| Worker HMAC `getPresignedUrl()` and the `GET /storage/:disk` proxy route | `publicBaseUrl`, the authorized `http: { download: 'proxy' }` controller, or provider-signed URLs from the S3 or R2 HTTP/hybrid drivers |
 
-Keep existing proxy routes and issued URL handling during a migration. Neither
-package requires migrating the other, and the legacy runtime/signatures are unchanged.
+URLs issued by the removed proxy route stop working once it is gone.

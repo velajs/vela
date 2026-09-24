@@ -3,15 +3,15 @@
 The adapter preserves platform identity and isolates storage and WebSocket
 operations by their configured application scope.
 
-## R2 presigned URLs
+## R2 object downloads
 
-The R2 proxy route `/storage/:disk` carries the canonical full key as an opaque, signed
-base64url `key` claim. The proxy verifies method/purpose/expiry before decoding
-the claim exactly once, rejects malformed or non-canonical keys, and asserts the
-key remains beneath the configured disk root.
-
-Generate proxy URLs with `StorageService.url()` so the key and authorization
-claims are signed together.
+`r2Storage({ binding })` from `@velajs/cloudflare/storage` drives
+`@velajs/storage`'s `StorageModule` from the native R2 binding, which cannot
+presign. Serve objects through `publicBaseUrl`, through the storage HTTP
+controller with `http: { download: 'proxy' }`, where every download passes the
+module's `authorize` hook and is served as an attachment with
+`X-Content-Type-Options: nosniff`, or through provider-signed URLs from the S3
+or R2 HTTP/hybrid drivers. There is no Worker HMAC proxy route.
 
 ## Trusted client identity
 
