@@ -1,14 +1,16 @@
 import {
+  APP_GUARD,
   Inject,
   InjectionToken,
   Injectable,
+  ModuleRef,
   Reflector,
   ForbiddenException,
-  APP_GUARD,
   defineModule,
   defineProvider,
   type CanActivate,
   type ExecutionContext,
+  type GuardPhase,
   type Type,
 } from '@velajs/vela';
 import {
@@ -27,8 +29,19 @@ export const CedarPublic = () => declaration({ kind: 'public' });
 export const RequireResource = (requirement: ResourceRequirement) =>
   declaration({ kind: 'authorize', requirement: Object.freeze({ ...requirement }) });
 export interface CedarModuleOptions {
-  /** Default true. Disable to order CedarGuard after route authentication/tenant guards. */
-  globalGuard?: boolean;
+  /**
+   * `'global'` (default) installs `CedarGuard` as a global guard in the
+   * `authorize` phase: after authentication and tenant admission, whatever the
+   * import order. `'none'` leaves it to `@UseGuards(CedarGuard)`. With
+   * `forRootAsync`, pass it beside the factory.
+   */
+  guard?: 'global' | 'none';
+  /**
+   * Routes without `@RequireResource` or `@CedarPublic`: `'deny'` (default)
+   * rejects them with 403; `'allow'` lets them through. With `forRootAsync`,
+   * pass it beside the factory.
+   */
+  undeclared?: 'deny' | 'allow';
   /** Resolve resources/grants from trusted application services; invoke engine.check here. */
   authorize(input: {
     requirement: ResourceRequirement;
@@ -58,18 +71,37 @@ export function auditCedarRoutes(modules: readonly Type[]): void {
     }
   }
 }
+// The guards CedarModule installs globally, and the module each belongs to.
+const installedHosts = new WeakMap<CedarGuard, ModuleRef>();
+
 export class CedarGuard implements CanActivate {
+  /** Global guards authorize after authentication and tenant admission. */
+  static readonly phase: GuardPhase = 'authorize';
+  /**
+   * Integration routes marked `SkipGuardPhases(['authorize'])` authorize
+   * themselves. A subclass declares `false` to run on them too.
+   */
+  static readonly skippable: boolean = true;
   readonly #reflector: Reflector;
   constructor(reflector: Reflector) {
     this.#reflector = reflector;
   }
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const declared = this.#reflector.getAllAndOverride(declaration, context);
-    if (!declared || declared.kind === 'public') return true;
+    if (declared?.kind === 'public') return true;
     const moduleId = context.getModuleId(),
       container = context.getContainer();
+    let candidates = moduleId && container ? container.resolveAll(CEDAR_AUTHORIZER, moduleId) : [];
+    // The globally installed guard covers every application route: where the
+    // route's module does not import CedarModule, its own module's policy
+    // applies. A route-level CedarGuard there has no policy and denies.
+    const host = installedHosts.get(this);
+    if (candidates.length === 0 && host) candidates = [await host.resolve(CEDAR_AUTHORIZER)];
+    if (!declared) {
+      if (candidates.length === 1 && candidates[0]!.undeclared === 'allow') return true;
+      throw new ForbiddenException();
+    }
     if (!moduleId || !container) throw new ForbiddenException();
-    const candidates = container.resolveAll(CEDAR_AUTHORIZER, moduleId);
     if (candidates.length !== 1) throw new ForbiddenException('Cedar configuration is ambiguous');
     const options = candidates[0]!;
     const read = () =>
@@ -100,25 +132,48 @@ export class CedarGuard implements CanActivate {
 }
 Injectable()(CedarGuard);
 Inject(Reflector)(CedarGuard, undefined, 0);
-const { ConfigurableModuleClass } = defineModule<CedarModuleOptions>({
+/** The instance `guard: 'global'` installs; it serves routes in every module. */
+class InstalledCedarGuard extends CedarGuard {
+  constructor(reflector: Reflector, host: ModuleRef) {
+    super(reflector);
+    installedHosts.set(this, host);
+  }
+}
+Injectable()(InstalledCedarGuard);
+Inject(Reflector)(InstalledCedarGuard, undefined, 0);
+Inject(ModuleRef)(InstalledCedarGuard, undefined, 1);
+const { ConfigurableModuleClass } = defineModule<CedarModuleOptions, 'guard' | 'undeclared'>({
   name: 'CedarAuthorization',
-  setup: ({ OPTIONS }) => ({
-    providers: [
-      defineProvider(CEDAR_AUTHORIZER, {
-        inject: [OPTIONS],
-        useFactory: (options) => {
-          auditCedarRoutes(options.auditModules ?? []);
-          return options;
-        },
-      }),
-      CedarGuard,
-      defineProvider(APP_GUARD, {
-        inject: [OPTIONS, CedarGuard],
-        useFactory: (options, guard) =>
-          options.globalGuard === false ? { canActivate: () => true } : guard,
-      }),
-    ],
-    exports: [CEDAR_AUTHORIZER, CedarGuard],
-  }),
+  // Both shape the module at declaration: `forRootAsync` takes them beside the
+  // factory, so a factory cannot relax the policy later.
+  structural: ['guard', 'undeclared'],
+  defaults: { guard: 'global', undeclared: 'deny' },
+  setup: ({ OPTIONS, options }) => {
+    const guard = options.guard;
+    if (guard !== 'global' && guard !== 'none')
+      throw new TypeError("CedarModule guard must be 'global' or 'none'");
+    const undeclared = options.undeclared;
+    if (undeclared !== 'deny' && undeclared !== 'allow')
+      throw new TypeError("CedarModule undeclared must be 'deny' or 'allow'");
+    return {
+      providers: [
+        defineProvider(CEDAR_AUTHORIZER, {
+          inject: [OPTIONS],
+          useFactory: (resolved) => {
+            auditCedarRoutes(resolved.auditModules ?? []);
+            return { ...resolved, undeclared };
+          },
+        }),
+        // The installed guard answers to CedarGuard, so testing overrides reach it.
+        ...(guard === 'global'
+          ? [
+              defineProvider(CedarGuard, { useClass: InstalledCedarGuard }),
+              defineProvider(APP_GUARD, { useExisting: CedarGuard }),
+            ]
+          : [CedarGuard]),
+      ],
+      exports: [CEDAR_AUTHORIZER, CedarGuard],
+    };
+  },
 });
 export class CedarModule extends ConfigurableModuleClass {}

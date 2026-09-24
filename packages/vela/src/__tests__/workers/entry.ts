@@ -12,6 +12,7 @@ import {
   Module,
   REQUEST_CONTEXT,
   Req,
+  Ctx,
   Scope,
   SignedUrl,
   URL_SIGNING_SECRET,
@@ -96,16 +97,15 @@ class HealthController {
 @Controller('/who-am-i')
 class WhoAmIController {
   @Get()
-  handle(@Req() c: Context) {
-    return { user: c.req.header('x-user') ?? 'anonymous' };
+  handle(@Req() request: Request) {
+    return { user: request.headers.get('x-user') ?? 'anonymous' };
   }
 }
 
 @Controller('/order-test')
 class OrderTestController {
   @Get()
-  handle(@Req() c: Context) {
-    const req = c.req.raw;
+  handle(@Req() req: Request) {
     pushTrace(req, 'handler');
     return { trace: traces.get(req) ?? [] };
   }
@@ -119,7 +119,7 @@ class OrderTestController {
 @Controller('/req-ctx')
 class RequestContextController {
   @Get()
-  handle(@Req() c: Context) {
+  handle(@Ctx() c: Context) {
     const ctx = getRequestContainer(c).resolve(REQUEST_CONTEXT);
     return {
       id: ctx.id,

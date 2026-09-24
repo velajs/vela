@@ -317,7 +317,11 @@ describe('mounted HTTP authorization audit', () => {
     }
     UseGuards(PermissionGuard)(first);
     class FirstModule {}
-    Module({ controllers: [first], imports: [AuthzModule.forRoot({ roles: [] })] })(FirstModule);
+    // Explicit route guards only: the global PermissionGuard would wire both routes.
+    Module({
+      controllers: [first],
+      imports: [AuthzModule.forRoot({ roles: [], guard: 'none' })],
+    })(FirstModule);
     class SecondModule {}
     Module({ controllers: [second] })(SecondModule);
     class App {}

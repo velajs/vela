@@ -359,7 +359,7 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
           // With a CUSTOM envelope the engine owns error formatting (the
           // envelope's error() shapes the body). Without one, rethrow so the
           // CrudException renders natively through Vela's exception pipeline —
-          // its getResponse() already emits the canonical default envelope.
+          // its toResponse() already emits the canonical default envelope.
           if (config.envelope !== undefined) {
             const { structured, status } = resolveStructuredError(error, config.errorMappers);
             return { status, body: config.envelope.error(structured) };

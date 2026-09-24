@@ -68,6 +68,7 @@
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@cloudflare/workers-types": "catalog:",
+    "@velajs/testing": "workspace:*",
     "@velajs/vela": "workspace:*",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",

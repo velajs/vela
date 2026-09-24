@@ -92,9 +92,11 @@ export class EnvelopeInterceptor implements NestInterceptor {
 @Catch(LabFailure)
 export class LabErrorFilter implements ExceptionFilter {
   catch(exception: LabFailure, _context: ExecutionContext) {
+    // An explicit { status, body } chooses the status; a plain value would
+    // take the exception's (500 for this plain Error).
     return {
-      handledBy: 'real-filter',
-      message: exception.message,
+      status: 503,
+      body: { handledBy: 'real-filter', message: exception.message },
     };
   }
 }

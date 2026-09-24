@@ -37,7 +37,7 @@ export const studioRouteContributor: RouteContributor = {
     // Capture the live Hono app + global prefix for the introspection ops — the
     // only public seam to the route table (RouteManager is barrel-internal).
     if (ctx.container.has(StudioAppHolder)) {
-      ctx.container.resolve(StudioAppHolder).capture(app, ctx.globalPrefix);
+      ctx.container.resolve(StudioAppHolder).capture(app, ctx.routePathOptions);
     }
     mountAdminRouter(app, ctx);
   },

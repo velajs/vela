@@ -1,5 +1,5 @@
 import { Test } from '@velajs/testing';
-import { InjectionToken, Module, defineProvider } from '@velajs/vela';
+import { APP_GUARD, InjectionToken, Module, defineProvider } from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
 import { StorageModule } from '../index';
 import type { StorageDriver, StorageHttpOptions } from '../index';
@@ -91,6 +91,38 @@ describe('StorageController', () => {
     );
     expect(res.status).toBe(403);
     expect((await res.json()).error.code).toBe('forbidden');
+  });
+
+  it('leaves tenant admission and authorization of its routes to the storage authorizer', async () => {
+    const ran: string[] = [];
+    // Application-wide policy guards, as TenantModule and CedarModule install,
+    // and the application's own authorization guard, which still runs.
+    const policy = (phase: 'tenant' | 'authorize', owner: 'integration' | 'app') => {
+      const guard = {
+        phase,
+        skippable: owner === 'integration',
+        canActivate() {
+          ran.push(`${owner} ${phase}`);
+          return owner === 'app';
+        },
+      };
+      return defineProvider(APP_GUARD, { useValue: guard });
+    };
+    const moduleRef = await Test.createTestingModule({
+      imports: [StorageModule.forRoot({ driver: s3Mock(), http: { authorize: () => true } })],
+      providers: [
+        policy('tenant', 'integration'),
+        policy('authorize', 'integration'),
+        policy('authorize', 'app'),
+      ],
+    }).compile();
+    const app = (await moduleRef.createApplication()).getHonoApp();
+    const res = await app.request(
+      '/api/storage/sign-upload',
+      post('x', { key: 'a.txt', contentType: 'text/plain' }),
+    );
+    expect(res.status).toBe(200);
+    expect(ran).toEqual(['app authorize']);
   });
 
   it('redacts internal/provider (5xx) error messages — no raw provider text leaks', async () => {

@@ -60,6 +60,27 @@ export interface RuntimeCrudConfig {
    * Programmatic `resource.execute` dispatch bypasses HTTP guards by design.
    */
   guards?: Partial<Record<CrudEndpointName, GuardType[]>>;
+  /**
+   * Decorators for the controller, applied as if written above the class in
+   * this order, after its methods and the generated handlers exist, so one
+   * that decorates or wraps each method reaches every endpoint. They declare
+   * route metadata the application cannot write on a headless resource's
+   * generated controller, such as its authorization policy
+   * (`[RequireResource({ ... })]` or `[CedarPublic()]`). One that writes
+   * method metadata applies last, so it overrides an `endpointDecorators` value
+   * for that key, exactly as in hand-written TypeScript. A decorator that
+   * returns a replacement class is rejected.
+   */
+  decorators?: readonly ClassDecorator[];
+  /**
+   * Decorators for each endpoint's handler, applied as if written above that
+   * method in this order, so endpoint metadata overrides class-level metadata
+   * (a `decorators` entry that writes method metadata still wins). As in
+   * TypeScript, one that changes or returns the descriptor wraps the handler,
+   * and the route calls the result; it must remain a method. An `@Override`'d
+   * endpoint keeps them; keys of disabled verbs are inert.
+   */
+  endpointDecorators?: Partial<Record<CrudEndpointName, readonly MethodDecorator[]>>;
   hooks?: CrudHooks<Record<string, unknown>> & HookModeConfig;
   filterFields?: string[];
   filterConfig?: FilterConfig;

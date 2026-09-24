@@ -1,4 +1,4 @@
-import { HttpException } from '@velajs/vela';
+import { renderHttpError } from '@velajs/vela';
 import { SchemaValidationError } from '@velajs/vela/validation';
 import { GraphQLError } from 'graphql';
 
@@ -40,8 +40,9 @@ export function mapGraphqlError(error: GraphQLError): GraphQLError {
   } else if (original instanceof SchemaValidationError) {
     code = 'BAD_USER_INPUT';
     message = 'Invalid arguments';
-  } else if (original instanceof HttpException) {
-    const status = original.getStatus();
+  } else if (original) {
+    // The status every HTTP edge would answer with; the public message stays fixed.
+    const { status } = renderHttpError(original, { redactServerBodies: true });
     const publicErrors: Record<number, readonly [string, string]> = {
       400: ['BAD_USER_INPUT', 'Invalid arguments'],
       401: ['UNAUTHENTICATED', 'Authentication required'],

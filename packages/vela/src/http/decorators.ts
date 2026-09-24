@@ -3,13 +3,14 @@ import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 import { declareScope } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { normalizePath } from '../registry/paths';
-import type { Constructor, PipeType, Type } from '../registry/types';
+import type { Constructor, HttpHandlerMeta, PipeType, Type } from '../registry/types';
 import type { ControllerOptions } from './types';
 import type { ExecutionContext } from '../pipeline/types';
 import { isValidationSchema, type ValidationSchema } from '../validation/parse-schema';
 import { isStandardSchema } from '../validation/standard-schema';
 import { ValidationPipe } from '../validation/validation.pipe';
 import { buildExecutionContext } from './execution-context';
+import type { VersionValue } from './version';
 
 /**
  * Marks a class as a controller.
@@ -57,7 +58,7 @@ export function Controller(pathOrOptions?: string | ControllerOptions): ClassDec
  * }
  * ```
  */
-export function Version(version: number | number[]): MethodDecorator {
+export function Version(version: VersionValue): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
     const ctor = target.constructor as Constructor;
     MetadataRegistry.setRouteVersion(ctor, propertyKey, version);
@@ -73,7 +74,7 @@ export function Version(version: number | number[]): MethodDecorator {
 export function getRouteVersion(
   target: Constructor,
   propertyKey: string | symbol,
-): number | number[] | undefined {
+): VersionValue | undefined {
   return MetadataRegistry.getRouteVersion(target, propertyKey);
 }
 
@@ -116,7 +117,6 @@ export const Delete = /* @__PURE__ */ createMethodDecorator('DELETE');
 export const Options = /* @__PURE__ */ createMethodDecorator('OPTIONS');
 export const Head = /* @__PURE__ */ createMethodDecorator('HEAD');
 export const All = /* @__PURE__ */ createMethodDecorator('ALL');
-export const Sse = /* @__PURE__ */ createMethodDecorator('GET');
 
 // Parameter decorators
 
@@ -141,7 +141,7 @@ export interface SchemaParamDecorator {
   (nameOrPipe?: string | PipeType, ...pipes: PipeType[]): ParameterDecorator;
 }
 
-// For @Req, @Res and @Ip, which inject request objects rather than request values.
+// For @Req, @Ctx, @Res and @Ip, which inject request objects rather than request values.
 type PipedParamDecorator = (
   nameOrPipe?: string | PipeType,
   ...pipes: PipeType[]
@@ -190,11 +190,32 @@ export const Param = /* @__PURE__ */ createBuiltinParamDecorator('param');
 export const Query = /* @__PURE__ */ createBuiltinParamDecorator('query');
 export const Body = /* @__PURE__ */ createBuiltinParamDecorator('body');
 export const Headers = /* @__PURE__ */ createBuiltinParamDecorator('headers');
+/**
+ * Injects the platform `Request`, as Nest's `@Req()` injects the request
+ * object. It is the exact request guards and middleware saw.
+ *
+ * @example
+ * ```ts
+ * @Post('/webhook')
+ * handle(@Req() request: Request) { return verify(request); }
+ * ```
+ */
 export const Req: PipedParamDecorator = /* @__PURE__ */ createBuiltinParamDecorator('request');
 /**
- * Injects the Hono `Context` as the response handle.
- * In Hono, request and response state are unified in the `Context` object,
- * so `@Res()` and `@Req()` both return it.
+ * Injects the Hono `Context` (`VelaContext`): request helpers, response
+ * headers and cookies, and the typed environment.
+ *
+ * @example
+ * ```ts
+ * @Get('/session')
+ * handle(@Ctx() c: VelaContext) { return c.req.header('accept'); }
+ * ```
+ */
+export const Ctx: PipedParamDecorator = /* @__PURE__ */ createBuiltinParamDecorator('context');
+/**
+ * Injects the Hono `Context` as the response handle. In Hono, request and
+ * response state are unified in the `Context` object, so `@Res()` returns the
+ * same object as `@Ctx()`.
  *
  * Use `c.header()`, `c.setCookie()`, `c.redirect()`, etc. for response control.
  *
@@ -388,6 +409,13 @@ export function getResponseHeaders(
   method: string | symbol,
 ): Array<[string, string]> {
   return MetadataRegistry.getHandlerHttpMeta(target, method)?.responseHeaders ?? [];
+}
+
+export function getResponder(
+  target: Constructor,
+  method: string | symbol,
+): HttpHandlerMeta['respond'] {
+  return MetadataRegistry.getHandlerHttpMeta(target, method)?.respond;
 }
 
 export function getRedirect(

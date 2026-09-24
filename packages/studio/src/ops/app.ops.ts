@@ -69,9 +69,9 @@ export class StudioAppOps {
   openapi(_ctx: AdminOpContext): unknown {
     const root = this.config.rootModule;
     if (root === undefined) throw studioError('FEATURE_UNCONFIGURED');
-    // Carry the app's captured global prefix so documented paths match the real
-    // mounted routes (the contributor deposits it in the holder at mount time).
-    return createOpenApiDocument(root, { globalPrefix: this.holder.globalPrefix });
+    // Carry the app's captured route composition so documented paths match the
+    // real mounted routes (the contributor deposits it in the holder at mount time).
+    return createOpenApiDocument(root, this.holder.routePathOptions);
   }
 
   /** Authorize the host's HTTP request without re-entering Hono outside Worker context. */

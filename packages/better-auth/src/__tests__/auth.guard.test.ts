@@ -15,6 +15,7 @@ import {
   Public,
 } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
+import { BETTER_AUTH_OPTIONS } from '../better-auth.tokens';
 
 const SESSION_OK = sessionFixture('u-1', 'admin');
 
@@ -80,8 +81,8 @@ describe('AuthGuard', () => {
     @UseGuards(AuthGuard)
     class IdentityController {
       @Get()
-      identity(@Req() context: { req: { raw: Request } }) {
-        return getTrustedRequestIdentity(context.req.raw);
+      identity(@Req() request: Request) {
+        return getTrustedRequestIdentity(request);
       }
     }
 
@@ -107,6 +108,66 @@ describe('AuthGuard', () => {
       roles: ['admin'],
       expiresAtMs: SESSION_OK.session.expiresAt.getTime(),
     });
+  });
+
+  it('authenticates before global throttling whatever the import order', async () => {
+    expect(AuthGuard.phase).toBe('authenticate');
+    const auth = {
+      api: {
+        getSession: vi.fn(async ({ headers }: { headers: Headers }) => {
+          const id = headers.get('x-test-verified-user');
+          return id ? sessionFixture(id) : null;
+        }),
+      },
+      handler: vi.fn().mockResolvedValue(new Response('ok')),
+    } satisfies BetterAuthInstance;
+
+    @Controller('/throttled-first')
+    class ThrottledFirstController {
+      @Get()
+      ok() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 }),
+        BetterAuthModule.forRoot({ auth, issuer: 'accounts.example' }),
+      ],
+      controllers: [ThrottledFirstController],
+    })
+    class AppModule {}
+
+    const hono = (
+      await VelaFactory.create(AppModule, { getClientIp: () => 'same-edge-ip' })
+    ).getHonoApp();
+    const requestAs = (id: string) =>
+      hono.request('/throttled-first', { headers: { 'x-test-verified-user': id } });
+
+    expect((await requestAs('user-a')).status).toBe(200);
+    expect((await requestAs('user-b')).status).toBe(200);
+    expect((await requestAs('user-a')).status).toBe(429);
+  });
+
+  it("does not install AuthGuard with guard: 'none'", async () => {
+    @Controller('/unguarded')
+    class UnguardedController {
+      @Get()
+      ok() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [BetterAuthModule.forRoot({ auth: mockAuth(null), guard: 'none' })],
+      controllers: [UnguardedController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect((await app.getHonoApp().request('/unguarded')).status).toBe(200);
+    expect(app.get(BETTER_AUTH_OPTIONS).guard).toBe('none');
   });
 
   it('lets throttling partition verified Better Auth principals before IP fallback', async () => {
@@ -196,7 +257,7 @@ describe('AuthGuard', () => {
     expect(res.status).toBe(401);
   });
 
-  it('@Public() bypasses the guard even with globalGuard:true', async () => {
+  it("@Public() bypasses the global guard (guard: 'global')", async () => {
     const auth = mockAuth(null);
 
     @Controller('/health')
@@ -209,7 +270,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, globalGuard: true })],
+      imports: [BetterAuthModule.forRoot({ auth, guard: 'global' })],
       controllers: [HealthController],
     })
     class AppModule {}
@@ -261,7 +322,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, globalGuard: true, mountHandler: false })],
+      imports: [BetterAuthModule.forRoot({ auth, guard: 'global', mountHandler: false })],
       controllers: [PrivateController],
     })
     class AppModule {}
@@ -297,6 +358,7 @@ describe('AuthGuard', () => {
   it('accepts only the trusted finite-lived WebSocket attachment without using HTTP accessors', async () => {
     const auth = mockAuth(null);
     const guard = new AuthGuard(new BetterAuthService(() => auth), {}, new Reflector());
+    const message = (): void => {};
     const client = {
       id: 'socket-1',
       rooms: new Set<string>(),
@@ -316,7 +378,8 @@ describe('AuthGuard', () => {
     const context = {
       getType: () => 'ws',
       getClass: () => class Gateway {},
-      getHandler: () => 'message',
+      getHandler: () => message,
+      getHandlerName: () => 'message',
       getModuleId: () => 'GatewayModule',
       getContainer: () => undefined,
       getContext: () => {

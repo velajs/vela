@@ -1,12 +1,14 @@
-import { toErrorBody } from '@velajs/errors';
 import type { Context } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Container } from '../container/container';
 import type { TypedToken, Type } from '../container/types';
-import { HttpException } from '../errors/http-exception';
-import { httpExceptionBody } from '../exceptions/http-exception-body';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { shouldFilterCatch } from '../pipeline/decorators';
+import {
+  isSkippableGuardPhase,
+  orderGuardsByPhase,
+  SKIP_GUARD_PHASES_KEY,
+  type GuardPhase,
+} from '../pipeline/guard-phase';
 import { PipelineRunner } from '../pipeline/pipeline-runner';
 import { getScopedComponents } from '../pipeline/scoped-components';
 import type {
@@ -16,6 +18,7 @@ import type {
   NestInterceptor,
   PipeTransform,
 } from '../pipeline/types';
+import { MetadataRegistry } from '../registry/metadata.registry';
 import type {
   FilterType,
   GuardType,
@@ -24,9 +27,10 @@ import type {
   PipeType,
 } from '../registry/types';
 import type { ArgumentResolver } from './argument-resolver';
-import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
+import { getHttpCode, getRedirect, getResponder, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
 import { getEndpointBinding } from './endpoint-registry';
+import { mapFilterResult, sendHttpError } from './error-response';
 import { instantiateAsync, instantiateManyAsync } from './instantiate';
 import {
   applyResponseHeaders,
@@ -35,6 +39,21 @@ import {
   resolveSuccessStatus,
 } from './response-mapper';
 import type { ParamMetadata, RouteMetadata } from './types';
+
+// The global guard phases an integration's route leaves to the integration
+// (`SkipGuardPhases`). Only tenant and authorize phases can be skipped.
+function skippedGuardPhases(
+  controller: Type,
+  handlerName: string | symbol,
+): ReadonlySet<GuardPhase> | undefined {
+  const declared: unknown =
+    MetadataRegistry.getCustomHandlerMeta(controller, handlerName, SKIP_GUARD_PHASES_KEY) ??
+    MetadataRegistry.getCustomClassMeta(controller, SKIP_GUARD_PHASES_KEY);
+  if (!Array.isArray(declared)) return undefined;
+  const phases = new Set<GuardPhase>();
+  for (const phase of declared) if (isSkippableGuardPhase(phase)) phases.add(phase);
+  return phases.size > 0 ? phases : undefined;
+}
 
 export interface HandlerGlobals {
   guards: Array<GuardType | TypedToken<CanActivate>>;
@@ -120,6 +139,7 @@ export class HandlerExecutor {
     const httpCode = getHttpCode(controller, route.handlerName);
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
     const redirect = getRedirect(controller, route.handlerName);
+    const respond = getResponder(controller, route.handlerName);
     const endpoint = getEndpointBinding(controller, route.handlerName);
     if (endpoint && (paramMetadata.length > 0 || redirect || httpCode !== undefined)) {
       throw new Error(
@@ -127,6 +147,7 @@ export class HandlerExecutor {
       );
     }
     const successStatus = resolveSuccessStatus(controller, route.handlerName);
+    const skippedPhases = skippedGuardPhases(controller, route.handlerName);
 
     return async (c: Context) => {
       // Combine global + method at request time so post-create registrations propagate.
@@ -142,7 +163,10 @@ export class HandlerExecutor {
 
       try {
         const guards = [
-          ...(await instantiateManyAsync<CanActivate>(globals.guards, requestContainer)),
+          ...orderGuardsByPhase(
+            await instantiateManyAsync<CanActivate>(globals.guards, requestContainer),
+            skippedPhases,
+          ),
           ...(await instantiateManyAsync<CanActivate>(methodGuards, requestContainer, moduleId)),
         ];
         const pipes = [
@@ -204,6 +228,18 @@ export class HandlerExecutor {
           return mapRedirect(c, result, redirect);
         }
 
+        if (respond) {
+          const response = respond(c, result, (error) => {
+            resolveErrorReporter(requestContainer).report(error, {
+              edge: 'http',
+              source: `${controller.name}.${String(route.handlerName)}`,
+              note: 'response stream failed',
+            });
+          });
+          applyResponseHeaders(response, responseHeaders);
+          return response;
+        }
+
         const response = mapResponse(c, result, successStatus);
         applyResponseHeaders(response, responseHeaders);
         return response;
@@ -224,8 +260,15 @@ export class HandlerExecutor {
           try {
             const filter = await instantiateAsync<ExceptionFilter>(entry, requestContainer, owner);
             if (shouldFilterCatch(filter, error)) {
-              const filtered = await filter.catch(error, executionContext);
-              return mapResponse(c, filtered);
+              // The first matching filter decides; `undefined` leaves the
+              // error to the default renderer.
+              const filtered = mapFilterResult(
+                c,
+                await filter.catch(error, executionContext),
+                error,
+              );
+              if (filtered) return filtered;
+              break;
             }
           } catch (filterError) {
             reporter.report(filterError, {
@@ -237,17 +280,7 @@ export class HandlerExecutor {
           }
         }
 
-        const rendered = reporter.render(error, executionContext);
-        if (rendered instanceof Response) return rendered;
-        if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
-
-        if (error instanceof HttpException) {
-          const { body, status } = httpExceptionBody(error, reporter.catalog);
-          return c.json(body, status as ContentfulStatusCode);
-        }
-
-        const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
-        return c.json(body, status as ContentfulStatusCode);
+        return sendHttpError(c, error, reporter, executionContext);
       }
     };
   }

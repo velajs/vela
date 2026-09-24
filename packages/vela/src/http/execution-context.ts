@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import type { Type } from '../container/types';
+import { handlerFunction } from '../pipeline/handler-function';
 import type { HttpExecutionContext } from '../pipeline/types';
 import { findRequestContainer } from './request-container';
 
@@ -21,7 +22,8 @@ export function buildExecutionContext(
   return {
     getType: () => 'http',
     getClass: () => controller,
-    getHandler: () => handlerName,
+    getHandler: () => handlerFunction(controller, handlerName),
+    getHandlerName: () => handlerName,
     getModuleId: () => ownerModuleId,
     getContainer: () => findRequestContainer(c),
     getContext: () => c,
@@ -48,7 +50,7 @@ export class VelaMiddlewareHost {}
 // Synthesizes an ExecutionContext for an exception thrown inside a
 // vela-attached middleware. There is no controller class or handler method
 // on the call stack at that point, so `getClass()` returns the
-// `VelaMiddlewareHost` marker and `getHandler()` returns the
+// `VelaMiddlewareHost` marker and `getHandlerName()` returns the
 // `vela.middleware` symbol — both stable, comparable values that filter
 // authors can pattern-match against if needed.
 export const VELA_MIDDLEWARE_HANDLER: unique symbol = Symbol.for('vela.middleware');

@@ -1,5 +1,5 @@
-import { InjectionToken } from "@velajs/vela";
-import type { LiveSubscriptionRow, PresenceRoomRow } from "@velajs/studio-protocol";
+import { InjectionToken } from '@velajs/vela';
+import type { LiveSubscriptionRow, PresenceRoomRow } from '@velajs/studio-protocol';
 
 /** App-owned scope: a local engine or explicitly selected Durable Object rooms. */
 export interface StudioLiveSource {
@@ -10,5 +10,5 @@ export interface StudioLiveSource {
 }
 
 export const STUDIO_LIVE_SOURCE = new InjectionToken<StudioLiveSource | undefined>(
-  "STUDIO_LIVE_SOURCE",
+  'STUDIO_LIVE_SOURCE',
 );

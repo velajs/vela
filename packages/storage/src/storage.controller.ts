@@ -5,12 +5,12 @@ import {
   Inject,
   InjectionToken,
   Post,
-  Req,
+  Ctx,
   UnsupportedMediaTypeException,
   type TypedToken,
   type Type,
 } from '@velajs/vela';
-import { readJsonBody } from '@velajs/vela/module-kit';
+import { readJsonBody, SkipGuardPhases } from '@velajs/vela/module-kit';
 import type { Context } from 'hono';
 import { sanitizeKey } from './object-key';
 import { StorageError } from './storage.error';
@@ -85,6 +85,9 @@ export function createStorageController<Options extends StorageControllerOptions
   http: ResolvedHttpOptions,
   optionsToken?: TypedToken<Options>,
 ): Type {
+  // The storage authorizer (`http.authorize`) decides each action, so
+  // application-wide tenant admission and authorization do not apply.
+  @SkipGuardPhases(['tenant', 'authorize'])
   @Controller(basePath)
   class StorageController {
     constructor(
@@ -237,7 +240,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/sign-upload')
-    async signUpload(@Req() c: Context): Promise<Response> {
+    async signUpload(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<SignUploadRequest>(c);
         const ov = await this.authorize(c, {
@@ -270,7 +273,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/multipart/create')
-    async multipartCreate(@Req() c: Context): Promise<Response> {
+    async multipartCreate(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<MultipartCreateRequest>(c);
         const ov = await this.authorize(c, {
@@ -360,7 +363,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/multipart/sign-part')
-    async multipartSignPart(@Req() c: Context): Promise<Response> {
+    async multipartSignPart(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<SignPartRequest>(c);
         const ov = await this.authorize(c, {
@@ -406,7 +409,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/multipart/complete')
-    async multipartComplete(@Req() c: Context): Promise<Response> {
+    async multipartComplete(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<MultipartCompleteRequest>(c);
         const ov = await this.authorize(c, {
@@ -471,7 +474,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/multipart/abort')
-    async multipartAbort(@Req() c: Context): Promise<Response> {
+    async multipartAbort(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<MultipartAbortRequest>(c);
         const ov = await this.authorize(c, {
@@ -496,7 +499,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Get('/list')
-    async list(@Req() c: Context): Promise<Response> {
+    async list(@Ctx() c: Context): Promise<Response> {
       try {
         const prefix = c.req.query('prefix');
         const ov = await this.authorize(c, { type: 'list', prefix });
@@ -529,7 +532,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Get('/head')
-    async head(@Req() c: Context): Promise<Response> {
+    async head(@Ctx() c: Context): Promise<Response> {
       try {
         const key = this.userKey(c.req.query('key') ?? '');
         const ov = await this.authorize(c, { type: 'head', key });
@@ -541,7 +544,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/delete')
-    async delete(@Req() c: Context): Promise<Response> {
+    async delete(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<DeleteRequest>(c);
         const keys = b.keys.map((k) => this.userKey(k));
@@ -556,7 +559,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Get('/download')
-    async download(@Req() c: Context): Promise<Response> {
+    async download(@Ctx() c: Context): Promise<Response> {
       try {
         const key = this.userKey(c.req.query('key') ?? '');
         const disp = c.req.query('disposition');
@@ -600,7 +603,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/sign-download')
-    async signDownload(@Req() c: Context): Promise<Response> {
+    async signDownload(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<{ key: string; expiresIn?: number }>(c);
         const ov = await this.authorize(c, { type: 'download', key: b.key });

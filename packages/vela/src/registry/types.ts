@@ -1,3 +1,4 @@
+import type { VersionValue } from '../http/version';
 import type { Context } from 'hono';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 import type {
@@ -59,7 +60,7 @@ export interface RouteDefinition {
   method: string;
   path: string;
   handlerName: string | symbol;
-  version?: number | number[];
+  version?: VersionValue;
   /** Route name for URL generation / OpenAPI operationId (`@Get(path, { name })`). */
   name?: string;
 }
@@ -82,6 +83,11 @@ export interface HttpHandlerMeta {
   httpCode?: StatusCode;
   responseHeaders?: Array<[string, string]>;
   redirect?: { url: string; statusCode: RedirectStatusCode };
+  /**
+   * Maps the handler's result to its response instead of the default mapper
+   * (`@Sse()`). A failure after the response has started goes to `onStreamError`.
+   */
+  respond?: (c: Context, result: unknown, onStreamError: (error: unknown) => void) => Response;
 }
 
 // Module shapes — canonical home (was duplicated in module/types.ts).

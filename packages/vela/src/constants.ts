@@ -41,6 +41,7 @@ export const ParamType = {
   PARAM: 'param',
   HEADERS: 'headers',
   REQUEST: 'request',
+  CONTEXT: 'context',
   RESPONSE: 'response',
   IP: 'ip',
   COOKIE: 'cookie',

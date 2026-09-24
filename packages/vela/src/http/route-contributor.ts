@@ -1,3 +1,4 @@
+import type { RoutePathOptions } from './route-paths';
 import type { VelaHono as Hono } from './hono.types';
 import type { Container } from '../container/container';
 import type { Type } from '../container/types';
@@ -20,6 +21,8 @@ export interface RouteContributorContext {
   meta: unknown;
   /** Application-wide path prefix (e.g. `/api`), already normalized. */
   globalPrefix: string;
+  /** How controller routes compose (prefix exclusions, URI versioning), for OpenAPI documents. */
+  routePathOptions: RoutePathOptions;
   /** Global guard instances, pre-resolved from the root container. */
   globalGuards: CanActivate[];
   /** Unresolved component registrations, for one invocation-scoped pipeline. */

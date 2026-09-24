@@ -90,6 +90,7 @@
     "@cloudflare/workers-types": "catalog:",
     "@electric-sql/pglite": "^0.5.8",
     "@types/node": "catalog:",
+    "@velajs/testing": "workspace:*",
     "@velajs/vela": "workspace:*",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",

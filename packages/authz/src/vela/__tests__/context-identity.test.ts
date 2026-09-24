@@ -33,7 +33,8 @@ function context(data: Record<string, unknown>, container?: Container): Executio
   return {
     getType: () => 'ws',
     getClass: () => Socket,
-    getHandler: () => 'message',
+    getHandler: () => Socket.prototype.send,
+    getHandlerName: () => 'message',
     getModuleId: () => '__root__',
     getContainer: () => container,
     getContext() {

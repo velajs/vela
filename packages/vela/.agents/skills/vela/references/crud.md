@@ -80,6 +80,31 @@ class AppModule {}
 `crudResourceToken(name)` injects the compiled engine (`resource.execute(verb, req)`)
 for programmatic dispatch. `forRoot` also takes `versioningStore`/`auditStore` defaults.
 
+A headless resource's controller is generated, so declare its route metadata in the
+config: `decorators` apply to the controller class and `endpointDecorators` to each
+endpoint's handler, as if written above them in order (endpoint metadata overrides
+class-level metadata; `@Override`'d endpoints keep it). Use them for authorization
+policy, such as Cedar's default deny:
+
+```ts
+defineCrudFeature({
+  path: '/notes',
+  model: Note,
+  decorators: [RequireResource({ action: 'note:write', resourceType: 'Note' })],
+  endpointDecorators: {
+    list: [CedarPublic()],
+    read: [RequireResource({ action: 'note:read', resourceType: 'Note', idParam: 'id' })],
+  },
+});
+```
+
+A method decorator that changes or returns the descriptor wraps the handler the route
+calls, `@Override` handlers included. Class decorators apply after the generated
+handlers exist, so one that decorates or wraps each method reaches every endpoint.
+Applying last, a class decorator that writes method metadata overrides an
+`endpointDecorators` value for that key, exactly as in hand-written TypeScript; a
+class decorator returning a replacement class is rejected.
+
 Use `defineCrudDatabase(name, { handle, resources })` and the application-owned
 database registry for multiple connections. Select the database explicitly with
 `databaseResource(database, resourceName)` or a configured default. Named

@@ -54,10 +54,21 @@ media type returns 415; size/count violations return 413. See
 HTTP requests run in this order:
 
 1. framework body/query limits and route middleware;
-2. global and route guards;
+2. global guards by phase, then controller and method guards;
 3. parameter extraction and pipes;
 4. interceptors;
 5. the controller handler.
+
+Global guards run in fixed phases whatever order modules register them in:
+`authenticate` → `tenant` → `authorize` → `feature`. A guard declares its phase
+with `static readonly phase`; a guard without one runs in `feature`, and guards
+keep registration order within a phase. Better Auth and Cloudflare Access
+authenticate, `TenantModule` admits the tenant, `AuthzModule` and `CedarModule`
+authorize, and throttling and feature flags run last. Each module installs its
+guard globally by default and accepts `guard: 'none'` to leave it to
+`@UseGuards`. Keep one pipeline's phases either all global or all route-level:
+global guards run before route guards, so a global authorization guard would
+otherwise run before a route-level authentication guard.
 
 Perform authentication and other authority-producing work in middleware or
 guards, then read the
@@ -173,7 +184,8 @@ route served that way answers 500 with the error
 other server error. Mount the Vela app under bases whose parameters match one
 path segment.
 
-Some routes are served outside the global prefix: the `OpenApiModule` document
+Some routes are served outside the global prefix: controller routes that
+`globalPrefixOptions.exclude` leaves unprefixed, the `OpenApiModule` document
 (`path`, `/openapi.json` by default), `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
 (`/rpc`), Cloudflare WebSocket gateway upgrade paths, Studio mounted with
@@ -196,7 +208,12 @@ whatever its constraint, so `forRoutes('users/:id')` reaches
 request's decision.
 A target that reaches no route under the global prefix but matches a route
 served outside it, such as `forRoutes('rpc')` for the `RpcModule` endpoint,
-fails the build and names the `{ path, absolute: true }` form to use.
+fails the build and names the `{ path, absolute: true }` form to use. So does a
+`forRoutes()` target that reaches prefixed routes while its written path also
+matches a route served outside the prefix, such as `forRoutes('admin/*')` with
+`admin/report` excluded from the prefix, unless the same middleware covers that
+route with an absolute target or its controller, or leaves it out with an
+absolute `exclude()`.
 A `forRoutes()` target that reaches no registered route at all is reported
 through the container's diagnostics policy (`'log'` warns, `'throw'` fails
 bootstrap), since the route may still be added to the Hono app later; target
@@ -204,6 +221,34 @@ such a route with `absolute: true` and the path it is served on. The report
 suggests the resolved path, global prefix included, such as
 `{ path: '/api/users/:id', absolute: true }`, so following it never moves the
 middleware off the path the target named.
+
+## Error responses
+
+Every HTTP failure renders through one function, `renderHttpError`, after
+exception filters and the application's `ExceptionHandler.render` hook:
+controller handlers, Vela middleware, the last-resort Hono `onError`, unmatched
+routes (a JSON 404), request limits (413 and 400), RPC and GraphQL. Errors are
+reported before they are rendered, and redaction holds on every edge:
+
+- A string `HttpException` renders `{ error: { code, message, details? } }`.
+  Only a 4xx echoes its message and `details`; a 5xx sends only the status title.
+- An exception may own its response through `toResponse()`. `HttpException`
+  built with an object returns it verbatim (a health check's deliberate 503),
+  and `@velajs/crud` returns its envelope. Errors thrown by raw Hono middleware
+  reach only `onError`, which redacts a 5xx owned body to its status title; RPC
+  frames do the same.
+- Branded `VelaError`s render their code, message and data unless the code is
+  internal; any other error is a redacted 500.
+- A Hono `HTTPException` below 500 renders its message in that body; one built
+  with its own `res`, such as an auth challenge, keeps that response and its
+  headers. From 500 it is redacted like any server fault.
+- Framework rejections (unmatched routes, oversized bodies, query limits) are
+  not reported. As in Nest, global exception filters receive them
+  (`NotFoundException`, `PayloadTooLargeException`, `BadRequestException`), and
+  a filter's plain result keeps their status.
+
+An exception filter's plain result takes the exception's status rather than
+200, and a filter that returns `undefined` leaves the error to the renderer.
 
 ## Browser security
 
@@ -257,17 +302,22 @@ purposes automatically.
 Core does not trust `X-Forwarded-For` or `X-Real-IP`. `@Ip()` returns `null`
 unless `VelaFactory.create({ getClientIp })` or one runtime adapter supplies a
 trusted resolver. Authentication guards can publish a canonical principal and
-verified tenant with `setTrustedRequestIdentity(request, identity)`. When that
-guard runs before `ThrottlerGuard`, default throttling partitions by both values
-before considering any fallback. Better Auth publishes this state automatically
-and uses its verified `activeOrganizationId` when present.
+verified tenant with `setTrustedRequestIdentity(request, identity)`. Global
+authentication runs in the `authenticate` phase, before the `feature`-phase
+`ThrottlerGuard`, so default throttling partitions by both values before
+considering any fallback, whatever the import order. Better Auth publishes this
+state automatically and uses its verified `activeOrganizationId` when present.
+Services read it through `REQUEST_CONTEXT` with the `TRUSTED_REQUEST_IDENTITY`
+key, a read-only view: writing it throws, so `setTrustedRequestIdentity` stays the
+only way to publish identity. The throttling decision is available under
+`RATE_LIMIT`.
 
 Without trusted identity, throttling uses `getTracker(request, context)` and then
 the runtime-attested client address; unknown callers share one fail-closed
 `anonymous` bucket. Cloudflare uses only its platform connection signal. Custom
 tracker callbacks remain security-sensitive and must never read forwarding
-headers. Import/register authentication before `ThrottlerModule` so its global
-guard establishes identity first.
+headers. A custom global authentication guard declares
+`static readonly phase = 'authenticate'` so it establishes identity first.
 
 HTTP and WebSocket `ExecutionContext` expose `getModuleId()` so authorization
 can resolve policy in the declaring module bucket rather than by class name.
@@ -293,10 +343,33 @@ gateway path to Cloudflare broadcast/live helpers.
 
 ## Admitted tenants and authentication payload
 
-Authenticate before running `TenantGuard`, then apply authorization and throttling. Tenant
-admission preserves `CurrentUser`, `CurrentSession`, and `CurrentAccessIdentity` payloads.
-The core identity remains an immutable snapshot; use it (or `CurrentTenant`) for the admitted
-tenant rather than assuming an identity-provider payload contains the selected tenant.
+Global guards authenticate before `TenantGuard` runs in the `tenant` phase, then authorize
+and throttle. The guards `TenantModule` and `CedarModule` install cover every application
+route: a route in a module that does not import them is admitted or authorized through the
+installing module, and `isGlobal` changes nothing. A route without `@RequireResource()` or
+`@CedarPublic()` is denied unless `undeclared: 'allow'` is set. A route-level `TenantGuard`
+or `CedarGuard` in a module that cannot see its module denies. Opt a route out of one phase
+with its marker: `@Public(true)`, `@TenantIgnored()` or `@CedarPublic()`.
+
+An integration package's own controller, which applications cannot annotate, declares the
+phases it enforces itself with `SkipGuardPhases([...])` from `@velajs/vela/module-kit`:
+the global guards integrations install in those phases (`tenant`, `authorize`) do not run
+for its routes. Only a guard that declares `static readonly skippable = true` is skipped,
+as `TenantGuard`, `PermissionGuard`, `RolesGuard` and `CedarGuard` do; other global guards
+run in every phase on these routes, as do authentication, feature and route guards.
+`skippable` belongs to the guard class, whoever registers it: an integration guard the
+application registers itself is skipped, and so is an application guard that extends one,
+unless the subclass declares `static override readonly skippable = false`.
+
+The Better Auth handler and the storage controllers skip both phases; the GraphQL endpoint
+skips `authorize`, because resolvers authorize each field. Generated CRUD controllers are
+application routes: declare their Cedar policy with the resource's `decorators` and
+`endpointDecorators`. The RPC `authorize` policy runs in the `authorize` phase, after
+global authentication and tenant admission. A custom global guard provided by a factory
+runs in the phase its built instance declares. Tenant admission preserves `CurrentUser`,
+`CurrentSession`, and `CurrentAccessIdentity` payloads. The core identity remains an
+immutable snapshot; use it (or `CurrentTenant`) for the admitted tenant rather than
+assuming an identity-provider payload contains the selected tenant.
 
 Custom authentication integrations can keep provider payload in
 `createTrustedRequestIdentityStore<Payload>()`. The store accepts data only after

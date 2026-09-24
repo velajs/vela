@@ -204,7 +204,9 @@ describe('endpoint form contracts', () => {
         new Request('https://example.test/forms', { method: 'POST', body: new FormData() }),
       );
       expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({ message: 'Endpoint input validation failed' });
+      expect(await response.json()).toMatchObject({
+        error: { code: 'bad_request', message: 'Endpoint input validation failed' },
+      });
     } finally {
       await app.close();
     }

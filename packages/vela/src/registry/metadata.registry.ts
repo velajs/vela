@@ -1,3 +1,4 @@
+import type { VersionValue } from '../http/version';
 import type { Scope } from '../constants';
 import type { InjectMetadata } from '../container/types';
 import type {
@@ -18,7 +19,7 @@ import type {
 import { getOrCreate, getOrCreateArray, getOrCreateMap } from './util';
 
 export interface ControllerOptions {
-  version?: number | number[];
+  version?: VersionValue;
 }
 
 interface ComponentByOwner<O> {
@@ -58,7 +59,7 @@ interface RegistryState {
   injectTokens: Map<Constructor, InjectMetadata[]>;
   handlerHttpMeta: Map<Constructor, Map<string | symbol, HttpHandlerMeta>>;
   catchTypes: Map<Constructor, Type<Error>[]>;
-  routeVersions: Map<Constructor, Map<string | symbol, number | number[]>>;
+  routeVersions: Map<Constructor, Map<string | symbol, VersionValue>>;
   classMeta: Map<object, Map<string, unknown>>;
   handlerMeta: Map<object, Map<string | symbol, Map<string, unknown>>>;
   // Reverse indexes: metadata key -> targets carrying it. Backs DiscoveryService
@@ -71,7 +72,14 @@ interface RegistryState {
   // Next default key for Reflector.createDecorator. Never reset: decorators
   // created earlier keep their keys for the lifetime of the process.
   nextDecoratorKey: number;
+  // Handler function -> each (class, method name) it is: the method SetMetadata
+  // decorates and the method each route or message calls, so the Reflector
+  // reads handler metadata from a function target.
+  handlerMethods: WeakMap<object, HandlerMethod[]>;
 }
+
+/** A class and the name of one of its methods. */
+export type HandlerMethod = readonly [Constructor, string | symbol];
 
 function createRegistryState(): RegistryState {
   return {
@@ -99,6 +107,7 @@ function createRegistryState(): RegistryState {
       filter: new Map(),
     },
     nextDecoratorKey: 0,
+    handlerMethods: new WeakMap(),
   };
 }
 
@@ -122,6 +131,7 @@ function registryState(): RegistryState {
   state.classMetaIndex ??= new Map();
   state.handlerMetaIndex ??= new Map();
   state.nextDecoratorKey ??= 0;
+  state.handlerMethods ??= new WeakMap();
   return state;
 }
 
@@ -405,7 +415,7 @@ export class MetadataRegistry {
   static setRouteVersion(
     controller: Constructor,
     method: string | symbol,
-    version: number | number[],
+    version: VersionValue,
   ): void {
     getOrCreateMap(this.routeVersions, controller).set(method, version);
   }
@@ -413,7 +423,7 @@ export class MetadataRegistry {
   static getRouteVersion(
     controller: Constructor,
     method: string | symbol,
-  ): number | number[] | undefined {
+  ): VersionValue | undefined {
     return this.routeVersions.get(controller)?.get(method);
   }
 
@@ -456,6 +466,24 @@ export class MetadataRegistry {
 
   static getCustomHandlerMeta(target: object, handler: string | symbol, key: string): unknown {
     return this.handlerMeta.get(target)?.get(handler)?.get(key);
+  }
+
+  /**
+   * Record that a handler function is the method `name` of `type`, for
+   * function-target metadata reads. `SetMetadata` records the method it
+   * decorates; transports record the method each route or message calls.
+   * A function inherited by several classes is the method of each of them.
+   */
+  static addHandlerMethod(handler: object, type: Constructor, name: string | symbol): void {
+    const state = registryState();
+    const methods = state.handlerMethods.get(handler) ?? [];
+    if (methods.some(([known, method]) => known === type && method === name)) return;
+    state.handlerMethods.set(handler, [...methods, [type, name]]);
+  }
+
+  /** Every (class, method name) a handler function was recorded as. */
+  static getHandlerMethods(handler: object): readonly HandlerMethod[] {
+    return registryState().handlerMethods.get(handler) ?? [];
   }
 
   static getCustomHandlerMetaAll(
@@ -568,6 +596,7 @@ export class MetadataRegistry {
     this.handlerMeta.clear();
     this.classMetaIndex.clear();
     this.handlerMetaIndex.clear();
+    registryState().handlerMethods = new WeakMap();
     for (const type of ['middleware', 'guard', 'pipe', 'interceptor', 'filter'] as const) {
       this.controllerComponents[type].clear();
       this.handlerComponents[type].clear();

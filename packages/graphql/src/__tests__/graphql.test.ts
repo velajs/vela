@@ -5,6 +5,7 @@ import {
   Injectable,
   InjectionToken,
   Module,
+  Reflector,
   Scope,
   UseGuards,
   UsePipes,
@@ -72,6 +73,39 @@ function post(
 }
 
 describe('GraphQL adapter', () => {
+  it('authenticates and admits the tenant on its endpoint but leaves authorization to resolvers', async () => {
+    const ran: string[] = [];
+    const policy = (
+      phase: 'authenticate' | 'tenant' | 'authorize',
+      owner: 'integration' | 'app' = 'integration',
+    ) => ({
+      phase,
+      skippable: owner === 'integration',
+      canActivate() {
+        ran.push(owner === 'app' ? `app ${phase}` : phase);
+        return owner === 'app' || phase !== 'authorize';
+      },
+    });
+    const app = await application({
+      schema: createSchema<GraphqlContext>({
+        typeDefs: 'type Query { value: String! }',
+        resolvers: { Query: { value: () => 'ok' } },
+      }),
+    });
+    // Application-wide guards, as authentication, TenantModule and CedarModule
+    // install, and the application's own authorization guard, which still runs.
+    app.useGlobalGuards(
+      policy('authenticate'),
+      policy('tenant'),
+      policy('authorize'),
+      policy('authorize', 'app'),
+    );
+    const response = await post(app, '{ value }');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: { value: 'ok' } });
+    expect(ran).toEqual(['authenticate', 'tenant', 'app authorize']);
+  });
+
   it('runs asynchronous field pipes once, intercepts invocation and lets filters return field data', async () => {
     const events: string[] = [];
     class Pipe implements PipeTransform {
@@ -193,7 +227,8 @@ describe('GraphQL adapter', () => {
       async canActivate(context: ExecutionContext) {
         expect(Object.isFrozen(context)).toBe(true);
         expect(context.getType()).toBe('graphql');
-        paths.push(context.getHandler().toString());
+        paths.push(String(context.getHandlerName()));
+        expect(context.getHandler()).toBe(Resolver.prototype.value);
         await Promise.resolve();
         return false;
       }
@@ -212,6 +247,45 @@ describe('GraphQL adapter', () => {
     });
     expect(created).toBe(0);
     expect(paths).toEqual(['value', 'value']);
+  });
+
+  it('reads the metadata of a resolver method a later decorator wraps', async () => {
+    const Roles = Reflector.createDecorator<string[]>();
+    const seen: Array<string[] | undefined> = [];
+    class Resolver {
+      value() {
+        return 'visible';
+      }
+    }
+    Injectable()(Resolver);
+    // `@wrap @Roles(['admin']) value()`: the outer decorator replaces the method.
+    const descriptor = Object.getOwnPropertyDescriptor(Resolver.prototype, 'value')!;
+    Roles(['admin'])(Resolver.prototype, 'value', descriptor);
+    const method: unknown = descriptor.value;
+    descriptor.value = function wrapped(this: unknown, ...args: unknown[]): unknown {
+      return typeof method === 'function' ? Reflect.apply(method, this, args) : undefined;
+    };
+    Object.defineProperty(Resolver.prototype, 'value', descriptor);
+    class RolesGuard implements CanActivate {
+      canActivate(context: ExecutionContext) {
+        const roles = new Reflector().get(Roles, context.getHandler());
+        seen.push(roles);
+        // As in Nest's RolesGuard, a field without roles is open; this caller has none.
+        return roles === undefined;
+      }
+    }
+    Injectable()(RolesGuard);
+    UseGuards(RolesGuard)(Resolver.prototype, 'value');
+    const schema = createSchema<GraphqlContext>({
+      typeDefs: 'type Query { value: String }',
+      resolvers: { Query: { value: bindResolver(Resolver, 'value', { args: z.object({}) }) } },
+    });
+    const app = await application({ schema }, [Resolver, RolesGuard]);
+    expect(await (await post(app, '{ value }')).json()).toMatchObject({
+      data: { value: null },
+      errors: [{ extensions: { code: 'FORBIDDEN' } }],
+    });
+    expect(seen).toEqual([['admin']]);
   });
 
   it('deduplicates concurrent schema initialization per application, retries failed construction', async () => {
