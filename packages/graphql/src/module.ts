@@ -9,7 +9,7 @@ import {
   type ModuleImport,
   type VelaContext,
 } from '@velajs/vela';
-import { DiscoveryService } from '@velajs/vela/module-kit';
+import { DiscoveryService, SkipGuardPhases } from '@velajs/vela/module-kit';
 import { assertValidSchema } from 'graphql';
 import { GraphqlOperation } from './operation';
 import type { GraphqlOptions, GraphqlServer } from './types';
@@ -95,6 +95,10 @@ export class GraphqlModule {
     }
     // Explicit tokens keep the package independent of decorator compiler metadata.
     Controller(path)(GraphqlController);
+    // Resolvers authorize each field through their own guards, so route
+    // authorization does not apply to the endpoint; authentication and tenant
+    // admission still establish the request's authority.
+    SkipGuardPhases(['authorize'])(GraphqlController);
     Inject(service)(GraphqlController, undefined, 0);
     All()(
       GraphqlController.prototype,

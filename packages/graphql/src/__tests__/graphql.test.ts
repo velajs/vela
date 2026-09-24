@@ -72,6 +72,29 @@ function post(
 }
 
 describe('GraphQL adapter', () => {
+  it('authenticates and admits the tenant on its endpoint but leaves authorization to resolvers', async () => {
+    const ran: string[] = [];
+    const policy = (phase: 'authenticate' | 'tenant' | 'authorize') => ({
+      phase,
+      canActivate() {
+        ran.push(phase);
+        return phase !== 'authorize';
+      },
+    });
+    const app = await application({
+      schema: createSchema<GraphqlContext>({
+        typeDefs: 'type Query { value: String! }',
+        resolvers: { Query: { value: () => 'ok' } },
+      }),
+    });
+    // Application-wide guards, as authentication, TenantModule and CedarModule install.
+    app.useGlobalGuards(policy('authenticate'), policy('tenant'), policy('authorize'));
+    const response = await post(app, '{ value }');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: { value: 'ok' } });
+    expect(ran).toEqual(['authenticate', 'tenant']);
+  });
+
   it('runs asynchronous field pipes once, intercepts invocation and lets filters return field data', async () => {
     const events: string[] = [];
     class Pipe implements PipeTransform {

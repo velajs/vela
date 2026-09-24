@@ -1,4 +1,5 @@
 import { Controller, Ctx, Get, Inject } from '@velajs/vela';
+import { SkipGuardPhases } from '@velajs/vela/module-kit';
 import { joinStoragePath } from '@velajs/vela/storage';
 import { STORAGE_SIGNED_URL_PURPOSE, verifySignedUrl } from '@velajs/vela/security';
 import type { Context } from 'hono';
@@ -15,6 +16,9 @@ import { decodeStorageKeyClaim, isStorageKeyWithinRoot } from './storage-key-cla
  * opaque base64url query claim. The signature is verified before the claim is
  * decoded exactly once and checked against the configured disk root.
  */
+// The signed URL is the capability, so application-wide tenant admission and
+// authorization do not apply.
+@SkipGuardPhases(['tenant', 'authorize'])
 @Controller('storage')
 export class StorageController {
   constructor(

@@ -10,7 +10,7 @@ import {
   type TypedToken,
   type Type,
 } from '@velajs/vela';
-import { readJsonBody } from '@velajs/vela/module-kit';
+import { readJsonBody, SkipGuardPhases } from '@velajs/vela/module-kit';
 import type { Context } from 'hono';
 import { sanitizeKey } from './object-key';
 import { StorageError } from './storage.error';
@@ -85,6 +85,9 @@ export function createStorageController<Options extends StorageControllerOptions
   http: ResolvedHttpOptions,
   optionsToken?: TypedToken<Options>,
 ): Type {
+  // The storage authorizer (`http.authorize`) decides each action, so
+  // application-wide tenant admission and authorization do not apply.
+  @SkipGuardPhases(['tenant', 'authorize'])
   @Controller(basePath)
   class StorageController {
     constructor(

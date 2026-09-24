@@ -1,4 +1,5 @@
 import { All, Controller, Inject, Req, type Type } from '@velajs/vela';
+import { SkipGuardPhases } from '@velajs/vela/module-kit';
 import { BetterAuthService } from './better-auth.service';
 import { Public } from './decorators/public.decorator';
 import { normalizeBetterAuthBasePath } from './base-path';
@@ -18,7 +19,10 @@ import { normalizeBetterAuthBasePath } from './base-path';
  */
 export function createBetterAuthCatchallController(basePath: string = '/api/auth'): Type {
   const normalizedBasePath = normalizeBetterAuthBasePath(basePath);
+  // Better Auth authenticates its own endpoints; application-wide tenant
+  // admission and authorization do not apply to signing in.
   @Public(true)
+  @SkipGuardPhases(['tenant', 'authorize'])
   @Controller(normalizedBasePath)
   class BetterAuthCatchallController {
     // Inject the service — its `.handler` getter triggers lazy construction
