@@ -132,7 +132,7 @@ describe('AuthGuard', () => {
     @Module({
       imports: [
         BetterAuthModule.forRoot({ auth, issuer: 'accounts.example' }),
-        ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 }),
+        ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] }),
       ],
       controllers: [IdentityThrottleController],
     })

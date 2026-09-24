@@ -19,8 +19,10 @@ claims are signed together.
 which reads the platform `CF-Connecting-IP` signal. `X-Forwarded-For` and
 `X-Real-IP` are not fallbacks. `@Ip()` and Vela's default throttler therefore use
 the same platform trust boundary. The built-in throttler store remains
-per-isolate; globally atomic limits require a Durable Object or Cloudflare rate
-limiting adapter.
+per-isolate; for limits shared across isolates, give `ThrottlerModule` the
+Workers Rate Limiting bindings by name:
+`ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }], storage: rateLimitStore({ binding: 'API_LIMITER' }) })`.
+Each binding's configured `limit` and `period` must equal its throttler's.
 
 `createCloudflareApp({ security })` forwards Vela's body/query policy,
 including narrow streaming route overrides.

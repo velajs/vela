@@ -557,7 +557,7 @@ describe('shared identity enforcement across Access, authz and core', () => {
       }
     }
     @Module({
-      imports: [GlobalAccess, ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 })],
+      imports: [GlobalAccess, ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] })],
       controllers: [LimitedController],
     })
     class App {}

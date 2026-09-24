@@ -63,6 +63,7 @@ export async function verifyPublishedEnvironment(
   const workerOptions: Record<keyof CloudflareWorkerOptions, true> = {
     globalPrefix: true,
     security: true,
+    cors: true,
     adapters: true,
     configure: true,
   };

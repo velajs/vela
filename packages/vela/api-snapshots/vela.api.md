@@ -1913,10 +1913,20 @@ import "<internal:metadata.d.ts>";
 import { a as ExecutionContext, r as CanActivate, tt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { f as RouteManager } from "<internal:types-registry-types.d.ts>";
 import { Qt as ConfigurableModuleClassType, ut as Reflector } from "<internal:index-factory.d.ts>";
+import { i as EnvFactory } from "<internal:binding.d.ts>";
+
+interface ThrottlerOptions {
+
+  name?: string;
+
+  ttl: number;
+
+  limit: number;
+}
 
 interface ThrottleConfig {
-  limit: number;
-  ttl: number;
+  ttl?: number;
+  limit?: number;
 }
 interface ThrottlerStorageRecord {
   count: number;
@@ -1925,26 +1935,28 @@ interface ThrottlerStorageRecord {
   allowed?: boolean;
 
   remaining?: number;
-
-  enforcedLimit?: number;
 }
 interface ThrottlerStore {
-  increment(key: string, ttlMs: number): ThrottlerStorageRecord | Promise<ThrottlerStorageRecord>;
+
+  increment(key: string, ttl: number, limit: number, throttlerName: string): ThrottlerStorageRecord | Promise<ThrottlerStorageRecord>;
   reset(key: string): void | Promise<void>;
+
+  readonly fixedLimits?: boolean;
 }
 interface RateLimitInfo {
   limit: number;
   remaining?: number;
   reset: number;
 }
-interface ThrottlerModuleOptions extends ThrottleConfig {
-  storage?: ThrottlerStore;
+interface ThrottlerModuleOptions {
+
+  throttlers: ThrottlerOptions[];
+
+  storage?: ThrottlerStore | EnvFactory<ThrottlerStore>;
 
   getTracker?: (request: Request, context: ExecutionContext) => string | null | undefined;
-  generateKey?: (tracker: string, context: {
-    className: string;
-    handlerName: string;
-  }) => string;
+
+  generateKey?: (context: ExecutionContext, tracker: string, throttlerName: string) => string;
 }
 
 declare const ConfigurableModuleClass: ConfigurableModuleClassType<ThrottlerModuleOptions, "forRoot", "create", {
@@ -1953,12 +1965,14 @@ declare const ConfigurableModuleClass: ConfigurableModuleClassType<ThrottlerModu
 export declare class ThrottlerModule extends ConfigurableModuleClass {}
 
 export declare class ThrottlerGuard implements CanActivate {
+  #private;
   private options;
   private storage;
   private routeManager;
   private reflector;
   constructor(options: ThrottlerModuleOptions, storage: ThrottlerStore, routeManager: RouteManager, reflector: Reflector);
   canActivate(context: ExecutionContext): Promise<boolean>;
+  private tracker;
 }
 
 export declare class ThrottlerStorage implements ThrottlerStore {
@@ -1971,15 +1985,18 @@ export declare class ThrottlerStorage implements ThrottlerStore {
   private maybeSwap;
 }
 
-export declare const Throttle: (config: ThrottleConfig) => (target: object, propertyKey?: string | symbol) => void;
-export declare const SkipThrottle: () => (target: object, propertyKey?: string | symbol) => void;
+export declare const Throttle: (overrides: Record<string, ThrottleConfig>) => (target: object, propertyKey?: string | symbol) => void;
+
+export declare const SkipThrottle: (skip?: Record<string, boolean>) => (target: object, propertyKey?: string | symbol) => void;
 
 export declare const THROTTLER_OPTIONS: InjectionToken<ThrottlerModuleOptions>;
 export declare const THROTTLER_STORAGE: InjectionToken<ThrottlerStore>;
+
 export declare const THROTTLE_METADATA = "vela:throttle";
+
 export declare const SKIP_THROTTLE_METADATA = "vela:skip-throttle";
 
-export type { RateLimitInfo, ThrottleConfig, ThrottlerModuleOptions, ThrottlerStorageRecord, ThrottlerStore };
+export type { RateLimitInfo, ThrottleConfig, ThrottlerModuleOptions, ThrottlerOptions, ThrottlerStorageRecord, ThrottlerStore };
 ```
 
 ## `./validation`

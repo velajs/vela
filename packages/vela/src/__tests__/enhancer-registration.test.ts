@@ -735,7 +735,7 @@ describe('framework-global providers', () => {
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ limit: 2, ttl: 60_000 })],
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60_000 }] })],
       providers: [ReflectorReader],
       controllers: [LimitedController],
     })

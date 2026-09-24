@@ -420,6 +420,31 @@ fails naming the binding and the Wrangler key that declares it
 The drivers and stores below are built on them, so one static module graph
 serves every environment.
 
+## Rate limiting
+
+`ThrottlerModule` from `@velajs/vela/throttler` counts through Workers Rate
+Limiting bindings named in `rateLimitStore`:
+
+```ts
+import { ThrottlerModule } from '@velajs/vela/throttler';
+import { rateLimitStore } from '@velajs/cloudflare';
+
+ThrottlerModule.forRoot({
+  throttlers: [
+    { name: 'burst', ttl: 10_000, limit: 20 },
+    { name: 'sustained', ttl: 60_000, limit: 100 },
+  ],
+  storage: rateLimitStore({ binding: { burst: 'BURST_LIMITER', sustained: 'API_LIMITER' } }),
+});
+```
+
+`rateLimitStore({ binding: 'API_LIMITER' })` serves every throttler from one
+binding. Each binding's `simple.limit` and `simple.period` in the Wrangler
+`ratelimits` block must equal its throttler's `limit` and `ttl` (10 or 60
+seconds): the platform enforces them, so a `@Throttle()` override that changes
+them fails the request. The platform exposes no counters, so responses carry no
+`X-RateLimit-Remaining`.
+
 ## R2 storage and caches
 
 `StorageModule` from [`@velajs/storage`](../storage/README.md#storage-on-cloudflare-workers)

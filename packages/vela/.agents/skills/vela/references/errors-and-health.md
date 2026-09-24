@@ -63,27 +63,36 @@ class HealthController {
 
 ## Throttling — `ThrottlerModule`
 
-`ThrottlerModule.forRoot({ limit, ttl })` registers a global rate-limit guard (`APP_GUARD`) — importing it throttles all routes:
+Nest v5 named throttlers. `ThrottlerModule.forRoot({ throttlers: [{ name?, ttl, limit }, ...], storage? })` registers a global rate-limit guard (`APP_GUARD`) — importing it throttles all routes, counting every request once per throttler, each in its own bucket:
 
 ```ts
 import { ThrottlerModule, Throttle, SkipThrottle } from '@velajs/vela/throttler';
 
-@Module({ imports: [ThrottlerModule.forRoot({ limit: 100, ttl: 60_000 })] }) // ttl in MILLISECONDS
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      throttlers: [
+        { name: 'short', ttl: 1_000, limit: 3 },    // ttl in MILLISECONDS
+        { name: 'long', ttl: 60_000, limit: 100 },
+      ],
+    }),
+  ],
+})
 class AppModule {}
 
 @Controller('/api')
 class ApiController {
   @Get('/tight')
-  @Throttle({ limit: 1, ttl: 60_000 })   // per-route override (both fields required)
+  @Throttle({ long: { limit: 10 } })        // override one named throttler (ttl/limit optional)
   tight() { return { ok: true }; }
 
-  @Get('/open')
-  @SkipThrottle()                          // exempt this route
-  open() { return { ok: true }; }
+  @Get('/burst-ok')
+  @SkipThrottle({ short: true })           // skip one named throttler
+  burst() { return { ok: true }; }
 }
 ```
 
-`ThrottlerModuleOptions`: `limit`, `ttl` (**milliseconds**), optional `storage`, `getTracker(request)` (application override), `generateKey`. It sets `X-RateLimit-*` headers and throws `TooManyRequestsException` (429) with `Retry-After` when the limit is exceeded. Custom stores implement `ThrottlerStore` (`increment(key, ttlMs)`, `reset(key)`); the default is in-memory.
+A throttler without `name` is `'default'`; `@SkipThrottle()` skips `'default'` only, as in Nest. A route's value for a name overrides its controller's. `@Throttle()` naming an undeclared throttler fails the request. Headers: `X-RateLimit-Limit`, `-Remaining`, `-Reset` and `Retry-After` for `'default'`, suffixed `-<name>` for the others (`X-RateLimit-Limit-short`); the first throttler exceeded answers 429 (`TooManyRequestsException`). `ThrottlerModuleOptions`: `throttlers` (non-empty, unique names, positive integer `ttl`/`limit`), `storage?` (a `ThrottlerStore` or `(env) => ThrottlerStore`; default per-application memory), `getTracker(request, context)` (fallback after trusted identity), `generateKey(context, tracker, throttlerName)`. Custom stores implement `ThrottlerStore` (`increment(key, ttl, limit, throttlerName)`, `reset(key)`, optional `fixedLimits`). On Workers, `storage: rateLimitStore({ binding: 'API_LIMITER' })` (or `{ binding: { short: 'BURST', long: 'API' } }`) from `@velajs/cloudflare` uses Workers Rate Limiting bindings: each binding's `simple.limit`/`period` must equal its throttler's `limit`/`ttl` (10 or 60 s), and since the platform enforces them, a `@Throttle()` override that changes them fails.
 
 ## Caching — `CacheModule`
 

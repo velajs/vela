@@ -3144,7 +3144,7 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ limit: 2, ttl: 60000 })],
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }] })],
       controllers: [ThrottleController],
     })
     class AppModule {}
@@ -3166,7 +3166,7 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ limit: 5, ttl: 60000 })],
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 5, ttl: 60000 }] })],
       controllers: [ThrottleHdrsController],
     })
     class AppModule {}
@@ -3192,7 +3192,7 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60000 })],
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60000 }] })],
       controllers: [SkipController],
     })
     class AppModule {}
@@ -3216,14 +3216,14 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
       }
 
       @Get('/tight')
-      @Throttle({ limit: 1, ttl: 60000 })
+      @Throttle({ default: { limit: 1, ttl: 60000 } })
       tightRoute() {
         return {};
       }
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ limit: 10, ttl: 60000 })],
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 10, ttl: 60000 }] })],
       controllers: [OverrideController],
     })
     class AppModule {}

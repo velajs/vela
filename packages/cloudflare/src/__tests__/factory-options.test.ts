@@ -157,7 +157,7 @@ describe('createCloudflareApp options', () => {
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 })],
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] })],
       controllers: [LimitedController],
     })
     class AppModule {}

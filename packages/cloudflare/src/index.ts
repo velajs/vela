@@ -73,12 +73,9 @@ export type { CfLiveDriver, DurableObjectLiveOptions, LiveNamespace } from './we
 // Types
 export type { QueueConsumerMetadata } from './decorators/queue-consumer';
 
-// Distributed abuse control (Cloudflare Workers Rate Limiting binding)
-export { cloudflareRateLimitStore } from './rate-limit/index';
-export type {
-  CloudflareRateLimitBinding,
-  CloudflareRateLimitStoreOptions,
-} from './rate-limit/index';
+// ThrottlerModule storage over Workers Rate Limiting bindings, by name
+export { rateLimitStore } from './rate-limit/index';
+export type { RateLimitStoreOptions } from './rate-limit/index';
 
 // Strict global single-use nonces (SQLite Durable Object)
 export { durableObjectNonceStore } from './nonce/index';
