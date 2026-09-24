@@ -188,7 +188,10 @@ describe('FeatureFlagGuard (integration)', () => {
     const asyncRef = await Test.createTestingModule({
       controllers: [UngatedController],
       imports: [
-        FeatureFlagsModule.forRootAsync({ guard: 'none', useFactory: () => ({ drivers: [driver] }) }),
+        FeatureFlagsModule.forRootAsync({
+          guard: 'none',
+          useFactory: () => ({ drivers: [driver] }),
+        }),
       ],
     }).compile();
     const asyncApp = await asyncRef.createApplication();
@@ -201,7 +204,9 @@ describe('FeatureFlagGuard (integration)', () => {
     // As an untyped caller would pass the previous boolean option.
     for (const guard of [true, false, 'app']) {
       expect(() =>
-        Reflect.apply(FeatureFlagsModule.forRoot, FeatureFlagsModule, [{ drivers: [driver], guard }]),
+        Reflect.apply(FeatureFlagsModule.forRoot, FeatureFlagsModule, [
+          { drivers: [driver], guard },
+        ]),
       ).toThrow("FeatureFlagsModule guard must be 'global' or 'none'");
     }
   });

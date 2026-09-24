@@ -144,7 +144,11 @@ describe('AuthzModule global guards', () => {
     }
     class PublicNotes extends Notes {}
     Controller('/notes')(PublicNotes);
-    Get()(PublicNotes.prototype, 'review', Object.getOwnPropertyDescriptor(Notes.prototype, 'review')!);
+    Get()(
+      PublicNotes.prototype,
+      'review',
+      Object.getOwnPropertyDescriptor(Notes.prototype, 'review')!,
+    );
 
     class App {}
     Module({

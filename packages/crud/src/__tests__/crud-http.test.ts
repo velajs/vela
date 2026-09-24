@@ -762,7 +762,9 @@ describe('CrudModule', () => {
         class Feature {}
         return Feature;
       });
-      @Module({ imports: [CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }), ...imports] })
+      @Module({
+        imports: [CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }), ...imports],
+      })
       class AppModule {}
       return VelaFactory.create(AppModule);
     };
