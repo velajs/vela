@@ -402,6 +402,45 @@ describe('WsDispatcher', () => {
     expect(guardedModuleId).toBe(app.get(Container).getOwnerModuleIds(GuardedGateway)[0]);
   });
 
+  it('runs the class-level guards an ancestor of the gateway declares', async () => {
+    let checked = 0;
+    // Not provided anywhere: the module loader registers the guard the gateway inherits.
+    @Injectable()
+    class DenyGuard implements CanActivate {
+      canActivate(): boolean {
+        checked++;
+        return false;
+      }
+    }
+
+    @UseGuards(DenyGuard)
+    abstract class LockedGateway {}
+
+    @WebSocketGateway({ path: '/locked' })
+    class ReportsGateway extends LockedGateway {
+      @SubscribeMessage('secret')
+      onSecret() {
+        return { event: 'secret', data: 'leaked' };
+      }
+    }
+
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [ReportsGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const client = new FakeClient();
+      await app.get(WsDispatcher).dispatchMessage('/locked', client, frame('secret', {}, '8'));
+
+      expect(checked).toBe(1);
+      expect(client.sent).toEqual([
+        { event: 'exception', data: { message: 'Forbidden' }, id: '8' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('reuses the interceptor onion chain', async () => {
     @Injectable()
     class WrapInterceptor implements NestInterceptor {

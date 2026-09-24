@@ -234,6 +234,68 @@ describe('@LiveInvalidates', () => {
     }
   });
 
+  it('applies an ancestor declaration to the inherited method a controller routes', async () => {
+    class NotesBase {
+      @LiveInvalidates(['notes'])
+      create(): { id: string } {
+        return { id: 'n1' };
+      }
+    }
+    const inherited = Object.getOwnPropertyDescriptor(NotesBase.prototype, 'create')!;
+    @Controller('/notes')
+    class NotesController extends NotesBase {}
+    Post()(NotesController.prototype, 'create', inherited);
+
+    const reports: Array<{ error: unknown; context: ErrorReportContext }> = [];
+    const makeNotesApp = async (driver: LiveDriver) => {
+      @Module({
+        imports: [WebSocketModule.forRoot(), LiveModule.forRoot({ driver: () => driver })],
+        controllers: [NotesController],
+        providers: [
+          defineProvider(APP_EXCEPTION_HANDLER, {
+            useValue: {
+              report(error: unknown, context: ErrorReportContext) {
+                reports.push({ error, context });
+              },
+            },
+          }),
+        ],
+      })
+      class AppModule {}
+      return VelaFactory.create(AppModule);
+    };
+
+    const recording = new RecordingDriver();
+    const app = await makeNotesApp(recording);
+    try {
+      const response = await app.fetch(request('POST', '/notes'));
+      expect(await response.json()).toEqual({ id: 'n1' });
+      expect(recording.commands).toEqual([{ tags: ['notes'] }]);
+      expect(response.headers.get(COMMIT_CURSOR_HEADER)).toBe('1');
+    } finally {
+      await app.close();
+    }
+
+    // A failed invalidation of the inherited declaration is reported as the
+    // controller serves it, and the committed result still answers.
+    const failing = new FailingDriver();
+    const failingApp = await makeNotesApp(failing);
+    try {
+      const response = await failingApp.fetch(request('POST', '/notes'));
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toEqual({ id: 'n1' });
+      expect(response.headers.get(COMMIT_CURSOR_HEADER)).toBeNull();
+      expect(reports).toEqual([
+        {
+          error: failing.failure,
+          context: expect.objectContaining({ edge: 'live', source: 'NotesController.create' }),
+        },
+      ]);
+    } finally {
+      await failingApp.close();
+    }
+  });
+
   it('fails before the handler runs when the declaring module cannot reach LiveModule', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     let created = 0;
