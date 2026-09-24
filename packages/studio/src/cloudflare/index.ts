@@ -1,10 +1,5 @@
 import { defineProvider } from '@velajs/vela';
-import {
-  Container,
-  readEnv,
-  resolveBinding,
-  type BindingKind,
-} from '@velajs/vela/module-kit';
+import { Container, readEnv, resolveBinding, type BindingKind } from '@velajs/vela/module-kit';
 /**
  * `@velajs/studio/cloudflare` — the CF-NATIVE time-travel tier: a
  * {@link CloudflareDoTimeTravelPort} that binds `TIME_TRAVEL_PORT` to a SQLite
@@ -295,7 +290,9 @@ export interface CloudflareTimeTravelPanelOptions {
 export function cloudflareTimeTravelPanel(options: CloudflareTimeTravelPanelOptions): StudioPlugin {
   const { binding, shardKey } = options;
   if (typeof binding !== 'string' || binding.length === 0) {
-    throw new TypeError('cloudflareTimeTravelPanel needs the { binding } of its Durable Object namespace.');
+    throw new TypeError(
+      'cloudflareTimeTravelPanel needs the { binding } of its Durable Object namespace.',
+    );
   }
   return defineStudioPlugin({
     name: 'cloudflare-time-travel',

@@ -331,7 +331,10 @@ describe('ThrottlerModule', () => {
 
     @Module({
       imports: [
-        ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }], getTracker: (req) => req.headers.get('x-api-key') ?? 'no-key' }),
+        ThrottlerModule.forRoot({
+          throttlers: [{ limit: 2, ttl: 60000 }],
+          getTracker: (req) => req.headers.get('x-api-key') ?? 'no-key',
+        }),
       ],
       controllers: [TestController],
     })
@@ -394,7 +397,10 @@ describe('ThrottlerModule', () => {
     @Module({
       imports: [
         IdentityModule,
-        ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60000 }], getTracker: () => 'collapsed-custom-fallback' }),
+        ThrottlerModule.forRoot({
+          throttlers: [{ limit: 1, ttl: 60000 }],
+          getTracker: () => 'collapsed-custom-fallback',
+        }),
       ],
       controllers: [TestController],
     })
@@ -496,7 +502,9 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }], storage: customStore })],
+      imports: [
+        ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }], storage: customStore }),
+      ],
       controllers: [TestController],
     })
     class AppModule {}
@@ -610,12 +618,12 @@ describe('named throttlers (Nest v5)', () => {
     // One bucket per throttler: the names never share a counter.
     expect(keys.size).toBe(2);
     // The blocked request stopped at 'short', so 'long' counted only the two that passed.
-    expect(calls.filter(({ name }) => name === 'long').map(({ ttl, limit }) => [ttl, limit])).toEqual(
-      [
-        [60_000, 3],
-        [60_000, 3],
-      ],
-    );
+    expect(
+      calls.filter(({ name }) => name === 'long').map(({ ttl, limit }) => [ttl, limit]),
+    ).toEqual([
+      [60_000, 3],
+      [60_000, 3],
+    ]);
   });
 
   it('overrides and skips throttlers by name with @Throttle and @SkipThrottle', async () => {
@@ -723,7 +731,9 @@ describe('named throttlers (Nest v5)', () => {
       }
     }
     @Module({
-      imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }], storage: store })],
+      imports: [
+        ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }], storage: store }),
+      ],
       controllers: [Fixed],
     })
     class App {}

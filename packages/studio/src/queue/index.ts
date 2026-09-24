@@ -33,7 +33,6 @@ import type { AdminOpContext } from '../studio.types';
 import { studioError } from '../studio.errors';
 import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 
-
 /**
  * The job name `queue.send` enqueues under. The frozen `queue.send` op carries
  * only `{ queue, payload }` (no job name), so the payload is delivered under

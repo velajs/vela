@@ -39,7 +39,6 @@ import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
 import { studioError, studioNotFound } from '../studio.errors';
 
-
 @Injectable()
 export class StudioScheduleOps implements BeforeApplicationShutdown {
   /** Runs in progress; shutdown aborts their signals and waits for them. */

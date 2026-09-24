@@ -44,7 +44,9 @@ describe('Cloudflare binding factories', () => {
   });
 
   it('reject a binding of another kind', () => {
-    expect(() => kv({ binding: 'DB' })(natives)).toThrow('ENV.DB is not a binding of type KV namespace');
+    expect(() => kv({ binding: 'DB' })(natives)).toThrow(
+      'ENV.DB is not a binding of type KV namespace',
+    );
     expect(() => r2({ binding: 'CACHE' })(natives)).toThrow('is not a binding of type R2 bucket');
     expect(() => rateLimit({ binding: 'JOBS' })(natives)).toThrow(
       'is not a binding of type rate limiter',

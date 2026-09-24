@@ -36,7 +36,6 @@ import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
 import { studioError } from '../studio.errors';
 
-
 @Injectable()
 export class StudioFlagsOps {
   constructor(@Inject(Container) private readonly container: Container) {}

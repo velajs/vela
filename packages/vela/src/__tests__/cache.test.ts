@@ -462,9 +462,7 @@ describe('response cache pipeline', () => {
     }
     const store = new AsyncStore();
     @Module({
-      imports: [
-        CacheModule.forRoot({ namespace: 'metadata', store, scope: () => publicScope }),
-      ],
+      imports: [CacheModule.forRoot({ namespace: 'metadata', store, scope: () => publicScope })],
       controllers: [Routes],
     })
     class App {}
@@ -530,9 +528,7 @@ describe('response cache pipeline', () => {
       ],
     })
     class KeyedDuplicates {}
-    await expect(VelaFactory.create(KeyedDuplicates)).rejects.toThrow(
-      'only one CacheModule',
-    );
+    await expect(VelaFactory.create(KeyedDuplicates)).rejects.toThrow('only one CacheModule');
   });
 
   it('bypasses public caching for trusted identities without credential headers', async () => {
@@ -622,9 +618,7 @@ describe('one CacheModule', () => {
     // Another application never sees the first one's entries.
     expect(await read(second)).toEqual({ calls: 1 });
     expect(first.get(CacheService).options.store).toBeInstanceOf(MemoryCacheStore);
-    expect(first.get(CacheService).options.store).not.toBe(
-      second.get(CacheService).options.store,
-    );
+    expect(first.get(CacheService).options.store).not.toBe(second.get(CacheService).options.store);
     await Promise.all([first.close(), second.close()]);
   });
 

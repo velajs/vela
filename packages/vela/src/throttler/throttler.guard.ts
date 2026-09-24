@@ -38,7 +38,9 @@ function positive(value: number, label: string): number {
 }
 
 /** Validate the declared throttlers once, when the guard is constructed. */
-function declareThrottlers(throttlers: readonly ThrottlerOptions[] | undefined): DeclaredThrottler[] {
+function declareThrottlers(
+  throttlers: readonly ThrottlerOptions[] | undefined,
+): DeclaredThrottler[] {
   if (!Array.isArray(throttlers) || throttlers.length === 0) {
     throw new TypeError(
       'ThrottlerModule needs at least one throttler: forRoot({ throttlers: [{ ttl, limit }] }).',
@@ -96,7 +98,8 @@ export class ThrottlerGuard implements CanActivate {
     // Skipping a throttler this application does not declare is a no-op, as
     // in Nest: `@SkipThrottle()` names 'default' whatever the declarations.
     const active = this.#throttlers.filter(
-      ({ name }) => this.reflector.getAllAndOverride<boolean>(skipThrottleMetadataKey(name), context) !== true,
+      ({ name }) =>
+        this.reflector.getAllAndOverride<boolean>(skipThrottleMetadataKey(name), context) !== true,
     );
     if (active.length === 0) return true;
 

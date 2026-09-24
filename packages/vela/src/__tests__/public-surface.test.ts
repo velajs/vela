@@ -235,11 +235,7 @@ describe('public surface tiers', () => {
   });
 
   it('installs the Reflect polyfill from every entry that ships decorated classes', () => {
-    const withoutDecorators = new Set([
-      './observability',
-      './streaming',
-      './websocket-node',
-    ]);
+    const withoutDecorators = new Set(['./observability', './streaming', './websocket-node']);
     const missing = Object.entries(manifest.exports)
       .filter(([subpath]) => !withoutDecorators.has(subpath))
       .filter(

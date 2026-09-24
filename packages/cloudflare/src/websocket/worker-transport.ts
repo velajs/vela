@@ -69,7 +69,9 @@ async function forwardToRoom(
   request: Request,
 ): Promise<Response> {
   const namespace = resolveBinding(env, { binding }, DURABLE_OBJECT_NAMESPACE);
-  const stub: unknown = namespace.get(namespace.idFromName(durableObjectRoomName(gatewayPath, room)));
+  const stub: unknown = namespace.get(
+    namespace.idFromName(durableObjectRoomName(gatewayPath, room)),
+  );
   if (typeof stub !== 'object' || stub === null) throw new Error('Invalid Durable Object stub');
   const fetch: unknown = Reflect.get(stub, 'fetch');
   if (typeof fetch !== 'function') throw new Error('Durable Object stub has no fetch operation');

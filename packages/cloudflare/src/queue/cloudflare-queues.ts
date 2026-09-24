@@ -110,7 +110,6 @@ function delaySeconds(options: AddJobOptions | undefined): number | undefined {
   return Math.ceil(delayMs / 1000);
 }
 
-
 function nativeBatch(payload: unknown): { queue: string; messages: QueueMessageLike[] } {
   if (
     typeof payload !== 'object' ||

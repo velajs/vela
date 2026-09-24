@@ -27,7 +27,11 @@ const options: CacheModuleOptions = {
 CacheModule.forRoot(options);
 // The store defaults to memory; a function of ENV builds one per application.
 CacheModule.forRoot({ namespace: 'types', scope: () => undefined });
-CacheModule.forRoot({ namespace: 'types', scope: () => undefined, store: (_env: VelaEnv) => memory });
+CacheModule.forRoot({
+  namespace: 'types',
+  scope: () => undefined,
+  store: (_env: VelaEnv) => memory,
+});
 CacheModule.forRootAsync({ useFactory: async () => options });
 CacheModule.forRootAsync({ inject: [ENV], useFactory: (_env: VelaEnv) => options });
 const cache = new CacheService(options).scope({

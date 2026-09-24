@@ -27,12 +27,18 @@ export interface CorsOptions {
 /** Validate CORS options and build the middleware that serves them. */
 export function corsMiddleware(options: CorsOptions): MiddlewareHandler {
   const origin = options.origin ?? '*';
-  if (options.credentials === true && (origin === '*' || (Array.isArray(origin) && origin.includes('*')))) {
+  if (
+    options.credentials === true &&
+    (origin === '*' || (Array.isArray(origin) && origin.includes('*')))
+  ) {
     throw new TypeError(
       "CORS credentials need explicit origins: browsers refuse a credentialed '*' origin.",
     );
   }
-  if (options.maxAge !== undefined && (!Number.isSafeInteger(options.maxAge) || options.maxAge < 0)) {
+  if (
+    options.maxAge !== undefined &&
+    (!Number.isSafeInteger(options.maxAge) || options.maxAge < 0)
+  ) {
     throw new TypeError('CORS maxAge must be a non-negative integer of seconds.');
   }
   return cors({

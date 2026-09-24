@@ -59,7 +59,6 @@ import { studioError, studioNotFound } from '../studio.errors';
 import { STUDIO_AUTH_SOURCE } from './auth.port';
 import type { StudioAuthCapabilities, StudioAuthSource } from './auth.port';
 
-
 export { STUDIO_AUTH_SOURCE } from './auth.port';
 export type { StudioAuthCapabilities, StudioAuthSource } from './auth.port';
 
@@ -315,4 +314,3 @@ export function authPanel(): StudioPlugin {
     ],
   });
 }
-

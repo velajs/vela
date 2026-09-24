@@ -142,8 +142,7 @@ describe('kvCache({ binding }) and kvCacheInvalidation({ binding })', () => {
     const envB = { CACHE: b.values.service, GENERATIONS: b.generations.service };
     const first = await createCloudflareApp(App, { env: envA });
     const second = await createCloudflareApp(App, { env: envB });
-    const read = async () =>
-      (await first.fetch(new Request('https://app.test/kv'), envA)).json();
+    const read = async () => (await first.fetch(new Request('https://app.test/kv'), envA)).json();
     expect(await read()).toEqual({ calls: 1 });
     expect(await read()).toEqual({ calls: 1 });
     expect(a.values.store.size).toBe(1);
