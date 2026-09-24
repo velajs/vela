@@ -123,8 +123,8 @@ export interface StudioModelSource {
 }
 
 /**
- * DI token the data ops resolve their source from. Bound by `StudioCrudModule`
- * (crud subpath) or by a BYO source module. Unbound ⇒ the `data` feature reads
+ * DI token the data ops resolve their source from. Bound by `crudPanel()`
+ * (crud subpath) or by a BYO source panel. Unbound ⇒ the `data` feature reads
  * false and every `data.*` op reports `FEATURE_UNCONFIGURED`.
  */
 export const STUDIO_MODEL_SOURCE = new InjectionToken<StudioModelSource>('STUDIO_MODEL_SOURCE');

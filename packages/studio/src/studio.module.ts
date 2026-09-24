@@ -94,12 +94,12 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
       StudioCapabilitiesOps,
       // Data-browser READ ops. Registered unconditionally (stable wire surface);
       // each reports FEATURE_UNCONFIGURED until a STUDIO_MODEL_SOURCE is bound
-      // (the `@velajs/studio/crud` subpath's StudioCrudModule, or a BYO source).
+      // (the `@velajs/studio/crud` subpath's crudPanel(), or a BYO source).
       StudioDataOps,
       // Time-travel ops. Registered unconditionally (stable wire surface); each
       // reports TIMETRAVEL_UNAVAILABLE until a TIME_TRAVEL_PORT is bound (the
-      // opt-in `@velajs/studio/timetravel` StudioTimeTravelModule, or a CF-DO
-      // PITR module in M11).
+      // `@velajs/studio/timetravel` timeTravelPanel(), or the Durable Object
+      // PITR cloudflareTimeTravelPanel()).
       StudioTimeTravelOps,
       // Auth panel ops (M9). Registered unconditionally against STUDIO_AUTH_SOURCE
       // (the port); each reports FEATURE_UNCONFIGURED until the

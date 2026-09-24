@@ -917,8 +917,8 @@ function inferChangeKind(hasAfter: boolean, hasBefore: boolean): StudioChangeKin
  * A {@link ChangeSource} over a crud {@link AuditStore} (`@velajs/crud/audit`) —
  * the zero-seam CDC path: it READS the audit log's `query()` change history
  * (before/after/timestamp per row) rather than adding a `changeFeed` capability
- * to crud. Bind it to the time-travel module (`StudioTimeTravelModule.forRoot({
- * changeSource })`) to enable `snapshot+cdc` restore-to-a-time.
+ * to crud. Pass it to the time-travel panel (`timeTravelPanel({ changeSource })`)
+ * to enable `snapshot+cdc` restore-to-a-time.
  *
  * The app supplies its OWN `AuditStore` instance — the wired default store sits
  * behind an internal crud token, so there is no public accessor for it (M8a
