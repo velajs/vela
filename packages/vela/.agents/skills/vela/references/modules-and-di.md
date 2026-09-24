@@ -123,7 +123,7 @@ Every first-party configurable module exposes `forRoot(options)` (sync) and `for
 ```ts
 @Module({
   imports: [
-    CacheModule.forRoot({ ttl: 60 }),
+    CacheModule.forRoot({ namespace: 'catalog-v1', scope: trustedCacheScope, ttl: 60 }),
     ConfigModule.forRootAsync({
       inject: [SecretLoader],
       useFactory: async (loader: SecretLoader) => ({ config: await loader.load() }),
@@ -139,7 +139,7 @@ Every first-party configurable module exposes `forRoot(options)` (sync) and `for
 class AppModule {}
 ```
 
-The instance key comes from the structural options only, so most modules have one instance per class: the same configuration imported twice deduplicates, while a second configuration under the same key fails bootstrap in every diagnostics mode, even when its `isGlobal` differs too. A repeat with the same options and only another `isGlobal` is reported (`'log'` warns, `'throw'` fails bootstrap) and the first is kept. An extra at its default, a structural option at the module's default (`globalGuard: true`) or an option passed as `undefined` (at any depth) counts as not given. A bare class import configures nothing: a configured import under its key (`HttpModule.forRoot({ key: 'default', baseURL })` next to `HttpModule`) fails bootstrap in either order. Give a second instance its own `key` (`MailModule.forRoot({ ..., key: 'marketing' })`). `key`, `lazy` and `isGlobal` never change the key or reach the options token. `isGlobal` only makes exports visible everywhere; options that register app-wide components are named for them (`CacheModule`'s `globalInterceptor`, `BetterAuthModule`'s and `FeatureFlagsModule`'s `globalGuard`).
+The instance key comes from the structural options only, so most modules have one instance per class: the same configuration imported twice deduplicates, while a second configuration under the same key fails bootstrap in every diagnostics mode, even when its `isGlobal` differs too. A repeat with the same options and only another `isGlobal` is reported (`'log'` warns, `'throw'` fails bootstrap) and the first is kept. An extra at its default, a structural option at the module's default (`globalGuard: true`) or an option passed as `undefined` (at any depth) counts as not given. A bare class import configures nothing: a configured import under its key (`HttpModule.forRoot({ key: 'default', baseURL })` next to `HttpModule`) fails bootstrap in either order. Give a second instance its own `key` (`MailModule.forRoot({ ..., key: 'marketing' })`). `key`, `lazy` and `isGlobal` never change the key or reach the options token. `isGlobal` only makes exports visible everywhere; options that register app-wide components are named for them (`BetterAuthModule`'s and `FeatureFlagsModule`'s `globalGuard`).
 
 ## Authoring a configurable module — `defineModule`
 

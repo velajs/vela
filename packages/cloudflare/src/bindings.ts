@@ -11,7 +11,7 @@ function hasOperations(value: unknown, operations: readonly string[]): boolean {
  * declared in the Wrangler configuration, and returns a reference that reads
  * and validates the native binding from an application's `ENV` when called.
  * Declaring one reads no environment, so references belong in static module
- * options: `CacheModule.forRoot({ store: kvCache({ binding: 'CACHE' }) })`.
+ * options: `CacheModule.forRoot({ namespace, scope, store: kvCache({ binding: 'CACHE' }) })`.
  */
 
 /** A KV namespace declared under `kv_namespaces`. */

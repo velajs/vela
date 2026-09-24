@@ -101,7 +101,7 @@ Each name has exactly one import path.
 | `@velajs/vela/openapi` | `OpenApiModule`, `@Endpoint`/`defineEndpoint`, `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`/`@ApiExclude` |
 | `@velajs/vela/security` | `SecurityModule`, `Secret`, signed-URL primitives, the nonce store |
 | `@velajs/vela/dispatch` | Signed internal dispatch (`InternalDispatcher`, `@SignedInvocation`) |
-| `@velajs/vela/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/storage`, `/streaming`, `/observability` | Validation and the other feature subsystems |
+| `@velajs/vela/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/streaming`, `/observability` | Validation and the other feature subsystems; file storage is [`@velajs/storage`](https://github.com/velajs/vela/tree/main/packages/storage) |
 | `@velajs/vela/schedule-node`, `/websocket-node` | Node/Bun adapters |
 | `@velajs/vela/internal` | Bootstrap plumbing for first-party tooling such as `@velajs/testing` |
 
