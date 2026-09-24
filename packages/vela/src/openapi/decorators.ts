@@ -6,6 +6,44 @@ import type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions } from './typ
 export const API_DOC_METADATA = 'vela:openapi:doc';
 export const API_TAGS_METADATA = 'vela:openapi:tags';
 export const API_RESPONSES_METADATA = 'vela:openapi:responses';
+export const API_EXCLUDE_METADATA = 'vela:openapi:exclude';
+
+/**
+ * Leave a controller, or one handler, out of the OpenAPI document (and the
+ * generated client). The routes are still served.
+ *
+ * ```ts
+ * @ApiExclude()
+ * @Controller('/internal')
+ * class InternalController {}
+ * ```
+ */
+export function ApiExclude(): MethodDecorator & ClassDecorator {
+  return (target: object, propertyKey?: string | symbol) => {
+    if (propertyKey !== undefined) {
+      MetadataRegistry.setCustomHandlerMeta(
+        target.constructor,
+        propertyKey,
+        API_EXCLUDE_METADATA,
+        true,
+      );
+    } else {
+      MetadataRegistry.setCustomClassMeta(target, API_EXCLUDE_METADATA, true);
+    }
+  };
+}
+
+/**
+ * Whether `@ApiExclude()` leaves this controller out of the document, or,
+ * with a handler name, this handler (directly or through its controller).
+ */
+export function isApiExcluded(target: object, propertyKey?: string | symbol): boolean {
+  if (MetadataRegistry.getCustomClassMeta(target, API_EXCLUDE_METADATA) === true) return true;
+  return (
+    propertyKey !== undefined &&
+    MetadataRegistry.getCustomHandlerMeta(target, propertyKey, API_EXCLUDE_METADATA) === true
+  );
+}
 
 /**
  * Attach OpenAPI documentation to a route handler (or controller).

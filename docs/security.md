@@ -173,7 +173,8 @@ route served that way answers 500 with the error
 other server error. Mount the Vela app under bases whose parameters match one
 path segment.
 
-Some routes are served outside the global prefix: `mountOpenApi()` documents
+Some routes are served outside the global prefix: the `OpenApiModule` document
+(`path`, `/openapi.json` by default), `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
 (`/rpc`), Cloudflare WebSocket gateway upgrade paths, Studio mounted with
 `absolute: true`, and routes added to the Hono app directly. Target them with

@@ -1,7 +1,7 @@
 import { InjectionToken } from '../container/types';
 import type { WebSocketModuleOptions } from './websocket.module';
 import type { RoomRegistry, SyncDriver } from './ws-sync';
-import type { WsServer } from './websocket.types';
+import type { WebSocketTransport, WsServer } from './websocket.types';
 
 // Free-form metadata keys — same string-token convention as ON_EVENT_METADATA / CRON_METADATA.
 export const WS_GATEWAY_METADATA = 'vela:ws-gateway';
@@ -38,6 +38,13 @@ export const WS_SYNC_DRIVER = /* @__PURE__ */ new InjectionToken<SyncDriver>('WS
 export const WS_ROOM_REGISTRY = /* @__PURE__ */ new InjectionToken<RoomRegistry>(
   'WS_ROOM_REGISTRY',
 );
+
+/**
+ * The platform's WebSocket wiring (global, optional): which server gateways
+ * inject and, for a forwarding platform, where each upgrade goes. A runtime
+ * adapter registers it before modules load; `WebSocketModule` reads it.
+ */
+export const WS_TRANSPORT = /* @__PURE__ */ new InjectionToken<WebSocketTransport>('WS_TRANSPORT');
 
 // forRoot() options carrier — a typed InjectionToken like every other module
 // options token (the raw-string form was the odd one out).

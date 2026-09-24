@@ -1,9 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import type { VelaMiddlewareHandler } from '@velajs/vela';
-import { Controller, Get, Ip, Module, VelaFactory } from '@velajs/vela';
+import type { ExecutionContext } from 'hono';
+import { Controller, Get, Ip, Module, VelaFactory, type VelaEnv } from '@velajs/vela';
 import { ThrottlerModule } from '@velajs/vela/throttler';
-import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
+import {
+  cloudflareAdapter,
+  createCloudflareApp,
+  createCloudflareWorker,
+} from '../cloudflare-factory';
 const env = {};
+const httpContext: ExecutionContext = {
+  waitUntil() {},
+  passThroughOnException() {},
+  props: {},
+};
 
 describe('createCloudflareApp options', () => {
   it('forwards globalPrefix to VelaFactory.create', async () => {
@@ -31,12 +40,7 @@ describe('createCloudflareApp options', () => {
     expect(unprefixed.status).toBe(404);
   });
 
-  it('runs caller-supplied middleware on every request', async () => {
-    const markerMw: VelaMiddlewareHandler = async (c, next) => {
-      c.set('marker', 'ran');
-      await next();
-    };
-
+  it("finishes each environment's HTTP surface once, before concurrent cold events see it", async () => {
     @Controller('/marker')
     class MarkerController {
       @Get()
@@ -44,28 +48,68 @@ describe('createCloudflareApp options', () => {
         return { ok: true };
       }
     }
-
     @Module({ controllers: [MarkerController] })
     class AppModule {}
 
-    let observedMarker: unknown;
-    const observerMw: VelaMiddlewareHandler = async (c, next) => {
-      observedMarker = c.get('marker');
-      await next();
-    };
-
-    const app = await createCloudflareApp(AppModule, {
-      env,
-      middleware: (bindings) => {
-        expect(bindings).toBe(env);
-        return [markerMw, observerMw];
+    const configured: Array<{ env: VelaEnv; built: boolean }> = [];
+    const worker = createCloudflareWorker(AppModule, {
+      configure(app, bindings) {
+        const hono = app.getHonoApp();
+        configured.push({
+          env: bindings,
+          built: hono.routes.some((route) => route.path === '/marker'),
+        });
+        hono.get('/configured', (c) => c.text('configured'));
       },
     });
-    const hono = app.getHonoApp();
+    const first = {};
+    const second = {};
+    const responses = await Promise.all([
+      worker.fetch(new Request('https://worker/configured'), first, httpContext),
+      worker.fetch(new Request('https://worker/configured'), first, httpContext),
+      worker.fetch(new Request('https://worker/marker'), second, httpContext),
+    ]);
 
-    const res = await hono.request('/marker', undefined, env);
-    expect(res.status).toBe(200);
-    expect(observedMarker).toBe('ran');
+    expect(responses.map((response) => response.status)).toEqual([200, 200, 200]);
+    expect(await responses[0]?.text()).toBe('configured');
+    expect(configured.map(({ env: bindings }) => bindings)).toEqual([first, second]);
+    // The application is built, routes included, before configure runs.
+    expect(configured.every(({ built }) => built)).toBe(true);
+  });
+
+  it('fails the construction configure throws in, and retries on the next event', async () => {
+    @Module({})
+    class AppModule {}
+
+    let failures = 1;
+    const worker = createCloudflareWorker(AppModule, {
+      configure(app) {
+        if (failures-- > 0) throw new Error('configure failed');
+        app.getHonoApp().get('/ready', (c) => c.text('ready'));
+      },
+    });
+    const bindings = {};
+
+    await expect(
+      worker.fetch(new Request('https://worker/ready'), bindings, httpContext),
+    ).rejects.toThrow('configure failed');
+    const retried = await worker.fetch(new Request('https://worker/ready'), bindings, httpContext);
+    expect(await retried.text()).toBe('ready');
+  });
+
+  it('refuses an asynchronous configure, which could do I/O outside an event', async () => {
+    @Module({})
+    class AppModule {}
+
+    const worker = createCloudflareWorker(AppModule, {
+      configure: async (app) => {
+        app.getHonoApp().get('/late', (c) => c.text('late'));
+      },
+    });
+
+    await expect(worker.fetch(new Request('https://worker/late'), {}, httpContext)).rejects.toThrow(
+      /configure must finish synchronously/,
+    );
   });
 
   it('uses only Cloudflare-attested client IP and ignores spoofed forwarding headers', async () => {

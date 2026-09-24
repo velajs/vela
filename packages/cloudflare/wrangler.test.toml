@@ -17,6 +17,14 @@ class_name = "CountingRoom"
 name = "CRON_ROOM"
 class_name = "CronRoom"
 
+[[durable_objects.bindings]]
+name = "SQLITE_LIVE_ROOM"
+class_name = "SqliteLiveRoom"
+
+[[durable_objects.bindings]]
+name = "KV_LIVE_ROOM"
+class_name = "KvLiveRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TestRoom"]
@@ -28,6 +36,12 @@ new_sqlite_classes = ["CountingRoom"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["CronRoom"]
+
+# A class without SQLite storage: live queries keep an in-memory cursor log.
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["SqliteLiveRoom"]
+new_classes = ["KvLiveRoom"]
 
 [[kv_namespaces]]
 binding = "CACHE"

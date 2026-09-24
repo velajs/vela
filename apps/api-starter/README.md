@@ -66,9 +66,14 @@ the live contract.
 `AppModule` is declared once at module scope, and `src/worker.ts` passes it to
 both `createCloudflareWorker` and `VelaWebSocketDurableObject`. Bindings reach
 the graph through dependency injection only: the `forRootAsync({ inject: [ENV] })`
-factories of Better Auth, CRUD, live queries and Studio's live source run for
-each native environment, so every environment builds its own auth instance,
-adapter and driver. There is no process-global environment or secret: the same
+factories of Better Auth, CRUD and Studio's live source run for each native
+environment, so every environment builds its own auth instance and adapter.
+`WebSocketModule.forRoot()` and `LiveModule.forRoot()` need no options: the
+Cloudflare adapter forwards gateway upgrades to the `LIVE_ROOM` Durable Object
+that `TodoGateway` names and routes live invalidations there, reading the
+binding from each environment. `OpenApiModule.forRoot({ path: '/openapi.json',
+info })` serves the application's OpenAPI document, which leaves its own route
+out. There is no process-global environment or secret: the same
 environment is the framework `ENV`, which `TodoQueries` injects with
 `@InjectEnv()` and Studio reads its `VELA_STUDIO_TOKEN` from. Studio documents
 the application's `ROOT_MODULE`. `pnpm types` regenerates

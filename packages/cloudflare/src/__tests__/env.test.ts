@@ -16,11 +16,12 @@ import * as cloudflare from '../index';
 import {
   createCloudflareApp,
   createCloudflareWorker,
+  type CloudflareAppOptions,
   type CloudflareWorkerOptions,
   type CreateCloudflareAppOptions,
 } from '../cloudflare-factory';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
-import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
+import { WebSocketModule } from '@velajs/vela/websocket';
 import type { DoStateLike, WsLike } from '../websocket/do-state';
 
 const context = { waitUntil: (_promise: Promise<unknown>): void => {} };
@@ -96,7 +97,7 @@ describe('Cloudflare runtime ENV', () => {
         seen.push(env);
       }
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [RoomProbe] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomProbe] })
     class RoomModule {}
     const env = { PROBE: 'durable-object' };
 
@@ -131,11 +132,14 @@ describe('Cloudflare runtime ENV', () => {
 
   it('takes no environment token and exports no environment parameter decorator', () => {
     // ENV is framework-owned: the entry options carry no application token.
+    expectTypeOf<keyof CloudflareAppOptions>().toEqualTypeOf<
+      'globalPrefix' | 'security' | 'adapters'
+    >();
     expectTypeOf<keyof CloudflareWorkerOptions>().toEqualTypeOf<
-      'globalPrefix' | 'security' | 'middleware' | 'adapters'
+      keyof CloudflareAppOptions | 'configure'
     >();
     expectTypeOf<keyof CreateCloudflareAppOptions>().toEqualTypeOf<
-      keyof CloudflareWorkerOptions | 'env'
+      keyof CloudflareAppOptions | 'env'
     >();
     expect(Object.keys(cloudflare)).not.toContain('Env');
     expectTypeOf(createCloudflareApp).parameter(1).toHaveProperty('env').toEqualTypeOf<VelaEnv>();

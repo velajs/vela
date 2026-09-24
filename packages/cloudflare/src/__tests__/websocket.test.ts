@@ -1,10 +1,24 @@
 import { setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { describe, it, expect } from 'vitest';
-import { Inject, InjectionToken, Module, REQUEST_CONTEXT, defineProvider } from '@velajs/vela';
+import {
+  Inject,
+  InjectEnv,
+  Injectable,
+  InjectionToken,
+  Module,
+  REQUEST_CONTEXT,
+  defineProvider,
+  type MiddlewareConsumer,
+  type NestMiddleware,
+  type NestModule,
+  type VelaContext,
+  type VelaEnv,
+} from '@velajs/vela';
 import { MemoryNonceStore } from '@velajs/vela/security';
 import type { RequestContext } from '@velajs/vela';
 import {
   WebSocketGateway,
+  WebSocketModule,
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
@@ -26,7 +40,6 @@ import { CfWsClient } from '../websocket/cf-ws-client';
 import { CfRoomRegistry } from '../websocket/cf-room-registry';
 import { DoWebSocketHost } from '../websocket/do-websocket-host';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
-import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
 import { VelaWebSocketDurableObject } from '../websocket/websocket.durable-object';
 import { roomTag, connTag, durableObjectRoomName, roomToDurableId } from '../websocket/room-id';
 import { broadcastToRoom } from '../websocket/broadcast';
@@ -343,7 +356,7 @@ describe('DO runtime integration', () => {
         void this.server.to('room1').emit('shout', text);
       }
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [ChatGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [ChatGateway] })
     class AppModule {}
     return AppModule;
   }
@@ -396,7 +409,7 @@ describe('DO runtime integration', () => {
         void this.server.emit('joined', { id: client.id });
       }
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [LobbyGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [LobbyGateway] })
     class AppModule {}
 
     const ctx = new FakeDoState();
@@ -428,7 +441,7 @@ describe('DO runtime integration', () => {
         messages += 1;
       }
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [RejectGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RejectGateway] })
     class AppModule {}
 
     const ctx = new FakeDoState();
@@ -460,7 +473,7 @@ describe('DO runtime integration', () => {
         messages += 1;
       }
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [PendingGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [PendingGateway] })
     class AppModule {}
 
     const ctx = new FakeDoState();
@@ -488,7 +501,7 @@ describe('DO runtime integration', () => {
         await this.server.emit('joined', { id: client.id });
       }
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [AnnounceGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [AnnounceGateway] })
     class AppModule {}
 
     const ctx = new FakeDoState();
@@ -543,7 +556,7 @@ describe('DO runtime integration', () => {
         messages += 1;
       }
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [LimitedGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [LimitedGateway] })
     class AppModule {}
 
     const ctx = new FakeDoState();
@@ -566,7 +579,7 @@ describe('DO runtime integration', () => {
         return 'x'.repeat(100);
       }
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [LimitedReplyGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [LimitedReplyGateway] })
     class AppModule {}
 
     const ctx = new FakeDoState();
@@ -680,7 +693,7 @@ describe('DO runtime integration', () => {
       authorizeDelivery: () => authorized,
     })
     class DeliveryGateway {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [DeliveryGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [DeliveryGateway] })
     class AppModule {}
 
     const ctx = new FakeDoState();
@@ -735,7 +748,37 @@ describe('broadcastToRoom synchronization boundary', () => {
 
 // ---- Worker upgrade routing ----
 
-describe('registerWebSocketRoutes (Worker → DO)', () => {
+/**
+ * Consumer middleware standing in for an access proxy: it publishes the
+ * identity this environment attests (read from ENV) as the request's trusted
+ * identity, before the gateway's upgrade route runs.
+ */
+@Injectable()
+class AccessIdentityMiddleware implements NestMiddleware {
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
+
+  use(context: VelaContext, next: () => Promise<void>) {
+    const subject: unknown = Reflect.get(this.env, 'ACCESS_SUBJECT');
+    const expiresAtMs: unknown = Reflect.get(this.env, 'ACCESS_EXPIRES_AT_MS');
+    if (typeof subject === 'string' && typeof expiresAtMs === 'number') {
+      setTrustedRequestIdentity(context.req.raw, {
+        principal: { issuer: 'https://access.example.test', subject, principalType: 'user' },
+        tenantId: 'tenant-1',
+        expiresAtMs,
+      });
+    }
+    return next();
+  }
+}
+
+@Module({ providers: [AccessIdentityMiddleware] })
+class AccessIdentityModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(AccessIdentityMiddleware).forRoutes('*');
+  }
+}
+
+describe('gateway upgrade routes (Worker → DO)', () => {
   function mockNamespace() {
     const calls: Array<{
       id: string;
@@ -785,7 +828,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       @SubscribeMessage('noop')
       onNoop() {}
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [RoomGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomGateway] })
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
@@ -844,7 +887,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     class RoomGateway {}
     @Module({ providers: [defineProvider(TENANT, { useValue: 'tenant-7' }), RoomGateway] })
     class RoomsModule {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot(), RoomsModule] })
+    @Module({ imports: [WebSocketModule.forRoot(), RoomsModule] })
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
@@ -889,7 +932,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       authenticator: TestUpgradeAuthenticator,
     })
     class RoomGateway {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [RoomGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomGateway] })
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
@@ -910,7 +953,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       binding: 'ROOM',
     })
     class RoomGateway {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [RoomGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomGateway] })
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
@@ -935,7 +978,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       authorizeUpgrade: (request) => request.headers.get('x-api-key') === 'valid',
     })
     class SecureGateway {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [SecureGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [SecureGateway] })
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
@@ -967,7 +1010,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       authorizeUpgrade: (request) => request.headers.get('x-vela-user') === 'admin',
     })
     class SecureGateway {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [SecureGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [SecureGateway] })
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
@@ -1001,26 +1044,15 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     }
     @WebSocketGateway({ path: '/identity-ws', binding: 'ROOM', authenticator: AccessAuthenticator })
     class IdentityGateway {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [IdentityGateway] })
+    @Module({
+      imports: [WebSocketModule.forRoot(), AccessIdentityModule],
+      providers: [IdentityGateway],
+    })
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
     const app = await createCloudflareApp(AppModule, {
-      env: { ROOM: ns },
-      middleware: () => [
-        async (c, next) => {
-          setTrustedRequestIdentity(c.req.raw, {
-            principal: {
-              issuer: 'https://access.example.test',
-              subject: 'user-1',
-              principalType: 'user',
-            },
-            tenantId: 'tenant-1',
-            expiresAtMs,
-          });
-          await next();
-        },
-      ],
+      env: { ROOM: ns, ACCESS_SUBJECT: 'user-1', ACCESS_EXPIRES_AT_MS: expiresAtMs },
     });
     await app.getHonoApp().request('/identity-ws', { headers: { upgrade: 'websocket' } }, app.env);
 
@@ -1041,26 +1073,19 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       authenticator: TestUpgradeAuthenticator,
     })
     class IdentityGateway {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [IdentityGateway] })
+    @Module({
+      imports: [WebSocketModule.forRoot(), AccessIdentityModule],
+      providers: [IdentityGateway],
+    })
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
     const app = await createCloudflareApp(AppModule, {
-      env: { ROOM: ns },
-      middleware: () => [
-        async (c, next) => {
-          setTrustedRequestIdentity(c.req.raw, {
-            principal: {
-              issuer: 'https://access.example.test',
-              subject: 'another-user',
-              principalType: 'user',
-            },
-            tenantId: 'tenant-1',
-            expiresAtMs: Date.now() + 60_000,
-          });
-          await next();
-        },
-      ],
+      env: {
+        ROOM: ns,
+        ACCESS_SUBJECT: 'another-user',
+        ACCESS_EXPIRES_AT_MS: Date.now() + 60_000,
+      },
     });
     const res = await app
       .getHonoApp()
@@ -1094,7 +1119,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       authenticator: TicketAuthenticator,
     })
     class TicketGateway {}
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [TicketGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [TicketGateway] })
     class AppModule {}
 
     const ticket = await issueWebSocketTicket({
@@ -1140,7 +1165,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       @SubscribeMessage('noop')
       onNoop() {}
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [Gw] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [Gw] })
     class AppModule {}
 
     const app = await createCloudflareApp(AppModule, { env: {} });
@@ -1158,7 +1183,7 @@ describe('VelaWebSocketDurableObject shell', () => {
       @SubscribeMessage('noop')
       onNoop() {}
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [ChatGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [ChatGateway] })
     class AppModule {}
 
     const ctx = new FakeDoState();
@@ -1243,7 +1268,7 @@ describe('cloudflare — code-review regressions', () => {
       @SubscribeMessage('noop')
       onNoop() {}
     }
-    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [MiniGateway] })
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [MiniGateway] })
     class MiniApp {}
 
     const ctx = new FakeDoState();

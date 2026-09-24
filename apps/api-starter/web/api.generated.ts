@@ -13,9 +13,6 @@ export type AppType = HttpApp<{
   "/me": {
     $get: { input: {}; output: ({ "email": (string); "id": (string); "name": (string); [key: string]: unknown; }); outputFormat: 'json'; status: 200 };
   };
-  "/openapi.json": {
-    $get: { input: {}; output: ({ "openapi": (string); "paths": ({ [key: string]: unknown; }); [key: string]: unknown; }); outputFormat: 'json'; status: 200 };
-  };
   "/todos": {
     $get: { input: {}; output: unknown; outputFormat: 'json'; status: 200 };
     $post: { input: { json: (Schemas["CreateTodoDto"]); }; output: unknown; outputFormat: 'json'; status: 201 } | { input: { json: (Schemas["CreateTodoDto"]); }; output: unknown; outputFormat: 'json'; status: 400 };

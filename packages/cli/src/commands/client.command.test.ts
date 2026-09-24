@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { All, Controller, Get, Module, VelaFactory } from '@velajs/vela';
-import { ApiResponse } from '@velajs/vela/openapi';
+import { ApiExclude, ApiResponse } from '@velajs/vela/openapi';
 import { Cli } from 'clipanion';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig, type LoadedVelaConfig, type VelaConfig } from '../config.js';
@@ -147,6 +147,42 @@ describe('vela client generate', () => {
     expect(result.code).toBe(1);
     expect(result.output + result.errors).toContain('OpenAPI is missing GET /missing');
     expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it('leaves @ApiExclude routes out of the contract without calling them undocumented', async () => {
+    @ApiExclude()
+    @Controller('/internal')
+    class Internal {
+      @Get()
+      status() {
+        return { ok: true };
+      }
+    }
+    @Controller('/health')
+    class Health {
+      @Get()
+      health() {
+        return { ok: true };
+      }
+
+      @Get('/debug')
+      @ApiExclude()
+      debug() {
+        return { ok: true };
+      }
+    }
+    @Module({ controllers: [Internal, Health] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    vi.mocked(loadConfig).mockResolvedValue(
+      loadedConfig({ rootModule: App, createApp: () => app }),
+    );
+    const result = await run([]);
+    expect(result.output + result.errors).not.toContain('OpenAPI is missing');
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('"/health"');
+    expect(result.output).not.toContain('/internal');
+    expect(result.output).not.toContain('/debug');
   });
 
   it('skips @All routes, which OpenAPI has no operation for', async () => {
