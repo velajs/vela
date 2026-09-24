@@ -36,7 +36,7 @@ export class ResponseCacheInterceptor implements NestInterceptor {
     const request = context.getRequest();
     if (!config || request.method !== 'GET') return next.handle();
     const target = context.getClass();
-    const handler = context.getHandler();
+    const handler = context.getHandlerName();
     const status = resolveSuccessStatus(target, handler) ?? DEFAULT_SUCCESS_STATUS;
     const privateHeaders = getResponseHeaders(target, handler).some(
       ([name, value]) =>

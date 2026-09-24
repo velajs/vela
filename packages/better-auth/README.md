@@ -52,15 +52,17 @@ BetterAuthModule.forRoot({
   auth,                          // betterAuth({ ... }) instance, or () => betterAuth({ ... })
   issuer: 'my-app:better-auth',  // stable namespace paired with user ids
   basePath: '/api/auth',         // default — must match your better-auth config
-  globalGuard: true,             // default — register AuthGuard as APP_GUARD
+  guard: 'global',               // default — AuthGuard runs globally in the authenticate phase
   mountHandler: true,            // mount /api/auth/* catch-all controller
   isGlobal: false,               // default — true makes BetterAuthService visible to every module
 });
 ```
 
-Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `globalGuard: false` is intended only for applications that install an equivalent global authentication guard themselves.
+Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `guard: 'none'` is intended only for applications that install an equivalent global authentication guard themselves.
 
-`basePath`, `mountHandler` and `globalGuard` are structural: `forRootAsync` takes them next to its factory, which returns the other options. An `auth` function runs on the first authentication, not while the application initializes.
+`basePath`, `mountHandler` and `guard` are structural: `forRootAsync` takes them next to its factory, which returns the other options. An `auth` function runs on the first authentication, not while the application initializes.
+
+Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity. The mounted auth handler is `@Public(true)` and marked `SkipGuardPhases(['tenant', 'authorize'])`, so the tenant admission and authorization guards integrations install globally never block sign-in; throttling and the application's own global guards still apply.
 
 ## Three composition patterns
 
@@ -269,7 +271,7 @@ import { BetterAuthService, Public } from '@velajs/better-auth';
 @Controller('/auth')
 class CustomCatchallController {
   constructor(@Inject(BetterAuthService) private auth: BetterAuthService) {}
-  @All('/*') handle(@Req() c: Context) { return this.auth.handler(c.req.raw); }
+  @All('/*') handle(@Req() request: Request) { return this.auth.handler(request); }
 }
 ```
 

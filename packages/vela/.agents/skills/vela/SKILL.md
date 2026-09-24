@@ -61,7 +61,7 @@ export default app;   // { fetch } handler — runs on Workers, Deno, Bun, Node
 ```
 
 - `VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`. The root is a module class or a `DynamicModule` (`AppModule.forRoot(...)`); any module can inject it as the global `ROOT_MODULE`.
-- `VelaCreateOptions`: `globalPrefix?`, `getClientIp?`, `middleware?`, `adapters?` (platform `RuntimeAdapter`s), `env?` (seeds the framework `ENV`), `ambientContainer?` (opt-in AsyncLocalStorage), `diagnostics?`. There is **no** `logger`, `cors`, or `versioning` option, and **no** `app.setGlobalPrefix()` method — set the prefix via the create option, read it with `app.getGlobalPrefix()`.
+- `VelaCreateOptions`: `globalPrefix?`, `globalPrefixOptions?` (`{ exclude }`), `versioning?` (`{ prefix }` of the URI version segment), `getClientIp?`, `middleware?`, `adapters?` (platform `RuntimeAdapter`s), `env?` (seeds the framework `ENV`), `ambientContainer?` (opt-in AsyncLocalStorage), `diagnostics?`. There is **no** `logger` or `cors` option, and **no** `app.setGlobalPrefix()` method — routes are built at creation, so set the prefix via the create option and read it with `app.getGlobalPrefix()`.
 - `app.fetch` is the universal handler (`serve({ fetch: app.fetch })` on Node via `@hono/node-server`; `export default app` on edge).
 - `VelaApplication` methods: `get(token)`, `getHonoApp()` (for `.request()` in tests), `describeRoutes()`, `mountOpenApi(opts)`, `useGlobal*(...)`, `materializeLazyModules()`, `entrypoints`, `close(signal?)`, `dispose()`.
 - Convention: examples export an `async function createXApp()` factory. The `@velajs/cli` reads a `vela.config.ts` with a `createApp()` factory — Vela itself has no `createApp` API.
@@ -104,7 +104,7 @@ class UsersController {
 ```
 
 - Method decorators `@Get/@Post/@Put/@Patch/@Delete/@Options/@Head/@All/@Sse` take `(path?, { name? })`.
-- Param decorators: `@Param/@Query/@Body/@Headers/@Cookie/@Cookies/@Ip/@RawBody/@Req/@Res` (pipes attach positionally). Response decorators: `@HttpCode`, `@Header`, `@Redirect`.
+- Param decorators: `@Param/@Query/@Body/@Headers/@Cookie/@Cookies/@Ip/@RawBody/@Req/@Ctx/@Res` (pipes attach positionally). `@Req()` is the platform `Request`; `@Ctx()`/`@Res()` are the Hono context. Response decorators: `@HttpCode`, `@Header`, `@Redirect`. `@Sse()` streams an async iterable of `MessageEvent`.
 - Named routes drive `UrlGeneratorService.urlFor(name, params, { query })` and `signedUrl(name, params, { expiresIn })`; augment `VelaRouteMap` for typed names. Signed URLs use `@SignedUrl()` + `URL_SIGNING_SECRET`.
 - Versioning is decorator-driven (`@Controller({ version })` + `@Version(2)`); global prefix is the `globalPrefix` create-option.
 - Controllers are singletons unless `@Controller({ path, scope })` or `@Injectable({ scope })` declares a scope (decorator order does not matter; two different scopes on one class throw).

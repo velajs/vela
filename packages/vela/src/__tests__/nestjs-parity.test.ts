@@ -14,6 +14,7 @@ import {
   Body,
   Headers,
   Req,
+  Ctx,
   Module,
   Global,
   Injectable,
@@ -1666,7 +1667,7 @@ describe('APP_FILTER global exception filter', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/filter-test');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ caught: true, global: true });
   });
 
@@ -2444,18 +2445,17 @@ describe('@Headers() param decorator', () => {
 });
 
 // =============================================================================
-// @Req() raw request decorator
+// @Req() platform request decorator
 // =============================================================================
 
-describe('@Req() raw request decorator', () => {
-  it('injects the Hono Context and allows reading request headers', async () => {
+describe('@Req() platform request decorator', () => {
+  it('injects the platform Request and allows reading request headers', async () => {
     @Controller('/req-dec')
     class ReqController {
       @Get()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      handle(@Req() ctx: any) {
-        // @Req() returns the Hono Context (c); headers are at c.req.header()
-        return { ua: ctx.req.header('user-agent') ?? 'unknown' };
+      handle(@Req() request: Request) {
+        // @Req() returns the platform Request, as in Nest; @Ctx() returns the Hono Context
+        return { ua: request.headers.get('user-agent') ?? 'unknown' };
       }
     }
 
@@ -2476,10 +2476,8 @@ describe('@Req() raw request decorator', () => {
     @Controller('/req-meta')
     class ReqMetaController {
       @Get()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      handle(@Req() ctx: any) {
-        // @Req() returns the Hono Context (c); method is at c.req.method
-        return { method: ctx.req.method };
+      handle(@Req() request: Request) {
+        return { method: request.method };
       }
     }
 
@@ -4346,8 +4344,11 @@ describe('ValidationPipe with Zod schemas', () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({
-      message: 'Validation failed',
-      errors: [expect.objectContaining({ path: ['count'] })],
+      error: {
+        code: 'bad_request',
+        message: 'Validation failed',
+        details: { issues: [expect.objectContaining({ path: ['count'] })] },
+      },
     });
   });
 
@@ -5333,9 +5334,8 @@ describe('Route wildcards', () => {
     @Controller('/files')
     class FilesController {
       @Get('*')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      catchAll(@Req() ctx: any) {
-        return { path: ctx.req.path };
+      catchAll(@Req() request: Request) {
+        return { path: new URL(request.url).pathname };
       }
     }
 
@@ -7454,8 +7454,8 @@ describe('@All() decorator', () => {
     @Controller('/all-handler')
     class AllController {
       @All()
-      handle(@Req() ctx: any) {
-        return { method: ctx.req.method };
+      handle(@Req() request: Request) {
+        return { method: request.method };
       }
     }
 
@@ -8192,7 +8192,7 @@ describe('Middleware sets context variable, guard reads it', () => {
     class TestController {
       @Get()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      handle(@Req() ctx: any) {
+      handle(@Ctx() ctx: any) {
         return { tag: (ctx as any)._tag ?? null };
       }
     }
@@ -8233,7 +8233,7 @@ describe('Middleware sets context variable, guard reads it', () => {
     @Controller('/ctx-multi')
     class TestController {
       @Get()
-      handle(@Req() ctx: any) {
+      handle(@Ctx() ctx: any) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return { count: (ctx as any)._count ?? 0 };
       }

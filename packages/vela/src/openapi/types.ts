@@ -1,3 +1,5 @@
+import type { RoutePathOptions } from '../http/route-paths';
+
 // Minimal OpenAPI 3.1 subset Vela emits. Kept intentionally loose (index
 // signatures on schemas, open tags array) so users can extend without
 // fighting the types. Covers what createOpenApiDocument actually produces.
@@ -153,9 +155,8 @@ export interface ApiResponseEntry extends ApiResponseOptions {
   status: number | string;
 }
 
-export interface CreateOpenApiDocumentOptions {
+export interface CreateOpenApiDocumentOptions extends RoutePathOptions {
   info?: Partial<OpenApiInfo>;
-  globalPrefix?: string;
   /**
    * Declare top-level tag groups with descriptions and an explicit order
    * (mirrors NestJS `DocumentBuilder().addTag(name, description)`). Tags

@@ -33,10 +33,28 @@ export interface WsArgumentsHost {
 /** `'http'`, `'ws'`, or a custom entrypoint kind registered by an adapter. */
 export type ContextType = string;
 
+/** A handler method, as returned by `ExecutionContext.getHandler()`. */
+export type HandlerFunction = (...args: never[]) => unknown;
+
 export interface ExecutionContext {
   getType(): ContextType;
   getClass(): Type;
-  getHandler(): string | symbol;
+  /**
+   * The handler method about to run (`getClass().prototype[getHandlerName()]`),
+   * as in Nest. The Reflector reads the metadata of the method it is, including
+   * after an outer decorator wrapped it:
+   * `reflector.getAllAndOverride(key, [context.getHandler(), context.getClass()])`.
+   * Alone, as in `reflector.get(key, context.getHandler())`, it throws when
+   * several controllers route the function with different metadata for `key`
+   * (one inherited method); list the class with it or pass the context. A
+   * function one controller routes as several methods with different metadata
+   * (one wrapper replacing them) throws even listed; pass the context.
+   * Framework hosts without a method (middleware, unmatched routes) return a
+   * stable marker function.
+   */
+  getHandler(): HandlerFunction;
+  /** The handler's method name on `getClass()`, or a framework host's marker symbol. */
+  getHandlerName(): string | symbol;
   /** Declaring module bucket for routed HTTP/WS handlers; absent for synthetic framework hosts. */
   getModuleId(): string | undefined;
   /** Framework-owned DI container for transport-neutral guards. */

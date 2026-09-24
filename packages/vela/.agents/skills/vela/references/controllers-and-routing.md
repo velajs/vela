@@ -28,7 +28,16 @@ class UsersController {
 }
 ```
 
-`@Controller` accepts a path string **or** `{ path?, version? }` — those are the only two options (there is no `prefix` or `name` on the controller). Method decorators: `@Get @Post @Put @Patch @Delete @Options @Head @All @Sse`. Each is `@Verb(path?, options?)` where `options` is `{ name?: string }`. `@Sse` registers as a GET route.
+`@Controller` accepts a path string **or** `{ path?, version?, scope? }` (there is no `prefix` or `name` on the controller). Method decorators: `@Get @Post @Put @Patch @Delete @Options @Head @All @Sse`. Each is `@Verb(path?, options?)` where `options` is `{ name?: string }`.
+
+`@Sse(path?)` registers a GET route that streams Server-Sent Events, as Nest's `@Sse()`. Return an async iterable (an `async *` generator) of `MessageEvent` (`{ data, id?, type?, retry? }`; non-string `data` is JSON). Each event is written as it is produced through Hono's `streamSSE`, and the iterable is closed when the client disconnects. A failure mid-stream is reported and ends the stream without sending its message. A returned `Response` is sent as is.
+
+```ts
+@Sse('/events')
+async *events(): AsyncIterable<MessageEvent> {
+  yield { data: { ready: true }, type: 'status' };
+}
+```
 
 Return a plain value (JSON) or a `Response`. Response-shaping method decorators: `@HttpCode(201)`, `@Header('allow', 'GET,POST')` (response header, stackable), `@Redirect('/path', 302)`.
 
@@ -43,7 +52,8 @@ Return a plain value (JSON) or a `Response`. Response-shaping method decorators:
 | `@Cookie(name?, schema?, ...pipes)` / `@Cookies()` | cookie(s) |
 | `@Ip()` | client IP (see `getClientIp` create-option) |
 | `@RawBody()` | raw body as `Uint8Array` |
-| `@Req()` / `@Res()` | `VelaContext` (the Hono request/response context) |
+| `@Req()` | the platform `Request`, as Nest's `@Req()` |
+| `@Ctx()` / `@Res()` | `VelaContext` (the Hono context: request helpers, response headers, cookies) |
 
 `@Body()` parses JSON only: a body must arrive as `application/json` or a `+json` media type (parameters like `charset` are fine), otherwise the request fails with 415 `unsupported_media_type`; malformed JSON is 400 and a request without a body yields `undefined`. Send `content-type: application/json` in tests (`@velajs/testing` does this for you). Raw Hono routes can use `readJsonBody(c)` for the same rule.
 
@@ -51,11 +61,16 @@ Pipes attach positionally: `@Param('id', ParseIntPipe)`, `@Query('mode', new Par
 
 ## Global prefix & versioning
 
-Set the global prefix at creation (there is **no** `app.setGlobalPrefix()` method — use the factory option; read it back with `app.getGlobalPrefix()`):
+Set the global prefix at creation (routes are built by `VelaFactory.create`, so the app has no `setGlobalPrefix()`; read it back with `app.getGlobalPrefix()`). `globalPrefixOptions.exclude` is Nest's `setGlobalPrefix(prefix, { exclude })`: matching controller routes are served without the prefix. Each target is a string or `{ path, method }` in the middleware route grammar, matched against the controller path plus the route path:
 
 ```ts
-const app = await VelaFactory.create(AppModule, { globalPrefix: '/api' });
+const app = await VelaFactory.create(AppModule, {
+  globalPrefix: '/api',
+  globalPrefixOptions: { exclude: ['health', { path: 'webhooks/:provider', method: 'POST' }] },
+});
 ```
+
+Relative middleware targets resolve under the prefix and so miss excluded routes; target those with `{ path: '/health', absolute: true }` or the controller (see `pipeline.md`).
 
 Versioning is decorator-driven (no `enableVersioning`/`VersioningType`). Set a version on the controller and override per method:
 
@@ -69,7 +84,7 @@ class ReportsController {
 }
 ```
 
-`version` may be a number or `number[]`. The URL segment is `/v{n}`, composed as `globalPrefix + /v{version} + controllerPath + routePath`.
+`version` may be a number, `VERSION_NEUTRAL`, or an array of them. `VERSION_NEUTRAL` serves the route without a version segment (`@Version([2, VERSION_NEUTRAL])` serves `/v2/...` and the bare path). The URL segment is `/v{n}`, composed as `globalPrefix + /v{version} + controllerPath + routePath`; `versioning: { prefix: 'version-' }` changes the segment text and `prefix: false` serves `/{n}`. `createOpenApiDocument(AppModule, app.getRoutePathOptions())` documents the same composed paths.
 
 ## Named routes
 

@@ -143,7 +143,7 @@ describe('SetMetadata + Reflector', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     const [handlerRoles, classRoles] = reflector.getAll<string[]>('roles', context);
@@ -160,7 +160,7 @@ describe('SetMetadata + Reflector', () => {
 
     const context = {
       getClass: () => PlainController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.get('roles', context)).toBeUndefined();
@@ -181,7 +181,7 @@ describe('Reflector.createDecorator', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.get(Roles, context)).toEqual(['admin', 'editor']);
@@ -198,7 +198,7 @@ describe('Reflector.createDecorator', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getHandler(CacheKey, context)).toBe('users-list');
@@ -236,7 +236,7 @@ describe('Reflector.createDecorator', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.get<string[]>('roles', context)).toEqual(['admin']);
@@ -255,7 +255,7 @@ describe('Reflector.getAllAndOverride', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getAllAndOverride<string[]>('roles', context)).toEqual(['editor']);
@@ -271,7 +271,7 @@ describe('Reflector.getAllAndOverride', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getAllAndOverride<string[]>('roles', context)).toEqual(['admin']);
@@ -286,7 +286,7 @@ describe('Reflector.getAllAndOverride', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getAllAndOverride('roles', context)).toBeUndefined();
@@ -304,7 +304,7 @@ describe('Reflector.getAllAndOverride', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getAllAndOverride(Priority, context)).toBe(10);
@@ -323,7 +323,7 @@ describe('Reflector.getAllAndMerge', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getAllAndMerge<string[]>('roles', context)).toEqual(['editor', 'admin']);
@@ -341,7 +341,7 @@ describe('Reflector.getAllAndMerge', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getAllAndMerge('config', context)).toEqual({ retries: 3, timeout: 5000 });
@@ -357,7 +357,7 @@ describe('Reflector.getAllAndMerge', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getAllAndMerge<string[]>('roles', context)).toEqual(['admin']);
@@ -372,7 +372,7 @@ describe('Reflector.getAllAndMerge', () => {
 
     const context = {
       getClass: () => TestController,
-      getHandler: () => 'handler' as string | symbol,
+      getHandlerName: () => 'handler' as string | symbol,
     };
 
     expect(reflector.getAllAndMerge('roles', context)).toEqual([]);

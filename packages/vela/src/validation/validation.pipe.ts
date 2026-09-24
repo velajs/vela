@@ -58,10 +58,9 @@ export class ValidationPipe implements PipeTransform {
 
 function validationFailure(error: unknown): never {
   if (error instanceof SchemaValidationError) {
-    throw new BadRequestException({
-      statusCode: 400,
-      message: 'Validation failed',
-      errors: error.issues,
+    throw new BadRequestException('Validation failed', {
+      details: { issues: error.issues },
+      cause: error,
     });
   }
   throw error;

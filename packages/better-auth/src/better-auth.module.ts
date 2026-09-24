@@ -31,7 +31,7 @@ function runtimeOptions(options: BetterAuthModuleOptions): Required<BetterAuthRu
   return {
     basePath,
     issuer,
-    globalGuard: options.globalGuard ?? true,
+    guard: options.guard ?? 'global',
     mountHandler: options.mountHandler ?? true,
   };
 }
@@ -47,12 +47,16 @@ const { ConfigurableModuleClass } = defineModule<
 >({
   name: 'BetterAuth',
   optionsToken: MODULE_OPTIONS,
-  structural: ['basePath', 'globalGuard', 'mountHandler'],
+  structural: ['basePath', 'guard', 'mountHandler'],
   // Spelling out a default configures what leaving it out does: one instance.
-  defaults: { basePath: DEFAULT_BETTER_AUTH_BASE_PATH, globalGuard: true, mountHandler: true },
+  defaults: { basePath: DEFAULT_BETTER_AUTH_BASE_PATH, guard: 'global', mountHandler: true },
   setup: ({ OPTIONS, options }) => {
-    // Validates the mount path when the module is declared, before bootstrap.
+    // Validates the mount path and guard when the module is declared, before bootstrap.
     const basePath = normalizeBetterAuthBasePath(options.basePath);
+    const guard = options.guard;
+    if (guard !== 'global' && guard !== 'none') {
+      throw new Error("@velajs/better-auth: guard must be 'global' or 'none'");
+    }
     const controllers: Type[] =
       options.mountHandler === false ? [] : [createBetterAuthCatchallController(basePath)];
     return {
@@ -69,10 +73,10 @@ const { ConfigurableModuleClass } = defineModule<
         }),
         BetterAuthService,
         AuthGuard,
-        // Fail closed: every route authenticates unless it opts out.
-        ...(options.globalGuard === false
-          ? []
-          : [defineProvider(APP_GUARD, { useExisting: AuthGuard })]),
+        // Fail closed: every route authenticates unless it opts out. AuthGuard
+        // declares the `authenticate` phase, so it runs first whatever the
+        // import order.
+        ...(guard === 'global' ? [defineProvider(APP_GUARD, { useExisting: AuthGuard })] : []),
       ],
       controllers,
       exports: [BetterAuthService, BETTER_AUTH_OPTIONS, AuthGuard],
@@ -92,7 +96,7 @@ const { ConfigurableModuleClass } = defineModule<
  * });
  * ```
  *
- * `basePath`, `mountHandler` and `globalGuard` are structural: `forRootAsync`
+ * `basePath`, `mountHandler` and `guard` are structural: `forRootAsync`
  * takes them alongside the factory. The factory runs when the application
  * initializes; an `auth` function it returns runs on first authentication.
  */

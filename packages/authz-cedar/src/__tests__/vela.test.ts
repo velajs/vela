@@ -1,8 +1,38 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Controller, Get, Module, Reflector, VelaFactory } from '@velajs/vela';
-import { setTrustedRequestIdentity, clearTrustedRequestIdentity } from '@velajs/vela/module-kit';
-import { auditCedarRoutes, CedarModule, CedarPublic, RequireResource } from '../vela/index';
+import {
+  Controller,
+  Get,
+  Module,
+  Reflector,
+  UseGuards,
+  VelaFactory,
+  type GuardPhase,
+} from '@velajs/vela';
+import {
+  setTrustedRequestIdentity,
+  clearTrustedRequestIdentity,
+  orderGuardsByPhase,
+  SkipGuardPhases,
+} from '@velajs/vela/module-kit';
+import { Test } from '@velajs/testing';
+import {
+  auditCedarRoutes,
+  CedarGuard,
+  CedarModule,
+  CedarPublic,
+  RequireResource,
+} from '../vela/index';
 const principal = { issuer: 'test', subject: 'alice', principalType: 'user' } as const;
+const route = (path: string) => {
+  class Routes {
+    read() {
+      return { path };
+    }
+  }
+  Controller(path)(Routes);
+  Get()(Routes.prototype, 'read', Object.getOwnPropertyDescriptor(Routes.prototype, 'read')!);
+  return Routes;
+};
 describe('resource authorization declarations', () => {
   it('reads declarations through the application Reflector', async () => {
     class Routes {
@@ -115,6 +145,174 @@ describe('resource authorization declarations', () => {
         (await app.getHonoApp().request('/docs/item/42', { headers: { 'x-auth': 'yes' } })).status,
       ).toBe(403);
       expect((await app.getHonoApp().request('/docs/public')).status).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+  it('denies undeclared routes on every application route by default', async () => {
+    expect(CedarGuard.phase).toBe('authorize');
+    // An application subclass redeclares `skippable` to run on integration routes too.
+    class StrictCedarGuard extends CedarGuard {
+      static override readonly skippable = false;
+    }
+    expect(
+      orderGuardsByPhase([CedarGuard, StrictCedarGuard], new Set<GuardPhase>(['authorize'])),
+    ).toEqual([StrictCedarGuard]);
+    const Undeclared = route('/undeclared');
+    const Elsewhere = route('/elsewhere');
+    // An integration's own controller leaves authorization to the integration.
+    const Integration = route('/integration');
+    SkipGuardPhases(['authorize'])(Integration);
+    class Outside {}
+    Module({ controllers: [Elsewhere, Integration] })(Outside);
+    const build = (options: {
+      guard?: 'global' | 'none';
+      undeclared?: 'deny' | 'allow';
+      isGlobal?: boolean;
+    }) => {
+      class App {}
+      Module({
+        controllers: [Undeclared],
+        imports: [CedarModule.forRoot({ authorize: async () => true, ...options }), Outside],
+      })(App);
+      return VelaFactory.create(App);
+    };
+    // Whether or not every module can see CedarModule, the phase covers the same routes.
+    for (const options of [{}, { isGlobal: true }]) {
+      const strict = await build(options);
+      try {
+        const hono = strict.getHonoApp();
+        expect((await hono.request('/undeclared')).status).toBe(403);
+        // A module that does not import CedarModule is still an application module.
+        expect((await hono.request('/elsewhere')).status).toBe(403);
+        expect((await hono.request('/integration')).status).toBe(200);
+      } finally {
+        await strict.close();
+      }
+    }
+    for (const options of [{ undeclared: 'allow' as const }, { guard: 'none' as const }]) {
+      const relaxed = await build(options);
+      try {
+        expect((await relaxed.getHonoApp().request('/undeclared')).status).toBe(200);
+        expect((await relaxed.getHonoApp().request('/elsewhere')).status).toBe(200);
+      } finally {
+        await relaxed.close();
+      }
+    }
+  });
+  it('takes guard and undeclared beside a forRootAsync factory', async () => {
+    const authorize = async () => true;
+    // Spelled-out defaults are the same instance as leaving them out.
+    expect(CedarModule.forRoot({ authorize, guard: 'global', undeclared: 'deny' }).key).toBe(
+      CedarModule.forRoot({ authorize }).key,
+    );
+    const Undeclared = route('/undeclared');
+    const statuses: number[] = [];
+    for (const options of [{}, { undeclared: 'allow' as const }, { guard: 'none' as const }]) {
+      class App {}
+      Module({
+        controllers: [Undeclared],
+        imports: [CedarModule.forRootAsync({ ...options, useFactory: () => ({ authorize }) })],
+      })(App);
+      const app = await VelaFactory.create(App);
+      try {
+        statuses.push((await app.getHonoApp().request('/undeclared')).status);
+      } finally {
+        await app.close();
+      }
+    }
+    expect(statuses).toEqual([403, 200, 200]);
+    // The factory cannot relax the policy the call site declared.
+    class Relaxing {}
+    Module({
+      imports: [
+        CedarModule.forRootAsync({
+          // @ts-expect-error The policy is structural: the factory cannot return it.
+          useFactory: () => ({ authorize, undeclared: 'allow' }),
+        }),
+      ],
+    })(Relaxing);
+    await expect(VelaFactory.create(Relaxing)).rejects.toThrow(
+      /the factory returned the structural option 'undeclared'/,
+    );
+  });
+  it('authorizes routes in modules without CedarModule through the installing module', async () => {
+    let allowed = true;
+    const Declared = route('/declared');
+    RequireResource({ action: 'read', resourceType: 'Doc' })(Declared);
+    class Outside {}
+    Module({ controllers: [Declared] })(Outside);
+    class App {}
+    Module({
+      imports: [
+        CedarModule.forRoot({
+          authorize: async ({ identity }) => allowed && identity.principal.subject === 'alice',
+        }),
+        Outside,
+      ],
+    })(App);
+    const app = await VelaFactory.create(App, {
+      middleware: [
+        async (c, next) => {
+          if (c.req.header('x-auth')) setTrustedRequestIdentity(c.req.raw, { principal });
+          await next();
+        },
+      ],
+    });
+    try {
+      const hono = app.getHonoApp();
+      expect((await hono.request('/declared')).status).toBe(403);
+      expect((await hono.request('/declared', { headers: { 'x-auth': 'yes' } })).status).toBe(200);
+      allowed = false;
+      expect((await hono.request('/declared', { headers: { 'x-auth': 'yes' } })).status).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
+  it('lets a testing module override the globally installed CedarGuard', async () => {
+    const Undeclared = route('/undeclared');
+    const imports = [CedarModule.forRoot({ authorize: async () => false })];
+    const real = await (
+      await Test.createTestingModule({ imports, controllers: [Undeclared] }).compile()
+    ).createApplication();
+    expect((await real.getHonoApp().request('/undeclared')).status).toBe(403);
+    class AllowAll extends CedarGuard {
+      override async canActivate(): Promise<boolean> {
+        return true;
+      }
+    }
+    const moduleRef = await Test.createTestingModule({ imports, controllers: [Undeclared] })
+      .overrideGuard(CedarGuard)
+      .useValue(new AllowAll(new Reflector()))
+      .compile();
+    const app = await moduleRef.createApplication();
+    expect((await app.getHonoApp().request('/undeclared')).status).toBe(200);
+  });
+  it('keeps a route-level CedarGuard fail-closed where no CedarModule is visible', async () => {
+    const Undeclared = route('/undeclared');
+    const Declared = route('/declared');
+    RequireResource({ action: 'read', resourceType: 'Doc' })(Declared);
+    for (const target of [Undeclared, Declared]) UseGuards(CedarGuard)(target);
+    class Feature {}
+    Module({ controllers: [Undeclared, Declared] })(Feature);
+    class App {}
+    Module({
+      imports: [
+        CedarModule.forRoot({ guard: 'none', undeclared: 'allow', authorize: async () => true }),
+        Feature,
+      ],
+    })(App);
+    const app = await VelaFactory.create(App, {
+      middleware: [
+        async (c, next) => {
+          setTrustedRequestIdentity(c.req.raw, { principal });
+          await next();
+        },
+      ],
+    });
+    try {
+      expect((await app.getHonoApp().request('/undeclared')).status).toBe(403);
+      expect((await app.getHonoApp().request('/declared')).status).toBe(403);
     } finally {
       await app.close();
     }

@@ -108,7 +108,9 @@ const frame = (event: string, data: unknown, id?: string): string =>
   JSON.stringify(id !== undefined ? { id, event, data } : { event, data });
 
 describe('buildWsExecutionContext', () => {
-  class ChatGateway {}
+  class ChatGateway {
+    onChat(): void {}
+  }
   const client = { id: 'c1' } as never;
 
   it('reports a ws context type with client/data/pattern access', () => {
@@ -123,7 +125,8 @@ describe('buildWsExecutionContext', () => {
 
     expect(ctx.getType()).toBe('ws');
     expect(ctx.getClass()).toBe(ChatGateway);
-    expect(ctx.getHandler()).toBe('onChat');
+    expect(ctx.getHandler()).toBe(ChatGateway.prototype.onChat);
+    expect(ctx.getHandlerName()).toBe('onChat');
     expect(ctx.getModuleId()).toBe('ChatModule#default');
     expect(ctx.switchToWs().getClient()).toBe(client);
     expect(ctx.switchToWs().getData()).toEqual({ hi: 1 });
@@ -698,6 +701,50 @@ describe('WsDispatcher — code-review regressions', () => {
     await app.get(WsDispatcher).dispatchMessage('/global-guard', client, frame('secret', {}, '1'));
 
     expect(client.sent).toEqual([{ event: 'exception', data: { message: 'Forbidden' }, id: '1' }]);
+  });
+
+  it('runs global guards on gateway messages in phase order, including factory-provided ones', async () => {
+    const trace: string[] = [];
+    @Injectable()
+    class AuthorizeGuard implements CanActivate {
+      static readonly phase = 'authorize';
+      canActivate(): boolean {
+        trace.push('authorize');
+        return true;
+      }
+    }
+    class FactoryAuthenticateGuard implements CanActivate {
+      static readonly phase = 'authenticate';
+      canActivate(): boolean {
+        trace.push('authenticate');
+        return true;
+      }
+    }
+
+    @WebSocketGateway({ path: '/phased' })
+    class Gateway {
+      @SubscribeMessage('ping')
+      onPing() {
+        return { event: 'pong', data: trace };
+      }
+    }
+
+    @Module({
+      imports: [WebSocketModule.forRoot()],
+      providers: [
+        Gateway,
+        AuthorizeGuard,
+        defineProvider(APP_GUARD, { useExisting: AuthorizeGuard }),
+        defineProvider(APP_GUARD, { useFactory: () => new FactoryAuthenticateGuard() }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app.get(WsDispatcher).dispatchMessage('/phased', client, frame('ping', {}, '1'));
+
+    expect(client.sent).toEqual([{ event: 'pong', data: ['authenticate', 'authorize'], id: '1' }]);
   });
 
   it('falls back to a default exception frame when an exception filter throws', async () => {

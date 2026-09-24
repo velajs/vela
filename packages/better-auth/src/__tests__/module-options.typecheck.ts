@@ -13,7 +13,7 @@ BetterAuthModule.forRootAsync({ inject: [], useFactory: () => ({ auth: () => aut
 BetterAuthModule.forRootAsync({
   useFactory: () => ({ auth, issuer: 'accounts' }),
   basePath: '/auth',
-  globalGuard: false,
+  guard: 'none',
 });
 BetterAuthModule.forRoot({ auth: () => auth, isGlobal: true });
 

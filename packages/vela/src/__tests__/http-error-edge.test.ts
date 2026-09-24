@@ -283,7 +283,7 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
     expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('hono HTTPException status<500 (429) → verbatim response, NOT reported', async () => {
+  it('hono HTTPException status<500 (429) → its message as JSON, NOT reported', async () => {
     @Controller('/ok')
     class OkController {
       @Get()
@@ -304,7 +304,9 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
     const res = await app.getHonoApp().request('/boom');
 
     expect(res.status).toBe(429);
-    expect(await res.text()).toContain('slow down');
+    expect(await res.json()).toEqual({
+      error: { code: 'too_many_requests', message: 'slow down' },
+    });
     // 4xx author-intended client errors are NOT server faults — never reported.
     expect(errorSpy).toHaveBeenCalledTimes(0);
   });

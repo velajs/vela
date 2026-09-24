@@ -1,5 +1,6 @@
 import type { Container } from '../container/container';
 import type { Type } from '../container/types';
+import { handlerFunction } from '../pipeline/handler-function';
 import type { WsArgumentsHost } from '../pipeline/types';
 import type { WsClient, WsExecutionContext } from './websocket.types';
 
@@ -35,7 +36,8 @@ export function buildWsExecutionContext(
   return {
     getType: () => 'ws',
     getClass: () => controller,
-    getHandler: () => handlerName,
+    getHandler: () => handlerFunction(controller, handlerName),
+    getHandlerName: () => handlerName,
     getModuleId: () => moduleId,
     getContainer: () => container,
     getContext: HTTP_ON_WS('getContext()'),

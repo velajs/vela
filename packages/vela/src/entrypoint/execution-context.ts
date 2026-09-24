@@ -1,5 +1,6 @@
 import type { Container } from '../container/container';
 import type { InferToken, Token, Type } from '../container/types';
+import { handlerFunction } from '../pipeline/handler-function';
 import type { ExecutionContext } from '../pipeline/types';
 import { assertExecutionScopeActive } from './execution-scope';
 
@@ -42,7 +43,8 @@ export function buildEntrypointExecutionContext<const Kind extends string>(
   return {
     getType: () => kind,
     getClass: () => targetClass,
-    getHandler: () => handlerName,
+    getHandler: () => handlerFunction(targetClass, handlerName),
+    getHandlerName: () => handlerName,
     getModuleId: () => moduleId,
     getContainer: () => container,
     getPayload: () => payload,

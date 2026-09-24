@@ -5,12 +5,21 @@ import {
   Reflector,
   type CanActivate,
   type ExecutionContext,
+  type GuardPhase,
 } from '@velajs/vela';
 import { Roles } from './roles.decorator';
 import { getContextIdentity } from './context-identity';
 
 /** Role requirements are OR: at least one explicitly granted local role. */
 export class RolesGuard implements CanActivate {
+  /** Global guards authorize after authentication and tenant admission. */
+  static readonly phase: GuardPhase = 'authorize';
+  /**
+   * Integration routes marked `SkipGuardPhases(['authorize'])` authorize
+   * themselves. A subclass declares `false` to run on them too.
+   */
+  static readonly skippable: boolean = true;
+
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {

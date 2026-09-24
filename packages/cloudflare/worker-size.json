@@ -37,6 +37,7 @@
     "@velajs/vela/dist/fetch/",
     "@velajs/vela/dist/health/",
     "@velajs/vela/dist/http/endpoint-executor.js",
+    "@velajs/vela/dist/http/sse.js",
     "@velajs/vela/dist/http/url/",
     "@velajs/vela/dist/i18n/",
     "@velajs/vela/dist/live/index.js",

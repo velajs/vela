@@ -2,12 +2,18 @@ import { defineCrudFeature } from '../synthesize-controller';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+  APP_GUARD,
   Controller,
+  ForbiddenException,
   Get,
+  Inject,
+  Injectable,
   Module,
+  Reflector,
   UseGuards,
   UrlGeneratorService,
   VelaFactory,
+  defineProvider,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
@@ -17,7 +23,7 @@ import { Override } from '../override.decorator';
 import { CrudCtx, type CrudRequestContext } from '../crud-context.decorator';
 import { CrudModule } from '../crud.module';
 import { crudResourceToken } from '../crud.tokens';
-import { MissingTenantResolverError } from '../crud.types';
+import { MissingTenantResolverError, type CrudConfig } from '../crud.types';
 import { defineModel } from '../model/define-model';
 import { testAdapter } from './test-adapter';
 
@@ -58,6 +64,38 @@ class AllowGuard implements CanActivate {
     return true;
   }
 }
+// A class decorator that replaces the class instead of declaring metadata.
+const replaceClass: ClassDecorator = (target) =>
+  Object.setPrototypeOf(function Replacement() {}, target);
+// Method decorators that swap the handler for one that denies: in place, as a
+// wrapping decorator does, or by returning a new descriptor.
+const denied = (): never => {
+  throw new ForbiddenException('Wrapped');
+};
+const denyInPlace = (_target: object, _key: string | symbol, descriptor: PropertyDescriptor) => {
+  descriptor.value = denied;
+};
+const denyByReturn = (
+  _target: object,
+  _key: string | symbol,
+  descriptor: PropertyDescriptor,
+): PropertyDescriptor => ({ ...descriptor, value: denied });
+// A method decorator whose descriptor is no longer a method.
+const returnsName = (_target: object, key: string | symbol): PropertyDescriptor => ({
+  value: String(key),
+});
+// A class decorator that applies a method decorator to every method the class
+// has when it runs, as one that wraps or marks each handler does.
+const everyMethod =
+  (decorator: MethodDecorator) =>
+  (target: { readonly prototype: object }): void => {
+    const proto = target.prototype;
+    for (const key of Reflect.ownKeys(proto)) {
+      const descriptor = Object.getOwnPropertyDescriptor(proto, key);
+      if (key === 'constructor' || typeof descriptor?.value !== 'function') continue;
+      Object.defineProperty(proto, key, decorator(proto, key, descriptor) ?? descriptor);
+    }
+  };
 
 describe('@Crud over HTTP (decorated controller)', () => {
   async function makeApp(seed: Row[] = []) {
@@ -405,6 +443,276 @@ describe('@Override', () => {
 
     const route = app.describeRoutes().find((r) => r.name === 'item.list');
     expect(route?.handler).toBe('customList');
+  });
+});
+
+describe('route metadata (config.decorators, config.endpointDecorators)', () => {
+  // Application policy metadata, read the way an authorization guard reads it.
+  const Access = Reflector.createDecorator<string>();
+  function accessGuard(seen: Array<string | undefined>) {
+    @Injectable()
+    class AccessGuard implements CanActivate {
+      constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+      canActivate(context: ExecutionContext): boolean {
+        const access = this.reflector.getAllAndOverride(Access, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        seen.push(access);
+        return access === 'public';
+      }
+    }
+    return AccessGuard;
+  }
+
+  it('declares metadata on headless controllers and each endpoint', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    const seen: Array<string | undefined> = [];
+    const AccessGuard = accessGuard(seen);
+    @Module({
+      imports: [
+        CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
+        CrudModule.forFeature([
+          defineCrudFeature({
+            path: '/things',
+            model: makeModel({ name: 'thing' }),
+            decorators: [Access('private')],
+            endpointDecorators: { list: [Access('public')] },
+          }),
+          defineCrudFeature({ path: '/others', model: makeModel({ name: 'other' }) }),
+        ]),
+      ],
+      providers: [AccessGuard, defineProvider(APP_GUARD, { useExisting: AccessGuard })],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/things')).status).toBe(200);
+    expect((await hono.request('/things/a')).status).toBe(403);
+    expect((await hono.request('/others')).status).toBe(403);
+    // Endpoint metadata overrides the resource's; undecorated resources carry none.
+    expect(seen).toEqual(['public', 'private', undefined]);
+  });
+
+  it('applies decorators as if written in order above the class or method', async () => {
+    const store = new Map<string, Row>();
+    const seen: Array<string | undefined> = [];
+    const AccessGuard = accessGuard(seen);
+    @Controller('/items')
+    @UseGuards(AccessGuard)
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      // The first decorator is applied last, so its metadata wins.
+      endpointDecorators: { list: [Access('public'), Access('private')] },
+    })
+    class ItemsController {
+      @Override('list')
+      customList() {
+        return { custom: true };
+      }
+    }
+
+    @Module({ controllers: [ItemsController], providers: [AccessGuard] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    // An @Override'd endpoint keeps its configured metadata.
+    expect((await app.getHonoApp().request('/items')).status).toBe(200);
+    expect(seen).toEqual(['public']);
+  });
+
+  it('calls the handler an endpoint decorator wraps or returns, @Override included', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    @Controller('/items')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      endpointDecorators: { list: [denyInPlace], read: [denyByReturn] },
+    })
+    class ItemsController {
+      @Override('read')
+      customRead() {
+        return { custom: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
+        CrudModule.forFeature([
+          defineCrudFeature({
+            path: '/things',
+            model: makeModel({ name: 'thing' }),
+            endpointDecorators: { list: [denyInPlace], read: [denyByReturn] },
+          }),
+        ]),
+      ],
+      controllers: [ItemsController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    // The decorated handler is the one each route calls, as if written above it.
+    for (const path of ['/items', '/items/a', '/things', '/things/a']) {
+      const response = await hono.request(path);
+      expect(response.status, path).toBe(403);
+      expect(await response.json(), path).toEqual({
+        error: { code: 'forbidden', message: 'Wrapped' },
+      });
+    }
+    expect((await hono.request('/items', json('POST', { name: 'B', qty: 2 }))).status).toBe(201);
+  });
+
+  it('applies class decorators after the generated handlers exist, as TypeScript does', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    const seen: Array<string | undefined> = [];
+    // Denies only the handlers marked private, as a roles guard does.
+    @Injectable()
+    class MarkedGuard implements CanActivate {
+      constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+      canActivate(context: ExecutionContext): boolean {
+        const access = this.reflector.get(Access, context);
+        seen.push(access);
+        return access !== 'private';
+      }
+    }
+    const denyEveryMethod = everyMethod(denyInPlace);
+    const markEveryMethod = everyMethod(Access('private'));
+
+    @Controller('/items')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      decorators: [denyEveryMethod],
+    })
+    class ItemsController {
+      @Override('read')
+      customRead() {
+        return { custom: true };
+      }
+    }
+    @Controller('/notes')
+    @Crud({
+      model: makeModel({ name: 'note' }),
+      adapter: testAdapter(store, 'deletedAt'),
+      decorators: [markEveryMethod],
+    })
+    class NotesController {}
+
+    @Module({
+      imports: [
+        CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
+        CrudModule.forFeature([
+          defineCrudFeature({
+            path: '/things',
+            model: makeModel({ name: 'thing' }),
+            decorators: [denyEveryMethod],
+          }),
+          defineCrudFeature({
+            path: '/others',
+            model: makeModel({ name: 'other' }),
+            decorators: [markEveryMethod],
+          }),
+        ]),
+      ],
+      controllers: [ItemsController, NotesController],
+      providers: [MarkedGuard, defineProvider(APP_GUARD, { useExisting: MarkedGuard })],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    // A class decorator that wraps each method wraps the generated handlers.
+    for (const path of ['/items', '/items/a', '/things', '/things/a']) {
+      const response = await hono.request(path);
+      expect(response.status, path).toBe(403);
+      expect(await response.json(), path).toEqual({
+        error: { code: 'forbidden', message: 'Wrapped' },
+      });
+    }
+    // One that marks each method marks the generated handlers.
+    for (const path of ['/notes', '/notes/a', '/others', '/others/a']) {
+      expect((await hono.request(path)).status, path).toBe(403);
+    }
+    expect(seen).toEqual([
+      ...Array.from({ length: 4 }, () => undefined),
+      ...Array.from({ length: 4 }, () => 'private'),
+    ]);
+  });
+
+  it('lets a class decorator that writes method metadata override endpoint metadata', async () => {
+    const store = new Map<string, Row>();
+    const seen: Array<string | undefined> = [];
+    // Reads the handler's metadata only, as a guard honoring method-level marks does.
+    @Injectable()
+    class HandlerAccessGuard implements CanActivate {
+      constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+      canActivate(context: ExecutionContext): boolean {
+        const access = this.reflector.get(Access, context);
+        seen.push(access);
+        return access === 'public';
+      }
+    }
+    const markEveryMethod = everyMethod(Access('private'));
+
+    @Controller('/items')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      decorators: [markEveryMethod],
+      endpointDecorators: { list: [Access('public')] },
+    })
+    class ItemsController {}
+
+    @Module({
+      imports: [
+        CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
+        CrudModule.forFeature([
+          defineCrudFeature({
+            path: '/things',
+            model: makeModel({ name: 'thing' }),
+            decorators: [markEveryMethod],
+            endpointDecorators: { list: [Access('public')] },
+          }),
+        ]),
+      ],
+      controllers: [ItemsController],
+      providers: [
+        HandlerAccessGuard,
+        defineProvider(APP_GUARD, { useExisting: HandlerAccessGuard }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    // Class decorators apply last, as written in TypeScript, so the method mark wins.
+    for (const path of ['/items', '/things']) {
+      expect((await hono.request(path)).status, path).toBe(403);
+    }
+    expect(seen).toEqual(['private', 'private']);
+  });
+
+  it('rejects decorators that replace the generated controller or leave no handler', () => {
+    const feature = (config: Pick<CrudConfig, 'decorators' | 'endpointDecorators'>) =>
+      CrudModule.forFeature([
+        defineCrudFeature({ path: '/things', model: makeModel({ name: 'thing' }), ...config }),
+      ]);
+    expect(() => feature({ decorators: [replaceClass] })).toThrow(
+      'CrudThingsController: CRUD decorators cannot replace the controller class',
+    );
+    expect(() => feature({ endpointDecorators: { list: [returnsName] } })).toThrow(
+      "CrudThingsController: CRUD decorators must leave the 'list' handler a method",
+    );
   });
 });
 

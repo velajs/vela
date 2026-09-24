@@ -49,7 +49,9 @@ async function exercise(module: Type, globalPipes: PipeType[] = []): Promise<voi
 
   const invalid = await hono.request('/notes', postJson({ title: '' }));
   expect(invalid.status).toBe(400);
-  expect(await invalid.json()).toMatchObject({ message: 'Validation failed' });
+  expect(await invalid.json()).toMatchObject({
+    error: { code: 'bad_request', message: 'Validation failed' },
+  });
   await app.close();
 }
 

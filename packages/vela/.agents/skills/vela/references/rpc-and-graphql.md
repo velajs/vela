@@ -19,7 +19,9 @@ calls make one attempt; retries require an idempotent procedure and explicit
 retry options. Deadlines include setup, I/O, and response consumption.
 
 The adapter reuses the HTTP child, global/scoped pipeline, module owner and
-trusted identity. Guards precede handler construction. Consume or cancel the
+trusted identity. The `authorize` policy runs in the global `authorize` phase,
+after global authentication and tenant guards, so it can read the trusted
+identity. Guards precede handler construction. Consume or cancel the
 response body so managed work and resource disposal can complete.
 
 ## GraphQL

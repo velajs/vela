@@ -323,7 +323,8 @@ describe('createParamDecorator', () => {
 
     expect(capturedCtx).not.toBeNull();
     expect(capturedCtx!.getClass()).toBe(CtxTestController);
-    expect(capturedCtx!.getHandler()).toBe('handle');
+    expect(capturedCtx!.getHandler()).toBe(CtxTestController.prototype.handle);
+    expect(capturedCtx!.getHandlerName()).toBe('handle');
     expect(capturedCtx!.getRequest()).toBeInstanceOf(Request);
   });
 });

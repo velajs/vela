@@ -177,7 +177,7 @@ describe('Logger', () => {
       const container = new Container();
       // Logger has an optional `context?: string` param that isn't a DI
       // token — register via factory so constructor injection is bypassed.
-      container.register(defineProvider(Logger, { inject: [],useFactory: () => new Logger()}));
+      container.register(defineProvider(Logger, { inject: [], useFactory: () => new Logger() }));
 
       const a = container.resolve(Logger);
       const b = container.resolve(Logger);

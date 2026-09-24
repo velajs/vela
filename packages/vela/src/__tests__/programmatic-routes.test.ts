@@ -91,8 +91,9 @@ describe('explicit param metatype on programmatic routes', () => {
       body: JSON.stringify({ name: 'anchor', qty: -1 }),
     });
     expect(invalid.status).toBe(400);
-    const errorBody = (await invalid.json()) as { message?: string };
-    expect(errorBody.message).toBe('Validation failed');
+    expect(await invalid.json()).toMatchObject({
+      error: { code: 'bad_request', message: 'Validation failed' },
+    });
   });
 
   it('ValidationPipe validates a synthesized @Query param via explicit metatype', async () => {

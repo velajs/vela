@@ -1,4 +1,5 @@
 import type { ExecutionContext } from '../pipeline/types';
+import { RequestContextKey } from './request-context';
 
 /** Canonical principal published only after server-side credential verification. */
 export interface TrustedRequestPrincipal {
@@ -192,6 +193,17 @@ function authenticationState(request: Request): AuthenticationState | undefined 
   }
   return state;
 }
+
+/**
+ * The request's trusted identity, read through `REQUEST_CONTEXT`:
+ * `context.get(TRUSTED_REQUEST_IDENTITY)`. It is a view of
+ * `getTrustedRequestIdentity(request)`; `set()` throws, so publication stays
+ * with `setTrustedRequestIdentity` after verification.
+ */
+export const TRUSTED_REQUEST_IDENTITY =
+  /* @__PURE__ */ new RequestContextKey<TrustedRequestIdentity>('vela.trusted-request-identity', {
+    derive: (context) => getTrustedRequestIdentity(context.request),
+  });
 
 /**
  * Publish a tenant only after server-side admission, without reauthenticating.

@@ -1215,6 +1215,59 @@ describe('relative targets are checked against the routes registered at startup'
     },
   );
 
+  describe('routes the global prefix excludes', () => {
+    @Controller('/admin')
+    class AdminController {
+      @Get('secret')
+      secret() {
+        return { ok: true };
+      }
+
+      @Get('report')
+      report() {
+        return { ok: true };
+      }
+    }
+    const options = { globalPrefix: '/api', globalPrefixOptions: { exclude: ['admin/report'] } };
+
+    it('rejects a relative target that misses a route served outside the prefix', async () => {
+      await expect(createApp([AdminController], forRoutes('admin/*'), options)).rejects.toThrow(
+        "Middleware route 'admin/*' resolves to '/api/admin/*' under the global prefix '/api', " +
+          'so it does not match GET /admin/report, which is served outside the prefix. Add ' +
+          "{ path: '/admin/report', absolute: true } to forRoutes() to cover it, or to exclude() " +
+          'to leave it out.',
+      );
+    });
+
+    it.each<{ name: string; configure: (consumer: MiddlewareConsumer) => void; ran: string[] }>([
+      {
+        name: 'an absolute forRoutes() target',
+        configure: forRoutes('admin/*', { path: '/admin/report', absolute: true }),
+        ran: ['GET /api/admin/secret', 'GET /admin/report'],
+      },
+      {
+        name: 'the controller',
+        configure: forRoutes('admin/*', AdminController),
+        ran: ['GET /api/admin/secret', 'GET /admin/report'],
+      },
+      {
+        name: 'an absolute exclude() target',
+        configure: (consumer) => {
+          consumer
+            .apply(RecordingMiddleware)
+            .exclude({ path: '/admin/report', absolute: true })
+            .forRoutes('admin/*');
+        },
+        ran: ['GET /api/admin/secret'],
+      },
+    ])('accepts it once $name accounts for that route', async ({ configure, ran }) => {
+      const request = await createApp([AdminController], configure, options);
+      expect(await request('GET', '/api/admin/secret')).toBe(200);
+      expect(await request('GET', '/admin/report')).toBe(200);
+      expect(seen).toEqual(ran);
+    });
+  });
+
   it('accepts a relative target served under the global prefix', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const request = await createApp(

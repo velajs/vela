@@ -86,6 +86,69 @@ that should have been filtered.
 See [schema contracts](types.md), [serialization](serialization.md) and
 [typed CRUD services](crud/services.md).
 
+## HTTP errors, request parameters and guards
+
+Every HTTP failure renders through `renderHttpError`. Clients see these changes:
+
+- Validation failures from `ValidationPipe` and `@Body(schema)` answer
+  `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`
+  instead of `{ statusCode, message, errors }`.
+- Unmatched routes answer a JSON 404, `{ error: { code: 'not_found', message: 'Not Found' } }`,
+  and oversized bodies a JSON 413 (`payload_too_large`), instead of Hono's plain text.
+  Global exception filters receive these rejections, as in Nest, so a catch-all filter that
+  wraps every error also shapes the 404; they are still not reported.
+- A Hono `HTTPException` below 500 answers `{ error: { code, message } }` instead of its
+  plain-text response, unless it was built with its own `res`.
+- An exception filter's plain result is sent with the exception's status
+  (`getErrorStatus`: `HttpException.getStatus()`, `VelaError.status`, else 500)
+  instead of 200. Return `{ status, body }` to choose the status. A filter that
+  returns `undefined` leaves the error to the default renderer instead of sending 204.
+
+`HttpException.getRawResponse()` is removed. Exceptions own their wire shape
+through `toResponse()`: an object response still renders verbatim, and a custom
+exception overrides `toResponse()` to return `{ status, body }`. Pass structured
+client data on a 4xx with `new BadRequestException(message, { details })`.
+Integrations that map errors to another transport call `renderHttpError(error)`.
+
+`@Req()` injects the platform `Request`; inject the Hono context with the new
+`@Ctx()` (or `@Res()`). Replace `@Req() c: Context` with `@Ctx() c: Context`, or
+with `@Req() request: Request` when the handler only read `c.req.raw`.
+
+`ExecutionContext.getHandler()` returns the handler method, as in Nest, and the
+new `getHandlerName()` returns its name. Custom execution contexts implement both
+and record the handler with `MetadataRegistry.addHandlerMethod(handler, type, name)`.
+Pass `context.getHandler()` and `context.getClass()` to the `Reflector`, or keep
+passing the context. `[context.getHandler(), context.getClass()]` reads the
+method that class routes, so one controller's metadata on an inherited method
+never applies to a sibling controller. Alone, `context.getHandler()` throws when
+several controllers route the function with different metadata for the key; list
+the class with it or pass the context there. When one wrapper function replaces
+several methods of a controller with different metadata, the list form throws
+too, so pass the context. Code that used the handler name, such as a throttling
+key, calls `getHandlerName()`.
+
+Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
+Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule` and `CedarModule`
+install their guard globally by default; `guard: 'none'` opts out. Replace
+Better Auth's `isGlobal` with `guard` and Cedar's `globalGuard: false` with
+`guard: 'none'`. Remove `@UseGuards` for guards the modules now install, or pass
+`guard: 'none'` and keep a fully route-level pipeline. The installed guards
+cover every application route, including modules that do not import
+`TenantModule` or `CedarModule`. Cedar denies routes without
+`@RequireResource()` or `@CedarPublic()`; set `undeclared: 'allow'` to keep
+the previous behavior. Declare the policy of generated CRUD controllers with the
+resource's `decorators` and `endpointDecorators`. Integration packages mark their own
+controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`, which skips only the
+guards integrations install (`static readonly skippable = true`); other global guards
+still run there. An application guard that extends an integration guard inherits
+`skippable`; declare `static override readonly skippable = false` on it to keep it
+running there. Import order no longer decides whether authentication runs before
+throttling. The RPC `authorize` policy runs after global authentication and tenant
+guards, so it can read the trusted identity.
+
+`ThrottlerGuard` publishes its decision under the `RATE_LIMIT` request-context
+key instead of the `rateLimit` Hono variable.
+
 ## Queues, events, schedules and storage
 
 Configure the queue driver once with `QueueModule.forRoot({ driver })` and register

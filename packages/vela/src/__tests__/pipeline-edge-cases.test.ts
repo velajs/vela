@@ -68,7 +68,7 @@ describe('@Catch type matching', () => {
 
     // NotFoundException — caught by NotFoundFilter
     const res1 = await hono.request('/catch-test/not-found');
-    expect(res1.status).toBe(200);
+    expect(res1.status).toBe(404);
     expect(await res1.json()).toEqual({ caught: 'not-found', message: 'Gone' });
 
     // ForbiddenException — NOT caught by NotFoundFilter, falls to default handler
@@ -117,12 +117,12 @@ describe('@Catch type matching', () => {
 
     // BadRequest — caught
     const res1 = await hono.request('/multi-catch/bad');
-    expect(res1.status).toBe(200);
+    expect(res1.status).toBe(400);
     expect(await res1.json()).toEqual({ caught: 'multi', status: 400 });
 
     // NotFound — caught
     const res2 = await hono.request('/multi-catch/missing');
-    expect(res2.status).toBe(200);
+    expect(res2.status).toBe(404);
     expect(await res2.json()).toEqual({ caught: 'multi', status: 404 });
 
     // Forbidden — NOT caught
@@ -160,11 +160,11 @@ describe('@Catch type matching', () => {
     const hono = app.getHonoApp();
 
     const res1 = await hono.request('/catch-all/http');
-    expect(res1.status).toBe(200);
+    expect(res1.status).toBe(403);
     expect(await res1.json()).toEqual({ caught: 'all', message: 'nope' });
 
     const res2 = await hono.request('/catch-all/generic');
-    expect(res2.status).toBe(200);
+    expect(res2.status).toBe(500);
     expect(await res2.json()).toEqual({ caught: 'all', message: 'boom' });
   });
 
@@ -206,12 +206,12 @@ describe('@Catch type matching', () => {
 
     // Method-level filter runs first
     const res1 = await hono.request('/filter-priority/method');
-    expect(res1.status).toBe(200);
+    expect(res1.status).toBe(500);
     expect(await res1.json()).toEqual({ level: 'method' });
 
     // Controller-level filter when no method filter
     const res2 = await hono.request('/filter-priority/controller');
-    expect(res2.status).toBe(200);
+    expect(res2.status).toBe(500);
     expect(await res2.json()).toEqual({ level: 'controller' });
   });
 });

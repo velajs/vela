@@ -20,7 +20,12 @@ export {
   shouldFilterCatch,
 } from './decorators';
 export { SetMetadata, Reflector } from './reflector';
-export type { ReflectableDecorator, CreateDecoratorOptions } from './reflector';
+export type {
+  ReflectableDecorator,
+  CreateDecoratorOptions,
+  ReflectorContext,
+  ReflectorTarget,
+} from './reflector';
 export {
   APP_GUARD,
   APP_PIPE,
@@ -45,6 +50,7 @@ export type {
   HttpArgumentsHost,
   HttpExecutionContext,
   ExecutionContext,
+  HandlerFunction,
   CanActivate,
   CallHandler,
   NestInterceptor,

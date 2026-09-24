@@ -234,7 +234,45 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
     if (endpointGuards?.length) {
       UseGuards(...endpointGuards)(proto, handlerName);
     }
+
+    // Endpoint decorators, as if written above the method (the last one first);
+    // like the guards, they are endpoint policy an override keeps. As in
+    // TypeScript's own decorator application, one that changes or returns the
+    // descriptor wraps the handler, and the result is what the route calls.
+    const endpointDecorators = config.endpointDecorators?.[endpoint] ?? [];
+    if (endpointDecorators.length > 0) {
+      let decorated: unknown = descriptor;
+      for (const decorator of endpointDecorators.toReversed()) {
+        if (!isMethodDescriptor(decorated)) break;
+        decorated = decorator(proto, handlerName, decorated) ?? decorated;
+      }
+      if (!isMethodDescriptor(decorated)) {
+        throw new ConfigurationException(
+          `${controller.name}: CRUD decorators must leave the '${endpoint}' handler a method`,
+        );
+      }
+      Object.defineProperty(proto, handlerName, decorated);
+    }
   }
+
+  // Class decorators apply as if written above the class: the last one first,
+  // and, as in TypeScript, after the methods exist, so one that decorates or
+  // wraps each method reaches the generated handlers too.
+  for (const decorator of (config.decorators ?? []).toReversed()) {
+    const replacement: unknown = decorator(controller);
+    if (replacement !== undefined && replacement !== controller) {
+      throw new ConfigurationException(
+        `${controller.name}: CRUD decorators cannot replace the controller class`,
+      );
+    }
+  }
+}
+
+// A method's descriptor: a function value, or a getter that returns one.
+function isMethodDescriptor(value: unknown): value is PropertyDescriptor {
+  if (typeof value !== 'object' || value === null) return false;
+  const { value: method, get } = value as PropertyDescriptor;
+  return typeof method === 'function' || typeof get === 'function';
 }
 
 function defineHandler(
@@ -344,7 +382,7 @@ function stampParams(
       ...(metatype ? { metatype: Object.freeze({ ...metatype, validationOwner: 'handler' }) } : {}),
     });
   }
-  add({ index, type: ParamType.REQUEST });
+  add({ index, type: ParamType.CONTEXT });
 }
 
 /** Maps the validated consumer config onto the engine's runtime configuration. */

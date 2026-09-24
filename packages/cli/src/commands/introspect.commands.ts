@@ -172,7 +172,8 @@ export class OpenApiDumpCommand extends Command {
         if (this.apiVersion) info.version = this.apiVersion;
 
         const document = createOpenApiDocument(rootModule, {
-          globalPrefix: this.globalPrefix ?? app.getGlobalPrefix(),
+          ...app.getRoutePathOptions(),
+          ...(this.globalPrefix === undefined ? {} : { globalPrefix: this.globalPrefix }),
           ...(Object.keys(info).length > 0 ? { info } : {}),
         });
 

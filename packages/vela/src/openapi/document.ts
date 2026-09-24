@@ -1,3 +1,4 @@
+import { createRouteComposer } from '../http/route-paths';
 import { endpointResponseSchema } from './endpoint-response';
 import { ParamType } from '../constants';
 import type { Type } from '../container/types';
@@ -364,6 +365,7 @@ export function createOpenApiDocument(
   const paths: Record<string, OpenApiPathItem> = {};
   const globalPrefix = options.globalPrefix ?? '';
   const registry = new ComponentsRegistry();
+  const composeRoutePaths = createRouteComposer(options);
 
   const controllers = collectControllers(rootModule);
 
@@ -377,12 +379,7 @@ export function createOpenApiDocument(
       const method = HTTP_VERBS.find((verb) => verb === route.method.toLowerCase());
       if (!method || isApiExcluded(controller, route.handlerName)) continue;
 
-      const version = route.version ?? controllerVersion;
-      const versions =
-        version === undefined ? [undefined] : Array.isArray(version) ? version : [version];
-      for (const entry of versions) {
-        const prefix = entry === undefined ? globalPrefix : joinPaths(globalPrefix, `/v${entry}`);
-        const rawPath = joinPaths(joinPaths(prefix, controllerPath), route.path);
+      for (const { path: rawPath } of composeRoutePaths(controllerPath, route, controllerVersion)) {
         const pathString = toOpenApiPath(rawPath);
 
         const operation = buildOperation(controller, route, pathString, registry);

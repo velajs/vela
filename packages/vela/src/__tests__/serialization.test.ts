@@ -201,8 +201,12 @@ describe('Serialization', () => {
       }),
     });
     expect(invalidRes.status).toBe(400);
-    const errorBody = (await invalidRes.json()) as any;
-    expect(errorBody.message).toBe('Validation failed');
-    expect(errorBody.errors.length).toBeGreaterThan(0);
+    expect(await invalidRes.json()).toMatchObject({
+      error: {
+        code: 'bad_request',
+        message: 'Validation failed',
+        details: { issues: expect.arrayContaining([expect.objectContaining({ path: ['email'] })]) },
+      },
+    });
   });
 });

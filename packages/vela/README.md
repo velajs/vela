@@ -68,8 +68,9 @@ for caching, signed URLs, browser headers, client identity, and WebSockets.
 Rate limiting prefers identity explicitly published by trusted authentication
 through `setTrustedRequestIdentity()` (principal plus verified tenant), then a
 configured tracker, then the runtime-attested client address. Core never derives
-a tracker from forwarding headers. Authentication guards must be registered
-before `ThrottlerModule`.
+a tracker from forwarding headers. Global guards run in fixed phases
+(`authenticate`, `tenant`, `authorize`, `feature`), so authentication runs before
+throttling whatever the import order.
 
 ## Features
 
@@ -80,12 +81,14 @@ before `ThrottlerModule`.
 - **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, etc., and `ValidationPipe` from `@velajs/vela/validation`
 - **Schema-validated parameters** — `@Body(schema)`, `@Query('page', schema)`, `@Param('id', schema)` return 400 on invalid input and document the schema in OpenAPI
 - **Interceptors** — `@UseInterceptors` with `NestInterceptor` interface
-- **Exception filters** — `@UseFilters`, `@Catch`, built-in HTTP exceptions
+- **Exception filters** — `@UseFilters`, `@Catch`, built-in HTTP exceptions; every failure renders through one `renderHttpError` as `{ error: { code, message, details? } }`, including a JSON 404
 - **Middleware** — `@UseMiddleware` for Hono-native middleware
-- **Custom metadata** — `@SetMetadata` + `Reflector`
+- **Custom metadata** — `@SetMetadata`, `Reflector.createDecorator()` and a `Reflector` that reads `context.getHandler()` / `context.getClass()` as in Nest
 - **Custom param decorators** — `createParamDecorator`
-- **Route versioning** — `@Controller({ path: '/users', version: 1 })` + `@Version(2)` (serves `/v1/users` and `/v2/users`)
-- **Global prefix** — `VelaFactory.create(AppModule, { globalPrefix: '/api' })`, read back with `app.getGlobalPrefix()`
+- **Route versioning** — `@Controller({ path: '/users', version: 1 })` + `@Version(2)` (serves `/v1/users` and `/v2/users`), `VERSION_NEUTRAL`, and `versioning: { prefix }`
+- **Global prefix** — `VelaFactory.create(AppModule, { globalPrefix: '/api', globalPrefixOptions: { exclude: ['health'] } })`, read back with `app.getGlobalPrefix()`
+- **Request objects** — `@Req()` injects the platform `Request`, `@Ctx()` the Hono context
+- **Server-Sent Events** — `@Sse()` streams an async iterable of `MessageEvent`
 - **Lifecycle hooks** — `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`
 - **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/vela/tree/main/packages/crud) package
 

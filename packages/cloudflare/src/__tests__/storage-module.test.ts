@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Controller, ENV, Get, Inject, Module } from '@velajs/vela';
+import { APP_GUARD, Controller, ENV, Get, Inject, Module, defineProvider } from '@velajs/vela';
 import { signUrl, STORAGE_SIGNED_URL_PURPOSE } from '@velajs/vela/security';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { StorageModule } from '../storage/storage.module';
@@ -141,6 +141,49 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
     expect(download.headers.get('content-disposition')).toMatch(/^attachment;/);
     expect(download.headers.get('x-content-type-options')).toBe('nosniff');
     expect(await download.text()).toBe('hello world');
+  });
+
+  it('leaves tenant admission and authorization of signed downloads to the signature', async () => {
+    const ran: string[] = [];
+    // Application-wide policy guards, as TenantModule and CedarModule install,
+    // and the application's own authorization guard, which still runs.
+    const policy = (phase: 'tenant' | 'authorize', owner: 'integration' | 'app') => {
+      const guard = {
+        phase,
+        skippable: owner === 'integration',
+        canActivate() {
+          ran.push(`${owner} ${phase}`);
+          return owner === 'app';
+        },
+      };
+      return defineProvider(APP_GUARD, { useValue: guard });
+    };
+    @Module({
+      imports: [AppModule],
+      providers: [
+        policy('tenant', 'integration'),
+        policy('authorize', 'integration'),
+        policy('authorize', 'app'),
+      ],
+    })
+    class PolicedModule {}
+    const bucket = createMockR2();
+    const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
+    const app = await createCloudflareApp(PolicedModule, { env });
+    const hono = app.getHonoApp();
+    // The application's own routes are covered.
+    expect((await hono.request('/files/sign', undefined, env)).status).toBe(403);
+    expect(ran).toEqual(['integration tenant']);
+
+    const signer = await createCloudflareApp(AppModule, { env });
+    await signer.getHonoApp().request('/files/upload', undefined, env);
+    const signed = await signer.getHonoApp().request('/files/sign', undefined, env);
+    const { url } = (await signed.json()) as { url: string };
+    ran.length = 0;
+    const download = await hono.request(url, undefined, env);
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe('hello world');
+    expect(ran).toEqual(['app authorize']);
   });
 
   it('never renders stored HTML or SVG inline on the authenticated API origin', async () => {

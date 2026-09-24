@@ -15,6 +15,7 @@
  */
 import { Injectable } from '@velajs/vela';
 import type { VelaHono as Hono } from '@velajs/vela';
+import type { RoutePathOptions } from '@velajs/vela';
 import type { RouteDescription } from '@velajs/vela/module-kit';
 
 /**
@@ -34,13 +35,13 @@ import type { RouteDescription } from '@velajs/vela/module-kit';
 @Injectable()
 export class StudioAppHolder {
   #honoApp: Hono | null = null;
-  #prefix = '';
+  #routePathOptions: RoutePathOptions = {};
   #descriptions: RouteDescription[] | null = null;
 
   /** Called once by the route contributor's `buildRoutes`. */
-  capture(app: Hono, globalPrefix: string): void {
+  capture(app: Hono, routePathOptions: RoutePathOptions): void {
     this.#honoApp = app;
-    this.#prefix = globalPrefix;
+    this.#routePathOptions = routePathOptions;
   }
 
   /** Called by {@link studioRuntimeAdapter}'s `onRoutesBuilt` when the adapter is wired. */
@@ -55,7 +56,12 @@ export class StudioAppHolder {
 
   /** The app's normalized global prefix ('' when none), or '' before capture. */
   get globalPrefix(): string {
-    return this.#prefix;
+    return this.#routePathOptions.globalPrefix ?? '';
+  }
+
+  /** How the app composes controller routes, for OpenAPI documents. */
+  get routePathOptions(): RoutePathOptions {
+    return this.#routePathOptions;
   }
 
   /** The fully-attributed route descriptions, or null when the adapter isn't wired. */
