@@ -50,6 +50,7 @@ import { REQUEST_CONTEXT, createRequestContext } from './request-context';
 import { findRequestContainer, setRequestContainer } from './request-container';
 import type { HttpRequestCompletion, HttpRequestObserver } from './request-observer';
 import { shouldFilterCatch } from '../pipeline/decorators';
+import { handlerFunction } from '../pipeline/handler-function';
 import { getScopedComponents } from '../pipeline/scoped-components';
 import {
   declaredField,
@@ -688,6 +689,9 @@ export class RouteManager {
       metadata: { prefix, version: options.version },
       routes: routes as RouteMetadata[],
     });
+    // Before any request, record the method each route calls, so a function
+    // several controllers route reads the same way through every route.
+    for (const route of routes) handlerFunction(controller, route.handlerName);
 
     return this;
   }

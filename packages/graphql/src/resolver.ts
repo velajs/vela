@@ -1,6 +1,7 @@
 import type { ExecutionContext, HandlerFunction, Type } from '@velajs/vela';
 import {
   bindTrustedRequestContext,
+  MetadataRegistry,
   PipelineRunner,
   resolveScopedComponentsAsync,
   resolvePipelineComponents,
@@ -57,6 +58,8 @@ export function bindResolver<
   Record<string, unknown>,
   Promise<Output extends ValidationSchema ? SchemaOutput<Output> : MethodResult<T, K>>
 > {
+  // Recorded before any operation, as HTTP routes are (Reflector reads).
+  resolverMethod(provider, methodName);
   return async (root, args, context, info) => {
     const operation = context.operation;
     if (!(operation instanceof GraphqlOperation))
@@ -177,6 +180,15 @@ export function bindResolver<
   };
 }
 
+// The resolver method `getHandler()` reports, recorded as that method so the
+// Reflector reads its metadata through it.
+function resolverMethod(provider: Type, method: string | symbol): HandlerFunction | undefined {
+  const handler: unknown = Reflect.get(provider.prototype as object, method);
+  if (typeof handler !== 'function') return undefined;
+  MetadataRegistry.addHandlerMethod(handler, provider, method);
+  return handler as HandlerFunction;
+}
+
 function executionContext(
   operation: GraphqlOperation,
   provider: Type,
@@ -190,9 +202,9 @@ function executionContext(
     getType: () => 'graphql',
     getClass: () => provider,
     getHandler: () => {
-      const handler: unknown = Reflect.get(provider.prototype as object, method);
-      if (typeof handler !== 'function') throw new TypeError('GraphQL resolver method is missing');
-      return handler as HandlerFunction;
+      const handler = resolverMethod(provider, method);
+      if (!handler) throw new TypeError('GraphQL resolver method is missing');
+      return handler;
     },
     getHandlerName: () => method,
     getModuleId: () => moduleId,

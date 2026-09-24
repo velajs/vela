@@ -72,12 +72,14 @@ interface RegistryState {
   // Next default key for Reflector.createDecorator. Never reset: decorators
   // created earlier keep their keys for the lifetime of the process.
   nextDecoratorKey: number;
-  // Handler function -> (declaring class, method name), recorded by
-  // SetMetadata, so Reflector reads handler metadata from a function target.
-  handlerOwners: WeakMap<object, readonly [Constructor, string | symbol]>;
-  // Handler functions decorated as the method of more than one (class, name).
-  ambiguousHandlers: WeakSet<object>;
+  // Handler function -> each (class, method name) it is: the method SetMetadata
+  // decorates and the method each route or message calls, so the Reflector
+  // reads handler metadata from a function target.
+  handlerMethods: WeakMap<object, HandlerMethod[]>;
 }
+
+/** A class and the name of one of its methods. */
+export type HandlerMethod = readonly [Constructor, string | symbol];
 
 function createRegistryState(): RegistryState {
   return {
@@ -105,8 +107,7 @@ function createRegistryState(): RegistryState {
       filter: new Map(),
     },
     nextDecoratorKey: 0,
-    handlerOwners: new WeakMap(),
-    ambiguousHandlers: new WeakSet(),
+    handlerMethods: new WeakMap(),
   };
 }
 
@@ -130,8 +131,7 @@ function registryState(): RegistryState {
   state.classMetaIndex ??= new Map();
   state.handlerMetaIndex ??= new Map();
   state.nextDecoratorKey ??= 0;
-  state.handlerOwners ??= new WeakMap();
-  state.ambiguousHandlers ??= new WeakSet();
+  state.handlerMethods ??= new WeakMap();
   return state;
 }
 
@@ -469,25 +469,21 @@ export class MetadataRegistry {
   }
 
   /**
-   * Record which class method a handler function is, for function-target
-   * metadata reads. A function decorated as the method of several classes
-   * (one inherited method decorated per controller) cannot name its owner.
+   * Record that a handler function is the method `name` of `type`, for
+   * function-target metadata reads. `SetMetadata` records the method it
+   * decorates; transports record the method each route or message calls.
+   * A function inherited by several classes is the method of each of them.
    */
-  static setHandlerOwner(handler: object, owner: Constructor, name: string | symbol): void {
+  static addHandlerMethod(handler: object, type: Constructor, name: string | symbol): void {
     const state = registryState();
-    const known = state.handlerOwners.get(handler);
-    if (known && (known[0] !== owner || known[1] !== name)) state.ambiguousHandlers.add(handler);
-    state.handlerOwners.set(handler, [owner, name]);
+    const methods = state.handlerMethods.get(handler) ?? [];
+    if (methods.some(([known, method]) => known === type && method === name)) return;
+    state.handlerMethods.set(handler, [...methods, [type, name]]);
   }
 
-  /** Whether several (class, method name) pairs decorated this handler function. */
-  static isAmbiguousHandler(handler: object): boolean {
-    return registryState().ambiguousHandlers.has(handler);
-  }
-
-  /** The (class, method name) a handler function was decorated as, if any. */
-  static getHandlerOwner(handler: object): readonly [Constructor, string | symbol] | undefined {
-    return registryState().handlerOwners.get(handler);
+  /** Every (class, method name) a handler function was recorded as. */
+  static getHandlerMethods(handler: object): readonly HandlerMethod[] {
+    return registryState().handlerMethods.get(handler) ?? [];
   }
 
   static getCustomHandlerMetaAll(
@@ -600,7 +596,7 @@ export class MetadataRegistry {
     this.handlerMeta.clear();
     this.classMetaIndex.clear();
     this.handlerMetaIndex.clear();
-    registryState().handlerOwners = new WeakMap();
+    registryState().handlerMethods = new WeakMap();
     for (const type of ['middleware', 'guard', 'pipe', 'interceptor', 'filter'] as const) {
       this.controllerComponents[type].clear();
       this.handlerComponents[type].clear();

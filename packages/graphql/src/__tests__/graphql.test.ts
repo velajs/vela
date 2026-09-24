@@ -5,6 +5,7 @@ import {
   Injectable,
   InjectionToken,
   Module,
+  Reflector,
   Scope,
   UseGuards,
   UsePipes,
@@ -246,6 +247,45 @@ describe('GraphQL adapter', () => {
     });
     expect(created).toBe(0);
     expect(paths).toEqual(['value', 'value']);
+  });
+
+  it('reads the metadata of a resolver method a later decorator wraps', async () => {
+    const Roles = Reflector.createDecorator<string[]>();
+    const seen: Array<string[] | undefined> = [];
+    class Resolver {
+      value() {
+        return 'visible';
+      }
+    }
+    Injectable()(Resolver);
+    // `@wrap @Roles(['admin']) value()`: the outer decorator replaces the method.
+    const descriptor = Object.getOwnPropertyDescriptor(Resolver.prototype, 'value')!;
+    Roles(['admin'])(Resolver.prototype, 'value', descriptor);
+    const method: unknown = descriptor.value;
+    descriptor.value = function wrapped(this: unknown, ...args: unknown[]): unknown {
+      return typeof method === 'function' ? Reflect.apply(method, this, args) : undefined;
+    };
+    Object.defineProperty(Resolver.prototype, 'value', descriptor);
+    class RolesGuard implements CanActivate {
+      canActivate(context: ExecutionContext) {
+        const roles = new Reflector().get(Roles, context.getHandler());
+        seen.push(roles);
+        // As in Nest's RolesGuard, a field without roles is open; this caller has none.
+        return roles === undefined;
+      }
+    }
+    Injectable()(RolesGuard);
+    UseGuards(RolesGuard)(Resolver.prototype, 'value');
+    const schema = createSchema<GraphqlContext>({
+      typeDefs: 'type Query { value: String }',
+      resolvers: { Query: { value: bindResolver(Resolver, 'value', { args: z.object({}) }) } },
+    });
+    const app = await application({ schema }, [Resolver, RolesGuard]);
+    expect(await (await post(app, '{ value }')).json()).toMatchObject({
+      data: { value: null },
+      errors: [{ extensions: { code: 'FORBIDDEN' } }],
+    });
+    expect(seen).toEqual([['admin']]);
   });
 
   it('deduplicates concurrent schema initialization per application, retries failed construction', async () => {

@@ -14,6 +14,7 @@ import { RouteManager } from '../http/route.manager';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
 import { shouldFilterCatch } from '../pipeline/decorators';
 import { orderGuardsByPhase } from '../pipeline/guard-phase';
+import { handlerFunction } from '../pipeline/handler-function';
 import { PipelineRunner } from '../pipeline/pipeline-runner';
 import { getScopedComponents } from '../pipeline/scoped-components';
 import type {
@@ -720,6 +721,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
         methodName,
       ) as unknown[] | undefined;
 
+      // Recorded before any message, as for HTTP routes (Reflector reads).
+      handlerFunction(gatewayClass, methodName);
       const container = this.#container;
       handlers.set(event, {
         methodName,

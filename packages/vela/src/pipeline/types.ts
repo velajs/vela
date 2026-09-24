@@ -40,9 +40,15 @@ export interface ExecutionContext {
   getType(): ContextType;
   getClass(): Type;
   /**
-   * The handler method about to run, as in Nest: pass it to the Reflector
-   * (`reflector.get(key, context.getHandler())`). Framework hosts without a
-   * method (middleware, unmatched routes) return a stable marker function.
+   * The handler method about to run (`getClass().prototype[getHandlerName()]`),
+   * as in Nest. The Reflector reads the metadata of the method it is, including
+   * after an outer decorator wrapped it:
+   * `reflector.getAllAndOverride(key, [context.getHandler(), context.getClass()])`.
+   * Alone, as in `reflector.get(key, context.getHandler())`, it throws when
+   * several controllers route the function with different metadata for `key`
+   * (one inherited method); list the class with it or pass the context.
+   * Framework hosts without a method (middleware, unmatched routes) return a
+   * stable marker function.
    */
   getHandler(): HandlerFunction;
   /** The handler's method name on `getClass()`, or a framework host's marker symbol. */

@@ -3925,6 +3925,8 @@ interface ControllerOptions {
   version?: VersionValue;
 }
 
+type HandlerMethod = readonly [Constructor, string | symbol];
+
 declare function countRegisteredClasses(): number;
 declare class MetadataRegistry {
   private static get routes();
@@ -3979,11 +3981,9 @@ declare class MetadataRegistry {
   static setCustomHandlerMeta(target: object, handler: string | symbol, key: string, value: unknown): void;
   static getCustomHandlerMeta(target: object, handler: string | symbol, key: string): unknown;
 
-  static setHandlerOwner(handler: object, owner: Constructor, name: string | symbol): void;
+  static addHandlerMethod(handler: object, type: Constructor, name: string | symbol): void;
 
-  static isAmbiguousHandler(handler: object): boolean;
-
-  static getHandlerOwner(handler: object): readonly [Constructor, string | symbol] | undefined;
+  static getHandlerMethods(handler: object): readonly HandlerMethod[];
   static getCustomHandlerMetaAll(target: object, handler: string | symbol): Map<string, unknown> | undefined;
   static appendCustomClassMeta<T>(target: object, key: string, item: T): void;
   static appendCustomHandlerMeta<T>(target: object, handler: string | symbol, key: string, item: T): void;

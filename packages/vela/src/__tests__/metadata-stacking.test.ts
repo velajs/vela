@@ -67,6 +67,28 @@ describe('MetadataRegistry — stacking + funnel + reset', () => {
     expect(MetadataRegistry.getCustomHandlerMeta(Target, 'h', 'k')).toBeUndefined();
   });
 
+  it('MetadataRegistry.reset() forgets which methods a handler function serves', () => {
+    const Roles = Reflector.createDecorator<string[]>();
+    class Base {
+      list() {}
+    }
+    class Admin extends Base {}
+    class Staff extends Base {}
+    const shared = Object.getOwnPropertyDescriptor(Base.prototype, 'list')!;
+    Roles(['admin'])(Admin.prototype, 'list', shared);
+    Roles(['staff'])(Staff.prototype, 'list', shared);
+    const reflector = new Reflector();
+    expect(() => reflector.get(Roles, Base.prototype.list)).toThrow(
+      "Reflector cannot read metadata through the handler function 'list'",
+    );
+
+    MetadataRegistry.reset();
+
+    // Decorated again by one class alone, the function names that method.
+    Roles(['admin'])(Admin.prototype, 'list', shared);
+    expect(reflector.get(Roles, Base.prototype.list)).toEqual(['admin']);
+  });
+
   it('class-level + handler-level @SetMetadata on the same key store independently', () => {
     const KEY = 'vela:test:scope';
 
