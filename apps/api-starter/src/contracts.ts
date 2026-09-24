@@ -1,6 +1,6 @@
-import { z } from "zod";
-import { defineLiveQuery } from "@velajs/live-protocol";
-import { defineRoute } from "@velajs/vela/contract";
+import { z } from 'zod';
+import { defineLiveQuery } from '@velajs/live-protocol';
+import { defineRoute } from '@velajs/vela/contract';
 
 export const todoSchema = z.object({
   id: z.string(),
@@ -8,7 +8,7 @@ export const todoSchema = z.object({
   done: z.boolean().default(false),
 });
 export const todoList = defineLiveQuery({
-  name: "todos.list",
+  name: 'todos.list',
   args: z.object({}),
   result: todoSchema.array(),
 });
@@ -20,7 +20,7 @@ export const meSchema = z.object({ id: z.string(), email: z.string(), name: z.st
 
 /** A route contract the browser can share: `/healthz`, public and unauthenticated. */
 export const health = defineRoute({
-  method: "GET",
-  path: "/healthz",
+  method: 'GET',
+  path: '/healthz',
   response: z.object({ ok: z.boolean() }),
 });

@@ -5,7 +5,8 @@ the handler's final result through it (after interceptors), so an object schema
 that strips unknown fields removes a stored password from the public
 representation. The same schema documents the response in OpenAPI and types
 the generated client, and a handler whose return type does not match it fails
-to compile.
+to compile. `@CacheResponse` stores the parsed value, so a cache store never
+holds fields the schema strips, and a cache hit is sent without parsing again.
 
 ```ts
 import { Controller, Get } from '@velajs/vela';
@@ -31,8 +32,8 @@ handler's bug: the route answers the redacted 500 and reports the failure with
 its issues, never a client 400. `validate: false` keeps the schema for
 documentation and types but sends the result unparsed.
 
-A handler that returns a `Response` sends it as is. `format: 'text'` sends a
-string; `binary`, `stream` and `response` send native bodies and take no
+A handler that returns a `Response` sends it as is, whatever the route
+declares. `format: 'text'` sends a string; `binary`, `stream` and `response` send native bodies and take no
 response schema. `response: null` declares an empty body, sent as 204 unless
 the route's `status` says otherwise. See [HTTP contracts](client/HTTP.md).
 

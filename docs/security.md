@@ -48,8 +48,13 @@ individually. The route's `maxBytes` replaces the application's body limit for
 that route (a `streamingOverrides` entry still takes precedence), so the
 framework boundary and the route agree. The body is read counting the bytes
 received and cancelled at the limit; every part is measured before schema
-validation. Size/count violations return 413; unknown fields, duplicate scalar
-fields, and wrong text/file kinds return 400; a wrong media type returns 415.
+validation. Size/count violations return 413 and a wrong media type returns 415.
+When a whole-body schema describes the form's fields (it converts to JSON
+Schema), unknown fields, duplicate scalar fields, and wrong text/file kinds
+return 400. Without one — `@Body()` without a schema, only named
+`@Body('field', schema)` parameters, or a schema without a JSON Schema
+converter — the route accepts any field name (as an own property, never a
+prototype key) and a repeated name arrives as an array.
 `body: { json: { maxBytes } }` bounds a JSON route the same way. See
 [form bodies](client/HTTP.md#form-bodies-and-uploads).
 

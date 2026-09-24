@@ -90,27 +90,45 @@ The options are `response`, `status`, `format`, `contentType`, `validate` and
 `body`, plus the route `name`. A handler whose return type does not match
 `response` fails to compile. The route parses the final result, after
 interceptors, through `response`: a stripping schema removes undeclared fields,
-and a result the schema rejects answers 500. JSON is the default response
-format, including strings and `null`; `format: 'text'` sends a string. Invalid
-input returns 400, after guards. `validate: false` keeps the schema for
-documentation and types without parsing the result.
+and a result the schema rejects answers 500; `@CacheResponse` stores the
+parsed value. With `response`, JSON is the default format, including strings
+and `null`; `format: 'text'` sends a string. Without `response` or `format`, the
+route sends strings as text and other values as JSON, like a route without
+options. A handler may always return a ready `Response`. Invalid input returns
+400, after guards. `validate: false` keeps the schema for documentation and
+types without parsing the result.
+
+A decorator with `response` or `format` checks its handler's result, so its
+type is `RouteMethodDecorator<Result>` rather than `MethodDecorator`: annotate
+a helper that returns one with `RouteMethodDecorator<T>`, or let TypeScript
+infer it. Decorators without those options are ordinary `MethodDecorator`s.
 
 POST answers 201, `response: null` answers 204 with no body, and every other
 method answers 200, whatever the handler returns; `status` or `@HttpCode`
-declares another success status (not both). Responses, OpenAPI and the response
-cache read the status the same way.
+declares another success status (not both). Each route uses its own options,
+also when one handler serves several routes. Responses, OpenAPI and the
+response cache read the status the same way.
 
 `@Body()` without a schema validates a parameter class that carries a static
 Standard Schema (`class CreateUser { static schema = CreateUserSchema }`, or a
-class that is itself a Standard Schema), with no global pipe. Named descriptors
-work too: `const BodyDto = defineDto(schema, { name: 'CreateUser' })`, then
-`@Body(BodyDto)`; OpenAPI then references a named component. Erased TypeScript
-interfaces cannot supply schemas.
+class that is itself a Standard Schema), with no global pipe; a named
+`@Body('user') user: CreateUser` validates that member. A global
+`ValidationPipe` leaves a value the route validated (`ArgumentMetadata.validated`)
+as is. Named descriptors work too: `const BodyDto = defineDto(schema, { name:
+'CreateUser' })`, then `@Body(BodyDto)`; OpenAPI then references a named
+component. Erased TypeScript interfaces cannot supply schemas.
 
 `@Query()` parses repeated keys (`?tag=a&tag=b`) and keys its schema declares as
 arrays to arrays, even when a key is sent once; every other key stays a string,
-so a repeated scalar reaches its schema as an array and fails validation.
-OpenAPI documents array query parameters with `style: form` and `explode: true`.
+so a repeated scalar reaches its schema as an array and fails validation. The
+schema is the route's, the parameter's own, or its class's static schema (which
+a global `ValidationPipe` validates). Without a schema, a named parameter
+follows its declared type: `@Query('sort') sort: string` (or `number`,
+`boolean`) receives the first value, `@Query('tags') tags: string[]` without a
+pipe always receives an array, and a parameter typed `unknown` or a union
+receives an array for a repeated key. Declare a schema for security-relevant
+query values. OpenAPI documents array query parameters with `style: form` and
+`explode: true`.
 
 ### Shared `defineRoute` contracts
 
@@ -160,7 +178,8 @@ The route validates each group once per request; `@Body()`, `@Query()` and
 `@Param()` (whole or named) read the validated values. The decorator's method
 must match the contract's, and the application fails to start when the
 contract's `path` is not the path the route serves (global prefix and version
-included).
+included), or when the route adds `@HttpCode`: `ContractApp` clients are typed
+with the contract's `status`, so declare it there.
 
 Without code generation, `ContractApp` types an `hc` client from contracts:
 
@@ -177,6 +196,19 @@ const user = await (await client.users[':id'].$get({ param: { id } })).json();
 `ContractApp` types wire values as the generator does: path and query values
 are strings (string literal unions stay literal), files are `File | Blob`, JSON
 bodies are the schema's input and responses its JSON-parsed output.
+
+`hc` sends every `form` input as multipart, and a `form:` contract accepts only
+URL-encoded bodies (415 otherwise). `contractFormEncodings(routes)` lists the
+contracts' form encodings for `withFormEncoding`, which encodes those calls:
+
+```ts
+import { hc, withFormEncoding } from '@velajs/client/http';
+import { contractFormEncodings, type ContractApp } from '@velajs/vela/contract';
+
+const client = hc<ContractApp<typeof routes>>(origin, {
+  fetch: withFormEncoding(contractFormEncodings(routes)),
+});
+```
 
 ### Generated clients
 
@@ -252,8 +284,13 @@ An array uses repeated exact keys: `tags=one&tags=two`; a single entry still
 becomes an array. Keys such as `tags[]` are literal, with no bracket/dot nesting.
 Missing fields stay absent. Required arrays need at least one entry on the wire;
 an empty client array sends no entries. Make fields optional in the schema, and
-make the body schema optional to allow an absent body. Duplicate scalar fields,
-unknown names, and the wrong text/file kind return 400. A malformed multipart
+make the body schema optional to allow an absent body. When a whole-body schema
+describes the form's fields (it converts to JSON Schema), duplicate scalar
+fields, unknown names, and the wrong text/file kind return 400. Without one —
+`@Body()` without a schema, only named `@Body('field', schema)` parameters, or
+a schema without a JSON Schema converter — the route accepts any field and a
+repeated name arrives as an array; declare a whole-body schema to enforce the
+fields. A malformed multipart
 body returns 400; the wrong media type returns 415. URL-encoded text follows
 native `URLSearchParams` decoding. Schema errors use the validation error body;
 transforms run once, after guards.

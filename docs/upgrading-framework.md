@@ -116,10 +116,37 @@ A handler returning `null` or `undefined` no longer answers 204; it answers the
 route's status with an empty body. Declare `response: null` (or `@HttpCode(204)`)
 where clients expect 204, and `@HttpCode(200)` on POST routes that must keep 200.
 
-`@Query()` returns repeated keys (`?tag=a&tag=b`) as arrays, and keys a query
-schema declares as arrays as arrays even when sent once. `@Body()` with no schema
-validates a parameter class carrying a static Standard Schema; a global
-`ValidationPipe` no longer validates such a body a second time.
+Without `response` or `format`, a route still sends strings as text and other
+values as JSON. The route parses its result through `response` after
+interceptors, and `@CacheResponse` stores that parsed value, so a cache store
+never holds fields the schema strips.
+
+`@Query()` without a schema returns repeated keys (`?tag=a&tag=b`) as arrays
+instead of the first value, and keys a query schema declares as arrays arrive as
+arrays even when sent once; a repeated scalar fails its schema. A named
+parameter without a schema follows its declared type: `string`, `number` and
+`boolean` parameters still receive the first value, an array parameter without
+a pipe always receives an array, and an `unknown` or union parameter receives
+an array for a repeated key. Declare a schema, or `ParseArrayPipe`, for values
+that may be one or many.
+
+`@Body()` with no schema validates a parameter class carrying a static Standard
+Schema even without a global pipe, so bodies such a class rejects now answer
+400; a named `@Body('item') item: Item` validates the `item` member. A global
+`ValidationPipe` leaves a value the route validated as is
+(`ArgumentMetadata.validated`) and still validates body parameters registered
+without a route reader.
+
+Method decorators with `response` or `format` are `RouteMethodDecorator<Result>`
+values that check the handler's result; they are no longer assignable to
+`MethodDecorator`. Annotate wrapper helpers with `RouteMethodDecorator<T>` or
+let TypeScript infer them. Decorators without those options remain
+`MethodDecorator`s. A route serving a `defineRoute` contract rejects `@HttpCode`
+at startup; declare `status` in the contract, which types its clients.
+
+An `@Override`'d CRUD verb answers the verb's status (200 for restore, upsert,
+import, batch restore and upsert, version rollback) unless it declares its own
+`@HttpCode`, and OpenAPI documents that status.
 
 ## HTTP errors, request parameters and guards
 
