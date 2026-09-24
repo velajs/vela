@@ -1,24 +1,25 @@
 import type { Context } from 'hono';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
-import { getEndpointBinding } from './endpoint-registry';
+import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
 import { getHttpCode } from './decorators';
-
-/** The status of a successful non-empty result from a handler that declares none. */
-export const DEFAULT_SUCCESS_STATUS = 200;
+import { defaultRouteStatus } from './route-contract';
 
 /**
- * The success status a handler declares: its `@Endpoint` contract, then `@HttpCode`.
- * `undefined` leaves the default, which is 200 (204 for an empty result). Responses,
- * OpenAPI and the response cache all read the status from here.
+ * The success status a route sends: `@HttpCode`, else its declared `status`,
+ * else 204 for `response: null`, 201 for POST and 200 for every other method —
+ * whatever the handler returns. Responses, OpenAPI and the response cache all
+ * read the status from here.
  */
 export function resolveSuccessStatus(
   controller: Constructor,
   handler: string | symbol,
-): StatusCode | undefined {
-  return (
-    getEndpointBinding(controller, handler)?.definition.status ?? getHttpCode(controller, handler)
+  method: string,
+): StatusCode {
+  const route = MetadataRegistry.getRoutes(controller).find(
+    (candidate) => candidate.handlerName === handler && candidate.method === method,
   );
+  return getHttpCode(controller, handler) ?? defaultRouteStatus(method, route?.contract);
 }
 
 interface RedirectOverride {
@@ -55,15 +56,13 @@ function parseRedirectResult(result: unknown): RedirectOverride | undefined {
   };
 }
 
-// Maps a controller return value to a Hono Response. `null`/`undefined` → 204
-// (empty body); strings → text; anything else → JSON. A pre-built Response
-// passes through unchanged.
-export function mapResponse(c: Context, result: unknown, statusCode?: StatusCode): Response {
+// Maps a controller return value to a Hono Response at the route's status:
+// `null`/`undefined` → empty body; strings → text; anything else → JSON. A
+// pre-built Response passes through unchanged.
+export function mapResponse(c: Context, result: unknown, status: StatusCode): Response {
   if (result instanceof Response) {
     return result;
   }
-  const status =
-    statusCode ?? (result === null || result === undefined ? 204 : DEFAULT_SUCCESS_STATUS);
   // Ordinary Fetch responses cannot carry informational/upgrade statuses.
   // A transport-owned upgrade Response passed through above stays untouched.
   if (status === 101) {

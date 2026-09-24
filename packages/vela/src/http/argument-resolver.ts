@@ -43,6 +43,8 @@ export class ArgumentResolver {
     requestContainer: Container,
     paramTypes?: unknown[],
     moduleId?: string,
+    /** Route-built readers, by position in `paramMetadata`; they replace the default extraction. */
+    extractors: ReadonlyArray<((c: Context) => unknown) | undefined> = [],
   ): Promise<unknown[]> {
     if (paramMetadata.length === 0) {
       return [c];
@@ -51,8 +53,9 @@ export class ArgumentResolver {
     const maxIndex = paramMetadata.at(-1)!.index;
     const args: unknown[] = new Array(maxIndex + 1).fill(undefined);
 
-    for (const param of paramMetadata) {
-      let value = await this.extractParam(c, param);
+    for (const [position, param] of paramMetadata.entries()) {
+      const extract = extractors[position];
+      let value = await (extract ? extract(c) : this.extractParam(c, param));
 
       const metadata: ArgumentMetadata = {
         type: param.type,

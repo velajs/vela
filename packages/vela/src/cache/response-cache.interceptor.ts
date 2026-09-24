@@ -3,7 +3,7 @@ import { Reflector, SetMetadata } from '../pipeline/reflector';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '../pipeline/types';
 import { sha256Base64Url } from '../crypto/hmac';
 import { getRedirect, getResponseHeaders } from '../http/decorators';
-import { DEFAULT_SUCCESS_STATUS, resolveSuccessStatus } from '../http/response-mapper';
+import { resolveSuccessStatus } from '../http/response-mapper';
 import { getTrustedRequestIdentity } from '../http/trusted-request-identity';
 import { CACHEABLE_METADATA, RESPONSE_CACHE_METADATA } from './cache.tokens';
 import { ResponseCacheService } from './response-cache.service';
@@ -37,7 +37,7 @@ export class ResponseCacheInterceptor implements NestInterceptor {
     if (!config || request.method !== 'GET') return next.handle();
     const target = context.getClass();
     const handler = context.getHandlerName();
-    const status = resolveSuccessStatus(target, handler) ?? DEFAULT_SUCCESS_STATUS;
+    const status = resolveSuccessStatus(target, handler, 'GET');
     const privateHeaders = getResponseHeaders(target, handler).some(
       ([name, value]) =>
         name.toLowerCase() === 'set-cookie' ||

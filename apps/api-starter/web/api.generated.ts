@@ -8,10 +8,10 @@ export type Schemas = {
 
 export type AppType = HttpApp<{
   "/healthz": {
-    $get: { input: {}; output: ({ "ok": (boolean); [key: string]: unknown; }); outputFormat: 'json'; status: 200 };
+    $get: { input: {}; output: ({ "ok": (boolean); }); outputFormat: 'json'; status: 200 };
   };
   "/me": {
-    $get: { input: {}; output: ({ "email": (string); "id": (string); "name": (string); [key: string]: unknown; }); outputFormat: 'json'; status: 200 };
+    $get: { input: {}; output: ({ "email": (string); "id": (string); "name": (string); }); outputFormat: 'json'; status: 200 };
   };
   "/todos": {
     $get: { input: {}; output: unknown; outputFormat: 'json'; status: 200 };

@@ -275,8 +275,8 @@ export class RouteManager {
   private readonly versioning: VersioningOptions;
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
   // The Hono handler that ends each controller route, with its controller and
-  // method, for forRoutes(Controller).
-  private readonly routeOwners = new Map<unknown, [Constructor, string]>();
+  // method, for forRoutes(Controller), and the body limit the route declares.
+  private readonly routeOwners = new Map<unknown, [Constructor, string, number?]>();
   private routeDescriptions: RouteDescription[] = [];
   private readonly requestObservers = new Set<HttpRequestObserver>();
 
@@ -415,7 +415,11 @@ export class RouteManager {
     validatePositiveLimit('security.body.streamingOverrides.maxBytes', override.maxBytes);
   }
 
-  private resolveBodyLimit(path: string, method: string): number | false {
+  // A streaming override for the path, else the limit the matched controller
+  // route declares (`body` options), else the application's limit.
+  private resolveBodyLimit(c: Context): number | false {
+    const path = c.req.path;
+    const method = c.req.method;
     for (const override of this.bodyLimitOverrides) {
       if (override.methods && !override.methods.includes(method.toUpperCase())) continue;
       const matches =
@@ -424,6 +428,10 @@ export class RouteManager {
           ? path.startsWith(override.path.slice(0, -1))
           : path === override.path);
       if (matches) return override.maxBytes;
+    }
+    for (const route of matchedRoutes(c).slice(c.req.routeIndex + 1)) {
+      const owner = findOwner(this.routeOwners, route.handler);
+      if (owner) return owner[2] ?? this.bodyLimit;
     }
     return this.bodyLimit;
   }
@@ -849,7 +857,7 @@ export class RouteManager {
         await next();
       };
       try {
-        const maxSize = this.resolveBodyLimit(c.req.path, c.req.method);
+        const maxSize = this.resolveBodyLimit(c);
         return maxSize === false
           ? await normalizedNext()
           : await honoBodyLimit({
@@ -988,15 +996,27 @@ export class RouteManager {
             }),
           );
 
-          for (const { path: fullPath, version } of composeRoutePaths(
-            metadata.prefix,
-            route,
-            metadata.version,
-          )) {
+          const served = composeRoutePaths(metadata.prefix, route, metadata.version);
+          // A shared contract names the path its clients call; it must be one
+          // this route serves.
+          const contractPath = route.contract?.path;
+          if (
+            contractPath !== undefined &&
+            !served.some(({ path }) => (path || '/') === contractPath)
+          ) {
+            throw new Error(
+              `${controller.name}.${String(route.handlerName)} serves ${served.map(({ path }) => path || '/').join(', ')}, not its contract path ${contractPath}`,
+            );
+          }
+          for (const { path: fullPath, version } of served) {
             // Register the onion with its method and terminal handler. A
             // path-only app.use() also matches sibling methods/controllers.
             this.registerRoute(app, route.method, fullPath, ...middleware, handler);
-            this.routeOwners.set(app.routes.at(-1)!.handler, [controller, route.method]);
+            this.routeOwners.set(app.routes.at(-1)!.handler, [
+              controller,
+              route.method,
+              route.contract?.body?.maxBytes,
+            ]);
             this.routeDescriptions.push({
               method: String(route.method),
               path: fullPath || '/',

@@ -8,7 +8,7 @@ import {
   type ValidationSchema,
 } from './parse-schema';
 import { isPromiseLike } from './promise-like';
-import { SchemaValidationError } from './standard-schema';
+import { SchemaValidationError, staticStandardSchema } from './standard-schema';
 
 export type { ValidationSchema } from './parse-schema';
 
@@ -33,15 +33,17 @@ export class ValidationPipe implements PipeTransform {
     // Programmatic routes can document a schema while their handler/engine owns
     // validation. Explicit parameter pipes still validate at their chosen boundary.
     const metatype = metadata.metatype;
+    if (this.parser !== undefined) return resolveValidationSchema(this.parser);
     if (
-      this.parser === undefined &&
       metatype !== null &&
       typeof metatype === 'object' &&
       'validationOwner' in metatype &&
       metatype.validationOwner === 'handler'
     )
       return undefined;
-    return resolveValidationSchema(this.parser ?? metatype);
+    // `@Body()` validates a class carrying a static Standard Schema itself.
+    if (metadata.type === 'body' && staticStandardSchema(metatype)) return undefined;
+    return resolveValidationSchema(metatype);
   }
 
   transform(value: unknown, metadata: ArgumentMetadata): unknown {

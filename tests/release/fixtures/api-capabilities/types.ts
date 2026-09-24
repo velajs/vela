@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { defineEndpoint } from '@velajs/vela/openapi';
+import { Body, Post } from '@velajs/vela';
+import { defineRoute, type ContractApp } from '@velajs/vela/contract';
 import {
   ResponseCacheService,
   type ResponseCacheOptions,
@@ -30,17 +31,34 @@ const wrongLabels: Upload['form']['labels'] = 'first';
 type Uploaded = InferResponseType<(typeof client.records)[':id']['attachments']['$post'], 201>;
 const size = (value: Uploaded): number => value.size;
 
-const endpoint = defineEndpoint({
-  body: { contentType: 'application/x-www-form-urlencoded' },
-  input: z.object({ form: z.object({ count: z.string().transform(Number) }) }),
-  output: z.object({ count: z.number() }),
+const Counted = z.object({ count: z.string().transform(Number) });
+const Count = z.object({ count: z.number() });
+class Forms {
+  @Post('/count', { response: Count, body: { form: {} } })
+  count(@Body(Counted) form: z.output<typeof Counted>) {
+    const count: number = form.count;
+    return { count };
+  }
+
+  // @ts-expect-error Handler output must agree with the route's response schema.
+  @Post('/wrong', { response: Count })
+  wrong() {
+    return { count: 'wrong' };
+  }
+}
+const counted = defineRoute({
+  method: 'POST',
+  path: '/count',
+  body: Counted,
+  form: {},
+  response: Count,
 });
-endpoint.bind((input) => {
-  const count: number = input.form.count;
-  return { count };
-});
-// @ts-expect-error Handler output must agree with the endpoint's response schema.
-endpoint.bind(() => ({ count: 'wrong' }));
+const contractClient = hc<ContractApp<[typeof counted]>>('https://fixture.test');
+const counting: Promise<number> = contractClient.count
+  .$post({ form: { count: '1' } })
+  .then(async (response) => (await response.json()).count);
+// @ts-expect-error Form values are strings on the wire.
+void contractClient.count.$post({ form: { count: 1 } });
 
 declare const options: ResponseCacheOptions;
 const cache = new ResponseCacheService(options).scope({
@@ -70,4 +88,4 @@ void pending.then(([created, updated]) => {
   const unknownField: number = created.missing;
   return [label, next, unknownField];
 });
-void [upload, wrongFile, wrongLabels, size, parsed, invalidated];
+void [upload, wrongFile, wrongLabels, size, parsed, invalidated, Forms, counting];

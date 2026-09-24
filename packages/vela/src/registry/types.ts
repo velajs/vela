@@ -1,4 +1,6 @@
 import type { VersionValue } from '../http/version';
+import type { RouteContractMetadata } from '../http/route-contract';
+import type { ParamExtractorFactory } from '../http/types';
 import type { Context } from 'hono';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 import type {
@@ -63,6 +65,8 @@ export interface RouteDefinition {
   version?: VersionValue;
   /** Route name for URL generation / OpenAPI operationId (`@Get(path, { name })`). */
   name?: string;
+  /** What the route declares through its decorator options or `defineRoute` contract. */
+  contract?: RouteContractMetadata;
 }
 
 export interface ParameterMetadata {
@@ -71,6 +75,8 @@ export interface ParameterMetadata {
   name?: string;
   pipes?: PipeType[];
   factory?: (data: unknown, ctx: Context) => unknown;
+  /** The route-aware request reader `@Body`, `@Query` and `@Param` record. */
+  extract?: ParamExtractorFactory;
   /**
    * Explicit param type for programmatic routes. Methods synthesized at
    * runtime (e.g. `@Crud()` verb handlers) have no `design:paramtypes`, so

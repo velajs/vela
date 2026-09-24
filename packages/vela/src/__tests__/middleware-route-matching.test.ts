@@ -149,7 +149,7 @@ describe('forRoutes(Controller) expands to the composed routes', () => {
     const request = await createApp([RootController, PublicController], forRoutes(RootController));
 
     expect(await request('GET', '/status')).toBe(200);
-    expect(await request('POST', '/status')).toBe(200);
+    expect(await request('POST', '/status')).toBe(201);
     expect(await request('GET', '/public')).toBe(200);
     expect(seen).toEqual(['GET /status', 'POST /status']);
   });
@@ -179,7 +179,7 @@ describe('forRoutes(Controller) expands to the composed routes', () => {
     const request = await createApp([WriteController, ReadController], forRoutes(WriteController));
 
     expect(await request('GET', '/shared')).toBe(200);
-    expect(await request('POST', '/shared')).toBe(200);
+    expect(await request('POST', '/shared')).toBe(201);
     expect(await request('HEAD', '/shared/report')).toBe(200);
     expect(seen).toEqual(['POST /shared', 'HEAD /shared/report']);
   });

@@ -51,7 +51,25 @@ export {
   applyDecorators,
   isController,
 } from './decorators';
-export type { RouteOptions, SchemaParamDecorator } from './decorators';
+export type {
+  RouteOptions,
+  RouteMethodDecorator,
+  HttpMethodDecorator,
+  SchemaParamDecorator,
+} from './decorators';
+export type {
+  RouteResponseOptions,
+  RouteResponseFormat,
+  RouteBodyOptions,
+  RouteJsonBody,
+  RouteFormBody,
+  RouteMultipartBody,
+  RouteBinaryBody,
+  RouteHandlerResult,
+  RouteSchemaResult,
+  RouteContractMetadata,
+  ResolvedRouteBody,
+} from './route-contract';
 export { Sse } from './sse';
 export type { MessageEvent, SseResult } from './sse';
 export { VERSION_NEUTRAL } from './version';
@@ -71,5 +89,7 @@ export type {
   ControllerMetadata,
   ControllerOptions,
   ParamMetadata,
+  ParamExtractionRoute,
+  ParamExtractorFactory,
   ControllerRegistration,
 } from './types';

@@ -34,7 +34,7 @@ try {
     document: { id: 'document-1', label: 'Example document' },
     owner: { id: 'account-1', active: true },
   });
-  assert.equal((await api.fetch('https://api/api/tasks', { method: 'POST' })).status, 200);
+  assert.equal((await api.fetch('https://api/api/tasks', { method: 'POST' })).status, 201);
   const results = await runtime.getKVNamespace('RESULTS', 'jobs');
   const deadline = Date.now() + 10000;
   while (!(await results.get('last-job')) && Date.now() < deadline)

@@ -64,7 +64,7 @@ describe('schema arguments on parameter decorators', () => {
 
   it('validates @Body(schema) and hands the handler its parsed output', async () => {
     const valid = await request(NotesModule, '/notes', postJson({ title: 'Plan' }));
-    expect(valid.status).toBe(200);
+    expect(valid.status).toBe(201);
     expect(await valid.json()).toEqual({ title: 'Plan', tags: [] });
 
     const invalid = await request(NotesModule, '/notes', postJson({ title: '' }));
@@ -242,7 +242,7 @@ describe('schema arguments on parameter decorators', () => {
     class EnvelopeModule {}
 
     const response = await request(EnvelopeModule, '/envelope', postJson({ any: 1 }));
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ received: { any: 1 } });
   });
 });

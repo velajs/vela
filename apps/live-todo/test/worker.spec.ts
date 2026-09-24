@@ -26,7 +26,7 @@ describe('live-todo Worker compiled by Oxc under workerd', () => {
     });
     // TodosController receives TodosService and LiveInvalidation from their
     // constructor types alone, so this route resolves only with the metadata.
-    expect(created.response.status).toBe(200);
+    expect(created.response.status).toBe(201);
     expect(created.body).toMatchObject({ text: 'Write the spec' });
     expect(created.response.headers.get('Vela-Commit-Cursor')).toBeTruthy();
 

@@ -1,4 +1,5 @@
 import type { RoutePathOptions } from '../http/route-paths';
+import type { ValidationSchema } from '../validation/parse-schema';
 
 // Minimal OpenAPI 3.1 subset Vela emits. Kept intentionally loose (index
 // signatures on schemas, open tags array) so users can extend without
@@ -40,6 +41,9 @@ export interface OpenApiParameter {
   required?: boolean;
   description?: string;
   schema?: JsonSchema;
+  /** Array query parameters are sent as repeated keys: `style: 'form'`, `explode: true`. */
+  style?: 'form';
+  explode?: boolean;
 }
 
 export interface OpenApiRequestBody {
@@ -141,19 +145,28 @@ export interface ApiDocMetadata {
   tags?: string[];
 }
 
+/**
+ * A documented response, as Nest's `@ApiResponse({ status, description, schema })`.
+ * The route's own success response comes from its `response` option; use this
+ * for other statuses, or to describe the success one.
+ */
 export interface ApiResponseOptions {
+  /** An HTTP status, a range such as `'4XX'`, or `'default'`. */
+  status: number | `${1 | 2 | 3 | 4 | 5}XX` | 'default';
   description: string;
   /** Concrete documented media type; defaults to JSON or native octet-stream. */
   contentType?: string;
   /** Document a native body without asserting a parsed JSON schema. */
   format?: 'binary' | 'stream' | 'response';
-  /** Zod schema, named defineDto descriptor, or raw JSON Schema. */
-  schema?: unknown;
+  /**
+   * The body's schema: a Standard Schema (Zod, Valibot, …) or a `defineDto`
+   * descriptor, converted to JSON Schema. Raw JSON Schema is not accepted.
+   */
+  schema?: ValidationSchema;
 }
 
-export interface ApiResponseEntry extends ApiResponseOptions {
-  status: number | string;
-}
+/** A recorded `@ApiResponse`. */
+export type ApiResponseEntry = ApiResponseOptions;
 
 export interface CreateOpenApiDocumentOptions extends RoutePathOptions {
   info?: Partial<OpenApiInfo>;

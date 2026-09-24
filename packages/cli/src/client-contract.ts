@@ -379,7 +379,13 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
   }
 
   function parameterType(p: ContractParameter, location: string, at: string): string {
-    if (p.$ref || p.style || p.explode === false || p.content !== undefined)
+    // hc sends query arrays as repeated keys: OpenAPI's default `form`/explode.
+    if (
+      p.$ref ||
+      (p.style !== undefined && !(location === 'query' && p.style === 'form')) ||
+      p.explode === false ||
+      p.content !== undefined
+    )
       throw new Error(
         `${at}: custom parameter serialization/references are unsupported (${p.name}).`,
       );

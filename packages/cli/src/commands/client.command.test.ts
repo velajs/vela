@@ -6,6 +6,7 @@ import { All, Controller, Get, Module, VelaFactory } from '@velajs/vela';
 import { ApiExclude, ApiResponse } from '@velajs/vela/openapi';
 import { Cli } from 'clipanion';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { loadConfig, type LoadedVelaConfig, type VelaConfig } from '../config.js';
 import { ClientGenerateCommand } from './client.command.js';
 
@@ -105,16 +106,8 @@ describe('vela client generate', () => {
   it('uses controller metadata and the runtime prefix, then disposes the app', async () => {
     @Controller('/users')
     class Users {
-      @Get('/:id')
-      @ApiResponse(200, {
-        description: 'User',
-        schema: {
-          type: 'object',
-          properties: { id: { type: 'string' } },
-          required: ['id'],
-          additionalProperties: false,
-        },
-      })
+      @Get('/:id', { response: z.object({ id: z.string() }) })
+      @ApiResponse({ status: 200, description: 'User' })
       find() {
         return { id: 'u1' };
       }

@@ -1,16 +1,7 @@
 import { expect, it } from 'vitest';
 import { z } from 'zod';
 import * as v from 'valibot';
-import {
-  Controller,
-  Get,
-  Module,
-  Serialize,
-  SerializerInterceptor,
-  UseInterceptors,
-  VelaFactory,
-  defineSerializer,
-} from '../../index';
+import { Controller, Get, Module, VelaFactory, defineSerializer } from '../../index';
 import { defineDto } from '../../validation/index';
 
 class Account {
@@ -19,24 +10,21 @@ class Account {
     return this.#name;
   }
 }
-const account = defineSerializer({
-  input: z.instanceof(Account),
-  output: v.object({ name: v.string() }),
-  project: async (value) => ({ name: value.name() }),
+const accounts = defineSerializer({
+  input: z.array(z.instanceof(Account)),
+  output: v.array(v.object({ name: v.string() })),
+  project: async (values) => values.map((value) => ({ name: value.name() })),
 });
 const dto = defineDto(v.object({ id: v.number() }));
 
 @Controller('/serialization')
-@UseInterceptors(SerializerInterceptor)
 class Serialized {
-  @Get('/accounts')
-  @Serialize(account)
+  @Get('/accounts', { response: accounts })
   accounts() {
     return [new Account(), new Account()];
   }
 
-  @Get('/dto')
-  @Serialize(dto)
+  @Get('/dto', { response: dto })
   dto() {
     return { id: 1, secret: 'hidden' };
   }

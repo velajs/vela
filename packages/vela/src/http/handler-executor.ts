@@ -29,7 +29,6 @@ import type {
 import type { ArgumentResolver } from './argument-resolver';
 import { getHttpCode, getRedirect, getResponder, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
-import { getEndpointBinding } from './endpoint-registry';
 import { mapFilterResult, sendHttpError } from './error-response';
 import { instantiateAsync, instantiateManyAsync } from './instantiate';
 import {
@@ -38,6 +37,7 @@ import {
   mapResponse,
   resolveSuccessStatus,
 } from './response-mapper';
+import { sendRouteResult } from './route-response';
 import type { ParamMetadata, RouteMetadata } from './types';
 
 // The global guard phases an integration's route leaves to the integration
@@ -136,18 +136,32 @@ export class HandlerExecutor {
       moduleId,
     ).toReversed();
 
-    const httpCode = getHttpCode(controller, route.handlerName);
+    const source = `${controller.name}.${String(route.handlerName)}`;
+    const contract = route.contract;
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
     const redirect = getRedirect(controller, route.handlerName);
     const respond = getResponder(controller, route.handlerName);
-    const endpoint = getEndpointBinding(controller, route.handlerName);
-    if (endpoint && (paramMetadata.length > 0 || redirect || httpCode !== undefined)) {
+    if (contract && (redirect || respond)) {
       throw new Error(
-        `${controller.name}.${String(route.handlerName)}: @Endpoint owns its single input argument and response status; remove parameter decorators, @HttpCode, and @Redirect`,
+        `${source}: route response options cannot be combined with @Redirect or @Sse; the route declares how it responds`,
       );
     }
-    const successStatus = resolveSuccessStatus(controller, route.handlerName);
+    if (
+      contract?.status !== undefined &&
+      getHttpCode(controller, route.handlerName) !== undefined
+    ) {
+      throw new Error(
+        `${source}: declare the success status once, with @HttpCode or the route's status`,
+      );
+    }
+    const successStatus = resolveSuccessStatus(controller, route.handlerName, route.method);
     const skippedPhases = skippedGuardPhases(controller, route.handlerName);
+    // Each parameter's reader is built once for this route; configuration
+    // errors (a form schema with non-text fields, …) surface at startup.
+    const extractionRoute = { method: route.method, contract, source };
+    const extractors = paramMetadata.map((param) =>
+      param.extract?.(extractionRoute, param, param.metatype ?? paramTypes?.[param.index]),
+    );
 
     return async (c: Context) => {
       // Combine global + method at request time so post-create registrations propagate.
@@ -189,16 +203,15 @@ export class HandlerExecutor {
           guards,
           interceptors,
           resolveArgs: () =>
-            endpoint
-              ? endpoint.extractInput(c, pipes)
-              : this.#argumentResolver.extract(
-                  c,
-                  paramMetadata,
-                  pipes,
-                  requestContainer,
-                  paramTypes,
-                  moduleId,
-                ),
+            this.#argumentResolver.extract(
+              c,
+              paramMetadata,
+              pipes,
+              requestContainer,
+              paramTypes,
+              moduleId,
+              extractors,
+            ),
           invoke: async (args) => {
             // Singleton lifecycle is owned by bootstrap. Request-scoped
             // controllers need not exist when a guard/pipe/interceptor rejects.
@@ -218,34 +231,25 @@ export class HandlerExecutor {
           },
         });
 
-        if (endpoint) {
-          const response = await endpoint.mapResponse(c, result);
-          applyResponseHeaders(response, responseHeaders);
-          return response;
-        }
-
         if (redirect) {
           return mapRedirect(c, result, redirect);
         }
 
-        if (respond) {
-          const response = respond(c, result, (error) => {
-            resolveErrorReporter(requestContainer).report(error, {
-              edge: 'http',
-              source: `${controller.name}.${String(route.handlerName)}`,
-              note: 'response stream failed',
-            });
-          });
-          applyResponseHeaders(response, responseHeaders);
-          return response;
-        }
-
-        const response = mapResponse(c, result, successStatus);
+        const response = contract
+          ? await sendRouteResult(c, contract, successStatus, result, source)
+          : respond
+            ? respond(c, result, (error) => {
+                resolveErrorReporter(requestContainer).report(error, {
+                  edge: 'http',
+                  source,
+                  note: 'response stream failed',
+                });
+              })
+            : mapResponse(c, result, successStatus);
         applyResponseHeaders(response, responseHeaders);
         return response;
       } catch (error) {
         const reporter = resolveErrorReporter(requestContainer);
-        const source = `${controller.name}.${String(route.handlerName)}`;
         // Report FIRST, always — rendering (filters included) is a separate
         // concern; a filter claiming the error must not make it invisible.
         reporter.report(error, { edge: 'http', source });

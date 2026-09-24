@@ -87,6 +87,17 @@ export function validateSchema<Input, Output>(
   return isPromiseLike(result) ? Promise.resolve(result).then(validated) : validated(result);
 }
 
+/**
+ * The Standard Schema a class carries: its static `schema`, or the class itself
+ * when it is a Standard Schema. `@Body()` validates such a parameter class.
+ */
+export function staticStandardSchema(metatype: unknown): StandardSchemaV1 | undefined {
+  if (typeof metatype !== 'function') return undefined;
+  if (isStandardSchema(metatype)) return metatype;
+  const schema: unknown = Reflect.get(metatype, 'schema');
+  return isStandardSchema(schema) ? schema : undefined;
+}
+
 /** Conversion is independent of validation and never guesses a schema's shape. */
 export function standardJsonSchema(
   schema: unknown,

@@ -14,10 +14,10 @@ describe('HTTP response mapping contract', () => {
     expect(mapResponse(context(), response, 101)).toBe(response);
   });
 
-  it('keeps the default empty 204 and explicit empty 200 response distinct', async () => {
-    const empty = mapResponse(context(), undefined);
+  it('sends an empty result at the route status instead of inventing a 204', async () => {
+    const empty = mapResponse(context(), undefined, 201);
     const explicit = mapResponse(context(), null, 200);
-    expect(empty.status).toBe(204);
+    expect(empty.status).toBe(201);
     expect(explicit.status).toBe(200);
     expect(empty.body).toBeNull();
     expect(explicit.body).toBeNull();
@@ -31,7 +31,7 @@ describe('HTTP response mapping contract', () => {
     expect(await text.text()).toBe('hello');
 
     for (const value of [42, false, ['entry'], { nested: true }]) {
-      const response = mapResponse(context(), value);
+      const response = mapResponse(context(), value, 200);
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toBe('application/json');
       expect(response.headers.get('x-prepared')).toBe('retained');

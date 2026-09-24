@@ -44,7 +44,7 @@ async function exercise(module: Type, globalPipes: PipeType[] = []): Promise<voi
   const hono = app.getHonoApp();
 
   const valid = await hono.request('/notes', postJson({ title: 'Plan' }));
-  expect(valid.status).toBe(200);
+  expect(valid.status).toBe(201);
   expect(await valid.json()).toEqual({ title: 'Plan' });
 
   const invalid = await hono.request('/notes', postJson({ title: '' }));

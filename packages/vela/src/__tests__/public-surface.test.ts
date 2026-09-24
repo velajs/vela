@@ -132,7 +132,8 @@ const FEATURES: Record<string, string[]> = {
   './health': ['HealthModule', 'HealthCheckService', 'HealthIndicatorService'],
   './security': ['SecurityModule', 'Secret', 'CorsModule', 'signUrl', 'NONCE_STORE'],
   './logging': ['LoggingModule', 'ApplicationLogger', 'APP_LOGGER', 'loggerForScope'],
-  './openapi': ['createOpenApiDocument', 'Endpoint', 'defineEndpoint', 'ApiDoc', 'ApiResponse'],
+  './openapi': ['createOpenApiDocument', 'OpenApiModule', 'ApiDoc', 'ApiResponse'],
+  './contract': ['defineRoute'],
   './dispatch': ['InternalDispatcher', 'SignedInvocation', 'INVOCATION_SIGNING_SECRET'],
   './http-client': ['HttpModule', 'HttpService', 'HttpRequestException'],
   './validation': ['ValidationPipe', 'defineDto', 'parseSchema'],
@@ -193,6 +194,29 @@ describe('public surface tiers', () => {
     expect(duplicates).toEqual([]);
   });
 
+  it('keeps the browser-safe contract entry free of server code', () => {
+    // Follow the built entry's static imports: a browser bundle that shares
+    // route contracts loads exactly these modules.
+    const reached = new Set<string>();
+    const visit = (file: string): void => {
+      if (reached.has(file)) return;
+      reached.add(file);
+      const source = readFileSync(join(PACKAGE_ROOT, file), 'utf8');
+      for (const [, specifier] of source.matchAll(
+        /^(?:import|export)\b[^'"]*['"]([^'"]+)['"]/gmu,
+      )) {
+        expect(specifier.startsWith('.'), `${file} imports ${specifier}`).toBe(true);
+        visit(join(file, '..', specifier!).replace(/\\/gu, '/'));
+      }
+    };
+    visit('dist/contract/index.js');
+    expect([...reached].toSorted()).toEqual([
+      'dist/contract/index.js',
+      'dist/contract/route-contract.js',
+      'dist/http/route-contract.js',
+    ]);
+  });
+
   it('builds, and declares the side effects of, every public entry', () => {
     const missingBuild: string[] = [];
     const sideEffectMismatch: string[] = [];
@@ -236,6 +260,7 @@ describe('public surface tiers', () => {
 
   it('installs the Reflect polyfill from every entry that ships decorated classes', () => {
     const withoutDecorators = new Set([
+      './contract',
       './observability',
       './storage',
       './streaming',

@@ -80,6 +80,17 @@ export {
 export type {
   GuardPhase,
   RouteOptions,
+  RouteMethodDecorator,
+  HttpMethodDecorator,
+  RouteResponseOptions,
+  RouteResponseFormat,
+  RouteBodyOptions,
+  RouteJsonBody,
+  RouteFormBody,
+  RouteMultipartBody,
+  RouteBinaryBody,
+  RouteHandlerResult,
+  RouteSchemaResult,
   SchemaParamDecorator,
   MessageEvent,
   SseResult,
@@ -251,14 +262,9 @@ export type {
   BeforeApplicationShutdown,
 } from './lifecycle/index';
 
-// Response serialization
-export {
-  Serialize,
-  SerializerInterceptor,
-  SERIALIZE_METADATA,
-  defineSerializer,
-} from './serialization/index';
-export type { SerializationDescriptor, SerializerDefinition } from './serialization/index';
+// Response serialization: a projection that serves as a route's `response`
+export { defineSerializer } from './serialization/index';
+export type { SerializerDefinition } from './serialization/index';
 
 // Hono adapter types
 export type { VelaContext, VelaHono, VelaHonoEnv, VelaMiddlewareHandler } from './http/hono.types';

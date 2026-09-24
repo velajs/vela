@@ -51,8 +51,6 @@ import {
   DefaultValuePipe,
   Res,
   createParamDecorator,
-  Serialize,
-  SerializerInterceptor,
   HttpException,
   NotFoundException,
   BadRequestException,
@@ -2492,20 +2490,18 @@ describe('@Req() platform request decorator', () => {
 });
 
 // =============================================================================
-// Serialize / SerializerInterceptor
+// Response serialization — the route's `response` schema (Nest's
+// ClassSerializerInterceptor role) shapes what the handler sends
 // =============================================================================
 
-describe('Serialize / SerializerInterceptor', () => {
-  it('strips fields not in the DTO schema', async () => {
+describe('route response schemas serialize handler results', () => {
+  it('strips fields not in the response schema', async () => {
     const Schema = z.object({ id: z.number(), name: z.string() });
     const ResponseDto = defineDto(Schema, { name: 'ResponseDto' });
-    type ResponseDto = ReturnType<typeof ResponseDto.parse>;
 
     @Controller('/serialize')
-    @UseInterceptors(SerializerInterceptor)
     class SerializeController {
-      @Get()
-      @Serialize(ResponseDto)
+      @Get({ response: ResponseDto })
       handle() {
         return { id: 1, name: 'Alice', password: 'secret' };
       }
@@ -2524,14 +2520,10 @@ describe('Serialize / SerializerInterceptor', () => {
 
   it('works with array responses', async () => {
     const Schema = z.object({ id: z.number(), name: z.string() });
-    const ResponseDto = defineDto(Schema, { name: 'ResponseDto' });
-    type ResponseDto = ReturnType<typeof ResponseDto.parse>;
 
     @Controller('/serialize-arr')
-    @UseInterceptors(SerializerInterceptor)
     class SerializeArrController {
-      @Get()
-      @Serialize(ResponseDto)
+      @Get({ response: z.array(Schema) })
       handle() {
         return [
           { id: 1, name: 'Alice', secret: 'x' },
@@ -2545,17 +2537,14 @@ describe('Serialize / SerializerInterceptor', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/serialize-arr');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = (await res.json()) as any[];
-    expect(body).toEqual([
+    expect(await res.json()).toEqual([
       { id: 1, name: 'Alice' },
       { id: 2, name: 'Bob' },
     ]);
   });
 
-  it('passes through response when no @Serialize is applied', async () => {
+  it('passes through a result when the route declares no response', async () => {
     @Controller('/serialize-pass')
-    @UseInterceptors(SerializerInterceptor)
     class PassController {
       @Get()
       handle() {
@@ -2609,7 +2598,7 @@ describe('APP_PIPE with ValidationPipe', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Alice', email: 'alice@example.com' }),
     });
-    expect(valid.status).toBe(200);
+    expect(valid.status).toBe(201);
     expect(await valid.json()).toEqual({ ok: true, name: 'Alice' });
 
     const invalid = await hono.request('/app-pipe-val', {
@@ -2642,7 +2631,7 @@ describe('APP_PIPE with ValidationPipe', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ x: 42 }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ received: 42 });
   });
 });
@@ -2832,7 +2821,7 @@ describe('@RawBody() param decorator', () => {
       headers: { 'Content-Type': 'text/plain' },
       body: 'hello-raw',
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ text: 'hello-raw' });
   });
 
@@ -2855,7 +2844,7 @@ describe('@RawBody() param decorator', () => {
       headers: { 'Content-Type': 'application/json' },
       body: payload,
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = (await res.json()) as any;
     expect(body.byteLength).toBe(new TextEncoder().encode(payload).byteLength);
@@ -4318,7 +4307,7 @@ describe('ValidationPipe with Zod schemas', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Alice', age: 30 }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ created: { name: 'Alice', age: 30 } });
   });
 
@@ -7983,7 +7972,7 @@ describe('@Body("field") named field extraction', () => {
       body: JSON.stringify({ name: 'Alice', age: 30 }),
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(((await res.json()) as any).name).toBe('Alice');
   });
 
@@ -8006,7 +7995,7 @@ describe('@Body("field") named field extraction', () => {
       body: JSON.stringify({ other: 'field' }),
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(((await res.json()) as any).val).toBeNull();
   });
 
@@ -8396,7 +8385,7 @@ describe('@Body() with missing or malformed JSON', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/body-empty', { method: 'POST' });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(((await res.json()) as any).hasBody).toBe(false);
   });
 
@@ -8605,7 +8594,7 @@ describe('@Body("field", ParseIntPipe) extracts and transforms named field', () 
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ count: '7' }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     const body = (await res.json()) as any;
     expect(body.count).toBe(7);
     expect(body.isNumber).toBe(true);
@@ -9451,63 +9440,6 @@ describe('RequiredPipe rejects absent or empty values with 400', () => {
     const bad = await hono.request('/required-pipe');
     expect(((await ok.json()) as any).name).toBe('alice');
     expect(bad.status).toBe(400);
-  });
-});
-
-// =============================================================================
-// @Serialize() + SerializerInterceptor — response serialization
-// =============================================================================
-
-describe('@Serialize() with SerializerInterceptor strips extra fields via Zod', () => {
-  it('omits fields not in the DTO schema', async () => {
-    const UserDto = defineDto(z.object({ id: z.number(), name: z.string() }));
-
-    @Controller('/serialize-dto')
-    class TestController {
-      @Get()
-      @Serialize(UserDto)
-      @UseInterceptors(SerializerInterceptor)
-      get() {
-        return { id: 1, name: 'Alice', password: 'secret' };
-      }
-    }
-    @Module({ controllers: [TestController], providers: [SerializerInterceptor] })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const res = await app.getHonoApp().request('/serialize-dto');
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
-    expect(body.id).toBe(1);
-    expect(body.name).toBe('Alice');
-    expect(body.password).toBeUndefined();
-  });
-
-  it('serializes each element when the handler returns an array', async () => {
-    const ItemDto = defineDto(z.object({ id: z.number() }));
-
-    @Controller('/serialize-arr-dto')
-    class TestController {
-      @Get()
-      @Serialize(ItemDto)
-      @UseInterceptors(SerializerInterceptor)
-      get() {
-        return [
-          { id: 1, secret: 'x' },
-          { id: 2, secret: 'y' },
-        ];
-      }
-    }
-    @Module({ controllers: [TestController], providers: [SerializerInterceptor] })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const res = await app.getHonoApp().request('/serialize-arr-dto');
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
-    expect(body).toHaveLength(2);
-    expect(body[0]).toEqual({ id: 1 });
-    expect(body[1]).toEqual({ id: 2 });
   });
 });
 

@@ -82,7 +82,7 @@ describe('explicit param metatype on programmatic routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'anchor', qty: 3 }),
     });
-    expect(valid.status).toBe(200);
+    expect(valid.status).toBe(201);
     expect(await valid.json()).toEqual({ created: { name: 'anchor', qty: 3 } });
 
     const invalid = await hono.request('/items', {

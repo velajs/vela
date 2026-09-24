@@ -258,6 +258,49 @@ describe('generateClientContract', () => {
     expect(result.source).toContain('Exclude<HttpStatus, 404 | Extract<HttpStatus');
   });
 
+  it('sends array query parameters documented as form/explode as repeated keys', () => {
+    const tag = (serialization: { style?: 'form'; explode?: boolean }) => ({
+      ...clientDocument,
+      components: undefined,
+      paths: {
+        '/search': {
+          get: {
+            parameters: [
+              {
+                in: 'query' as const,
+                name: 'tag',
+                schema: { type: 'array', items: { type: 'string' } },
+                ...serialization,
+              },
+            ],
+            responses: { 200: { description: 'OK' } },
+          },
+        },
+      },
+    });
+    expect(generateClientContract(tag({ style: 'form', explode: true })).source).toContain(
+      'query?: { "tag"?: Array<string>; }',
+    );
+    expect(() => generateClientContract(tag({ style: 'form', explode: false }))).toThrow(
+      'custom parameter serialization',
+    );
+    const path = {
+      ...clientDocument,
+      components: undefined,
+      paths: {
+        '/items/{id}': {
+          get: {
+            parameters: [
+              { in: 'path' as const, name: 'id', required: true, style: 'form' as const },
+            ],
+            responses: { 200: { description: 'OK' } },
+          },
+        },
+      },
+    };
+    expect(() => generateClientContract(path)).toThrow('custom parameter serialization');
+  });
+
   it('rejects unsupported statuses and direction-dependent schemas', () => {
     const document = structuredClone(clientDocument);
     document.paths['/empty']!.delete!.responses = { 299: { description: 'Unofficial' } };

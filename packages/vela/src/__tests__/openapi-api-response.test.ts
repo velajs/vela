@@ -13,7 +13,7 @@ describe('@ApiResponse', () => {
     @Controller('/users')
     class UsersController {
       @Get('/:id')
-      @ApiResponse(200, { description: 'User found', schema: UserDto })
+      @ApiResponse({ status: 200, description: 'User found', schema: UserDto })
       findOne() {
         return {};
       }
@@ -41,9 +41,9 @@ describe('@ApiResponse', () => {
     @Controller('/users')
     class UsersController {
       @Get('/:id')
-      @ApiResponse(200, { description: 'OK' })
-      @ApiResponse(404, { description: 'Not found', schema: ErrorDto })
-      @ApiResponse(500, { description: 'Server error' })
+      @ApiResponse({ status: 200, description: 'OK' })
+      @ApiResponse({ status: 404, description: 'Not found', schema: ErrorDto })
+      @ApiResponse({ status: 500, description: 'Server error' })
       findOne() {
         return {};
       }
@@ -67,7 +67,8 @@ describe('@ApiResponse', () => {
     @Controller('/items')
     class ItemsController {
       @Post()
-      @ApiResponse(201, {
+      @ApiResponse({
+        status: 201,
         description: 'Created',
         schema: z.object({ id: z.string() }),
       })
@@ -87,25 +88,33 @@ describe('@ApiResponse', () => {
     );
   });
 
-  it('accepts a raw JSON Schema object', () => {
-    @Controller('/text')
-    class TextController {
-      @Get()
-      @ApiResponse(200, {
-        description: 'OK',
-        schema: { type: 'string' } as const,
-      })
+  it('rejects a raw JSON Schema object', () => {
+    expect(() =>
+      // @ts-expect-error a documented schema is a Standard Schema, not JSON Schema
+      ApiResponse({ status: 200, description: 'OK', schema: { type: 'string' } }),
+    ).toThrow(/Standard Schema/);
+  });
+
+  it("describes the route's success response without replacing its schema", () => {
+    @Controller('/described')
+    class DescribedController {
+      @Get({ response: z.object({ ok: z.boolean() }) })
+      @ApiResponse({ status: 200, description: 'Health', schema: z.string() })
+      @ApiResponse({ status: '5XX', description: 'Unavailable' })
       handle() {
-        return 'hi';
+        return { ok: true };
       }
     }
 
-    @Module({ controllers: [TextController] })
+    @Module({ controllers: [DescribedController] })
     class AppModule {}
 
-    const doc = createOpenApiDocument(AppModule);
-    const op = doc.paths['/text']!.get!;
-    expect(op.responses['200']!.content!['application/json']!.schema).toEqual({ type: 'string' });
+    const responses = createOpenApiDocument(AppModule).paths['/described']!.get!.responses;
+    expect(responses['200']).toMatchObject({
+      description: 'Health',
+      content: { 'application/json': { schema: { type: 'object' } } },
+    });
+    expect(responses['5XX']).toEqual({ description: 'Unavailable' });
   });
 
   it('preserves the default 200 response when no @ApiResponse is present', () => {
@@ -124,11 +133,11 @@ describe('@ApiResponse', () => {
     expect(doc.paths['/default']!.get!.responses['200']).toEqual({ description: 'OK' });
   });
 
-  it('explicit @ApiResponse(200, ...) overrides the default', () => {
+  it('an @ApiResponse for the success status describes it', () => {
     @Controller('/override')
     class OverrideController {
       @Get()
-      @ApiResponse(200, { description: 'custom ok' })
+      @ApiResponse({ status: 200, description: 'custom ok' })
       handle() {
         return {};
       }
@@ -149,12 +158,12 @@ describe('@ApiResponse', () => {
     return response.status;
   }
 
-  it('keeps the default 200 the runtime sends beside an undeclared documented 2xx', async () => {
+  it('keeps the 201 a POST sends beside an undeclared documented 2xx', async () => {
     @Controller('/created')
     class CreatedController {
       @Post()
-      @ApiResponse(201, { description: 'Created' })
-      @ApiResponse(400, { description: 'Validation failed' })
+      @ApiResponse({ status: 200, description: 'Replayed' })
+      @ApiResponse({ status: 400, description: 'Validation failed' })
       create() {
         return {};
       }
@@ -165,7 +174,7 @@ describe('@ApiResponse', () => {
 
     const responses = createOpenApiDocument(AppModule).paths['/created']!.post!.responses;
     expect(Object.keys(responses).toSorted()).toEqual(['200', '201', '400']);
-    expect(await sentStatus(AppModule, '/created')).toBe(200);
+    expect(await sentStatus(AppModule, '/created')).toBe(201);
   });
 
   it('documents only the declared 2xx when @HttpCode makes the runtime send it', async () => {
@@ -173,8 +182,8 @@ describe('@ApiResponse', () => {
     class CreatedController {
       @Post()
       @HttpCode(201)
-      @ApiResponse(201, { description: 'Created' })
-      @ApiResponse(400, { description: 'Validation failed' })
+      @ApiResponse({ status: 201, description: 'Created' })
+      @ApiResponse({ status: 400, description: 'Validation failed' })
       create() {
         return {};
       }
@@ -193,7 +202,7 @@ describe('@ApiResponse', () => {
     @Controller('/lookup')
     class LookupController {
       @Get()
-      @ApiResponse(404, { description: 'Not found' })
+      @ApiResponse({ status: 404, description: 'Not found' })
       find() {
         return {};
       }
@@ -211,7 +220,7 @@ describe('@ApiResponse', () => {
     class AcceptedController {
       @Post()
       @HttpCode(202)
-      @ApiResponse(400, { description: 'Validation failed' })
+      @ApiResponse({ status: 400, description: 'Validation failed' })
       enqueue() {
         return {};
       }

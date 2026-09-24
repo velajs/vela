@@ -4,7 +4,15 @@ import { declareScope } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { normalizePath } from '../registry/paths';
 import type { Constructor, HttpHandlerMeta, PipeType, Type } from '../registry/types';
-import type { ControllerOptions } from './types';
+import type { RouteContract } from '../contract/route-contract';
+import type { ControllerOptions, ParamExtractorFactory } from './types';
+import {
+  resolveRouteContract,
+  type RouteBodyOptions,
+  type RouteHandlerResult,
+  type RouteResponseOptions,
+} from './route-contract';
+import { readBodyParam, readPathParam, readQueryParam } from './route-input';
 import type { ExecutionContext } from '../pipeline/types';
 import { isValidationSchema, type ValidationSchema } from '../validation/parse-schema';
 import { isStandardSchema } from '../validation/standard-schema';
@@ -78,32 +86,86 @@ export function getRouteVersion(
   return MetadataRegistry.getRouteVersion(target, propertyKey);
 }
 
-/** Per-route options for the HTTP method decorators (`@Get`, `@Post`, …). */
-export interface RouteOptions {
+/**
+ * Per-route options for the HTTP method decorators (`@Get`, `@Post`, …).
+ *
+ * @example
+ * ```ts
+ * @Post('/', { response: Todo })            // 201; validates, documents, types the handler
+ * create(@Body(CreateTodo) body: SchemaOutput<typeof CreateTodo>) {}
+ *
+ * @Delete('/:id', { response: null })       // 204
+ * remove(@Param('id') id: string) {}
+ *
+ * @Post('/avatar', { response: Avatar, body: { multipart: { maxFileBytes: 5 * 1024 * 1024 } } })
+ * upload(@Body(AvatarForm) form: SchemaOutput<typeof AvatarForm>) {}
+ * ```
+ */
+export interface RouteOptions extends RouteResponseOptions {
   /**
    * A stable, human-readable name for this route. Enables URL generation
    * (`UrlGeneratorService.urlFor(name, …)`), surfaces on `app.describeRoutes()`,
    * and — when set — becomes the OpenAPI `operationId`.
    */
   name?: string;
+  /** Accept a form or multipart body instead of JSON, or bound a JSON body. */
+  body?: RouteBodyOptions;
 }
 
-function createMethodDecorator(method: HttpMethod) {
-  return (path = '', options?: RouteOptions): MethodDecorator => {
-    return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
+/** A method decorator that checks the decorated handler returns `Result`. */
+export type RouteMethodDecorator<Result> = <
+  Handler extends (...args: never[]) => Result | Promise<Result>,
+>(
+  target: object,
+  propertyKey: string | symbol,
+  descriptor: TypedPropertyDescriptor<Handler>,
+) => void;
+
+/**
+ * The HTTP method decorators: an optional path (relative to the controller;
+ * a trailing `/` is significant), then route options or a `defineRoute`
+ * contract. Without a path, options or a contract may come first.
+ */
+export interface HttpMethodDecorator<Method extends string> {
+  <const Contract extends RouteContract<Method>>(
+    contract: Contract,
+  ): RouteMethodDecorator<RouteHandlerResult<Contract>>;
+  <const Contract extends RouteContract<Method>>(
+    path: string,
+    contract: Contract,
+  ): RouteMethodDecorator<RouteHandlerResult<Contract>>;
+  <const Options extends RouteOptions & { readonly method?: never }>(
+    options: Options,
+  ): RouteMethodDecorator<RouteHandlerResult<Options>>;
+  <const Options extends RouteOptions & { readonly method?: never } = {}>(
+    path?: string,
+    options?: Options,
+  ): RouteMethodDecorator<RouteHandlerResult<Options>>;
+}
+
+function createMethodDecorator<Method extends string>(method: Method) {
+  return ((
+    pathOrOptions?: string | RouteOptions | RouteContract,
+    given?: RouteOptions | RouteContract,
+  ) => {
+    const path = typeof pathOrOptions === 'string' ? pathOrOptions : '';
+    const options = typeof pathOrOptions === 'object' ? pathOrOptions : given;
+    const contract = options && resolveRouteContract(method, options);
+    const name = options?.name;
+    return (target: object, propertyKey: string | symbol) => {
       const ctor = target.constructor as Constructor;
-      const normalizedPath = normalizePath(path);
       const version = MetadataRegistry.getRouteVersion(ctor, propertyKey);
 
       MetadataRegistry.addRoute(ctor, {
-        method: method as string,
-        path: normalizedPath,
+        method,
+        path: normalizePath(path),
         handlerName: propertyKey,
         ...(version !== undefined ? { version } : {}),
-        ...(options?.name !== undefined ? { name: options.name } : {}),
+        ...(name !== undefined ? { name } : {}),
+        ...(contract ? { contract } : {}),
       });
     };
-  };
+  }) as HttpMethodDecorator<Method>;
 }
 
 // Pure calls with literal arguments, so a bundle drops every decorator it never
@@ -158,7 +220,10 @@ function isParamSchema(value: PipeType | ValidationSchema): value is ValidationS
   return isValidationSchema(value);
 }
 
-function createBuiltinParamDecorator(type: ParamType): SchemaParamDecorator {
+function createBuiltinParamDecorator(
+  type: ParamType,
+  extract?: ParamExtractorFactory,
+): SchemaParamDecorator {
   return (
     nameOrPipe?: string | PipeType | ValidationSchema,
     ...pipes: Array<PipeType | ValidationSchema>
@@ -180,15 +245,22 @@ function createBuiltinParamDecorator(type: ParamType): SchemaParamDecorator {
         type,
         name,
         ...(allPipes.length > 0 ? { pipes: allPipes } : {}),
+        ...(extract ? { extract } : {}),
       });
     };
   };
 }
 
 // Pure, with literal arguments, for the same reason as the method decorators.
-export const Param = /* @__PURE__ */ createBuiltinParamDecorator('param');
-export const Query = /* @__PURE__ */ createBuiltinParamDecorator('query');
-export const Body = /* @__PURE__ */ createBuiltinParamDecorator('body');
+export const Param = /* @__PURE__ */ createBuiltinParamDecorator('param', readPathParam);
+export const Query = /* @__PURE__ */ createBuiltinParamDecorator('query', readQueryParam);
+/**
+ * Injects the request body: JSON unless the route opts into a form or multipart
+ * body. With no schema argument, a parameter whose class carries a static
+ * Standard Schema (`static schema = z.object(…)`, or a class that is itself a
+ * Standard Schema) is validated against it.
+ */
+export const Body = /* @__PURE__ */ createBuiltinParamDecorator('body', readBodyParam);
 export const Headers = /* @__PURE__ */ createBuiltinParamDecorator('headers');
 /**
  * Injects the platform `Request`, as Nest's `@Req()` injects the request
