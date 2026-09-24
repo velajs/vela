@@ -104,24 +104,21 @@ function methodsOf(target: ReflectorTarget, classes: readonly Type[]): HandlerMe
   return methods;
 }
 
-function isPlainObject(value: object): boolean {
+// A plain array (not a subclass) or a plain object.
+function isPlainData(value: object): boolean {
   const prototype: unknown = Object.getPrototypeOf(value);
+  if (Array.isArray(value)) return prototype === Array.prototype;
   return prototype === Object.prototype || prototype === null;
 }
 
-// Whether two metadata values are the same plain data: arrays and plain
-// objects compare member by member, anything else by identity. Nesting deeper
-// than a metadata value needs counts as different.
+// Whether two metadata values are the same plain data: plain arrays and plain
+// objects compare own key by own key (an array's indices and length, and any
+// other property it carries, such as `requireAll`), anything else by identity.
+// Nesting deeper than a metadata value needs counts as different.
 function samePlainData(a: unknown, b: unknown, depth = 0): boolean {
   if (Object.is(a, b)) return true;
   if (depth > 16 || typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return (
-      a.length === b.length &&
-      Array.from(a.keys()).every((index) => samePlainData(a[index], b[index], depth + 1))
-    );
-  }
-  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+  if (Array.isArray(a) !== Array.isArray(b) || !isPlainData(a) || !isPlainData(b)) return false;
   const keys = Reflect.ownKeys(a);
   return (
     keys.length === Reflect.ownKeys(b).length &&
@@ -200,8 +197,9 @@ function readAll(key: string, targets: ReflectorContext | readonly ReflectorTarg
  * metadata for the key cannot say which one it serves, and the read throws;
  * so does a list naming one controller that routes the function as several
  * methods (one wrapper function replacing them) with different metadata.
- * Arrays and plain objects are equal metadata when their members are equal;
- * any other value is compared by identity.
+ * Plain arrays and plain objects are equal metadata when their own properties
+ * are equal, including any non-index property an array carries; any other
+ * value is compared by identity.
  *
  * @example
  * ```ts

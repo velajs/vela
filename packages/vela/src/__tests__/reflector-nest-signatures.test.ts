@@ -375,6 +375,38 @@ describe("Reflector accepts Nest's (key, target | target[]) signatures", () => {
     expect(() => reflector.get(Audience, Base.prototype.list)).toThrow(REFUSED);
   });
 
+  it('refuses a function whose arrays differ only in their own non-index properties', () => {
+    class Base {
+      list() {
+        return { listed: true };
+      }
+    }
+    class AdminDocs extends Base {}
+    class StaffDocs extends Base {}
+    class AuditDocs extends Base {}
+    class ExtendedRoles extends Array<string> {}
+    const shared = Object.getOwnPropertyDescriptor(Base.prototype, 'list')!;
+    // The same members, but one array also says every role is required.
+    const everyRole = Object.assign(['admin'], { requireAll: true });
+    Roles(everyRole)(AdminDocs.prototype, 'list', shared);
+    Roles(['admin'])(StaffDocs.prototype, 'list', shared);
+    // The same members and own keys, but an array of another class.
+    Roles(ExtendedRoles.from(['admin']))(AuditDocs.prototype, 'list', shared);
+
+    const reflector = new Reflector();
+    expect(() => reflector.get(Roles, Base.prototype.list)).toThrow(REFUSED);
+    expect(() => reflector.getAllAndOverride(Roles, [Base.prototype.list])).toThrow(REFUSED);
+    expect(() =>
+      reflector.getAllAndOverride(Roles, [Base.prototype.list, AdminDocs, StaffDocs]),
+    ).toThrow(REFUSED);
+    expect(() =>
+      reflector.getAllAndOverride(Roles, [Base.prototype.list, StaffDocs, AuditDocs]),
+    ).toThrow(REFUSED);
+    // Each controller still reads its own value.
+    expect(reflector.getAllAndOverride(Roles, [Base.prototype.list, AdminDocs])).toBe(everyRole);
+    expect(reflector.getAllAndOverride(Roles, [Base.prototype.list, StaffDocs])).toEqual(['admin']);
+  });
+
   it('refuses a function one controller routes as methods with different metadata', () => {
     class Reports {
       @Roles(['admin'])
