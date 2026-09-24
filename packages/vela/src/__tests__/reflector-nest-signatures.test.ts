@@ -147,6 +147,74 @@ describe("Reflector accepts Nest's (key, target | target[]) signatures", () => {
     );
   });
 
+  it("reads a shared handler's metadata only for the controller that declares or inherits it", async () => {
+    const IsPublic = Reflector.createDecorator<boolean>();
+
+    @Injectable()
+    class PublicOnlyGuard implements CanActivate {
+      constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+      canActivate(context: ExecutionContext): boolean {
+        return (
+          this.reflector.getAllAndOverride(IsPublic, [context.getHandler(), context.getClass()]) ===
+          true
+        );
+      }
+    }
+
+    class Base {
+      list() {
+        return { listed: true };
+      }
+    }
+    class PublicDocs extends Base {}
+    class PrivateDocs extends Base {}
+    // Only PublicDocs decorates the one inherited method, without decorator syntax.
+    const shared = Object.getOwnPropertyDescriptor(Base.prototype, 'list')!;
+    Controller('/public')(PublicDocs);
+    Get()(PublicDocs.prototype, 'list', shared);
+    IsPublic(true)(PublicDocs.prototype, 'list', shared);
+    Controller('/private')(PrivateDocs);
+    Get()(PrivateDocs.prototype, 'list', shared);
+
+    // A controller inheriting a method its ancestor decorates keeps the metadata.
+    class Catalog {
+      @IsPublic(true)
+      list() {
+        return { listed: true };
+      }
+    }
+    class CatalogDocs extends Catalog {}
+    Controller('/catalog')(CatalogDocs);
+    Get()(
+      CatalogDocs.prototype,
+      'list',
+      Object.getOwnPropertyDescriptor(Catalog.prototype, 'list')!,
+    );
+
+    for (const controller of [PublicDocs, PrivateDocs, CatalogDocs])
+      UseGuards(PublicOnlyGuard)(controller);
+
+    @Module({
+      controllers: [PublicDocs, PrivateDocs, CatalogDocs],
+      providers: [PublicOnlyGuard],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect((await app.getHonoApp().request('/public')).status).toBe(200);
+    expect((await app.getHonoApp().request('/private')).status).toBe(403);
+    expect((await app.getHonoApp().request('/catalog')).status).toBe(200);
+
+    const reflector = new Reflector();
+    expect(reflector.getAll(IsPublic, [Base.prototype.list, PrivateDocs])).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(reflector.getAllAndMerge(IsPublic, [Base.prototype.list, PrivateDocs])).toEqual([]);
+    expect(reflector.getAllAndOverride(IsPublic, [Base.prototype.list, PublicDocs])).toBe(true);
+  });
+
   it('resolves string keys set with SetMetadata on handler functions', () => {
     class Plain {
       @SetMetadata('scope', 'write')

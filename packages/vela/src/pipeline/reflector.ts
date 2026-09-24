@@ -59,10 +59,22 @@ function resolveKey(key: MetadataKey<unknown>): string {
   return typeof key === 'string' ? key : key.KEY;
 }
 
+// Whether `owner` is `target` or one of its ancestors.
+function declaresFor(owner: Constructor, target: ReflectorTarget): boolean {
+  const prototype: unknown = target.prototype;
+  return owner === target || (typeof prototype === 'object' && prototype instanceof owner);
+}
+
 // A handler function reads its declaring method's metadata; any other function
 // (a class) reads class metadata, as does metadata defined on the function itself.
 // A function several controllers decorate cannot say which one it serves.
-function readTarget(target: ReflectorTarget, key: string): unknown {
+// Given the classes read alongside it, a handler's metadata counts only when
+// one of them is or extends its declaring class.
+function readTarget(
+  target: ReflectorTarget,
+  key: string,
+  classes: readonly ReflectorTarget[] = [],
+): unknown {
   if (MetadataRegistry.isAmbiguousHandler(target)) {
     throw new Error(
       `Reflector cannot read metadata through the handler function '${target.name}': ` +
@@ -71,7 +83,10 @@ function readTarget(target: ReflectorTarget, key: string): unknown {
     );
   }
   const owner = MetadataRegistry.getHandlerOwner(target);
-  const value = owner ? MetadataRegistry.getCustomHandlerMeta(owner[0], owner[1], key) : undefined;
+  const value =
+    owner && (classes.length === 0 || classes.some((type) => declaresFor(owner[0], type)))
+      ? MetadataRegistry.getCustomHandlerMeta(owner[0], owner[1], key)
+      : undefined;
   return value ?? MetadataRegistry.getCustomClassMeta(target, key);
 }
 
@@ -80,12 +95,20 @@ function readHandler(context: ReflectorContext, key: string): unknown {
 }
 
 function readAll(key: string, targets: ReflectorContext | readonly ReflectorTarget[]): unknown[] {
-  return Array.isArray(targets)
-    ? targets.map((target: ReflectorTarget) => readTarget(target, key))
-    : [
-        readHandler(targets as ReflectorContext, key),
-        MetadataRegistry.getCustomClassMeta((targets as ReflectorContext).getClass(), key),
-      ];
+  if (!Array.isArray(targets)) {
+    const context = targets as ReflectorContext;
+    return [
+      readHandler(context, key),
+      MetadataRegistry.getCustomClassMeta(context.getClass(), key),
+    ];
+  }
+  // The listed classes (`[context.getHandler(), context.getClass()]`): targets
+  // that are not decorated handlers and have a prototype, unlike methods.
+  const classes = targets.filter(
+    (target: ReflectorTarget) =>
+      typeof target.prototype === 'object' && !MetadataRegistry.getHandlerOwner(target),
+  );
+  return targets.map((target: ReflectorTarget) => readTarget(target, key, classes));
 }
 
 /**
@@ -97,6 +120,9 @@ function readAll(key: string, targets: ReflectorContext | readonly ReflectorTarg
  * class), or Nest's targets: `get(key, context.getHandler())`,
  * `get(key, context.getClass())` and
  * `getAllAndOverride(key, [context.getHandler(), context.getClass()])`.
+ * When a list names a class, a handler's metadata counts only if that class
+ * or one of its ancestors declared it, so metadata one controller puts on a
+ * method it inherits never applies to a sibling controller sharing the method.
  *
  * @example
  * ```ts
