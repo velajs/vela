@@ -56,8 +56,14 @@ export function Module(options: ModuleOptions = {}): ClassDecorator {
   };
 }
 
+/**
+ * Whether a class declares a module itself (`@Module()` or `@Global()`), so a
+ * bare import of it names a module. The class of a DynamicModule that
+ * declares none is not one, whatever definitions of it loaded before.
+ */
 export function isModule(target: Constructor): boolean {
-  return MetadataRegistry.getModuleOptions(target) !== undefined;
+  const options = MetadataRegistry.getModuleOptions(target);
+  return options !== undefined && options.dynamicHost !== true;
 }
 
 export function getModuleMetadata(target: Constructor): ModuleMetadata | undefined {

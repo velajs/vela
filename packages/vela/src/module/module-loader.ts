@@ -32,6 +32,7 @@ import {
   DEFAULT_MODULE_KEY,
   UNCONFIGURED_MODULE,
   assertDefinedEntries,
+  generatedModuleMethods,
   isDynamicModule,
   moduleKeyOf,
   readModuleIdentity,
@@ -76,6 +77,19 @@ function implementsNestModule(cls: Type): cls is Type<NestModule> {
 
 function tokenOfProvider(provider: Type | ProviderDefinition): Token | undefined {
   return typeof provider === 'function' ? provider : provider.provide;
+}
+
+// A bare import of a class that declares no module. A generated module class
+// is configured only through the methods it generated.
+function notAModule(moduleClass: Type): Error {
+  const name = moduleClass.name || 'AnonModule';
+  const methods = generatedModuleMethods(moduleClass);
+  return new Error(
+    methods
+      ? `${name} is not a module: import ${methods.map((method) => `${name}.${method}(...)`).join(' or ')} ` +
+          'instead of the bare class, which configures nothing.'
+      : `${name} is not a module. Add @Module() decorator to the class.`,
+  );
 }
 
 /**
@@ -229,6 +243,9 @@ export class ModuleLoader {
       key = moduleClassOrDynamic.key ?? DEFAULT_MODULE_KEY;
     } else {
       moduleClass = moduleClassOrDynamic;
+      // Checked before deduplication: a bare import configures nothing, so it
+      // names a module only when the class declares one itself.
+      if (!isModule(moduleClass)) throw notAModule(moduleClass);
     }
 
     const moduleId = this.getModuleId(moduleClass, key);
@@ -255,14 +272,10 @@ export class ModuleLoader {
       throw new Error(`Circular module dependency detected: ${chain}`);
     }
 
-    if (!isModule(moduleClass)) {
-      if (isDynamicModule(moduleClassOrDynamic)) {
-        MetadataRegistry.setModuleOptions(moduleClass, {});
-      } else {
-        throw new Error(
-          `${moduleClass.name} is not a module. Add @Module() decorator to the class.`,
-        );
-      }
+    // A DynamicModule's class needs no @Module of its own. The record marks
+    // the class as decorated for dependency injection, not as a module.
+    if (MetadataRegistry.getModuleOptions(moduleClass) === undefined) {
+      MetadataRegistry.setModuleOptions(moduleClass, { dynamicHost: true });
     }
 
     const metadata = getModuleMetadata(moduleClass);

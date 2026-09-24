@@ -161,6 +161,12 @@ export interface ModuleOptions {
 /** What the metadata registry records for a module class: `@Module` options and `@Global()`. */
 export interface ModuleRecord extends ModuleOptions {
   global?: boolean;
+  /**
+   * @internal Recorded by the module loader for the class of a DynamicModule
+   * that declares no module itself: only its definitions configure it, so a
+   * bare import of the class is not a module.
+   */
+  dynamicHost?: true;
 }
 
 export interface ModuleMetadata {

@@ -32,7 +32,7 @@ import type {
 } from './configurable-module.types';
 import { getModuleMetadata } from './decorators';
 import { attachModuleIdentity } from './module-fingerprints';
-import { UNCONFIGURED_MODULE } from './module-identity';
+import { UNCONFIGURED_MODULE, recordGeneratedModuleMethods } from './module-identity';
 import { stableHash } from './stable-hash';
 
 /** The `global:` slot's component groups, lowered to `APP_*` registrations. */
@@ -358,6 +358,8 @@ export function defineModule<
 
   class GeneratedModuleClass {}
   Object.defineProperty(GeneratedModuleClass, 'name', { value: `${spec.name}ModuleHost` });
+  // Names them when the class is imported bare, which configures nothing.
+  recordGeneratedModuleMethods(GeneratedModuleClass, [syncName, asyncName]);
 
   Object.defineProperty(GeneratedModuleClass, syncName, {
     configurable: true,
