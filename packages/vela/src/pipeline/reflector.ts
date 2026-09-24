@@ -104,21 +104,54 @@ function methodsOf(target: ReflectorTarget, classes: readonly Type[]): HandlerMe
   return methods;
 }
 
+function isPlainObject(value: object): boolean {
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+// Whether two metadata values are the same plain data: arrays and plain
+// objects compare member by member, anything else by identity. Nesting deeper
+// than a metadata value needs counts as different.
+function samePlainData(a: unknown, b: unknown, depth = 0): boolean {
+  if (Object.is(a, b)) return true;
+  if (depth > 16 || typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return (
+      a.length === b.length &&
+      Array.from(a.keys()).every((index) => samePlainData(a[index], b[index], depth + 1))
+    );
+  }
+  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+  const keys = Reflect.ownKeys(a);
+  return (
+    keys.length === Reflect.ownKeys(b).length &&
+    keys.every(
+      (name) =>
+        Object.hasOwn(b, name) &&
+        samePlainData(Reflect.get(a, name), Reflect.get(b, name), depth + 1),
+    )
+  );
+}
+
 // A handler function reads the metadata of the method it stands for; any other
 // function (a class) reads class metadata, as does metadata defined on the
 // function itself. A function that stands for several methods whose metadata
 // for `key` differs, such as one inherited method several controllers route
-// and decorate differently, cannot say which one it serves: the read throws.
+// and decorate differently, or one wrapper function replacing several methods
+// of a controller, cannot say which one it serves: the read throws.
 function readTarget(target: ReflectorTarget, key: string, classes: readonly Type[] = []): unknown {
-  const values = new Set(
-    methodsOf(target, classes).map(([type, name]) => methodMeta(type, name, key)),
-  );
-  if (values.size > 1) {
+  const values: unknown[] = [];
+  for (const [type, name] of methodsOf(target, classes)) {
+    const value = methodMeta(type, name, key);
+    if (!values.some((known) => samePlainData(known, value))) values.push(value);
+  }
+  if (values.length > 1) {
     throw new Error(
       `Reflector cannot read metadata through the handler function '${target.name}': ` +
-        'several controllers route or decorate it with different metadata. Pass the ' +
-        'execution context, as in reflector.get(key, context), or list the controller, ' +
-        'as in reflector.getAllAndOverride(key, [context.getHandler(), context.getClass()]).',
+        'it stands for several methods with different metadata. Pass the execution ' +
+        'context, as in reflector.get(key, context), or, for methods of different ' +
+        'controllers, list the controller, as in ' +
+        'reflector.getAllAndOverride(key, [context.getHandler(), context.getClass()]).',
     );
   }
   const [value] = values;
@@ -164,7 +197,11 @@ function readAll(key: string, targets: ReflectorContext | readonly ReflectorTarg
  * that class routes through the function, so metadata one controller puts on
  * a method it inherits never applies to a sibling controller sharing the
  * method. Alone, a function that several controllers route with different
- * metadata for the key cannot say which one it serves, and the read throws.
+ * metadata for the key cannot say which one it serves, and the read throws;
+ * so does a list naming one controller that routes the function as several
+ * methods (one wrapper function replacing them) with different metadata.
+ * Arrays and plain objects are equal metadata when their members are equal;
+ * any other value is compared by identity.
  *
  * @example
  * ```ts

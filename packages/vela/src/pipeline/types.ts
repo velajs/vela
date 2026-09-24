@@ -46,7 +46,9 @@ export interface ExecutionContext {
    * `reflector.getAllAndOverride(key, [context.getHandler(), context.getClass()])`.
    * Alone, as in `reflector.get(key, context.getHandler())`, it throws when
    * several controllers route the function with different metadata for `key`
-   * (one inherited method); list the class with it or pass the context.
+   * (one inherited method); list the class with it or pass the context. A
+   * function one controller routes as several methods with different metadata
+   * (one wrapper replacing them) throws even listed; pass the context.
    * Framework hosts without a method (middleware, unmatched routes) return a
    * stable marker function.
    */

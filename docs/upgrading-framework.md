@@ -123,8 +123,10 @@ passing the context. `[context.getHandler(), context.getClass()]` reads the
 method that class routes, so one controller's metadata on an inherited method
 never applies to a sibling controller. Alone, `context.getHandler()` throws when
 several controllers route the function with different metadata for the key; list
-the class with it or pass the context there. Code that used the handler name,
-such as a throttling key, calls `getHandlerName()`.
+the class with it or pass the context there. When one wrapper function replaces
+several methods of a controller with different metadata, the list form throws
+too, so pass the context. Code that used the handler name, such as a throttling
+key, calls `getHandlerName()`.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
 Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule` and `CedarModule`

@@ -38,6 +38,14 @@ function wrap(_target: object, _key: string | symbol, descriptor: PropertyDescri
   };
 }
 
+// Replaces each method it decorates with one shared function, as a disabling decorator does.
+function disabled(): never {
+  throw new Error('disabled');
+}
+function disable(_target: object, _key: string | symbol, descriptor: PropertyDescriptor): void {
+  descriptor.value = disabled;
+}
+
 describe("Reflector accepts Nest's (key, target | target[]) signatures", () => {
   it('reads handler and class metadata from getHandler() and getClass()', async () => {
     const seen: Array<{
@@ -343,6 +351,49 @@ describe("Reflector accepts Nest's (key, target | target[]) signatures", () => {
     ]);
     expect(reflector.getAllAndMerge(IsPublic, [Base.prototype.list, PrivateDocs])).toEqual([]);
     expect(reflector.getAllAndOverride(IsPublic, [Base.prototype.list, PublicDocs])).toBe(true);
+  });
+
+  it('reads a function several controllers decorate with equal plain values', () => {
+    class Base {
+      list() {
+        return { listed: true };
+      }
+    }
+    class AdminDocs extends Base {}
+    class StaffDocs extends Base {}
+    const shared = Object.getOwnPropertyDescriptor(Base.prototype, 'list')!;
+    Roles(['admin'])(AdminDocs.prototype, 'list', shared);
+    Roles(['admin'])(StaffDocs.prototype, 'list', shared);
+    Audience('staff')(AdminDocs.prototype, 'list', shared);
+    Audience('staff')(StaffDocs.prototype, 'list', shared);
+
+    const reflector = new Reflector();
+    // Equal arrays and plain objects are one value, whichever method declares it.
+    expect(reflector.get(Roles, Base.prototype.list)).toEqual(['admin']);
+    expect(reflector.getAllAndOverride(Roles, [Base.prototype.list])).toEqual(['admin']);
+    // Any other object is its own value, so two equal sets still refuse.
+    expect(() => reflector.get(Audience, Base.prototype.list)).toThrow(REFUSED);
+  });
+
+  it('refuses a function one controller routes as methods with different metadata', () => {
+    class Reports {
+      @Roles(['admin'])
+      @disable
+      archive() {}
+
+      @Roles(['staff'])
+      @disable
+      purge() {}
+    }
+
+    const refused = "Reflector cannot read metadata through the handler function 'disabled'";
+    const reflector = new Reflector();
+    expect(() => reflector.get(Roles, disabled)).toThrow(refused);
+    // Listing the controller does not help: it routes the function as both methods.
+    expect(() => reflector.getAllAndOverride(Roles, [disabled, Reports])).toThrow(refused);
+    // The execution context names the method.
+    const context = { getClass: () => Reports, getHandlerName: () => 'purge' };
+    expect(reflector.get(Roles, context)).toEqual(['staff']);
   });
 
   it('resolves string keys set with SetMetadata on handler functions', () => {
