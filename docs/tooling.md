@@ -116,7 +116,8 @@ vela deploy check
   the `mcp serve` channel on stdout stay machine-readable.
 - **Generators.** `vela generate module|controller|service|resource|queue|cron|durable-object <name>`
   writes current-API code (the root application kit, `@velajs/vela/queue`,
-  `@velajs/vela/schedule`, `ENV`, plain decorator routes) and registers it:
+  `@velajs/vela/schedule`, `ENV`, decorator routes whose options declare
+  `response` schemas when the project uses zod) and registers it:
   module files are parsed with `oxc-parser` and edited with `magic-string`, so
   only the changed spans move. The root module is the class the Worker entry
   names, followed through `export { … } from` re-exports and `export *`
