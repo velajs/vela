@@ -40,8 +40,17 @@ class AppModule {}
 export default createCloudflareWorker(AppModule);
 ```
 
-The worker exposes `fetch`, `queue`, and `scheduled`. Its first event builds an
-application with that event's environment. Concurrent events for the same
+The worker exposes `fetch`, `queue`, and `scheduled`, and carries a
+descriptor under the symbol key `CLOUDFLARE_WORKER`
+(`Symbol.for('vela.cloudflare.worker')`), which the platform ignores and which
+an entry adding handlers keeps (`export default { ...worker, email }`): the
+root module, the options, and
+`createOptions(env)`/`createApplication(env)`, which build the application
+exactly as the Worker does, short of the `configure(app, env)` hook, which
+receives the Workers application. `@velajs/cli` loads the Worker entry and builds its
+application from it, so a project needs no `vela.config`, and
+`@velajs/cloudflare/testing` builds test applications from the same options.
+Its first event builds an application with that event's environment. Concurrent events for the same
 environment object share construction. Different environment objects receive
 separate applications, including separate providers, lifecycle state, and live
 drivers. A failed construction is evicted and the next event retries.
@@ -440,6 +449,69 @@ Construct `KVCacheStore` and `KvFlagDriver` with a native namespace:
 object-valued flag reads return `unknown`; validate them with an application
 parser. Core `CacheService.getParsed(key, parser)` infers the result from that
 parser. Memory and tiered cache reads use the same unknown-value contract.
+
+## Testing Worker handlers
+
+`@velajs/cloudflare/testing` runs inside the Workers Vitest pool
+(`@cloudflare/vitest-plugin`) and needs `@velajs/testing`.
+`createTestingWorker(AppModule, { env?, overrides?, ...workerOptions })` builds
+the module as `createCloudflareWorker(AppModule, workerOptions)` does (its
+adapters, then its `configure(app, env)` hook), through
+`Test.createTestingModule()`, and drives the Worker's handlers:
+
+```ts
+import { env } from 'cloudflare:workers';
+import { createTestingWorker, queueJob } from '@velajs/cloudflare/testing';
+import { expect, it } from 'vitest';
+
+it('processes a created todo', async () => {
+  const worker = await createTestingWorker(AppModule, {
+    env,
+    overrides: (module) =>
+      module
+        .overrideModule(NotificationsModule)
+        .useModule(SilentNotifications)
+        .useMocker((token) => (token === Notifier ? fakeNotifier : undefined)),
+  });
+  try {
+    const created = await worker.fetch('/todos', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Write tests' }),
+    });
+    expect(created.ok).toBe(true);
+
+    const result = await worker.queue('todo-events', [
+      queueJob('todo-events', todoCreated, { id: '1', title: 'Write tests' }),
+    ]);
+    expect(result.outcome).toBe('ok');
+    expect(result.explicitAcks).toHaveLength(1);
+
+    await worker.scheduled('0 3 * * *');
+  } finally {
+    await worker.close();
+  }
+});
+```
+
+- `env` defaults to the pool's `env` from `cloudflare:workers`; every event
+  carries it, so the Cloudflare adapter accepts the requests.
+- `overrides` receives the `@velajs/testing` builder: `overrideProvider()`,
+  `overrideGuard()` and the other enhancer overrides, `overrideModule().useModule()`
+  and `useMocker()`. `worker.module` is the compiled `TestingModule`; its
+  `fetch()` and `http` client send the same `env` as `c.env`.
+- `fetch(input, init?)` resolves a path against `http://localhost`.
+- `queue(physicalQueue, messages)` delivers one batch built with `cloudflare:test`'s
+  `createMessageBatch()` and returns its `getQueueResult()` plus `outcome`
+  (`'exception'`, with `error`, when the handler rejected: Cloudflare would retry
+  the unacknowledged messages). `queueJob(queue, jobOrName, data, { id?, attempts? })`
+  builds the envelope `QueueClient.add()` sends.
+- `scheduled(cron, { scheduledTime? })` fires a cron trigger with
+  `createScheduledController()`, and rejects when no `@Cron` job declares `cron`.
+- `close()` cancels response bodies a test never read, waits for background
+  work (`waitUntil`) and closes the application.
+
+The subpath is not part of any Worker bundle: import it from tests only.
 
 ## Development
 

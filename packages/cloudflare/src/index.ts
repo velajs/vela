@@ -3,12 +3,15 @@ import './vela-env';
 export type { CloudflareRoot } from './root-module';
 export { durableObjectRoomName } from './websocket/room-id';
 export {
+  CLOUDFLARE_WORKER,
   cloudflareAdapter,
   createCloudflareApp,
   createCloudflareWorker,
 } from './cloudflare-factory';
 export type {
   CloudflareAppOptions,
+  CloudflareWorker,
+  CloudflareWorkerDescriptor,
   CloudflareWorkerOptions,
   CreateCloudflareAppOptions,
 } from './cloudflare-factory';

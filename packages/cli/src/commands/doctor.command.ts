@@ -39,7 +39,8 @@ export class DoctorCommand extends Command {
     category: 'Introspection',
     description: 'Explain config resolution and optionally inspect the application graph.',
     details:
-      'Checks config file resolution without importing it. --app opts into config import and application bootstrap, ' +
+      'Checks config resolution without importing application code: a vela.config, or else the Worker entry the ' +
+      'Wrangler file names. --app opts into import and application bootstrap, ' +
       'then reads app-local module, route and entrypoint snapshots and disposes the app. ' +
       'No files are written, providers are not resolved by the snapshot, and entrypoint metadata is omitted.',
     examples: [
@@ -49,6 +50,9 @@ export class DoctorCommand extends Command {
   });
 
   config = Option.String('--config', { description: 'Path to the Vela config file.' });
+  environment = Option.String('--env', {
+    description: 'Wrangler environment whose main and vars apply without a config.',
+  });
   app = Option.Boolean('--app', false, {
     description: 'Import config, bootstrap the app and inspect its graph.',
   });
@@ -65,10 +69,14 @@ export class DoctorCommand extends Command {
     try {
       report.config = await resolveConfig(report.cwd, this.config);
       if (this.app) {
-        const loaded = await loadConfig(report.cwd, report.config.path);
-        report.application = await withApp(loaded, describeApplication, (message) => {
-          report.issues.push(message);
-        });
+        report.application = await withApp(
+          () => loadConfig(report.cwd, this.config, { environment: this.environment }),
+          describeApplication,
+          (message) => {
+            report.issues.push(message);
+          },
+          this.context.stderr,
+        );
       }
     } catch (error) {
       report.issues.push(error instanceof Error ? error.message : String(error));
@@ -91,7 +99,7 @@ export class DoctorCommand extends Command {
         this.context.stdout.write('Use --json for the full graph.\n');
       } else if (!this.app) {
         this.context.stdout.write(
-          'Config was not imported. Use --app to bootstrap and inspect a built application.\n',
+          'Application code was not imported. Use --app to bootstrap and inspect the application.\n',
         );
       }
       for (const issue of report.issues) this.context.stderr.write(`${issue}\n`);

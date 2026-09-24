@@ -1,0 +1,36 @@
+{
+  "name": "__PROJECT_NAME__",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler types --include-runtime=false && vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "test": "vitest run",
+    "types": "wrangler types --include-runtime=false",
+    "typecheck": "wrangler types --include-runtime=false && tsc --noEmit"
+  },
+  "dependencies": {
+    "@velajs/cloudflare": "1.30.0",
+    "@velajs/vela": "1.30.0",
+    "hono": "4.13.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.56.0",
+    "@cloudflare/vitest-plugin": "1.1.13",
+    "@cloudflare/workers-types": "5.20260920.1",
+    "@velajs/cli": "1.30.0",
+    "@velajs/testing": "1.30.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vitest": "4.1.11",
+    "wrangler": "4.135.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.11.0"
+}

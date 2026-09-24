@@ -1,45 +1,55 @@
 # Application deployment
 
 Build Vela Workers with Vite and deploy the build with Wrangler. `vela deploy check`
-checks a named target and a saved entrypoint snapshot before those steps:
+compares a Wrangler target with the application's entrypoints before those steps:
 
 ```sh
+pnpm exec vela deploy check                 # the top-level configuration
+pnpm exec vela deploy check --env staging   # a named environment
 pnpm exec vela deploy check \
   --config wrangler.jsonc \
   --env staging \
-  --entrypoints build/entrypoints.json
+  --entrypoints build/entrypoints.json      # a saved snapshot: no application code runs
 ```
 
-All three paths/target flags are required. JSON, JSONC and TOML Wrangler files are
-supported; `--env` selects an exact declared name, with letters, digits,
-underscores or dashes (starting with a letter or digit). There is no implicit
-production target. Add `--json` to capture the result in CI. Exit code 1 means
-invalid input or an alignment failure; code 0 means the static checks passed.
+Without `--config`, the command reads `wrangler.json`, `wrangler.jsonc` or
+`wrangler.toml` in the working directory; JSON, JSONC and TOML files are
+supported. Without `--env` it checks the top-level configuration; `--env`
+selects an exact declared name, with letters, digits, underscores or dashes
+(starting with a letter or digit). Add `--json` to capture the result in CI.
+Exit code 1 means invalid input or an alignment failure; code 0 means the static
+checks passed.
 
-The command reads the two files and git provenance. It does not import your
-application, call `createApp`, load credentials, execute build hooks, run Wrangler,
-apply migrations or upload code. Git's repository filesystem monitor is disabled
-for provenance reads. Its printed Wrangler command is a suggested next
-step, not an executed operation. Inputs are limited to 1 MiB each.
+The command reads the Wrangler file and git provenance. Git's repository
+filesystem monitor is disabled for provenance reads. Without `--entrypoints`, it
+also builds the application to read its entrypoints: from `vela.config` when the
+project has one, else from the Worker entry the selected environment's `main`
+names (see [tooling](tooling.md#the-cli-loop)), with `ENV` seeded from the
+Wrangler `vars` only, no bindings or secrets. It never loads credentials,
+executes build hooks, runs Wrangler, applies migrations or uploads code. Its
+printed Wrangler command is a suggested next step, not an executed operation.
+Inputs are limited to 1 MiB each.
 
-## Prepare the snapshot
+## Saved snapshots
 
-Generate a fresh snapshot from the same application configuration and source
-revision you will deploy. Existing introspection produces the supported format:
+Pass `--entrypoints` to check a snapshot made earlier, for example in a CI job
+that must not import the application. Generate it from the same application
+configuration and source revision you will deploy:
 
 ```sh
 mkdir -p build
-pnpm exec vela entrypoint list --config vela.config.ts --json > build/entrypoints.json
+pnpm exec vela entrypoint list --json > build/entrypoints.json
 ```
 
-The CLI loads `vela.config.ts` and the decorated sources it imports through Vite,
-with the same Oxc decorator settings as the Worker build, so no build runs first.
+The CLI loads the Worker entry (or `vela.config.ts`) and the decorated sources it
+imports through Vite, with the same Oxc decorator settings as the Worker build,
+so no build runs first.
 
-**Snapshot generation creates the application.** Use a deliberate local/test
-configuration with native local bindings and controlled initialization hooks.
-Do not use production credentials simply to inspect metadata. The subsequent
-deployment check only reads the saved JSON. For an application without metadata
-handlers, save `[]`. Unknown entrypoint kinds are tolerated.
+**Snapshot generation creates the application**, with the Wrangler `vars` as
+`ENV` unless a `vela.config` builds it otherwise, and runs its initialization
+hooks. Do not use production credentials simply to inspect metadata. The check
+with `--entrypoints` only reads the saved JSON. For an application without
+metadata handlers, save `[]`. Unknown entrypoint kinds are tolerated.
 
 Rows have `{ "kind": "schedule:cron", "target": "Jobs#run", "meta": "{...}" }`.
 An object-valued `meta` is also accepted, which is useful when projecting
@@ -152,7 +162,7 @@ Keep real staging resources separate from production. An example target is:
 }
 ```
 
-The preflight inherits `main`, compatibility settings and triggers from the
+With `--env`, the preflight inherits `main`, compatibility settings and triggers from the
 top-level configuration, including an explicit empty `crons` override. It does
 not inherit resource bindings or variables. When the environment omits `name`,
 the displayed worker name is the top-level name with `-<environment>` appended.
@@ -169,7 +179,8 @@ remain Wrangler/application responsibilities. No resource lookup, migration
 ownership, cross-database transaction check or cloud authentication occurs here.
 
 Output contains the worker/environment, binding names/types, compatibility
-settings, current git commit/dirty state and SHA-256 digests of both input files.
+settings, current git commit/dirty state and SHA-256 digests of the Wrangler file
+and of the snapshot (saved, or computed from the application).
 It excludes variable values, resource IDs, arbitrary metadata and custom build
 commands. Missing git information is reported as unavailable; dirty state is
 reported without blocking local iteration. Digests identify inspected bytes;
@@ -221,11 +232,12 @@ Studio stays closed and signed routes fail closed while they are unset.
 ## CI and deployment
 
 The [opt-in check workflow](examples/deployment-check.yml) runs checks without
-Cloudflare credentials. Copy it into an application's workflow directory and
-provide that application's `snapshot:entrypoints` script. The snapshot step must
-write `build/entrypoints.json` from its local/test application configuration.
-Keep source revision, lockfile and application configuration consistent across
-test, snapshot, bundle and deployment steps.
+Cloudflare credentials. Copy it into an application's workflow directory. The
+check builds the application from the checked-out source to read its
+entrypoints, and `vela cf sync` fails when the Wrangler file no longer matches
+the application's triggers, queues, Durable Objects and Workflows. Keep source
+revision, lockfile and application configuration consistent across test, check,
+bundle and deployment steps.
 
 After resolving preflight errors, build the target with Vite and run the pinned
 project Wrangler separately, from the directory that holds the Wrangler file:
@@ -245,8 +257,9 @@ references `@cloudflare/vite-plugin`; its `--json` report lists the build as
 `nextStep.build`, and both steps carry that directory as `cwd`. The plugin reads
 `wrangler.json`, `wrangler.jsonc` or `wrangler.toml` unless its `configPath`
 option names another file, so checking a differently named Wrangler file adds a
-`vite-config-path` warning. For a Worker that Wrangler builds itself, it prints
-`wrangler deploy --config <file> --env <name> --dry-run` instead.
+`vite-config-path` warning. Without `--env`, the commands are `pnpm build` and
+`pnpm exec wrangler deploy --dry-run`. For a Worker that Wrangler builds itself,
+it prints `wrangler deploy --config <file> [--env <name>] --dry-run` instead.
 Run native Workers tests for cold HTTP/queue/cron and binding behavior. Verify
 resource/migration readiness for each named database using your application's
 migration tooling before the actual deployment. For D1, apply each database's

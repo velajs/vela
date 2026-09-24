@@ -12,8 +12,9 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   compatibility boundaries, and migration steps after the 1.24.0 baseline.
 - [Debugging](debugging.md): Worker and test breakpoints, structured Studio logs,
   handler timing, and module ownership snapshots.
-- [Testing](../packages/testing/README.md): isolated testing modules, provider and
-  enhancer overrides, and HTTP requests through the production bootstrap.
+- [Testing](testing.md): Worker handlers in workerd with `createTestingWorker`,
+  provider and module overrides, `useMocker`, and the
+  [testing package](../packages/testing/README.md) for HTTP, SSE and WebSockets.
 
 - [Module authoring](modules.md): configurable modules, dependency injection,
   discovery, entrypoints, and lazy initialization.
@@ -74,7 +75,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 ## Contributing
 
 - [Contributor guide](../CONTRIBUTING.md): setup, changes, and validation.
-- [Development tooling](tooling.md): compilers, linting, tests, and API docs.
+- [Development tooling](tooling.md): compilers, the CLI loop (generators, `vela add`,
+  `vela cf sync`), linting, tests, and API docs.
 - [Release guide](../RELEASING.md): versions, package checks, and OIDC publication.
 
 - [Tenant, Cedar, encryption and scoped CRUD](edge-capabilities.md)

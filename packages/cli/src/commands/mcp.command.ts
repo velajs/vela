@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createOpenApiDocument } from '@velajs/vela/openapi';
-import type { Type, VelaApplication } from '@velajs/vela';
+import type { DynamicModule, Type, VelaApplication } from '@velajs/vela';
 import { Command, Option } from 'clipanion';
 import { z } from 'zod';
 import { loadConfig } from '../config.js';
@@ -94,10 +94,12 @@ export class McpServeCommand extends Command {
     category: 'Introspection',
     description: 'Serve Vela introspection as MCP tools over stdio (for AI agents).',
     details:
-      'Builds the app from vela.config and runs a Model Context Protocol stdio server. Exposes ' +
-      'read-only tools (route_list, module_graph, entrypoint_list, openapi_dump, token_describe) ' +
-      'and — when the config declares a rootModule — a `vela://openapi` resource. stdout carries ' +
-      'only JSON-RPC; all logging goes to stderr. The server runs until the client disconnects.',
+      'Builds the app (vela.config, or else the Worker entry the Wrangler file names, with its ' +
+      '`vars` only; --env selects a Wrangler environment) and runs a Model Context Protocol stdio ' +
+      'server. Exposes read-only tools (route_list, module_graph, entrypoint_list, openapi_dump, ' +
+      'token_describe) and — when the root module is known — a `vela://openapi` resource. stdout ' +
+      "carries only JSON-RPC; all logging, the application's included, goes to stderr. The server " +
+      'runs until the client disconnects.',
     examples: [
       ['Serve over stdio', 'vela mcp serve'],
       ['Use a specific config', 'vela mcp serve --config ./config/vela.config.js'],
@@ -105,6 +107,9 @@ export class McpServeCommand extends Command {
   });
 
   config = Option.String('--config', { description: 'Path to the vela config file.' });
+  environment = Option.String('--env', {
+    description: 'Wrangler environment whose main and vars apply without a config.',
+  });
 
   async execute(): Promise<number> {
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
@@ -114,12 +119,10 @@ export class McpServeCommand extends Command {
       this.context.stderr.write(`${message}\n`);
     };
 
-    const loaded = await loadConfig(process.cwd(), this.config);
-    const rootModule: Type | undefined = loaded.config.rootModule;
-
     return withApp(
-      loaded,
-      async (app) => {
+      () => loadConfig(process.cwd(), this.config, { environment: this.environment }),
+      async (app, loaded) => {
+        const rootModule: Type | DynamicModule | undefined = loaded.config.rootModule;
         const identity = await readCliIdentity();
         const server = new McpServer(identity);
 
@@ -239,6 +242,7 @@ export class McpServeCommand extends Command {
         return 0;
       },
       log,
+      this.context.stderr,
     );
   }
 }
