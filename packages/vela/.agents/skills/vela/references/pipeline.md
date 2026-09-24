@@ -14,7 +14,7 @@ interface NestMiddleware  { use(c: VelaContext, next: Next): Promise<Response | 
 
 `VelaHonoEnv`, `VelaContext`, and `VelaHono` preserve Hono types with unknown-valued context variables and object bindings. Resolve the request container with `getRequestContainer(context)` or the execution-context accessor; it is private runtime state, not a Hono variable. Inject native bindings through the framework `ENV` (`@InjectEnv()`).
 
-`ExecutionContext`: `getClass()`, `getHandler()`, `getModuleId()`, `getRequest(): Request`, `getContext(): VelaContext`, `getContainer(): Container | undefined`, `getType(): string` (including custom entrypoint kinds), `switchToHttp()`, `switchToWs()`. Transport-inapplicable accessors throw. `CallHandler.handle(): Promise<unknown>`. `ArgumentMetadata`: `{ type, metatype?: unknown, data? }`. WebSocket payloads and custom entrypoint payloads remain unknown until parsed; accessors do not accept result generics.
+`ExecutionContext`: `getClass()`, `getHandler()` (the handler method, as in Nest), `getHandlerName()` (its name, or a framework host's marker symbol), `getModuleId()`, `getRequest(): Request`, `getContext(): VelaContext`, `getContainer(): Container | undefined`, `getType(): string` (including custom entrypoint kinds), `switchToHttp()`, `switchToWs()`. Transport-inapplicable accessors throw. `CallHandler.handle(): Promise<unknown>`. `ArgumentMetadata`: `{ type, metatype?: unknown, data? }`. WebSocket payloads and custom entrypoint payloads remain unknown until parsed; accessors do not accept result generics.
 
 HTTP resolves request controllers only when the pipeline invokes the handler, after guards and argument validation. Scoped components resolve asynchronously against the declaring module; global components use application lookup. Method-scoped middleware applies to its matched HTTP method even when another method shares the path.
 
@@ -69,7 +69,9 @@ app.useGlobalGuards(new RolesGuard(app.get(Reflector)))
 providers: [AuthGuard, ...provideGlobal('guard', AuthGuard)]
 ```
 
-`APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `APP_MIDDLEWARE` are `InjectionToken`s. Multiple providers for one token all execute.
+`APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `APP_MIDDLEWARE` are `InjectionToken`s. Multiple providers for one token all execute. Inside `defineModule`, contribute them through the `global:` slot (`global: { guards: [AuthGuard] }`).
+
+Global guards run in deterministic phases, whatever order modules register them in: `authenticate` → `tenant` → `authorize` → `feature`. A guard declares its phase with `static readonly phase: GuardPhase = 'authenticate'` (an instance may carry its own `phase`); undeclared guards run in `feature`, and guards keep registration order within a phase. The integrations install their guard globally by default and take `guard: 'global' | 'none'`: Better Auth and Cloudflare Access authenticate, `TenantModule` admits the tenant, `AuthzModule` (`PermissionGuard`, `RolesGuard`) and `CedarModule` authorize, and `ThrottlerGuard`/`FeatureFlagGuard` are feature guards. Each phase keeps its own opt-out marker (`@Public`, `@TenantIgnored`, `@CedarPublic`). Global guards still run before controller and method guards.
 
 Global middleware runs in ascending `priority` (default 0, ties keep registration order). Declare it as `static priority = -10` on the middleware class: route build reads it from the `useClass`/`useExisting` target without constructing it. A request-scoped middleware needs the static field; without it, it sorts at 0 and is reported through the `diagnostics` policy.
 
@@ -117,23 +119,26 @@ For authorization use the shared guards in `@velajs/authz/vela`; raw request hea
 
 ## Reflector — reading metadata
 
-Attach metadata with `@SetMetadata(key, value)` (or `Reflector.createDecorator()`), read it in a guard/interceptor:
+Attach metadata with `@SetMetadata(key, value)` (or `Reflector.createDecorator()`), read it in a guard/interceptor. Readers take Nest's targets — `get(key, context.getHandler())`, `get(key, context.getClass())`, `getAllAndOverride(key, [context.getHandler(), context.getClass()])` — or the `ExecutionContext` itself (handler first, then class):
 
 ```ts
 const RequireScope = Reflector.createDecorator<string>();
+const Audience = Reflector.createDecorator<string, ReadonlySet<string>>({
+  transform: (value) => new Set(value.split(',')),   // stored value readers receive
+});
 
 @Injectable()
 class ScopeGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {} // provided by every application
   canActivate(ctx: ExecutionContext): boolean {
-    const required = this.reflector.getAllAndOverride(RequireScope, ctx);
+    const required = this.reflector.getAllAndOverride(RequireScope, [ctx.getHandler(), ctx.getClass()]);
     if (!required) return true;
     return getTrustedRequestIdentity(ctx.getRequest())?.roles?.includes(required) ?? false;
   }
 }
 ```
 
-`Reflector` methods: `get`, `getHandler`, `getClass`, `getAll` (`[handler, class]`), `getAllAndOverride` (handler ?? class), `getAllAndMerge` (concat/assign).
+`Reflector` methods: `get`, `getHandler`, `getClass`, `getAll` (each target, or `[handler, class]` for a context), `getAllAndOverride` (first defined), `getAllAndMerge` (concat/assign).
 
 ## Built-in pipes
 
@@ -164,9 +169,9 @@ params(
 @Catch(BadRequestException, ForbiddenException)
 class ClientErrorFilter implements ExceptionFilter {
   catch(exception: HttpException, _ctx: ExecutionContext): unknown {
-    return { filteredBy: 'client-error', status: exception.getStatus() };
+    return { filteredBy: 'client-error' }; // sent with exception.getStatus()
   }
 }
 ```
 
-The built-in `HttpException` family and health checks are covered in `errors-and-health.md`.
+A plain result takes the exception's status; return `{ status, body }` to choose it, a `Response` to own the response, or `undefined` to leave the error to the default renderer. The built-in `HttpException` family, the shared renderer and health checks are covered in `errors-and-health.md`.

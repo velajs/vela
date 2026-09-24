@@ -4,9 +4,9 @@
 
 ## Better Auth setup
 
-Construct a Better Auth instance and pass it to `BetterAuthModule.forRoot({ auth, issuer, basePath?, isGlobal?, mountHandler? })`. The default `/api/auth/*` catch-all is explicitly public and the authentication guard is global by default. Keep the Better Auth and Vela base paths aligned. Custom paths must be canonical absolute paths without wildcards, trailing slashes, or dot segments.
+Construct a Better Auth instance and pass it to `BetterAuthModule.forRoot({ auth, issuer, basePath?, guard?, mountHandler? })`. The default `/api/auth/*` catch-all is explicitly public and the authentication guard is global by default (`guard: 'global'`; `'none'` only when the application installs an equivalent guard). Keep the Better Auth and Vela base paths aligned. Custom paths must be canonical absolute paths without wildcards, trailing slashes, or dot segments.
 
-For Workers, use `forRootAsync({ inject: [ENV], issuer, useFactory: env => betterAuth(...) })` in a module declared once at module scope; the factory returns the auth instance directly, and structural options (`issuer`, `basePath`, `isGlobal`, `mountHandler`) sit next to it. A factory without parameters may omit `inject`. Native environment bindings are available before factories run; each application builds its own auth instance on first use, so instances are isolated per environment.
+For Workers, use `forRootAsync({ inject: [ENV], issuer, useFactory: env => betterAuth(...) })` in a module declared once at module scope; the factory returns the auth instance directly, and structural options (`issuer`, `basePath`, `guard`, `mountHandler`) sit next to it. A factory without parameters may omit `inject`. Native environment bindings are available before factories run; each application builds its own auth instance on first use, so instances are isolated per environment.
 
 ```ts
 import { Controller, Get, Module } from '@velajs/vela';
@@ -36,11 +36,17 @@ class AppModule {}
 
 Gateways authenticate upgrades with a DI-resolved class, never a closure: `@WebSocketGateway({ authenticator: BetterAuthUpgradeAuthenticator })`. It verifies the same Better Auth session cookie before any socket or Durable Object is allocated, uses the module `issuer` for the principal, and expires with the session. Every WebSocket identity carries a tenant: by default the session's active organization, and a session without one is refused. To choose the tenant, or refuse a room, provide `BETTER_AUTH_UPGRADE_TENANT` (`(session, { room, gatewayPath }, request) => tenantId | undefined`) in the module that declares the gateway, where the authenticator resolves. `CloudflareAccessUpgradeAuthenticator` from `@velajs/cloudflare-access/vela` does the same for the Access token and its signed tenant claim. See `websocket.md` for writing your own `UpgradeAuthenticator`.
 
+## Guard phases
+
+Global guards run in fixed phases whatever the import order: `authenticate` (Better Auth `AuthGuard`, `CloudflareAccessGuard`) → `tenant` (`TenantGuard`) → `authorize` (`PermissionGuard`, `RolesGuard`, `CedarGuard`) → `feature` (`ThrottlerGuard`, `FeatureFlagGuard`, and guards that declare no phase). Each module installs its guard globally through the `defineModule` `global:` slot by default; pass `guard: 'none'` (beside the factory for `forRootAsync`) to apply it with `@UseGuards` instead. Mixing a global guard of a later phase with route-level guards of an earlier phase runs them out of order, so keep a pipeline's phases either all global or all route-level.
+
+Each phase keeps its own opt-out marker: `@Public(true)` / `@OptionalAuth(true)` skip or relax authentication, `@TenantIgnored()` / `@TenantOptional()` tenant admission, `@CedarPublic()` resource authorization. `TenantGuard` and `CedarGuard` only apply to routes declared in modules that can see their module (a package's own controller, such as the Better Auth handler, is outside them) unless the route declares a requirement. `CedarGuard` denies routes without `@RequireResource` or `@CedarPublic` by default; `CedarModule.forRoot({ undeclared: 'allow' })` lets them through.
+
 ## One authorization layer
 
-Import `AuthzModule`, `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Roles`, and `CurrentIdentity` from `@velajs/authz/vela`. Authenticate before authorization. `RequirePermission(['posts:write'])` requires every permission; `Roles(['admin', 'editor'])` allows any listed verified local role. Guards do not trust user headers, Hono variables, Better Auth metadata, or arbitrary socket role fields.
+Import `AuthzModule`, `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Roles`, and `CurrentIdentity` from `@velajs/authz/vela`. `AuthzModule` installs `PermissionGuard` and `RolesGuard` globally; routes without `@RequirePermission` or `@Roles` pass. `RequirePermission(['posts:write'])` requires every permission; `Roles(['admin', 'editor'])` allows any listed verified local role. Guards do not trust user headers, Hono variables, Better Auth metadata, or arbitrary socket role fields.
 
-Core's trusted identity is keyed by issuer/subject/type and carries tenant, explicit roles, and expiry. Permission decisions fail closed for missing identity/engine, expired credentials, ambiguity, or resolver errors. WebSocket and live delivery use the same verified principal model.
+Core's trusted identity is keyed by issuer/subject/type and carries tenant, explicit roles, and expiry. `setTrustedRequestIdentity`/`getTrustedRequestIdentity` (from `@velajs/vela/module-kit`) are the single identity model; services read it through `REQUEST_CONTEXT` with the read-only `TRUSTED_REQUEST_IDENTITY` key (`set()` throws). Permission decisions fail closed for missing identity/engine, expired credentials, ambiguity, or resolver errors. WebSocket and live delivery use the same verified principal model.
 
 Tenant enrichment of the same identity preserves validated provider payloads;
 identity replacement invalidates them. Custom HTTP-backed execution contexts

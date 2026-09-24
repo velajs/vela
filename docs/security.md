@@ -54,10 +54,21 @@ media type returns 415; size/count violations return 413. See
 HTTP requests run in this order:
 
 1. framework body/query limits and route middleware;
-2. global and route guards;
+2. global guards by phase, then controller and method guards;
 3. parameter extraction and pipes;
 4. interceptors;
 5. the controller handler.
+
+Global guards run in fixed phases whatever order modules register them in:
+`authenticate` → `tenant` → `authorize` → `feature`. A guard declares its phase
+with `static readonly phase`; a guard without one runs in `feature`, and guards
+keep registration order within a phase. Better Auth and Cloudflare Access
+authenticate, `TenantModule` admits the tenant, `AuthzModule` and `CedarModule`
+authorize, and throttling and feature flags run last. Each module installs its
+guard globally by default and accepts `guard: 'none'` to leave it to
+`@UseGuards`. Keep one pipeline's phases either all global or all route-level:
+global guards run before route guards, so a global authorization guard would
+otherwise run before a route-level authentication guard.
 
 Perform authentication and other authority-producing work in middleware or
 guards, then read the
@@ -204,6 +215,30 @@ suggests the resolved path, global prefix included, such as
 `{ path: '/api/users/:id', absolute: true }`, so following it never moves the
 middleware off the path the target named.
 
+## Error responses
+
+Every HTTP failure renders through one function, `renderHttpError`, after the
+application's `ExceptionHandler.render` hook: controller handlers, Vela
+middleware, the last-resort Hono `onError`, unmatched routes (a JSON 404),
+request limits (413 and 400), RPC and GraphQL. Errors are reported before they
+are rendered, and redaction holds on every edge:
+
+- A string `HttpException` renders `{ error: { code, message, details? } }`.
+  Only a 4xx echoes its message and `details`; a 5xx sends only the status title.
+- An exception may own its response through `toResponse()`. `HttpException`
+  built with an object returns it verbatim (a health check's deliberate 503),
+  and `@velajs/crud` returns its envelope. Errors thrown by raw Hono middleware
+  reach only `onError`, which redacts a 5xx owned body to its status title; RPC
+  frames do the same.
+- Branded `VelaError`s render their code, message and data unless the code is
+  internal; any other error is a redacted 500.
+- Framework rejections (unmatched routes, oversized bodies, query limits) are
+  not reported and skip exception filters, so a catch-all filter cannot turn
+  them into a success.
+
+An exception filter's plain result takes the exception's status rather than
+200, and a filter that returns `undefined` leaves the error to the renderer.
+
 ## Browser security
 
 Import `SecurityModule` for exact-origin CORS, credentialed unsafe-method Origin
@@ -256,17 +291,22 @@ purposes automatically.
 Core does not trust `X-Forwarded-For` or `X-Real-IP`. `@Ip()` returns `null`
 unless `VelaFactory.create({ getClientIp })` or one runtime adapter supplies a
 trusted resolver. Authentication guards can publish a canonical principal and
-verified tenant with `setTrustedRequestIdentity(request, identity)`. When that
-guard runs before `ThrottlerGuard`, default throttling partitions by both values
-before considering any fallback. Better Auth publishes this state automatically
-and uses its verified `activeOrganizationId` when present.
+verified tenant with `setTrustedRequestIdentity(request, identity)`. Global
+authentication runs in the `authenticate` phase, before the `feature`-phase
+`ThrottlerGuard`, so default throttling partitions by both values before
+considering any fallback, whatever the import order. Better Auth publishes this
+state automatically and uses its verified `activeOrganizationId` when present.
+Services read it through `REQUEST_CONTEXT` with the `TRUSTED_REQUEST_IDENTITY`
+key, a read-only view: writing it throws, so `setTrustedRequestIdentity` stays the
+only way to publish identity. The throttling decision is available under
+`RATE_LIMIT`.
 
 Without trusted identity, throttling uses `getTracker(request, context)` and then
 the runtime-attested client address; unknown callers share one fail-closed
 `anonymous` bucket. Cloudflare uses only its platform connection signal. Custom
 tracker callbacks remain security-sensitive and must never read forwarding
-headers. Import/register authentication before `ThrottlerModule` so its global
-guard establishes identity first.
+headers. A custom global authentication guard declares
+`static readonly phase = 'authenticate'` so it establishes identity first.
 
 HTTP and WebSocket `ExecutionContext` expose `getModuleId()` so authorization
 can resolve policy in the declaring module bucket rather than by class name.
@@ -292,7 +332,14 @@ gateway path to Cloudflare broadcast/live helpers.
 
 ## Admitted tenants and authentication payload
 
-Authenticate before running `TenantGuard`, then apply authorization and throttling. Tenant
+Global guards authenticate before `TenantGuard` runs in the `tenant` phase, then authorize
+and throttle. `TenantGuard` and `CedarGuard` apply to routes declared in modules that can
+see `TenantModule` or `CedarModule`; a route elsewhere (such as a package's own handler)
+is outside that phase unless it declares a requirement (`@TenantRequired()`,
+`@RequireResource()`), which then fails closed. Inside Cedar's modules, a route without
+`@RequireResource()` or `@CedarPublic()` is denied unless `undeclared: 'allow'` is set.
+Opt a route out of one phase with its marker: `@Public(true)`, `@TenantIgnored()` or
+`@CedarPublic()`. Tenant
 admission preserves `CurrentUser`, `CurrentSession`, and `CurrentAccessIdentity` payloads.
 The core identity remains an immutable snapshot; use it (or `CurrentTenant`) for the admitted
 tenant rather than assuming an identity-provider payload contains the selected tenant.

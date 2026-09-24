@@ -6,7 +6,7 @@ Migrating a NestJS codebase to Vela, or embedding a Vela app inside an existing 
 
 Vela mirrors NestJS's authoring surface, so most decorators and interfaces port unchanged (all from `@velajs/vela`; optional features such as `@nestjs/schedule`, `@nestjs/event-emitter`, `@nestjs/throttler` and `@nestjs/terminus` map to the `@velajs/vela/schedule`, `/events`, `/throttler` and `/health` subpaths):
 
-- **Decorators:** `@Module`, `@Global`, `@Controller`, `@Get/@Post/@Put/@Patch/@Delete/@Options/@Head/@All`, `@Param/@Query/@Body/@Headers/@Req/@Res`, `@Injectable`, `@Inject`, `@Optional`, `@UseGuards/@UsePipes/@UseInterceptors/@UseFilters`, `@Catch`, `@SetMetadata`, `@Version`.
+- **Decorators:** `@Module`, `@Global`, `@Controller`, `@Get/@Post/@Put/@Patch/@Delete/@Options/@Head/@All`, `@Param/@Query/@Body/@Headers/@Req/@Ctx/@Res`, `@Injectable`, `@Inject`, `@Optional`, `@UseGuards/@UsePipes/@UseInterceptors/@UseFilters`, `@Catch`, `@SetMetadata`, `@Version`.
 - **DI:** constructor injection, `forwardRef`, `ModuleRef`, `Reflector`, and the three scopes (`Scope.DEFAULT/REQUEST/TRANSIENT`).
 - **Lifecycle hooks (same names):** `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `BeforeApplicationShutdown`.
 - `ConfigurableModuleBuilder` is provided for parity (it is a thin adapter over `defineModule`).
@@ -17,15 +17,15 @@ Vela mirrors NestJS's authoring surface, so most decorators and interfaces port 
 |---|---|---|
 | class-validator + class-transformer DTOs | **Schemas** via `defineEndpoint`, or a schema passed to the parameter decorator (`@Body(dto)`, validated by `ValidationPipe`) | core never imports class-validator — see `references/validation.md` |
 | `ConfigurableModuleBuilder` for dynamic modules | **`defineModule`** (the engine; `ConfigurableModuleBuilder` adapts it) | see `references/modules-and-di.md` + `docs/modules.md` |
-| `app.setGlobalPrefix('/api')` | `globalPrefix` create-option; read back via `app.getGlobalPrefix()` | there is **no** `setGlobalPrefix` method on the app |
-| `app.enableVersioning({...})` | decorator-driven `@Controller({ version })` / `@Version(2)` | no `enableVersioning`/`VersioningType` |
+| `app.setGlobalPrefix('/api', { exclude })` | `globalPrefix` and `globalPrefixOptions: { exclude }` create-options; read back via `app.getGlobalPrefix()` | routes are built at creation, so there is **no** `setGlobalPrefix` method on the app |
+| `app.enableVersioning({ type: VersioningType.URI, prefix })` | decorator-driven `@Controller({ version })` / `@Version(2)`, `VERSION_NEUTRAL`, and the `versioning: { prefix }` create-option | URI versioning only |
 | `app.enableCors()` | `middleware: [cors()]` create-option, or `CorsModule.forRoot({})` | no `enableCors` method |
 | `logger` bootstrap option / `NestFactory.create(m, { logger })` | inject the `Logger`/`LoggerService` provider | no create-time `logger` option |
 | `app.listen(port)` | export the `fetch` handler (`export default app`) or `serve({ fetch: app.fetch })` on Node | Vela is a fetch handler, not a server |
 | `nest build` / `tsc` with `emitDecoratorMetadata` | **Vite 8** + `@cloudflare/vite-plugin` on Workers; Oxc emits legacy decorators + `design:paramtypes` | pass `oxc: { decorator: { legacy: true, emitDecoratorMetadata: true } }` explicitly in the Vite **and** Vitest configs — see "Build and test" below |
 | Jest + `@nestjs/testing` | Vitest + `@cloudflare/vitest-plugin` (workerd), `@velajs/testing` | see `references/testing.md` |
 
-`VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`. `VelaCreateOptions` in full: `globalPrefix`, `middleware`, `getClientIp`, `adapters`, `ambientContainer`, `diagnostics` — nothing else. Authoring configurable modules uses `defineModule`, not hand-wired `forRoot`; see the module reference.
+`VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`. `VelaCreateOptions`: `globalPrefix`, `globalPrefixOptions`, `versioning`, `middleware`, `getClientIp`, `adapters`, `env`, `security`, `ambientContainer`, `diagnostics`. Authoring configurable modules uses `defineModule`, not hand-wired `forRoot`; see the module reference.
 
 ## Build and test
 

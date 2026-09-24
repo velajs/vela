@@ -84,7 +84,7 @@ The Yoga driver accepts one JSON POST containing one query or mutation. It rejec
 
 Defaults are 65,536 request bytes, 5,000 document tokens, depth 16, and 200 expanded fields. Override these through `maxRequestBytes`, `maxDocumentTokens`, `maxDepth`, and `maxFields`. These bounds do not limit list cardinality, resolver cost, or response size: bound pagination and expensive work in your domain layer.
 
-Unexpected resolver/output errors use `INTERNAL_SERVER_ERROR` and a fixed message. Validation and supported HTTP exceptions map to bounded public codes/messages. Throw `GraphqlClientError` for an intentional public message. Responses include at most ten errors with messages capped at 512 characters; arbitrary extensions and stacks are removed. Resolver errors are sent to Vela's error reporter. Authenticate HTTP requests before execution if you require HTTP 401/403; individual denied fields otherwise follow GraphQL partial-data semantics.
+Unexpected resolver/output errors use `INTERNAL_SERVER_ERROR` and a fixed message. Validation and supported HTTP statuses map to bounded public codes/messages; the status comes from Vela's shared `renderHttpError`, so an `HttpException`, a branded `VelaError` (such as `forbidden` or `not_found`) and an exception-owned `toResponse()` map alike. Throw `GraphqlClientError` for an intentional public message. Responses include at most ten errors with messages capped at 512 characters; arbitrary extensions and stacks are removed. Resolver errors are sent to Vela's error reporter. Authenticate HTTP requests before execution if you require HTTP 401/403; individual denied fields otherwise follow GraphQL partial-data semantics.
 
 ## SDL and compatibility checks
 

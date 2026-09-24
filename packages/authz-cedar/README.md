@@ -83,17 +83,21 @@ Low-level AST utilities are available at `/plan`, vocabulary authoring at
 - Root `MemoryPolicyStore`: instance-owned tests and prototypes.
 
 `CedarModule.forRoot({ authorize, auditModules })` from `/vela` installs the
-resource-aware guard. Apply `@RequireResource({ action, resourceType, idParam })`
-or `@CedarPublic()` to handlers/classes. The callback receives verified identity
-and execution context, resolves authoritative resource entities, and calls the
-engine. `auditCedarRoutes([Module])` rejects undeclared routes in selected modules.
-Auditing is opt-in; unaudited modules keep existing authorization behavior.
-Authentication/tenant guards must run before the Cedar guard when its callback
-requires a tenant. Queue/socket adapters must supply verified identities explicitly.
-If authentication or tenant admission uses controller/route guards, set
-`globalGuard: false` and apply `@UseGuards(AuthenticationGuard, TenantGuard, CedarGuard)`
-in that order. Global guards otherwise run before route guards. Keep the default
-global Cedar guard when authentication and tenant admission already run upstream.
+resource-aware `CedarGuard` as a global guard in the `authorize` phase, so it
+runs after global authentication and tenant admission whatever the import order.
+Apply `@RequireResource({ action, resourceType, idParam })` or `@CedarPublic()`
+to handlers/classes. The callback receives verified identity and execution
+context, resolves authoritative resource entities, and calls the engine.
+
+Routes declared in a module that can see `CedarModule` and carry neither
+declaration are denied (403) by default; `undeclared: 'allow'` lets them
+through. Routes in modules that cannot see it, such as another package's own
+controller, are outside Cedar unless they declare `@RequireResource()`.
+`auditCedarRoutes([Module])` (or `auditModules`) rejects undeclared routes in
+selected modules at startup. Queue/socket adapters must supply verified
+identities explicitly. To order a fully route-level pipeline yourself, pass
+`guard: 'none'` and apply `@UseGuards(AuthenticationGuard, TenantGuard, CedarGuard)`
+in that order: global guards run before route guards.
 
 The package includes NestM BSD-licensed adaptations and unmodified Apache-licensed
 Cedar WASM; see `THIRD_PARTY_LICENSES`.

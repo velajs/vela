@@ -30,6 +30,10 @@ and, redacted:
 { "error": { "code": "internal", "message": "Internal Server Error" } }
 ```
 
+## HTTP rendering in Vela
+
+`@velajs/vela` calls this seam through one HTTP renderer, `renderHttpError`, shared by controller handlers, middleware, the unmatched-route 404, request limits, RPC and GraphQL. Before reaching `toErrorBody` it applies two HTTP rules: an exception that owns its response through `toResponse()` renders that `{ status, body }` (redacted to the status title for a 5xx from raw Hono middleware), and a string `HttpException` becomes a `VelaError` for its status only below 500, so its text and `details` reach the client on a 4xx and are redacted on a 5xx. Branded and unbranded errors then follow the rules above.
+
 ## The brand contract
 
 `isVelaError` is a **branded structural** guard: it requires `error instanceof Error` plus `typeof code === 'string'`, `typeof status === 'number'`, and `type === 'VelaError'`. The `type` brand is an own-enumerable property, so it survives JSON round-trips, `structuredClone`, and DO↔worker RPC prop-copy — a wire-decoded twin (`Object.assign(new Error(msg), {...decoded})`) still passes. `instanceof VelaError` is deliberately **not** load-bearing (it breaks across realms and on decoded twins), so nothing in the redaction path uses it.

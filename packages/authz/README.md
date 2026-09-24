@@ -131,16 +131,26 @@ authenticate/admit once at the outer HTTP boundary before running concurrent fie
 
 The permission guard resolves exactly one `AUTHZ` engine visible from the route module, then rechecks identity after asynchronous decisions to reject expiry or replacement during resolution. `can()` also rejects expired identities before and after invoking its resolver. Missing identity, missing/ambiguous engine, and resolver exceptions deny access.
 
-```ts
-import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
+`AuthzModule` installs `PermissionGuard` and `RolesGuard` as global guards in the `authorize` phase. They run after global authentication (Better Auth, Cloudflare Access) and tenant admission whatever the import order, and pass routes without `@RequirePermission` or `@Roles`. Pass `guard: 'none'` (beside the factory for `forRootAsync`) to apply them with `@UseGuards` after route-level authentication instead.
 
-@UseGuards(CloudflareAccessGuard, PermissionGuard) // or AuthGuard, PermissionGuard
+```ts
+import { AuthzModule, RequirePermission } from '@velajs/authz/vela';
+
 @Controller('/posts')
 class PostsController {
   @Post()
   @RequirePermission(['posts:write'])
   create() { /* ... */ }
 }
+
+@Module({
+  imports: [
+    BetterAuthModule.forRoot({ auth }), // authenticate phase
+    AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }), // authorize phase
+  ],
+  controllers: [PostsController],
+})
+class AppModule {}
 ```
 
 ## Startup wiring audit
