@@ -792,6 +792,35 @@ export class Container {
     }
   }
 
+  /**
+   * Register `supply(token)` as a value in each module whose providers inject
+   * a token no visible provider satisfies (the testing module's `useMocker`).
+   * Optional parameters, `ModuleRef` and InjectionToken defaults resolve on
+   * their own and are never supplied; an ambiguous token keeps its error.
+   * `supply` runs once per token, and every module missing it shares the value.
+   * A falsy result supplies nothing, so the token stays unresolved and its
+   * dependents fail with `UnresolvedDependencyError`, as Nest's mocker does.
+   */
+  supplyMissingDependencies(supply: (token: Token) => unknown): void {
+    const supplied = new Map<Token, unknown>();
+    for (const bucket of [...this.#providers.values()]) {
+      for (const reg of [...bucket.values()]) {
+        const moduleId = reg.declaringModuleId;
+        const required = reg.dependencies
+          ? reg.dependencies.flatMap(({ token, optional }) =>
+              optional ? [] : [token instanceof ForwardRef ? token.factory() : token],
+            )
+          : this.dependencyTokensOf(reg);
+        for (const token of required) {
+          if (isErasedTypeToken(token) || !this.isUnresolvable(token, moduleId)) continue;
+          if (!supplied.has(token)) supplied.set(token, supply(token));
+          const value = supplied.get(token);
+          if (value) this.registerOptions({ provide: token, useValue: value }, moduleId);
+        }
+      }
+    }
+  }
+
   /** The dependency tokens a registration would resolve when constructed. */
   private dependencyTokensOf(reg: ProviderRegistration): Token[] {
     if (reg.useExisting) return [reg.useExisting];

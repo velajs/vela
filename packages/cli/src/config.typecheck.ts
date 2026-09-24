@@ -14,11 +14,14 @@ export function configTypes(app: VelaApplication & { label: 'custom' }) {
   const exactApp: typeof app = config.createApp();
   const profile: 'local' = config.profile;
   const root: Root = new config.rootModule();
+  // A DynamicModule root, as createCloudflareWorker() accepts one.
+  const dynamic = defineVelaConfig({ createApp: () => app, rootModule: { module: Root } });
+  const rootClass: typeof Root = dynamic.rootModule.module;
   const asyncConfig = defineVelaConfig({ createApp: async () => app });
   const exactPromise: Promise<typeof app> = asyncConfig.createApp();
   // @ts-expect-error a config must create an application
   defineVelaConfig({ createApp: () => ({ label: 'invalid' }) });
   // @ts-expect-error rootModule must be constructable
   defineVelaConfig({ createApp: () => app, rootModule: () => ({}) });
-  return { exactApp, profile, root, exactPromise };
+  return { exactApp, profile, root, rootClass, exactPromise };
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
 import {
   appendFile,
   mkdir,
@@ -109,13 +110,14 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
   const bundle = await readFile(join(dirname(builtConfigPath), builtConfig.main), 'utf8');
   assert.match(bundle, /design:paramtypes/);
   assert.match(bundle, /class AppController/, 'The Worker build keeps class names');
-  // The template spec drives worker.fetch inside workerd.
+  // The template spec drives the Worker through createTestingWorker inside workerd.
   run(['test']);
-  // The pinned CLI loads vela.config.ts and the decorated sources through Vite.
-  const routes = execFileSync('pnpm', ['exec', 'vela', 'route', 'list', '--json'], {
-    cwd: project,
-    encoding: 'utf8',
-  });
+  // Without a vela.config, the pinned CLI loads the Worker entry Wrangler names
+  // and its decorated sources through Vite.
+  assert.equal(existsSync(join(project, 'vela.config.ts')), false);
+  const vela = (args) =>
+    execFileSync('pnpm', ['exec', 'vela', ...args], { cwd: project, encoding: 'utf8' });
+  const routes = vela(['route', 'list', '--json']);
   assert.deepEqual(
     JSON.parse(routes).map(({ method, path }) => `${method} ${path}`),
     ['GET /'],
@@ -176,10 +178,10 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
       cause: lastError,
     });
   }
+  const service = join(project, 'src/app.service.ts');
+  const source = await readFile(service, 'utf8');
   try {
     await expectMessage('Hello from Vela!');
-    const service = join(project, 'src/app.service.ts');
-    const source = await readFile(service, 'utf8');
     // Only edit the injected service: proves metadata, DI and the dev reload.
     // Each edit writes new content after the watcher settles; rewriting the
     // original text right after a reload can be coalesced and never reported.
@@ -209,9 +211,79 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
       clearTimeout(force);
     }
   }
+  // The generated project's own spec expects the original greeting again.
+  await writeFile(service, source);
+  await verifyGenerators(project, vela, run);
+  const api = await verifyApiTemplate(consumer, runCli, archives);
   console.log(
-    'PASS: packed vela new, failure cases, registry install, types, Vite build, workerd spec, CLI config, Worker bundle, HTTP, DI and dev reload',
+    'PASS: packed vela new (minimal and api templates), failure cases, registry install, types, Vite build, workerd specs, zero-config CLI, generators, cf sync, deploy check, Worker bundle, HTTP, DI and dev reload',
   );
+  return { project, api };
+}
+
+/** Grow the scaffold with every generator, then keep it typed, tested, synced and deployable. */
+async function verifyGenerators(project, vela, run) {
+  for (const args of [
+    ['generate', 'resource', 'notes'],
+    ['g', 'queue', 'emails'],
+    ['g', 'cron', 'digest', '--schedule', '0 6 * * *'],
+    ['g', 'durable-object', 'counter'],
+  ]) {
+    vela(args);
+  }
+  const app = await readFile(join(project, 'src/app.module.ts'), 'utf8');
+  for (const registered of [
+    'NotesModule',
+    'EmailsProcessor',
+    'DigestCron',
+    'QueueModule.forRoot({ driver: cloudflareQueues() })',
+  ]) {
+    assert.ok(app.includes(registered), `AppModule registers ${registered}`);
+  }
+  assert.match(await readFile(join(project, 'src/worker.ts'), 'utf8'), /export \{ Counter \}/);
+  // The Wrangler file is out of date until cf sync writes the new triggers and bindings.
+  assert.throws(() => vela(['cf', 'sync']), /Command failed/);
+  vela(['cf', 'sync', '--write']);
+  vela(['cf', 'sync']);
+  run(['types']);
+  const types = await readFile(join(project, 'worker-configuration.d.ts'), 'utf8');
+  assert.match(types, /EMAILS: Queue;/);
+  assert.match(types, /COUNTER: DurableObjectNamespace/);
+  run(['typecheck']);
+  run(['test']);
+  vela(['deploy', 'check']);
+  const routes = JSON.parse(vela(['route', 'list', '--json'])).map(
+    ({ method, path }) => `${method} ${path}`,
+  );
+  assert.ok(routes.includes('POST /notes') && routes.includes('GET /notes/:id'), routes.join(', '));
+  run(['run', 'deploy', '--dry-run', '--outdir', 'worker-bundle']);
+}
+
+/** The api template installs, typechecks, passes its workerd specs and matches its Wrangler file. */
+async function verifyApiTemplate(consumer, runCli, archives) {
+  const generated = runCli(['new', 'todo-api', '--template', 'api']);
+  assert.equal(generated.status, 0, generated.stdout + generated.stderr);
+  const project = join(consumer, 'todo-api');
+  const manifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
+  const overrides = Object.entries(starterArchiveOverrides(manifest, archives));
+  if (overrides.length) {
+    await appendFile(
+      join(project, 'pnpm-workspace.yaml'),
+      `overrides:\n${overrides.map(([name, spec]) => `  '${name}': '${spec}'\n`).join('')}`,
+    );
+  }
+  const run = (args) => execFileSync('pnpm', args, { cwd: project, stdio: 'inherit' });
+  const vela = (args) =>
+    execFileSync('pnpm', ['exec', 'vela', ...args], { cwd: project, encoding: 'utf8' });
+  run(['install']);
+  const bindingTypes = join(project, 'worker-configuration.d.ts');
+  const committedTypes = await readFile(bindingTypes, 'utf8');
+  run(['typecheck']);
+  assert.equal(await readFile(bindingTypes, 'utf8'), committedTypes);
+  run(['test']);
+  vela(['cf', 'sync']);
+  vela(['deploy', 'check']);
+  run(['build']);
   return project;
 }
 

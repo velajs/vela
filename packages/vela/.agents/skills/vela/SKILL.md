@@ -36,10 +36,15 @@ Breaking these causes runtime or build failures.
 
 ## Vela CLI (`@velajs/cli`)
 
-Install as a dev dependency (`pnpm add -D @velajs/cli`) and add a `vela.config.{ts,js,mjs}` at the project root (`defineVelaConfig({ rootModule, createApp })` from `@velajs/cli/config`). Use these to inspect an app before reading code. The binary is `vela` (space-separated commands).
+Install as a dev dependency (`pnpm add -D @velajs/cli`). No configuration is needed in a Workers project: the CLI reads `main` from the Wrangler file, loads the `createCloudflareWorker(AppModule)` entry through Vite (Oxc decorators and metadata, `cloudflare:*` stubbed in Node) and builds the application with the Wrangler `vars` only. A `vela.config.{ts,js,mjs}` (`defineVelaConfig({ rootModule, createApp })` from `@velajs/cli/config`) takes precedence when the tools need an application built differently. Use these to inspect an app before reading code. The binary is `vela` (space-separated commands).
 
 | Command | What it does |
 |---|---|
+| `vela new <name> [--template minimal\|api] [--pm pnpm\|npm\|yarn\|bun] [--install] [--git]` | Scaffold a Workers project with pinned versions |
+| `vela g module\|controller\|service\|resource\|queue\|cron\|durable-object <name>` | Generate current-API code and register it in the parent module (or export it from the Worker entry); `--skip-import` prints the registration |
+| `vela add d1\|kv\|r2\|queue <BINDING>` | Create the resource with the project's Wrangler, refresh `wrangler types`, register a `BindingsModule` token or `QueueModule.registerQueue()` |
+| `vela cf sync [--write]` | Compare the Wrangler file with the app's crons, queue producers/consumers, Durable Object bindings/migrations and Workflows; `--write` edits JSONC in place |
+| `vela deploy check [--env <name>]` | Check the top-level (or named) Wrangler target; computes the entrypoint snapshot unless `--entrypoints` is given |
 | `vela route list` | List all HTTP routes (paths incl. prefix/version, named routes, contributed/CRUD routes) |
 | `vela module graph` | Print the module import graph with `global`/`lazy` flags and provider counts (`--json`) |
 | `vela entrypoint list` | List declared entrypoint kinds (websocket, queue, cron, …) and their entries |
@@ -64,7 +69,7 @@ export default app;   // { fetch } handler — runs on Workers, Deno, Bun, Node
 - `VelaCreateOptions`: `globalPrefix?`, `globalPrefixOptions?` (`{ exclude }`), `versioning?` (`{ prefix }` of the URI version segment), `getClientIp?`, `middleware?`, `cors?` (`true` or `CorsOptions`, as Nest's), `adapters?` (platform `RuntimeAdapter`s), `env?` (seeds the framework `ENV`), `ambientContainer?` (opt-in AsyncLocalStorage), `diagnostics?`. There is **no** `logger` option, and **no** `app.setGlobalPrefix()` method — routes are built at creation, so set the prefix via the create option and read it with `app.getGlobalPrefix()`.
 - `app.fetch` is the universal handler (`serve({ fetch: app.fetch })` on Node via `@hono/node-server`; `export default app` on edge).
 - `VelaApplication` methods: `get(token)`, `getHonoApp()` (for `.request()` in tests), `describeRoutes()`, `mountOpenApi(opts)`, `enableCors(options?)` (Hono's `cors` ahead of every route and guard; no rebuild), `useGlobal*(...)`, `materializeLazyModules()`, `entrypoints`, `close(signal?)`, `dispose()`.
-- Convention: examples export an `async function createXApp()` factory. The `@velajs/cli` reads a `vela.config.ts` with a `createApp()` factory — Vela itself has no `createApp` API.
+- Convention: examples export an `async function createXApp()` factory. `@velajs/cli` builds the Worker entry's application itself; an optional `vela.config.ts` supplies a `createApp()` factory instead — Vela itself has no `createApp` API.
 
 For Cloudflare export `createCloudflareWorker(AppModule)`; it seeds the native environment as the framework `ENV` before bootstrap and isolates applications by environment. Its adapter also wires the core `WebSocketModule` and `LiveModule` to Durable Objects (`WS_TRANSPORT`/`LIVE_PLATFORM`), so the same `AppModule` runs on Node and Workers. Inject bindings with `@InjectEnv()` or `inject: [ENV]`, typed by `wrangler types` (`worker-configuration.d.ts`); never hand-write an environment `InjectionToken`. Read `references/cloudflare.md`. New projects: read `assets/project-scaffold.md`.
 
@@ -125,7 +130,7 @@ src/
       create-user.dto.ts   # defineDto(schema) or shared endpoint schemas
   config/
     database.config.ts     # registerAs('database', env => ({...}))
-vela.config.ts          # optional — for @velajs/cli
+vela.config.ts          # optional — @velajs/cli otherwise loads Wrangler's main
 wrangler.toml           # Cloudflare only
 ```
 
@@ -165,8 +170,8 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/i18n.md` | `@velajs/vela/i18n`: `I18nModule`, `I18nService.t`, detection middleware, `intl-messageformat` peer |
 | `references/errors-and-health.md` | HTTP exception family, exception filters, `HealthModule` (`@velajs/vela/health`), `ThrottlerModule`/`@Throttle` (`@velajs/vela/throttler`), `CacheModule`/`@CacheResponse`/`CacheService` (`@velajs/vela/cache`) |
 | `references/seeders.md` | `@velajs/vela/seeder`: `@Seeder`, `SeederRegistry`, `runSeeders`, `vela db seed` |
-| `references/testing.md` | `@velajs/testing`: `Test.createTestingModule()`, `overrideProvider/Guard/...`, HTTP testing |
-| `references/cli-and-introspection.md` | `@velajs/cli` commands, `vela.config`, route/module/entrypoint/openapi introspection |
+| `references/testing.md` | `@velajs/testing`: `Test.createTestingModule()`, `overrideProvider/Guard/...`, `overrideModule().useModule()`, `useMocker()`, HTTP testing; `createTestingWorker()` from `@velajs/cloudflare/testing` for `fetch`/`queue()`/`scheduled()` in workerd |
+| `references/cli-and-introspection.md` | `@velajs/cli` commands: new, generate, add, cf sync, deploy check, route/module/entrypoint/openapi introspection, optional `vela.config` |
 | `references/cloudflare.md` | `@velajs/cloudflare`: Workers adapter, KV/D1/R2/Queues/Durable Objects, `wrangler.toml`, `nodejs_compat` |
 | `references/crud.md` | `@velajs/crud`: generated CRUD controllers, `RouteContributor` |
 | `references/auth.md` | `@velajs/better-auth` authentication and shared `@velajs/authz/vela` authorization |

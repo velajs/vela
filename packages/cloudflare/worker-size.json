@@ -15,6 +15,7 @@
     "dist/services/",
     "dist/storage.js",
     "dist/storage/",
+    "dist/testing.js",
     "dist/websocket/cf-room-registry.js",
     "dist/websocket/cf-ws-client.js",
     "dist/websocket/do-bootstrap.js",

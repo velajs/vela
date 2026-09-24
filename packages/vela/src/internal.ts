@@ -17,7 +17,7 @@ export { countRegisteredClasses } from './registry/metadata.registry';
 // Bootstrap primitive — used by VelaFactory.create, @velajs/testing, and any
 // non-HTTP consumer (CLI tools, custom runtimes).
 export { bootstrap } from './factory/bootstrap';
-export type { BootstrapOptions, BootstrapResult } from './factory/bootstrap';
+export type { BootstrapInternals, BootstrapOptions, BootstrapResult } from './factory/bootstrap';
 export { finalizeApplication } from './factory/finalize';
 export { applyRuntimeAdapters } from './factory/adapter';
 
@@ -26,6 +26,7 @@ export { bindAppProviders } from './pipeline/app-providers';
 export { RouteManager } from './http/route.manager';
 export type { RouteManagerOptions } from './http/route.manager';
 export { ModuleLoader } from './module/module-loader';
+export type { ModuleOverrides } from './module/module-loader';
 export { ComponentManager } from './pipeline/component.manager';
 export { getModuleMetadata, isModule } from './module/decorators';
 export { ConfigStore } from './config/config.store';

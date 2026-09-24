@@ -6,6 +6,8 @@ export default defineConfig({
   dts: true,
   clean: true,
   platform: 'node',
+  // The CLI's Node stand-ins answer these at run time (see src/project/cloudflare-stubs.ts).
+  external: [/^cloudflare:/],
   target: 'node24',
   fixedExtension: false,
   sourcemap: true,

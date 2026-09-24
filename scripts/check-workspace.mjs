@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertV1Releases } from './release-line.mjs';
-import { starterManifest, starterPinMismatches } from './starter-pins.mjs';
+import { starterManifests, starterPinMismatches } from './starter-pins.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const projects = JSON.parse(
@@ -73,11 +73,13 @@ for (const pkg of packages) {
   }
 }
 const versions = new Map(packages.map((pkg) => [pkg.name, pkg.version]));
-for (const mismatch of starterPinMismatches(
-  JSON.parse(readFileSync(starterManifest, 'utf8')),
-  versions,
-)) {
-  errors.push(`packages/cli/templates/worker: ${mismatch}`);
+for (const manifest of starterManifests) {
+  for (const mismatch of starterPinMismatches(
+    JSON.parse(readFileSync(manifest, 'utf8')),
+    versions,
+  )) {
+    errors.push(`${relative(root, fileURLToPath(manifest))}: ${mismatch}`);
+  }
 }
 if (errors.length) throw new Error(errors.join('\n'));
 console.log(

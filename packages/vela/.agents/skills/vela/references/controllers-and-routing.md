@@ -33,6 +33,8 @@ class UsersController {
 `@Sse(path?)` registers a GET route that streams Server-Sent Events, as Nest's `@Sse()`. Return an async iterable (an `async *` generator) of `MessageEvent` (`{ data, id?, type?, retry? }`; non-string `data` is JSON). Each event is written as it is produced through Hono's `streamSSE`, and the iterable is closed when the client disconnects. A failure mid-stream is reported and ends the stream without sending its message. A returned `Response` is sent as is.
 
 ```ts
+import { Sse, type MessageEvent } from '@velajs/vela';
+
 @Sse('/events')
 async *events(): AsyncIterable<MessageEvent> {
   yield { data: { ready: true }, type: 'status' };

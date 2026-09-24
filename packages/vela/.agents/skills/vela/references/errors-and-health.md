@@ -29,6 +29,8 @@ Every HTTP failure — controller handlers, Vela middleware, raw Hono middleware
 Validation failures (`ValidationPipe`, `@Body(schema)`) render `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`. An unmatched route answers `{ error: { code: 'not_found', message: 'Not Found' } }` with 404; an oversized body answers 413 `payload_too_large`. These framework rejections are not reported; as in Nest, global exception filters receive them (`NotFoundException`, `PayloadTooLargeException`, `BadRequestException`), and a filter's plain result keeps their status.
 
 ```ts
+import { HttpException, type HttpErrorResponse } from '@velajs/vela';
+
 class LockedException extends HttpException {
   constructor(readonly until: Date) { super('Locked', 423); }
   override toResponse(): HttpErrorResponse {
@@ -150,6 +152,9 @@ class ReportsController {
     await this.cache.scope(trustedScope()).invalidateTags(['reports']); // after commit
     return created;
   }
+
+  private buildSummary() { return { total: 0 }; }
+  private async save(body: unknown) { return body; }
 }
 ```
 
