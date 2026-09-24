@@ -318,7 +318,10 @@ function wireError(body: unknown): { code: string; message: string } | undefined
 
 function failure(rpc: Pick<RpcRequest, 'id' | 'procedure'>, rendered: RenderedHttpError): Response {
   const status = rendered.status >= 400 && rendered.status <= 599 ? rendered.status : 500;
-  // A body the exception owns (not the canonical shape) keeps only its status.
+  // The rendered body's `error.code` and `error.message`, when it has them (the
+  // canonical body, or an exception-owned one with that member); other owned
+  // fields are dropped. A malformed code falls back to the status's, and an
+  // `internal` code always carries the generic message.
   const wire = wireError(rendered.body);
   const code =
     wire && /^[A-Za-z0-9_.:-]{1,160}$/.test(wire.code) ? wire.code : codeForStatus(status);
