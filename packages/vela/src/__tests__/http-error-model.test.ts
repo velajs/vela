@@ -398,6 +398,32 @@ describe('HTTP edges share one renderer', () => {
     expect(errorSpy).toHaveBeenCalledOnce();
   });
 
+  it('reports a Hono HTTPException from raw middleware whenever it renders as a 500', async () => {
+    const app = await appWith([]);
+    const hono = app.getHonoApp();
+    // Raw Hono middleware bypasses Vela's wrapping; only onError sees its throw.
+    hono.use('/raw/*', async (c: Context, _next: Next) => {
+      if (c.req.path === '/raw/moved') throw new HTTPException(302, { message: 'moved' });
+      if (c.req.path === '/raw/ok') throw new HTTPException(200, { message: 'fine' });
+      throw new HTTPException(403, { message: 'nope' });
+    });
+    for (const path of ['/raw/moved', '/raw/ok']) {
+      errorSpy.mockClear();
+      const response = await hono.request(path);
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        error: { code: 'internal', message: 'Internal Server Error' },
+      });
+      // Report-first, as on the handler edge.
+      expect(errorSpy).toHaveBeenCalledOnce();
+    }
+    errorSpy.mockClear();
+    const denied = await hono.request('/raw/denied');
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: { code: 'forbidden', message: 'nope' } });
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   it('renders validation failures as bad_request with the issue list', async () => {
     const CreateItem = z.object({ name: z.string().min(3) });
     @Controller('/items')
