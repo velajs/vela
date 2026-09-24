@@ -1,4 +1,4 @@
-import { defineProvider } from '@velajs/vela';
+import { defineProvider, defineModule } from '@velajs/vela';
 /**
  * `StudioModule` — mounts the reserved `/_vela/admin` surface with its full
  * security chain, the `@AdminRpc` dispatch registry (empty catalog in M2), and
@@ -9,7 +9,7 @@ import { defineProvider } from '@velajs/vela';
  * the dispatch registry's `onApplicationBootstrap` builds the op map and the
  * route contributor mounts routes at build time.
  */
-import { Container, ROOT_MODULE, defineModule } from '@velajs/vela';
+import { Container, ROOT_MODULE } from '@velajs/vela/module-kit';
 import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
 import { resolveStudioConfig, StudioEnvReader } from './studio.config';
 import type { StudioModuleOptions } from './studio.types';

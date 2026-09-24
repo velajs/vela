@@ -23,15 +23,14 @@
  */
 import {
   Controller,
-  Cron,
   Get,
   Injectable,
   Module,
-  ScheduleModule,
   VelaFactory,
   type DynamicModule,
   type VelaEnv,
 } from '@velajs/vela';
+import { Cron, ScheduleModule } from '@velajs/vela/schedule';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
 import { Crud, CrudModule, createCrudDatabaseRegistry, defineCrudDatabase } from '@velajs/crud';

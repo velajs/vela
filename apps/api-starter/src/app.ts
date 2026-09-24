@@ -3,17 +3,16 @@ import { drizzleAdapter as authAdapter } from '@better-auth/drizzle-adapter';
 import { drizzle } from 'drizzle-orm/d1';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import {
-  ApiResponse,
   Controller,
   ENV,
   Get,
   InjectEnv,
   Module,
-  WebSocketGateway,
-  createOpenApiDocument,
   defineProvider,
   type VelaEnv,
 } from '@velajs/vela';
+import { ApiResponse, createOpenApiDocument } from '@velajs/vela/openapi';
+import { WebSocketGateway } from '@velajs/vela/websocket';
 import { LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
 import {
   BETTER_AUTH_UPGRADE_TENANT,

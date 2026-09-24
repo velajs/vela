@@ -1,4 +1,4 @@
-import { defineProvider } from '@velajs/vela';
+import { defineProvider, defineModule } from '@velajs/vela';
 /**
  * `@velajs/studio/auth` — the OPTIONAL better-auth binding for the auth panels.
  *
@@ -44,7 +44,7 @@ import { defineProvider } from '@velajs/vela';
  * organization membership list is not enumerated server-side here, so
  * `userDetail.organizations` is `[]`.
  */
-import { Container, defineModule } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import { BetterAuthService } from '@velajs/better-auth';
 import { isVelaError } from '@velajs/errors';
 import type { VelaError } from '@velajs/errors';

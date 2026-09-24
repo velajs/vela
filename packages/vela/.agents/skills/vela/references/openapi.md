@@ -7,7 +7,7 @@ Generate an OpenAPI 3.1 document from your modules and serve it with Swagger UI,
 `createOpenApiDocument` takes the **root module class** (not the app) and reflects controller routes:
 
 ```ts
-import { createOpenApiDocument } from '@velajs/vela';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
 
 const app = await VelaFactory.create(AppModule, { globalPrefix: '/api' });
 
@@ -22,7 +22,7 @@ const document = createOpenApiDocument(AppModule, {
 ## Documenting operations
 
 ```ts
-import { ApiDoc, ApiTags, ApiResponse } from '@velajs/vela';
+import { ApiDoc, ApiTags, ApiResponse } from '@velajs/vela/openapi';
 
 @Controller({ path: '/catalog', version: 1 })
 @ApiTags('catalog')

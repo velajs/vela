@@ -5,7 +5,7 @@ import type { CursorCodec } from '../query/cursor-codec';
 import { prepareOperation, type AuthorizationPlan, type CommitEvent } from './operation-scope';
 import type { PolicyContext } from '../policies/types';
 import type { HookContext } from './hook-types';
-import type { StandardSchemaV1 } from '@velajs/vela';
+import type { StandardSchemaV1 } from '@velajs/vela/validation';
 import type { CrudContracts } from '../schema/contracts';
 /**
  * `defineResource` compiles a model + adapter + per-resource configuration

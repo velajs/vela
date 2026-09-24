@@ -1,12 +1,12 @@
 import {
   ForbiddenException,
-  getTrustedContextRequest,
   Inject,
   Injectable,
   Reflector,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
+import { getTrustedContextRequest } from '@velajs/vela/module-kit';
 import type { Authz } from '../authz';
 import { AUTHZ } from './tokens';
 import { RequirePermission } from './require-permission.decorator';

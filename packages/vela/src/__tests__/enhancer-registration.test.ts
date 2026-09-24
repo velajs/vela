@@ -8,22 +8,17 @@ import {
   Injectable,
   InjectionToken,
   Module,
-  MultipleProvidersFoundError,
-  NONCE_STORE,
   Param,
   REQUEST_CONTEXT,
   Reflector,
   Scope,
   SetMetadata,
-  SkipThrottle,
-  ThrottlerModule,
   UseFilters,
   UseGuards,
   UseInterceptors,
   UsePipes,
   VelaFactory,
   defineProvider,
-  resolvePipelineComponents,
   type ArgumentMetadata,
   type CallHandler,
   type CanActivate,
@@ -31,11 +26,13 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   type NestInterceptor,
-  type NonceStore,
   type OnModuleInit,
   type PipeTransform,
   type RequestContext,
 } from '../index';
+import { MultipleProvidersFoundError, resolvePipelineComponents } from '../module-kit';
+import { NONCE_STORE, type NonceStore } from '../security/index';
+import { SkipThrottle, ThrottlerModule } from '../throttler/index';
 import { instantiate } from '../http/instantiate';
 import { dispatchQueueJob, Process, Processor } from '../queue/index';
 

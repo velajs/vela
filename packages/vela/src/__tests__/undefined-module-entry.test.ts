@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  Controller,
-  Get,
-  Injectable,
-  Module,
-  UndefinedModuleError,
-  VelaFactory,
-  createOpenApiDocument,
-  sideEffectModule,
-} from '../index';
+import { Controller, Get, Injectable, Module, VelaFactory } from '../index';
+import { UndefinedModuleError, sideEffectModule } from '../module-kit';
+import { createOpenApiDocument } from '../openapi/index';
 import type { Type } from '../index';
 
 // A circular file import leaves the importing side holding a binding the other

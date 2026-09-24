@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { StandardSchemaV1 } from '@velajs/vela';
+import type { StandardSchemaV1 } from '@velajs/vela/validation';
 import type { Page } from '../adapter/query-types';
 import { ConfigurationException } from '../envelope/errors';
 import { defaultEnvelope } from '../envelope/envelope';

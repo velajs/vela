@@ -9,9 +9,9 @@ import {
   SerializerInterceptor,
   UseInterceptors,
   VelaFactory,
-  defineDto,
   defineSerializer,
 } from '../../index';
+import { defineDto } from '../../validation/index';
 
 class Account {
   #name = 'Ada';

@@ -45,7 +45,7 @@ describe('CatsService', () => {
 ```
 
 Keep module decorators registered until the test completes: no per-test cleanup
-is needed, and `MetadataRegistry.reset()` (from `@velajs/vela/internal`) after
+is needed, and `MetadataRegistry.reset()` (from `@velajs/vela/module-kit`) after
 declaring a module removes the metadata that `compile()` needs. Close each compiled module to run its shutdown hooks and dispose constructed
 providers. Concurrent calls to \`close()\` await the same completion. Register owned
 fixtures with \`moduleRef.onClose(async () => { /* cleanup */ })\`; callbacks run in
@@ -209,7 +209,7 @@ Each scorer returns a `[0, 1]` score (auto-clamped) with an optional reason. `ev
 
 ## How it's wired
 
-`@velajs/testing` consumes vela's framework primitives via `@velajs/vela/internal` (`MetadataRegistry`, `Container`, `RouteManager`, `ModuleLoader`, `ComponentManager`, `VelaApplication`, `bindAppProviders`). The same `bindAppProviders` that `VelaFactory.create` uses, so test-mode and run-mode app construction stay in lockstep automatically.
+`@velajs/testing` builds each testing module with the same bootstrap primitives `VelaFactory.create` uses, imported from `@velajs/vela/internal`: `bootstrap`, `applyRuntimeAdapters` and `finalizeApplication`, so test-mode and run-mode app construction stay in lockstep automatically. It also takes `createRequestContext` and `setRequestContainer` from `@velajs/vela/internal` to seed request scopes, and nothing else. `MetadataRegistry` and `Container` come from `@velajs/vela/module-kit`, and `VelaApplication` from the root `@velajs/vela`.
 
 ## HTTP transports and schema validation
 

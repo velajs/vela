@@ -1,4 +1,5 @@
-import { InjectionToken, Module, defineProvider, runInEntrypointScope } from '@velajs/vela';
+import { InjectionToken, Module, defineProvider } from '@velajs/vela';
+import { runInEntrypointScope } from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
 import { describe, expect, it } from 'vitest';
 import {

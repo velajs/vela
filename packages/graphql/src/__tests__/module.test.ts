@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MetadataRegistry } from '@velajs/vela';
+import { MetadataRegistry } from '@velajs/vela/module-kit';
 import { buildSchema } from 'graphql';
 import { GraphqlModule } from '../module';
 

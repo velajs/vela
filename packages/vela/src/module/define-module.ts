@@ -31,7 +31,7 @@ import type {
   ConfigurableModuleExtrasTransform,
   ConfigurableModuleHost,
 } from './configurable-module.types';
-import { attachModuleIdentity } from './module-identity';
+import { attachModuleIdentity } from './module-fingerprints';
 import { stableHash } from './stable-hash';
 
 /** The `global:` slot's component groups, lowered to `APP_*` registrations. */

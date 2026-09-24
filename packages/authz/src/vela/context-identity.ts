@@ -1,9 +1,9 @@
+import type { ExecutionContext } from '@velajs/vela';
 import {
   getTrustedRequestIdentity,
   getTrustedContextRequest,
-  type ExecutionContext,
   type TrustedRequestIdentity,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import type { Identity } from '../identity';
 
 /** Read an own data property without executing an untrusted getter. */

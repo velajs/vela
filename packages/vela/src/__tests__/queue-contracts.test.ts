@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import { Module, VelaFactory } from '../index';
-import type { StandardSchemaV1 } from '../index';
+import type { StandardSchemaV1 } from '../validation/index';
 import {
   defineQueueJob,
   dispatchQueueJob,

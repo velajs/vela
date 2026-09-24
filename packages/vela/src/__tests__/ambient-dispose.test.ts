@@ -1,14 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  VelaFactory,
-  Module,
-  Controller,
-  Get,
-  Injectable,
-  Inject,
-  getCurrentContainer,
-  getCurrentRequestContext,
-} from '../index.js';
+import { VelaFactory, Module, Controller, Get, Injectable, Inject } from '../index.js';
+import { getCurrentContainer, getCurrentRequestContext } from '../module-kit.js';
 
 describe('ambient container (opt-in)', () => {
   it('exposes the request container + RequestContext to deep code when enabled', async () => {

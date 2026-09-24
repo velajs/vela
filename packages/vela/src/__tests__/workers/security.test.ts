@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { Controller, Post, Module, VelaFactory } from '../../index';
+import { SecurityModule, Secret } from '../../security/index';
 import {
-  Controller,
-  Post,
-  Module,
-  SecurityModule,
-  VelaFactory,
-  Secret,
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
   setTrustedRequestTenant,
   createTrustedRequestIdentityStore,
-} from '../../index';
+} from '../../module-kit';
 
 describe('security on native Workers', () => {
   it('honors missing-origin compatibility without permitting a hostile origin', async () => {

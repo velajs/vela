@@ -3,9 +3,9 @@ import {
   parseCronMetadata,
   parseIntervalMetadata,
   scheduledJobComponents,
-} from '@velajs/vela';
-import type { Entrypoint, VelaApplication } from '@velajs/vela';
-import type { Container } from '@velajs/vela/internal';
+} from '@velajs/vela/module-kit';
+import type { VelaApplication } from '@velajs/vela';
+import type { Entrypoint, Container } from '@velajs/vela/module-kit';
 
 const reported = new Set<string>();
 

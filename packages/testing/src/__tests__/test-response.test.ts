@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { defineDto, type StandardSchemaV1 } from '@velajs/vela';
+import { defineDto, type StandardSchemaV1 } from '@velajs/vela/validation';
 import { TestResponse } from '../http/test-response.js';
 
 function jsonResponse(body: unknown, init?: ResponseInit): TestResponse {

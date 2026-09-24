@@ -3,12 +3,12 @@ import {
   Inject,
   Injectable,
   InjectionToken,
-  ModuleVisibilityError,
   Optional,
   Scope,
   defineProvider,
   type Token,
 } from '../index.js';
+import { ModuleVisibilityError } from '../module-kit.js';
 import { Container } from '../container/container.js';
 
 describe('@Optional() dependencies follow module visibility', () => {

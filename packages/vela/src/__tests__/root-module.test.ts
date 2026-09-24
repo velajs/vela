@@ -7,13 +7,13 @@ import {
   Injectable,
   InjectionToken,
   Module,
-  ROOT_MODULE,
   VelaFactory,
-  createOpenApiDocument,
   defineProvider,
   type DynamicModule,
   type Type,
 } from '../index.js';
+import { ROOT_MODULE } from '../module-kit.js';
+import { createOpenApiDocument } from '../openapi/index.js';
 import { bootstrap, countRegisteredClasses } from '../internal.js';
 
 const GREETING = new InjectionToken<string>('test.root.greeting');

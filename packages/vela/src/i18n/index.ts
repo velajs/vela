@@ -1,3 +1,6 @@
+// @velajs/vela/i18n — message catalogs and locale detection.
+import '../metadata';
+
 export { I18nModule } from './i18n.module';
 export { I18nService } from './i18n.service';
 export { MessageLoaderService } from './message-loader.service';

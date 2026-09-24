@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { OpenApiDocument } from '@velajs/vela';
+import type { OpenApiDocument } from '@velajs/vela/openapi';
 import { afterEach, describe, expect, it } from 'vitest';
 import { generateClientContract } from './client-contract.js';
 

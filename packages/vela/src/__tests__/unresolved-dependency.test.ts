@@ -1,18 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  Container,
   Controller,
   Inject,
   Injectable,
   InjectionToken,
   Module,
   ModuleRef,
-  ModuleVisibilityError,
-  UnresolvedDependencyError,
   VelaFactory,
   defineProvider,
   forwardRef,
 } from '../index';
+import { Container, ModuleVisibilityError, UnresolvedDependencyError } from '../module-kit';
 import type { ModuleScope } from '../internal';
 
 async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {

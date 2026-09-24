@@ -20,7 +20,8 @@
  * filtering); policy-scoped impersonation lands with the kernel path (matches
  * the M7a report ledger).
  */
-import { Container, Inject, Injectable } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import type {
   ClearTableRequest,
   DeleteRowsRequest,

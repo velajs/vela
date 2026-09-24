@@ -3,17 +3,19 @@ import {
   InjectionToken,
   Injectable,
   Reflector,
-  MetadataRegistry,
   ForbiddenException,
   APP_GUARD,
   defineModule,
   defineProvider,
-  getTrustedRequestIdentity,
   type CanActivate,
   type ExecutionContext,
-  type TrustedRequestIdentity,
   type Type,
 } from '@velajs/vela';
+import {
+  MetadataRegistry,
+  getTrustedRequestIdentity,
+  type TrustedRequestIdentity,
+} from '@velajs/vela/module-kit';
 export interface ResourceRequirement {
   readonly action: string;
   readonly resourceType: string;

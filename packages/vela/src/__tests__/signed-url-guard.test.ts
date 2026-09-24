@@ -9,8 +9,8 @@ import {
   UrlGeneratorService,
   SignedUrl,
   URL_SIGNING_SECRET,
-  verifySignedUrl,
 } from '../index.js';
+import { verifySignedUrl } from '../security/index.js';
 
 const SECRET = 'test-signing-secret';
 

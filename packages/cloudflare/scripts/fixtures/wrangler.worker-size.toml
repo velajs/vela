@@ -1,0 +1,9 @@
+# Dedicated release-gate fixture: the minimal Worker built through
+# createCloudflareWorker(). @velajs/vela's root entry exposes the opt-in
+# ambient-context APIs, whose Hono module imports node:async_hooks. `nodejs_als`
+# is the narrow compatibility flag needed to load that published module graph;
+# the fixture itself leaves ambient request access disabled.
+name = "vela-cloudflare-worker-size-reference"
+main = "worker-size-entry.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_als"]

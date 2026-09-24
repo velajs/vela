@@ -1,19 +1,16 @@
-import {
-  Container,
-  defineModule,
-  defineProvider,
-  DiscoveryService,
-  ENV,
-  Inject,
-  Injectable,
-  stableHash,
-} from '../index';
+import { Container } from '../container/container';
+import { defineModule } from '../module/define-module';
+import { defineProvider } from '../container/types';
+import { DiscoveryService } from '../discovery/discovery.service';
+import { ENV } from '../env';
+import { Inject, Injectable } from '../container/decorators';
+import { stableHash } from '../module/stable-hash';
 import type {
   ConfigurableModuleAsyncOptions,
-  DynamicModule,
   ModuleRegistrationOptions,
-  Token,
-} from '../index';
+} from '../module/configurable-module.types';
+import type { DynamicModule } from '../registry/types';
+import type { Token } from '../container/types';
 import { inline } from './inline.driver';
 import { QueueClient } from './queue.client';
 import { QueueDispatchBinding } from './queue.binding';

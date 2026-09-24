@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import * as v from 'valibot';
-import { Serialize, defineDto, defineSerializer } from '../index';
+import { Serialize, defineSerializer } from '../index';
+import { defineDto } from '../validation/index';
 
 class Account {
   #id: string;

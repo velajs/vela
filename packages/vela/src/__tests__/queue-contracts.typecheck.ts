@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SetMetadata, applyDecorators } from '../index';
-import type { StandardSchemaV1 } from '../index';
+import type { StandardSchemaV1 } from '../validation/index';
 import { defineQueueJob, Process, QueueClient } from '../queue';
 import type { QueueJob, QueueJobInput, QueueJobOutput } from '../queue';
 

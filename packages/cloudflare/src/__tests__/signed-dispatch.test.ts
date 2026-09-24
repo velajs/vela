@@ -2,20 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   APP_GUARD,
   Controller,
-  Cron,
   Global,
   Injectable,
   Module,
   Post,
-  ScheduleModule,
-  SignedInvocation,
   URL_SIGNING_SECRET,
   VelaFactory,
   defineProvider,
   type CanActivate,
   type ExecutionContext,
-  type ScheduleJobRef,
 } from '@velajs/vela';
+import { Cron, ScheduleModule, type ScheduleJobRef } from '@velajs/vela/schedule';
+import { SignedInvocation } from '@velajs/vela/dispatch';
 import { Process, Processor, QueueModule, dispatchQueueJob, queueToken } from '@velajs/vela/queue';
 import {
   cloudflareAdapter,

@@ -5,7 +5,8 @@ Use the bare module for default settings, or configure defaults with `forRoot()`
 or `forRootAsync()`:
 
 ```ts
-import { HttpModule, HttpService, Injectable, Module } from '@velajs/vela';
+import { Injectable, Module } from '@velajs/vela';
+import { HttpModule, HttpService } from '@velajs/vela/http-client';
 
 @Module({
   imports: [HttpModule.forRoot({

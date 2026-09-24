@@ -1,9 +1,9 @@
+import type { ExecutionContext } from '@velajs/vela';
 import {
   getTrustedRequestIdentity,
   createTrustedRequestIdentityStore,
   getTrustedContextRequest,
-  type ExecutionContext,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import type { ResolvedIdentity } from '../types';
 
 // Provider payload only. Authorization always reads the canonical core identity.

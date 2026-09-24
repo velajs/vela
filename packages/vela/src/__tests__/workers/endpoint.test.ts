@@ -1,14 +1,7 @@
 import { expect, it } from 'vitest';
 import { z } from 'zod';
-import {
-  Controller,
-  Endpoint,
-  Module,
-  Post,
-  VelaFactory,
-  createOpenApiDocument,
-  defineEndpoint,
-} from '../../index';
+import { Controller, Module, Post, VelaFactory } from '../../index';
+import { Endpoint, createOpenApiDocument, defineEndpoint } from '../../openapi/index';
 
 const input = z.object({ json: z.object({ name: z.string().min(1) }) });
 const output = z.object({ greeting: z.string() });

@@ -1,5 +1,8 @@
-import { EntrypointRegistry, InternalDispatcher, resolveErrorReporter } from '../index';
-import type { Container, DiscoveryService } from '../index';
+import { EntrypointRegistry } from '../entrypoint/entrypoint.registry';
+import { InternalDispatcher } from '../dispatch/internal-dispatcher';
+import { resolveErrorReporter } from '../exceptions/reporter';
+import type { Container } from '../container/container';
+import type { DiscoveryService } from '../discovery/discovery.service';
 import { dispatchJobToProcessors, unreportedQueueFailures } from './queue.dispatch';
 import { readProcessorMetadata } from './queue.decorators';
 import type { QueueDispatchOptions, QueueDispatchResult, QueueEntry } from './queue.dispatch';

@@ -2,17 +2,20 @@ import { Context } from 'hono';
 import {
   REQUEST_CONTEXT,
   Scope,
-  createExecutionScope,
-  describeToken,
-  runInEntrypointScope,
-  type ExecutionScope,
-  type InferToken,
   type Token,
   type Type,
   type VelaApplication,
   type VelaEnv,
 } from '@velajs/vela';
-import { createRequestContext, setRequestContainer, type Container } from '@velajs/vela/internal';
+import {
+  createExecutionScope,
+  describeToken,
+  runInEntrypointScope,
+  type ExecutionScope,
+  type InferToken,
+} from '@velajs/vela/module-kit';
+import { createRequestContext, setRequestContainer } from '@velajs/vela/internal';
+import type { Container } from '@velajs/vela/module-kit';
 import { SeederRegistry, type ISeeder } from '@velajs/vela/seeder';
 import { expect } from 'vitest';
 import type { TestDatabase } from './db/test-database.js';

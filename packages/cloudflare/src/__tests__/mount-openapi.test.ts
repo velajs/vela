@@ -1,7 +1,7 @@
 const env = {};
 import { describe, it, expect } from 'vitest';
 import { Controller, Get, Module } from '@velajs/vela';
-import type { OpenApiDocument } from '@velajs/vela';
+import type { OpenApiDocument } from '@velajs/vela/openapi';
 import { createCloudflareApp } from '../cloudflare-factory';
 
 function buildMinimalDoc(): OpenApiDocument {

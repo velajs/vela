@@ -3,10 +3,10 @@ import {
   Injectable,
   Reflector,
   UnauthorizedException,
-  getTrustedContextRequest,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
+import { getTrustedContextRequest } from '@velajs/vela/module-kit';
 import { getContextIdentity } from '@velajs/authz/vela';
 import { BETTER_AUTH_OPTIONS } from '../better-auth.tokens';
 import { BetterAuthService } from '../better-auth.service';

@@ -1,14 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Post,
-  Module,
-  METADATA_KEYS,
-  createOpenApiDocument,
-  defineMetadata,
-  ApiTags,
-} from '../index.js';
+import { Controller, Get, Post, Module } from '../index.js';
+import { METADATA_KEYS, defineMetadata } from '../module-kit.js';
+import { createOpenApiDocument, ApiTags } from '../openapi/index.js';
 import { registerRouteContributor, _resetRouteContributors } from '../http/route-contributor.js';
 
 afterEach(() => {

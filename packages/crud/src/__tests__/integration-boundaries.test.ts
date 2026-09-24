@@ -1,11 +1,6 @@
-import {
-  Controller,
-  MetadataRegistry,
-  Module,
-  ValidationPipe,
-  VelaFactory,
-  defineMetadata,
-} from '@velajs/vela';
+import { Controller, Module, VelaFactory } from '@velajs/vela';
+import { MetadataRegistry, defineMetadata } from '@velajs/vela/module-kit';
+import { ValidationPipe } from '@velajs/vela/validation';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { z } from 'zod';
 import { MemoryAuditStore, type AuditStore } from '../audit/index';

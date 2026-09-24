@@ -1,4 +1,5 @@
 import { Injectable } from '../container/decorators';
+import { declareRootDefault } from '../container/root-defaults';
 import { MetadataRegistry, allocateDecoratorKey } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
 import type { ExecutionContext } from './types';
@@ -195,3 +196,6 @@ export class Reflector {
     return values;
   }
 }
+
+// Injectable from any module, as in Nest.
+declareRootDefault(Reflector);

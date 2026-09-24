@@ -1,4 +1,4 @@
-import { describeToken } from '@velajs/vela';
+import { describeToken } from '@velajs/vela/module-kit';
 import { runSeeders, SeederRegistry } from '@velajs/vela/seeder';
 import { Command, Option, UsageError } from 'clipanion';
 import { loadConfig } from '../config.js';

@@ -5,8 +5,8 @@ import {
   setTrustedRequestIdentity,
   setTrustedRequestTenant,
   provideGlobal,
-  ThrottlerModule,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
+import { ThrottlerModule } from '@velajs/vela/throttler';
 import { Controller, Get, Module, UseGuards, VelaFactory } from '@velajs/vela';
 import {
   AuthzModule,
@@ -18,7 +18,7 @@ import { createAuthz, defineRole } from '@velajs/authz';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { cloudflareAccessIssuer } from '../issuer';
 import type { ResolvedIdentity } from '../types';
-import type { TrustedRequestIdentity } from '@velajs/vela';
+import type { TrustedRequestIdentity } from '@velajs/vela/module-kit';
 import {
   CloudflareAccessGuard,
   CloudflareAccessModule,

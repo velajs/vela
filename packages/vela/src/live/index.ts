@@ -1,8 +1,9 @@
 // @velajs/vela/live — first-party live-query subsystem (tag-based realtime
-// reactivity), authored entirely on the public API plus the shared wire
-// package @velajs/live-protocol (the live-openness audit test enforces it).
-// Subpath-only, like @velajs/vela/queue: the main barrel stays lean and the
-// name stays free for platform packages.
+// reactivity), authored on the public API plus the shared wire package
+// @velajs/live-protocol (the live-openness audit test enforces it). Consumers
+// opt in through this subpath.
+import '../metadata';
+
 export { LiveModule } from './live.module';
 export { LiveResolver, LiveQuery, getLiveQueries } from './live.decorators';
 export { LiveEngine, LIVE_SUBS_DATA_KEY, readPersistedLiveSubscriptions } from './live.engine';

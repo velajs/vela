@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '../container/index';
 import { Container } from '../container/container';
-import { InternalDispatcher } from '../dispatch/index';
+import { InternalDispatcher } from '../dispatch/internal-dispatcher';
 import type { Entrypoint } from '../entrypoint/entrypoint.types';
 import type {
   BeforeApplicationShutdown,

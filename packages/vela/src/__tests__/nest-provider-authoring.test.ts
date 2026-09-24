@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   APP_GUARD,
-  Container,
   Controller,
   Get,
   Inject,
@@ -15,7 +14,6 @@ import {
   VelaFactory,
   defineModule,
   defineProvider,
-  lazyProvider,
   type AsyncModuleOptions,
   type CanActivate,
   type DynamicModule,
@@ -32,6 +30,7 @@ import {
   Global,
   forwardRef,
 } from '../index';
+import { Container, lazyProvider } from '../module-kit';
 import { getScope, isInjectable } from '../container/decorators';
 import { LiveResolver } from '../live/index';
 import { Processor } from '../queue/index';

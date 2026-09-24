@@ -2,14 +2,16 @@ import {
   buildEntrypointExecutionContext,
   getEntrypointModuleId,
   resolveEntrypoint,
-  PipelineRunner,
-  resolveErrorReporter,
-  resolveScopedComponentsAsync,
-  runInEntrypointScope,
-  shouldFilterCatch,
-  parseSchemaAsync,
-} from '../index';
-import type { Container, ExceptionFilter, Token, Type } from '../index';
+} from '../entrypoint/execution-context';
+import { PipelineRunner } from '../pipeline/pipeline-runner';
+import { resolveErrorReporter } from '../exceptions/reporter';
+import { resolveScopedComponentsAsync } from '../pipeline/scoped-components';
+import { runInEntrypointScope } from '../entrypoint/execution-scope';
+import { shouldFilterCatch } from '../pipeline/decorators';
+import { parseSchemaAsync } from '../validation/parse-schema';
+import type { Container } from '../container/container';
+import type { ExceptionFilter } from '../pipeline/types';
+import type { Token, Type } from '../container/types';
 import { getProcessHandlers } from './queue.decorators';
 import type { ProcessMetadata, ProcessorMetadata, QueueJob } from './queue.types';
 

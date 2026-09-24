@@ -15,7 +15,7 @@ import type { Model } from './model/model.types';
 import type { VersioningStore } from './versioning/index';
 import type { AuditStore } from './audit/index';
 import type { CrudEndpointName } from './verb-table';
-import type { GuardType } from '@velajs/vela';
+import type { GuardType } from '@velajs/vela/module-kit';
 import type { Context } from 'hono';
 import type { ZodObject, ZodRawShape } from 'zod';
 import { compileHooks } from './kernel/compile-hooks';

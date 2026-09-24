@@ -254,7 +254,8 @@ queue, cron and Durable Object code.
 ## Queues and cron
 
 ```ts
-import { Cron, InjectEnv, Injectable, type CronInvocation, type VelaEnv } from '@velajs/vela';
+import { InjectEnv, Injectable, type VelaEnv } from '@velajs/vela';
+import { Cron, type CronInvocation } from '@velajs/vela/schedule';
 import { QueueConsumer } from '@velajs/cloudflare';
 
 @Injectable()

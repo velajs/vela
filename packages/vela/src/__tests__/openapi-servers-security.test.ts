@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Controller, Get, Module, createOpenApiDocument } from '../index.js';
+import { Controller, Get, Module } from '../index.js';
+import { createOpenApiDocument } from '../openapi/index.js';
 
 @Controller('/things')
 class ThingsController {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Controller, ENV, Get, Inject, Module } from '@velajs/vela';
-import { signUrl, STORAGE_SIGNED_URL_PURPOSE } from '@velajs/vela/storage';
+import { signUrl, STORAGE_SIGNED_URL_PURPOSE } from '@velajs/vela/security';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { StorageModule } from '../storage/storage.module';
 import { StorageService } from '../storage/storage.service';

@@ -1,7 +1,6 @@
 import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  MetadataRegistry,
   VelaFactory,
   Module,
   Injectable,
@@ -10,8 +9,8 @@ import {
   UseFilters,
   Catch,
   APP_GUARD,
-  Container,
 } from '../index.js';
+import { MetadataRegistry, Container } from '../module-kit.js';
 import { VelaError } from '@velajs/errors';
 import type {
   CanActivate,

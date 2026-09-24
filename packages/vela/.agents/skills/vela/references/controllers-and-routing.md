@@ -1,6 +1,6 @@
 # Controllers & Routing
 
-Controllers, method/param decorators, versioning, named routes, URL generation, and signed URLs — all on the main export `@velajs/vela`.
+Controllers, method/param decorators, versioning, named routes, URL generation, and signed URLs — all on the main export `@velajs/vela`. The low-level `signUrl`/`verifySignedUrl` primitives come from `@velajs/vela/security`.
 
 ## Controllers & method decorators
 
@@ -120,7 +120,8 @@ declare module '@velajs/vela' {
 Protect a route with `@SignedUrl()` (adds `SignedUrlGuard`), generate signed links with `UrlGeneratorService.signedUrl`, and provide the secret via the `URL_SIGNING_SECRET` token or a string `URL_SIGNING_SECRET` in the application's `ENV` (on Workers, a Wrangler secret):
 
 ```ts
-import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService, verifySignedUrl } from '@velajs/vela';
+import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService } from '@velajs/vela';
+import { verifySignedUrl } from '@velajs/vela/security';
 
 @Global()
 @Module({
@@ -142,4 +143,4 @@ const link = await urls.signedUrl('file.download', {}, { expiresIn: 3600 });
 // requests to `link` pass the guard until it expires; tampered/expired → 403
 ```
 
-`signedUrl(name, params?, { expiresIn?, secret? })` builds the URL then HMAC-signs it (Web Crypto, edge-safe — no `node:crypto`). The guard resolves the secret in order: explicit → `URL_SIGNING_SECRET` token → the string `ENV.URL_SIGNING_SECRET` (non-string values are ignored). The low-level primitives `signUrl(url, secret, { expiresIn? })` and `verifySignedUrl(url, secret)` are also exported (and re-exported from `@velajs/vela/storage`).
+`signedUrl(name, params?, { expiresIn?, secret? })` builds the URL then HMAC-signs it (Web Crypto, edge-safe — no `node:crypto`). The guard resolves the secret in order: explicit → `URL_SIGNING_SECRET` token → the string `ENV.URL_SIGNING_SECRET` (non-string values are ignored). The low-level primitives `signUrl(url, secret, { expiresIn? })` and `verifySignedUrl(url, secret)` come from `@velajs/vela/security` (not `@velajs/vela/storage`).

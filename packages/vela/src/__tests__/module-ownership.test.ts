@@ -1,22 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   Controller,
-  createOpenApiDocument,
   defineProvider,
-  DiscoveryService,
   Get,
   Inject,
   Injectable,
   InjectionToken,
   Module,
   VelaFactory,
-  Container,
-  createDiscoverableDecorator,
-  EntrypointRegistry,
   forwardRef,
-  registerEntrypointKind,
   Scope,
 } from '../index';
+import { createOpenApiDocument } from '../openapi/index';
+import {
+  DiscoveryService,
+  createDiscoverableDecorator,
+  EntrypointRegistry,
+  registerEntrypointKind,
+  Container,
+} from '../module-kit';
 
 describe('module registration ownership', () => {
   it('keeps both keyed controller sets in OpenAPI', () => {

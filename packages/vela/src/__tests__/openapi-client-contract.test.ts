@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ApiResponse,
   Body,
   Controller,
   Get,
@@ -11,10 +10,9 @@ import {
   Query,
   VelaFactory,
   Version,
-  createOpenApiDocument,
-  defineDto,
-  ValidationPipe,
 } from '../index';
+import { ApiResponse, createOpenApiDocument } from '../openapi/index';
+import { defineDto, ValidationPipe } from '../validation/index';
 import { z } from 'zod';
 
 describe('OpenAPI HTTP client contract', () => {

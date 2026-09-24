@@ -10,13 +10,13 @@ import {
   InjectEnv,
   Module,
   Post,
-  SignedInvocation,
   VelaFactory,
   defineProvider,
   type CanActivate,
   type ExecutionContext,
   type VelaEnv,
 } from '@velajs/vela';
+import { SignedInvocation } from '@velajs/vela/dispatch';
 import {
   dispatchQueueJob,
   InjectQueue,

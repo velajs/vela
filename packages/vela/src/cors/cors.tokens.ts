@@ -1,4 +1,4 @@
 import { InjectionToken } from '../container/types';
 import type { CorsOptions } from './cors.types';
 
-export const CORS_OPTIONS = new InjectionToken<CorsOptions>('CORS_OPTIONS');
+export const CORS_OPTIONS = /* @__PURE__ */ new InjectionToken<CorsOptions>('CORS_OPTIONS');

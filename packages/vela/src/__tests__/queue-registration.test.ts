@@ -5,12 +5,13 @@ import {
   Injectable,
   Module,
   Post,
-  SignedInvocation,
   URL_SIGNING_SECRET,
   VelaFactory,
   defineProvider,
 } from '../index';
-import type { StandardSchemaV1, VelaEnv } from '../index';
+import { SignedInvocation } from '../dispatch/index';
+import type { VelaEnv } from '../index';
+import type { StandardSchemaV1 } from '../validation/index';
 import { countRegisteredClasses } from '../internal';
 import {
   InjectQueue,

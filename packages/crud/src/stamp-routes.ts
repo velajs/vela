@@ -11,28 +11,22 @@
  */
 
 import { Context } from 'hono';
+import { Delete, Get, HttpCode, Patch, Post, Put, UseGuards } from '@velajs/vela';
+import { ApiDoc, ApiResponse, ApiTags } from '@velajs/vela/openapi';
 import {
-  ApiDoc,
-  ApiResponse,
-  ApiTags,
-  Delete,
-  Get,
-  HttpCode,
   MetadataRegistry,
   ParamType,
-  Patch,
-  Post,
-  Put,
-  UseGuards,
-  defineDto,
-  isStandardSchema,
   defineMetadata,
   getMetadata,
   getRequestContainer,
   METADATA_KEYS,
+} from '@velajs/vela/module-kit';
+import {
+  defineDto,
+  isStandardSchema,
   type DtoDefinition,
   type StandardDtoDefinition,
-} from '@velajs/vela';
+} from '@velajs/vela/validation';
 import type { RuntimeAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import { compileResource, type CrudResource, type RuntimeResourceConfig } from './kernel/resource';

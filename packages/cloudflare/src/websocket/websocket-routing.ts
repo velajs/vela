@@ -1,5 +1,6 @@
-import type { Container, Type, VelaContext as Context, VelaHono as Hono } from '@velajs/vela';
-import { getMetadata, getTrustedRequestIdentity } from '@velajs/vela';
+import type { Type, VelaContext as Context, VelaHono as Hono } from '@velajs/vela';
+import type { Container } from '@velajs/vela/module-kit';
+import { getMetadata, getTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import {
   createWebSocketUpgradeGate,
   resolveGatewayRoomId,

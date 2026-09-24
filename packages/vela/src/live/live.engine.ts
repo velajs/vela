@@ -6,34 +6,30 @@ import {
   isClientLiveFrame,
 } from '@velajs/live-protocol';
 import type { ClientLiveFrame, LiveErrorCode, ServerLiveFrame } from '@velajs/live-protocol';
+import { Container } from '../container/container';
+import { DiscoveryService } from '../discovery/discovery.service';
+import { Inject, Injectable, Optional } from '../container/decorators';
+import { PipelineRunner } from '../pipeline/pipeline-runner';
+import { ReservedWsEvent } from '../websocket/websocket.decorators';
+import { WsDispatcher } from '../websocket/ws-dispatcher';
 import {
-  Container,
-  DiscoveryService,
-  Inject,
-  Injectable,
-  Optional,
-  PipelineRunner,
-  ReservedWsEvent,
-  WsDispatcher,
   buildEntrypointExecutionContext,
-  isVelaError,
-  resolveErrorReporter,
   resolveEntrypoint,
-  resolveScopedComponentsAsync,
-  trySendWebSocketFrame,
-  runInEntrypointScope,
-  toErrorBody,
-} from '../index';
+} from '../entrypoint/execution-context';
+import { isVelaError, toErrorBody } from '@velajs/errors';
+import { resolveErrorReporter } from '../exceptions/reporter';
+import { resolveScopedComponentsAsync } from '../pipeline/scoped-components';
+import { trySendWebSocketFrame } from '../websocket/ws-send';
+import { runInEntrypointScope } from '../entrypoint/execution-scope';
+import type { ContributesEntrypoints, Entrypoint } from '../entrypoint/entrypoint.types';
+import type { OnApplicationBootstrap } from '../lifecycle/index';
 import type {
-  ContributesEntrypoints,
-  Entrypoint,
-  OnApplicationBootstrap,
   ReservedWsEventHandler,
-  Type,
   WsClient,
   WsMessage,
   WsExecutionContext,
-} from '../index';
+} from '../websocket/websocket.types';
+import type { Type } from '../container/types';
 import { getLiveQueries } from './live.decorators';
 import { liveCoalescingKey } from './live.coalescing';
 import { encodeSubscriptionUpdate } from './live.delta';

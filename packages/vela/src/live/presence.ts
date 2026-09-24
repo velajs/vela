@@ -1,5 +1,6 @@
 import { MAX_PRESENCE_METADATA_BYTES, defineLiveQuery } from '@velajs/live-protocol';
-import { Inject, assertWebSocketRoomId } from '../index';
+import { Inject } from '../container/decorators';
+import { assertWebSocketRoomId } from '../websocket/gateway-routing';
 import { LiveQuery, LiveResolver } from './live.decorators';
 import type { LiveQueryContext } from './live.types';
 

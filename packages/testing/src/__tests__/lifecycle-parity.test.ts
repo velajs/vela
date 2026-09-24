@@ -9,12 +9,11 @@ import {
   Module,
   REQUEST_CONTEXT,
   EXECUTION_LIFETIME,
-  SignedInvocation,
   Scope,
-  InternalDispatcher,
   URL_SIGNING_SECRET,
   defineProvider,
 } from '@velajs/vela';
+import { SignedInvocation, InternalDispatcher } from '@velajs/vela/dispatch';
 import { Test } from '../test.js';
 import { INVOCATION_TRANSPORT } from '@velajs/vela/internal';
 

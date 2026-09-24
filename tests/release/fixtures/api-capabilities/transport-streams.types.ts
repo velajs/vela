@@ -1,4 +1,5 @@
-import { HttpService, defineEndpoint, type EndpointResponseFormat } from '@velajs/vela';
+import { HttpService } from '@velajs/vela/http-client';
+import { defineEndpoint, type EndpointResponseFormat } from '@velajs/vela/openapi';
 import { createHttpClientTelemetryObserver, noopTelemetry } from '@velajs/vela/observability';
 import { hc, readHttpResponse, type HttpResponse } from '@velajs/client/http';
 import type { AppType } from './generated-streams';

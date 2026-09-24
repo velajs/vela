@@ -5,7 +5,8 @@ Core accepts structural parsers (`parse(unknown)`), so Zod stays an application 
 ## Endpoint contract
 
 ```ts
-import { Controller, Endpoint, Post, defineEndpoint } from '@velajs/vela';
+import { Controller, Post } from '@velajs/vela';
+import { Endpoint, defineEndpoint } from '@velajs/vela/openapi';
 import { z } from 'zod';
 
 const createProduct = defineEndpoint({
@@ -59,7 +60,8 @@ behavior, with the existing request scope retained until the body settles.
 ## Parameter decorators with named descriptors
 
 ```ts
-import { Body, Post, defineDto } from '@velajs/vela';
+import { Body, Post } from '@velajs/vela';
+import { defineDto } from '@velajs/vela/validation';
 
 const CreateProduct = defineDto(z.object({ name: z.string().min(1) }), { name: 'CreateProduct' });
 type CreateProduct = ReturnType<typeof CreateProduct.parse>;

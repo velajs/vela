@@ -1,12 +1,9 @@
-import {
-  createDiscoverableDecorator,
-  defineMetadata,
-  getMetadata,
-  Inject,
-  registerEntrypointKind,
-} from '../index';
+import { createDiscoverableDecorator } from '../discovery/discoverable.decorator';
+import { defineMetadata, getMetadata } from '../metadata';
+import { Inject } from '../container/decorators';
+import { registerEntrypointKind } from '../entrypoint/entrypoint.registry';
 import { PROCESS_METADATA, PROCESSOR_METADATA, queueToken } from './queue.tokens';
-import type { StandardSchemaV1 } from '../index';
+import type { StandardSchemaV1 } from '../validation/standard-schema';
 import type { QueueJobDefinition } from './queue.definition';
 import type { QueueJob, ProcessMetadata, ProcessorMetadata } from './queue.types';
 

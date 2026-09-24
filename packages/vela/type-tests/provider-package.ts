@@ -1,17 +1,15 @@
 // Intentionally imports the package export. Source-only tests cannot detect
 // variance annotations lost during declaration emission or bundling.
 import {
-  Container,
   ConfigurableModuleBuilder,
-  EntrypointRegistry,
   InjectionToken,
   Module,
   defineModule,
   defineProvider,
-  lazyProvider,
   type Token,
   type TypedToken,
 } from '@velajs/vela';
+import { Container, EntrypointRegistry, lazyProvider } from '@velajs/vela/module-kit';
 
 const count = new InjectionToken<number>('count');
 const label = new InjectionToken<string>('label');

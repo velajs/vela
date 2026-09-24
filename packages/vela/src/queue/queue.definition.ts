@@ -1,5 +1,5 @@
-import { isStandardSchema } from '../index';
-import type { StandardSchemaV1 } from '../index';
+import { isStandardSchema } from '../validation/standard-schema';
+import type { StandardSchemaV1 } from '../validation/standard-schema';
 
 /** Shared wire contract. The transport carries schema input, handlers receive output. */
 export interface QueueJobDefinition<S extends StandardSchemaV1 = StandardSchemaV1> {

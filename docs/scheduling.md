@@ -11,7 +11,8 @@ same path. Portable code does not start timers by importing `ScheduleModule`.
 A job receives exactly one argument, its invocation, on every runtime:
 
 ```ts
-import { Cron, Injectable, type CronInvocation } from '@velajs/vela';
+import { Injectable } from '@velajs/vela';
+import { Cron, type CronInvocation } from '@velajs/vela/schedule';
 
 @Injectable()
 class Reports {
@@ -41,7 +42,7 @@ decorator composed through `applyDecorators`, such as
 check the handler it decorates.
 
 Every runtime dispatches through `invokeScheduledJob(container, entry,
-invocation)` from `@velajs/vela`. It resolves the job by its owning module in a
+invocation)` from `@velajs/vela/module-kit`. It resolves the job by its owning module in a
 fresh invocation scope, calls the method with only the invocation, reports a
 failure once on the `schedule` edge and rethrows it. A direct job runs no guards,
 interceptors or filters, neither app-global nor declared on its class, method or
@@ -112,14 +113,13 @@ string, including whitespace; it never re-evaluates the delivery date.
 
 ```ts
 import {
-  Cron,
   EXECUTION_LIFETIME,
   Inject,
   Injectable,
   Scope,
-  type CronInvocation,
   type ExecutionLifetime,
 } from '@velajs/vela';
+import { Cron, type CronInvocation } from '@velajs/vela/schedule';
 import { CLOUDFLARE_SCHEDULED_EVENT, type CloudflareScheduledEvent } from '@velajs/cloudflare';
 
 @Injectable({ scope: Scope.REQUEST })

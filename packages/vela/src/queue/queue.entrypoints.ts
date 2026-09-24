@@ -1,5 +1,8 @@
-import { Container, Inject, Injectable, resolveErrorReporter } from '../index';
-import type { DiscoveryService, Entrypoint } from '../index';
+import { Container } from '../container/container';
+import { Inject, Injectable } from '../container/decorators';
+import { resolveErrorReporter } from '../exceptions/reporter';
+import type { DiscoveryService } from '../discovery/discovery.service';
+import type { Entrypoint } from '../entrypoint/entrypoint.types';
 import { QueueDispatchBinding } from './queue.binding';
 import { unreportedQueueFailures } from './queue.dispatch';
 import { QueueRegistry } from './queue.registry';

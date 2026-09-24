@@ -86,10 +86,15 @@ Import `EventEmitterModule` and declare a shared vocabulary. A schema-bearing
 `EventDispatcher` dispatch. It does not also subscribe to the string emitter.
 
 ```ts
+import { Injectable, Module, Scope, VelaFactory } from '@velajs/vela';
 import {
-  EventDispatcher, EventEmitterModule, Injectable, Module, OnEvent, Scope,
-  defineEventVocabulary, VelaFactory, getRequestContainer, type EventPayload,
-} from '@velajs/vela';
+  EventDispatcher,
+  EventEmitterModule,
+  OnEvent,
+  defineEventVocabulary,
+  type EventPayload,
+} from '@velajs/vela/events';
+import { getRequestContainer } from '@velajs/vela/module-kit';
 import { z } from 'zod';
 
 const events = defineEventVocabulary({

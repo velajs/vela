@@ -1,5 +1,9 @@
+// @velajs/vela/logging — application-owned structured logging.
+import '../metadata';
+
 export { ApplicationLogger, StructuredLogger, consoleLogSink } from './application-logger';
-export { APP_LOGGER, LoggingModule } from './logging.module';
+export { LoggingModule } from './logging.module';
+export { APP_LOGGER } from './logging.tokens';
 export { serializeLogValue } from './log-serialization';
 export { parseLogDirective } from './log-levels';
 export type { LogThresholds } from './log-levels';

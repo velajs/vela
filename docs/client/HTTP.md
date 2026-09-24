@@ -49,7 +49,8 @@ type CreatedUser = InferResponseType<typeof client.users.$post, 201>;
 Use a schema-bearing endpoint definition for both runtime validation and generated types. The method receives one parsed object with `param`, `query`, `header`, and either `json` or `form` groups. With Zod 4.4 or later:
 
 ```ts
-import { Controller, Endpoint, Post, defineEndpoint } from '@velajs/vela';
+import { Controller, Post } from '@velajs/vela';
+import { Endpoint, defineEndpoint } from '@velajs/vela/openapi';
 import { z } from 'zod';
 
 const createUser = defineEndpoint({

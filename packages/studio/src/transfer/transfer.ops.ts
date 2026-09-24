@@ -20,7 +20,8 @@
  *
  * The NDJSON streaming helpers here are shared with the `/export` route.
  */
-import { Container, Inject, Injectable } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import type {
   StudioOpReq,
   TransferExportResult,

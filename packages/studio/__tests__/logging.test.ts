@@ -1,22 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Context } from 'hono';
-import type { Token, InferToken } from '@velajs/vela';
+import type { Token } from '@velajs/vela';
+import type { InferToken } from '@velajs/vela/module-kit';
 import {
-  APP_LOGGER,
   APP_EXCEPTION_HANDLER,
   Injectable,
   defineProvider,
-  ApplicationLogger,
-  Container,
-  DiscoveryService,
   Controller,
   Get,
-  LoggingModule,
   Module,
   VelaFactory,
+} from '@velajs/vela';
+import { APP_LOGGER, ApplicationLogger, LoggingModule } from '@velajs/vela/logging';
+import {
+  Container,
+  DiscoveryService,
   buildEntrypointExecutionContext,
   createExecutionScope,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import { parseStudioRpcResponse } from '@velajs/studio-protocol';
 import { AdminLogBuffer, AdminRpc, StudioModule } from '../src';
 import { StudioDispatchRegistry } from '../src/rpc/dispatch.registry';

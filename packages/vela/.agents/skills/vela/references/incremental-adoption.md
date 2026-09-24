@@ -4,7 +4,7 @@ Migrating a NestJS codebase to Vela, or embedding a Vela app inside an existing 
 
 ## NestJS → Vela: what maps 1:1
 
-Vela mirrors NestJS's authoring surface, so most decorators and interfaces port unchanged (all from `@velajs/vela`):
+Vela mirrors NestJS's authoring surface, so most decorators and interfaces port unchanged (all from `@velajs/vela`; optional features such as `@nestjs/schedule`, `@nestjs/event-emitter`, `@nestjs/throttler` and `@nestjs/terminus` map to the `@velajs/vela/schedule`, `/events`, `/throttler` and `/health` subpaths):
 
 - **Decorators:** `@Module`, `@Global`, `@Controller`, `@Get/@Post/@Put/@Patch/@Delete/@Options/@Head/@All`, `@Param/@Query/@Body/@Headers/@Req/@Res`, `@Injectable`, `@Inject`, `@Optional`, `@UseGuards/@UsePipes/@UseInterceptors/@UseFilters`, `@Catch`, `@SetMetadata`, `@Version`.
 - **DI:** constructor injection, `forwardRef`, `ModuleRef`, `Reflector`, and the three scopes (`Scope.DEFAULT/REQUEST/TRANSIENT`).
@@ -80,4 +80,4 @@ The main `@velajs/vela` export is edge-pure by contract, enforced in CI (an audi
 - `__dirname` / `__filename`, `setInterval`, `Bun.serve()`
 - Node `crypto` → Web Crypto
 
-The one sanctioned exception is `@velajs/vela/schedule-node`, an opt-in Node/Bun cron executor — don't import it on edge runtimes (see `references/schedule-and-cron.md`). Ambient request access (`getCurrentContainer()` / `getCurrentRequestContext()`) is off by default; enabling it (`ambientContainer: true`) uses Hono's `context-storage`. The root entry imports that module either way, so Cloudflare Workers need `node:async_hooks` even when the default DI path, the explicit per-request child container, is all you use: `nodejs_compat` is default-on from compatibility date 2026-08-04, and earlier dates need the `nodejs_als` (or `nodejs_compat`) flag.
+The one sanctioned exception is `@velajs/vela/schedule-node`, an opt-in Node/Bun cron executor — don't import it on edge runtimes (see `references/schedule-and-cron.md`). Ambient request access (`getCurrentContainer()` / `getCurrentRequestContext()` from `@velajs/vela/module-kit`) is off by default; enabling it (`ambientContainer: true`) uses Hono's `context-storage`. The root entry imports that module either way, so Cloudflare Workers need `node:async_hooks` even when the default DI path, the explicit per-request child container, is all you use: `nodejs_compat` is default-on from compatibility date 2026-08-04, and earlier dates need the `nodejs_als` (or `nodejs_compat`) flag.

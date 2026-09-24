@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  Container,
   defineProvider,
   Inject,
   Injectable,
@@ -9,6 +8,7 @@ import {
   Scope,
   VelaFactory,
 } from '../index';
+import { Container } from '../module-kit';
 
 describe('asynchronous provider construction', () => {
   it('awaits constructor dependencies regardless of provider declaration order', async () => {

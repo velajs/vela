@@ -8,10 +8,10 @@ import {
   UseGuards,
   UrlGeneratorService,
   VelaFactory,
-  createOpenApiDocument,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
 import { Crud } from '../crud.decorator';
 import { Override } from '../override.decorator';
 import { CrudCtx, type CrudRequestContext } from '../crud-context.decorator';

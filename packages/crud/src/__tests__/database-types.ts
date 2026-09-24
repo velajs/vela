@@ -1,6 +1,7 @@
 /** Compile-time registry, native handle, resource model and async provider inference. */
 import { expectTypeOf } from 'vitest';
-import { defineProvider, moduleToken } from '@velajs/vela';
+import { defineProvider } from '@velajs/vela';
+import { moduleToken } from '@velajs/vela/module-kit';
 import { z } from 'zod';
 import { defineModel } from '../model/define-model';
 import { defineCrudDatabase, createCrudDatabaseRegistry, databaseResource } from '../databases';

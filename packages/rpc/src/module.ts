@@ -1,21 +1,23 @@
 import {
   Controller,
-  Container,
   Inject,
-  defineMetadata,
   defineModule,
   defineProvider,
-  DiscoveryService,
   InjectionToken,
   Injectable,
-  registerRouteContributor,
   type AsyncModuleOptions,
   type DynamicModule,
-  type Entrypoint,
   type ModuleImport,
   type Provider,
   type Token,
 } from '@velajs/vela';
+import {
+  Container,
+  defineMetadata,
+  DiscoveryService,
+  registerRouteContributor,
+  type Entrypoint,
+} from '@velajs/vela/module-kit';
 import { createRpcClient, type RpcClient, type RpcClientOptions } from './client';
 import { RpcRegistry, type RpcAdapterOptions } from './dispatcher';
 

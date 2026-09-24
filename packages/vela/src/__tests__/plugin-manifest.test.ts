@@ -1,16 +1,12 @@
 import { defineProvider } from '../container/types';
 import { describe, expect, it } from 'vitest';
+import { Inject, Injectable, InjectionToken, Module, VelaFactory } from '../index.js';
 import {
-  Inject,
-  Injectable,
-  InjectionToken,
-  Module,
   PLUGIN_REGISTRY_TOKEN,
   PluginRegistry,
-  VelaFactory,
   composePlugins,
   definePlugin,
-} from '../index.js';
+} from '../module-kit.js';
 import type { DynamicModule } from '../index.js';
 
 describe('Plugin manifest', () => {

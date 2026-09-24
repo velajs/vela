@@ -1,16 +1,18 @@
 import {
-  assertFactoryInject,
   defineModule,
   defineProvider,
-  lazyProvider,
-  stableHash,
   type DynamicModule,
-  type FactoryInject,
-  type InferTokens,
   type Token,
   type TypedToken,
   type Type,
 } from '@velajs/vela';
+import {
+  assertFactoryInject,
+  lazyProvider,
+  stableHash,
+  type FactoryInject,
+  type InferTokens,
+} from '@velajs/vela/module-kit';
 import {
   createStorageController,
   type ResolvedHttpOptions,

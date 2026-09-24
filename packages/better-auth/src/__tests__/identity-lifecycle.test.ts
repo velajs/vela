@@ -5,14 +5,16 @@ import {
   Reflector,
   UseGuards,
   VelaFactory,
+  type CanActivate,
+  type ExecutionContext,
+} from '@velajs/vela';
+import {
   clearTrustedRequestIdentity,
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
   bindTrustedRequestContext,
   buildEntrypointExecutionContext,
-  type CanActivate,
-  type ExecutionContext,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {

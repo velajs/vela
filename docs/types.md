@@ -40,7 +40,8 @@ The key is a runtime identity, like an `InjectionToken` for a provider. Two keys
 
 ```ts
 import { z } from 'zod';
-import { Body, Controller, Post, defineDto } from '@velajs/vela';
+import { Body, Controller, Post } from '@velajs/vela';
+import { defineDto } from '@velajs/vela/validation';
 
 const CreateUser = defineDto(
   z.object({ name: z.string().min(1), age: z.number().int().nonnegative() }),

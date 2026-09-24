@@ -93,7 +93,8 @@ Configure one logging module and one Studio module per application, then pass th
 same configured instances into the optional capture module:
 
 ```ts
-import { LoggingModule, Module } from '@velajs/vela';
+import { Module } from '@velajs/vela';
+import { LoggingModule } from '@velajs/vela/logging';
 import { StudioModule } from '@velajs/studio';
 import { StudioLoggingModule } from '@velajs/studio/logging';
 

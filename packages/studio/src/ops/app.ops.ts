@@ -9,7 +9,9 @@
  * `Container` for modules, the public `EntrypointRegistry` for entrypoints, and
  * the barrel `createOpenApiDocument` for the spec.
  */
-import { Container, Inject, Injectable, createOpenApiDocument } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
 import type { EntrypointRow, ModuleNode, RouteRow } from '@velajs/studio-protocol';
 import { parseTryItRequest } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';

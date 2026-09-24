@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createOpenApiDocument } from '@velajs/vela';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
 import type { Type, VelaApplication } from '@velajs/vela';
 import { Command, Option } from 'clipanion';
 import { z } from 'zod';

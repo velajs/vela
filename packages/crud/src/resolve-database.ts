@@ -1,5 +1,6 @@
 import { missingDefaultAdapter } from './missing-adapter';
-import type { Container, InjectionToken } from '@velajs/vela';
+import type { InjectionToken } from '@velajs/vela';
+import type { Container } from '@velajs/vela/module-kit';
 import {
   CRUD_DATABASES,
   CRUD_DEFAULT_ADAPTER,

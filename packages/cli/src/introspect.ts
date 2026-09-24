@@ -1,11 +1,7 @@
-import type { Entrypoint, VelaApplication } from '@velajs/vela';
-import {
-  SCHEDULE_DISPATCH,
-  describeToken,
-  getEntrypointKinds,
-  scheduledJobComponents,
-} from '@velajs/vela';
-import type { ModuleDescription, RouteDescription } from '@velajs/vela';
+import type { VelaApplication } from '@velajs/vela';
+import type { Entrypoint, ModuleDescription, RouteDescription } from '@velajs/vela/module-kit';
+import { SCHEDULE_DISPATCH } from '@velajs/vela/schedule';
+import { describeToken, getEntrypointKinds, scheduledJobComponents } from '@velajs/vela/module-kit';
 
 /** One row of `vela route list`. */
 export interface RouteRow {

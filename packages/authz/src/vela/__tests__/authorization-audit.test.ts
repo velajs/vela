@@ -10,9 +10,8 @@ import {
   UseGuards,
   VelaFactory,
   defineProvider,
-  provideGlobal,
-  setTrustedRequestIdentity,
 } from '@velajs/vela';
+import { provideGlobal, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import {
   AUTHZ,
   AuthzModule,

@@ -1,10 +1,5 @@
-import {
-  InjectionToken,
-  defineProvider,
-  forwardRef,
-  type Token,
-  type StandardSchemaV1,
-} from '@velajs/vela';
+import { InjectionToken, defineProvider, forwardRef, type Token } from '@velajs/vela';
+import type { StandardSchemaV1 } from '@velajs/vela/validation';
 import { Test } from '../test.js';
 import type { TestingModule } from '../testing-module.js';
 import type { TestResponse } from '../http/test-response.js';

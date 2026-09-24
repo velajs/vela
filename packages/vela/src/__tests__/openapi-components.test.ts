@@ -1,16 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Module,
-  defineDto,
-  ValidationPipe,
-  createOpenApiDocument,
-  ApiResponse,
-} from '../index.js';
+import { Controller, Get, Post, Body, Module } from '../index.js';
+import { defineDto, ValidationPipe } from '../validation/index.js';
+import { createOpenApiDocument, ApiResponse } from '../openapi/index.js';
 
 describe('OpenAPI — $ref components for DTO descriptors', () => {
   it('@Body() DTO produces a $ref and registers the schema under components', () => {

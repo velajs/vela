@@ -4,7 +4,8 @@
  * `@Inject(crudResourceToken('users'))` keeps resolving across reloads.
  */
 
-import { moduleToken, type InjectionToken } from '@velajs/vela';
+import type { InjectionToken } from '@velajs/vela';
+import { moduleToken } from '@velajs/vela/module-kit';
 import type { CrudDatabaseRegistry } from './databases';
 import type { CrudAdapter } from './adapter/contract';
 import type { CrudResource } from './kernel/resource';

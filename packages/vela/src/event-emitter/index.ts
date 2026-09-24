@@ -1,3 +1,7 @@
+// @velajs/vela/events — in-process events: EventEmitterModule, @OnEvent and
+// typed event vocabularies.
+import '../metadata';
+
 export { EventEmitterModule } from './event-emitter.module';
 export { EventEmitter } from './event-emitter.service';
 export { EventEmitterSubscriber } from './event-emitter.subscriber';

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Cron, Injectable, Module, ScheduleModule, UseGuards, VelaFactory } from '@velajs/vela';
+import { Injectable, Module, UseGuards, VelaFactory } from '@velajs/vela';
+import { Cron, ScheduleModule } from '@velajs/vela/schedule';
 import { Process, Processor, QueueModule, type QueueDriver } from '@velajs/vela/queue';
 import { collectEntrypoints } from '../introspect.js';
 import { checkDeployment } from './deploy-check.plan.js';

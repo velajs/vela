@@ -1,4 +1,4 @@
-import type { DiscoveryService, PipelineComponentEntry } from '@velajs/vela';
+import type { DiscoveryService, PipelineComponentEntry } from '@velajs/vela/module-kit';
 import type { GraphQLResolveInfo, GraphQLSchema } from 'graphql';
 import type { GraphqlOperation } from './operation';
 

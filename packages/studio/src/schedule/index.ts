@@ -26,23 +26,12 @@
  * `CLOUDFLARE_SCHEDULED_EVENT` whose `noRetry()` does nothing). Closing the
  * application aborts the signal of a run still in progress and waits for it.
  */
-import {
-  Container,
-  Inject,
-  Injectable,
-  SCHEDULE_INVOCATION_SEED,
-  ScheduleRegistry,
-  defineModule,
-  invokeScheduledJob,
-} from '@velajs/vela';
-import type {
-  BeforeApplicationShutdown,
-  CronMetadata,
-  Entrypoint,
-  IntervalMetadata,
-  InvokeScheduledJobOptions,
-  ScheduleInvocation,
-} from '@velajs/vela';
+import { Inject, Injectable, defineModule } from '@velajs/vela';
+import { Container, SCHEDULE_INVOCATION_SEED, invokeScheduledJob } from '@velajs/vela/module-kit';
+import { ScheduleRegistry } from '@velajs/vela/schedule';
+import type { BeforeApplicationShutdown } from '@velajs/vela';
+import type { CronMetadata, IntervalMetadata, ScheduleInvocation } from '@velajs/vela/schedule';
+import type { Entrypoint, InvokeScheduledJobOptions } from '@velajs/vela/module-kit';
 import type { CronTriggerRow, ScheduleJobRow, StudioOpReq } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';

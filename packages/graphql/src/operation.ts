@@ -1,12 +1,11 @@
+import { ForbiddenException, type VelaContext } from '@velajs/vela';
 import {
-  ForbiddenException,
   getRequestContainer,
   getTrustedRequestIdentity,
   resolveErrorReporter,
-  type Container,
   type TrustedRequestIdentity,
-  type VelaContext,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
 import type { GraphqlPipeline } from './types';
 
 /** A typed operation-local resource. Factories may return DataLoader or any other cache. */

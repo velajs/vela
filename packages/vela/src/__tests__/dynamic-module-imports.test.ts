@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  VelaFactory,
-  Controller,
-  Get,
-  Module,
-  Injectable,
-  MetadataRegistry,
-  forwardRef,
-} from '../index.js';
+import { VelaFactory, Controller, Get, Module, Injectable, forwardRef } from '../index.js';
+import { MetadataRegistry } from '../module-kit.js';
 import { METADATA_KEYS } from '../constants.js';
 import { defineMetadata } from '../metadata.js';
 import type { DynamicModule } from '../index.js';

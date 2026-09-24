@@ -1,12 +1,5 @@
-import {
-  Controller,
-  Get,
-  Inject,
-  Injectable,
-  Module,
-  VelaFactory,
-  getCurrentRequestContext,
-} from '../../index';
+import { Controller, Get, Inject, Injectable, Module, VelaFactory } from '../../index';
+import { getCurrentRequestContext } from '../../module-kit';
 import type { VelaApplication } from '../../application';
 
 // A singleton service that reads the current request's context purely via the

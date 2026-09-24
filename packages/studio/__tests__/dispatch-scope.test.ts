@@ -1,14 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Context } from 'hono';
-import {
-  Container,
-  DiscoveryService,
-  Inject,
-  Injectable,
-  InjectionToken,
-  Scope,
-  defineProvider,
-} from '@velajs/vela';
+import { Inject, Injectable, InjectionToken, Scope, defineProvider } from '@velajs/vela';
+import { Container, DiscoveryService } from '@velajs/vela/module-kit';
 import { AdminRpc, AdminConfirmSummary } from '../src/rpc/admin-rpc.decorator';
 import { StudioDispatchRegistry } from '../src/rpc/dispatch.registry';
 import { ConfirmTokenSigner } from '../src/security/confirm-token';

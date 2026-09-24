@@ -1,21 +1,21 @@
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 import { Module, Controller, Get, Injectable } from '@velajs/vela';
+import { createCloudflareWorker, CloudflareWebSocketModule } from '@velajs/cloudflare';
 import {
-  createCloudflareWorker,
-  CloudflareWebSocketModule,
   WebSocketGateway,
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
   WebSocketServer,
-} from '@velajs/cloudflare';
+} from '@velajs/vela/websocket';
 import type {
   WsClient,
   WsServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
-} from '@velajs/cloudflare';
-import type { UpgradeAuthenticator, WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
+  UpgradeAuthenticator,
+  WebSocketUpgradeIdentity,
+} from '@velajs/vela/websocket';
 
 // ---- Upgrade authentication (DEMO ONLY) ----
 

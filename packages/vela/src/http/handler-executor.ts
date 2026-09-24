@@ -4,7 +4,6 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Container } from '../container/container';
 import type { TypedToken, Type } from '../container/types';
 import { HttpException } from '../errors/http-exception';
-import { getEndpointDefinition } from '../openapi/endpoint';
 import { httpExceptionBody } from '../exceptions/http-exception-body';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -27,7 +26,7 @@ import type {
 import type { ArgumentResolver } from './argument-resolver';
 import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
-import { extractEndpointInput, mapEndpointResponse } from './endpoint-executor';
+import { getEndpointBinding } from './endpoint-registry';
 import { instantiateAsync, instantiateManyAsync } from './instantiate';
 import {
   applyResponseHeaders,
@@ -121,7 +120,7 @@ export class HandlerExecutor {
     const httpCode = getHttpCode(controller, route.handlerName);
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
     const redirect = getRedirect(controller, route.handlerName);
-    const endpoint = getEndpointDefinition(controller, route.handlerName);
+    const endpoint = getEndpointBinding(controller, route.handlerName);
     if (endpoint && (paramMetadata.length > 0 || redirect || httpCode !== undefined)) {
       throw new Error(
         `${controller.name}.${String(route.handlerName)}: @Endpoint owns its single input argument and response status; remove parameter decorators, @HttpCode, and @Redirect`,
@@ -167,7 +166,7 @@ export class HandlerExecutor {
           interceptors,
           resolveArgs: () =>
             endpoint
-              ? extractEndpointInput(c, endpoint, pipes)
+              ? endpoint.extractInput(c, pipes)
               : this.#argumentResolver.extract(
                   c,
                   paramMetadata,
@@ -196,7 +195,7 @@ export class HandlerExecutor {
         });
 
         if (endpoint) {
-          const response = await mapEndpointResponse(c, endpoint, result);
+          const response = await endpoint.mapResponse(c, result);
           applyResponseHeaders(response, responseHeaders);
           return response;
         }

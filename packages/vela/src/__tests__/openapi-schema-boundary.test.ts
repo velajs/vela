@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseJsonSchema } from '../openapi/json-schema';
 import { zodToJsonSchema } from '../openapi/zod-to-json-schema';
-import { ApiResponse, Controller, Get, Module, createOpenApiDocument } from '../index';
+import { Controller, Get, Module } from '../index';
+import { ApiResponse, createOpenApiDocument } from '../openapi/index';
 
 describe('OpenAPI schema reflection boundary', () => {
   it.each([

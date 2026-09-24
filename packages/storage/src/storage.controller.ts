@@ -5,12 +5,12 @@ import {
   Inject,
   InjectionToken,
   Post,
-  readJsonBody,
   Req,
   UnsupportedMediaTypeException,
   type TypedToken,
   type Type,
 } from '@velajs/vela';
+import { readJsonBody } from '@velajs/vela/module-kit';
 import type { Context } from 'hono';
 import { sanitizeKey } from './object-key';
 import { StorageError } from './storage.error';

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { Controller, Injectable, MetadataRegistry, Scope, WebSocketGateway } from '../index.js';
+import { Controller, Injectable, Scope } from '../index.js';
+import { MetadataRegistry } from '../module-kit.js';
+import { WebSocketGateway } from '../websocket/index.js';
 import { getScope } from '../container/decorators';
 import { Seeder } from '../seeder';
 

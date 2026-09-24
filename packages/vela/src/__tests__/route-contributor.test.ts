@@ -1,14 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  METADATA_KEYS,
-  VelaFactory,
-  createOpenApiDocument,
-  defineMetadata,
-} from '../index.js';
-import { Container } from '../internal.js';
+import { Controller, Get, Module, VelaFactory } from '../index.js';
+import { METADATA_KEYS, defineMetadata, Container } from '../module-kit.js';
+import { createOpenApiDocument } from '../openapi/index.js';
 import {
   registerRouteContributor,
   getRouteContributors,

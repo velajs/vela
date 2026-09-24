@@ -1,10 +1,5 @@
-import {
-  Controller,
-  Get,
-  UseGuards,
-  getTrustedRequestIdentity,
-  setTrustedRequestIdentity,
-} from '@velajs/vela';
+import { Controller, Get, UseGuards } from '@velajs/vela';
+import { getTrustedRequestIdentity, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
 import { betterAuth } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';

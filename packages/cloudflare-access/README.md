@@ -112,7 +112,8 @@ import {
   CloudflareAccessGuard,
   CloudflareAccessModule,
 } from '@velajs/cloudflare-access/vela';
-import { Controller, ENV, Module, Post, UseGuards, type TrustedRequestIdentity } from '@velajs/vela';
+import { Controller, ENV, Module, Post, UseGuards } from '@velajs/vela';
+import type { TrustedRequestIdentity } from '@velajs/vela/module-kit';
 
 @Controller('/posts')
 @UseGuards(CloudflareAccessGuard, PermissionGuard)

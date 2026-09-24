@@ -2,7 +2,7 @@
 
 A full driver-based object-storage system for Vela: a `StorageService` with upload/download/list/presign, pluggable drivers (memory / S3 / R2 / R2-over-HTTP), an optional HTTP upload controller, and framework-free test helpers. Its only runtime dependency is `aws4fetch` (for SigV4 presigning). Subpaths include `.`, `./drivers/memory`, `./drivers/s3`, `./drivers/r2`, `./drivers/r2-http`, `./middleware`, and `./testing`.
 
-> **Two different "storage" surfaces.** `@velajs/storage` (this package) is the full system. `@velajs/vela/storage` (in-core subpath) is **types + helpers only** — the abstract `StorageDriver` contract plus `signUrl`/`verifySignedUrl` and path helpers, with no drivers, module, or service. They are separate, incompatible contracts (`@velajs/vela/storage`'s driver is `upload(body, path, opts)`; this package's is `upload(key, body, opts)`). `@velajs/cloudflare` ships yet another R2-backed `StorageModule`. This doc is about the standalone `@velajs/storage`.
+> **Two different "storage" surfaces.** `@velajs/storage` (this package) is the full system. `@velajs/vela/storage` (in-core subpath) is **types + helpers only** — the abstract `StorageDriver` contract and path helpers, with no drivers, module, or service; the `signUrl`/`verifySignedUrl` primitives come from `@velajs/vela/security`. They are separate, incompatible contracts (`@velajs/vela/storage`'s driver is `upload(body, path, opts)`; this package's is `upload(key, body, opts)`). `@velajs/cloudflare` ships yet another R2-backed `StorageModule`. This doc is about the standalone `@velajs/storage`.
 
 ## Setup — `StorageModule.forRoot`
 

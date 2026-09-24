@@ -13,9 +13,9 @@ import {
   Sse,
   defineProvider,
   registerAs,
-  type RuntimeAdapter,
   type VelaEnv,
 } from '@velajs/vela';
+import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { Test } from '../test.js';
 
 function probe(env: VelaEnv): string | undefined {

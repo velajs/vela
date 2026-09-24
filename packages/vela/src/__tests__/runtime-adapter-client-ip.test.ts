@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Controller, Get, Ip, Module, VelaFactory } from '../index.js';
-import type { RuntimeAdapter } from '../index.js';
+import type { RuntimeAdapter } from '../module-kit.js';
 
 describe('runtime adapter client-IP trust boundary', () => {
   @Controller('/adapter-ip')

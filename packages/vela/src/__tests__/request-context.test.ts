@@ -10,8 +10,8 @@ import {
   REQUEST_CONTEXT,
   Scope,
   VelaFactory,
-  runInEntrypointScope,
 } from '../index.js';
+import { runInEntrypointScope } from '../module-kit.js';
 import type { CallHandler, ExecutionContext, NestInterceptor, RequestContext } from '../index.js';
 
 describe('REQUEST_CONTEXT injectable', () => {

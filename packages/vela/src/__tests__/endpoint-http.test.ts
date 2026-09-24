@@ -3,7 +3,6 @@ import { z } from 'zod';
 import {
   Body,
   Controller,
-  Endpoint,
   Get,
   HttpCode,
   Injectable,
@@ -12,9 +11,9 @@ import {
   UseGuards,
   UseInterceptors,
   VelaFactory,
-  ValidationPipe,
-  defineEndpoint,
 } from '../index';
+import { Endpoint, defineEndpoint } from '../openapi/index';
+import { ValidationPipe } from '../validation/index';
 import type { CanActivate, NestInterceptor } from '../index';
 
 describe('schema-bound HTTP endpoints', () => {

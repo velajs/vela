@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { verifyInvocation } from '../crypto/invocation';
-import { joinStoragePath, signUrl, verifySignedUrl } from '../storage/index.js';
+import { joinStoragePath } from '../storage/index.js';
+import { signUrl, verifySignedUrl } from '../security/index.js';
 import { verifyAndConsumeWebSocketTicket } from '../websocket/socket-ticket';
 
 function seeded(seed: number): () => number {

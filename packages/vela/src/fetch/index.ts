@@ -1,3 +1,6 @@
+// @velajs/vela/http-client — the outbound HTTP client (HttpModule/HttpService).
+import '../metadata';
+
 export { HttpModule } from './fetch.module';
 export { HttpService, HTTP_MODULE_OPTIONS, HttpRequestException } from './fetch.service';
 export { HttpResponseSizeException } from './fetch.utils';

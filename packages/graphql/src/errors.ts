@@ -1,4 +1,5 @@
-import { HttpException, SchemaValidationError } from '@velajs/vela';
+import { HttpException } from '@velajs/vela';
+import { SchemaValidationError } from '@velajs/vela/validation';
 import { GraphQLError } from 'graphql';
 
 export type GraphqlErrorCode =

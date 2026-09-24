@@ -1,6 +1,6 @@
 import type { VelaNonceDurableObject } from './nonce.durable-object';
 import { MAX_NONCE_BYTES, isCanonicalBoundedText, isValidExpiry } from './nonce-validation';
-import type { NonceStore } from '@velajs/vela';
+import type { NonceStore } from '@velajs/vela/security';
 
 const APP_NAMESPACE_PREFIX = 'vela:nonce:v1:';
 const MAX_APP_NAMESPACE_BYTES = 128;

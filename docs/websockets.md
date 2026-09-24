@@ -227,14 +227,8 @@ session token, API key, or other reusable credential in a WebSocket URL. Secure
 same-site cookies plus Origin checks remain preferable when available.
 
 ```ts
-import {
-  Inject,
-  Injectable,
-  InjectEnv,
-  NONCE_STORE,
-  type NonceStore,
-  type VelaEnv,
-} from '@velajs/vela';
+import { Inject, Injectable, InjectEnv, type VelaEnv } from '@velajs/vela';
+import { NONCE_STORE, type NonceStore } from '@velajs/vela/security';
 import {
   WebSocketGateway,
   issueWebSocketTicket,

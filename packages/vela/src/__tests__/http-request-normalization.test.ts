@@ -14,15 +14,17 @@ import {
   UseGuards,
   VelaFactory,
   defineProvider,
-  getRequestContainer,
-  getTrustedRequestIdentity,
-  setTrustedRequestIdentity,
-  setTrustedRequestTenant,
   type CanActivate,
   type ExecutionContext,
   type ExecutionLifetime,
   type RequestContext,
 } from '../index';
+import {
+  getRequestContainer,
+  getTrustedRequestIdentity,
+  setTrustedRequestIdentity,
+  setTrustedRequestTenant,
+} from '../module-kit';
 
 function nativeContext() {
   const pending: Promise<unknown>[] = [];

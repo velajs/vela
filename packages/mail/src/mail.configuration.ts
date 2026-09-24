@@ -1,4 +1,5 @@
-import { InjectionToken, type Container } from '@velajs/vela';
+import { InjectionToken } from '@velajs/vela';
+import type { Container } from '@velajs/vela/module-kit';
 
 /** Structural values are available before options factories or lifecycle hooks run. */
 export const MAIL_QUEUE_REGISTRATION = new InjectionToken<string>('vela:mail:queue-registration');

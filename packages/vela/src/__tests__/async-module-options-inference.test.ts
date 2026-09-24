@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  InjectionToken,
-  type AsyncModuleOptions,
-  type InferToken,
-  type InferTokens,
-  type Token,
-} from '../index.js';
+import { InjectionToken, type AsyncModuleOptions, type Token } from '../index.js';
+import type { InferToken, InferTokens } from '../module-kit.js';
 
 // Compile-time type tests via tuple/equality checks. If any of these fail
 // to typecheck, the regression test file itself won't compile and the
@@ -63,10 +58,9 @@ describe('InferToken / InferTokens', () => {
     // never called at runtime; its body exists only to assert that TS
     // sees `d1: D1Service` and `config: ConfigService` (the access of
     // instance fields fails to compile if inference broke).
-    function _forRootAsync<
-      T,
-      const Inject extends readonly Token[] = readonly Token[],
-    >(opts: AsyncModuleOptions<T, Inject>): AsyncModuleOptions<T, Inject> {
+    function _forRootAsync<T, const Inject extends readonly Token[] = readonly Token[]>(
+      opts: AsyncModuleOptions<T, Inject>,
+    ): AsyncModuleOptions<T, Inject> {
       return opts;
     }
 
@@ -89,7 +83,8 @@ describe('InferToken / InferTokens', () => {
   it('falls back to unknown[] when inject is not a literal tuple', () => {
     type Opts = AsyncModuleOptions<{ ok: true }>;
     // Default Inject — `useFactory` accepts variadic unknown[] (backwards-compat).
-    const opts: Opts = { inject: [],
+    const opts: Opts = {
+      inject: [],
       useFactory: (...args: unknown[]) => {
         void args;
         return { ok: true } as const;

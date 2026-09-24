@@ -2,17 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import {
-  Controller,
-  ApiResponse,
-  Endpoint,
-  Get,
-  Module,
-  Post,
-  VelaFactory,
-  createOpenApiDocument,
-  defineEndpoint,
-} from '@velajs/vela';
+import { Controller, Get, Module, Post, VelaFactory } from '@velajs/vela';
+import { ApiResponse, Endpoint, createOpenApiDocument, defineEndpoint } from '@velajs/vela/openapi';
 import { z } from 'zod/v4';
 import { expect, it } from 'vitest';
 import { generateClientContract } from './client-contract';

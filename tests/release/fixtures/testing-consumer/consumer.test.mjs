@@ -3,14 +3,13 @@ import { expect, it } from 'vitest';
 import {
   Controller,
   Post,
-  SignedInvocation,
-  InternalDispatcher,
   URL_SIGNING_SECRET,
   Injectable,
   InjectionToken,
   REQUEST_CONTEXT,
   defineProvider,
 } from '@velajs/vela';
+import { SignedInvocation, InternalDispatcher } from '@velajs/vela/dispatch';
 import { Test, TestResponse, createTestHttpClient } from '@velajs/testing';
 import '@velajs/testing/websocket-node';
 import { evaluate } from '@velajs/testing/eval';

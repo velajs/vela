@@ -1,17 +1,14 @@
 // @ts-expect-error virtual module supplied by @cloudflare/vitest-plugin
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { Controller, Get, ENV, Module } from '@velajs/vela';
 import {
   CacheResponse,
-  Controller,
-  Get,
-  ENV,
   MemoryCacheInvalidationStore,
   MemoryCacheStore,
-  Module,
   ResponseCacheModule,
   TieredCacheStore,
-} from '@velajs/vela';
+} from '@velajs/vela/cache';
 import { createCloudflareWorker } from '../../cloudflare-factory';
 import { KVCacheStore, KVCacheInvalidationStore } from '../../services/kv-cache.store';
 

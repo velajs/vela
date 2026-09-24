@@ -4,8 +4,6 @@ import {
   APP_GUARD,
   APP_INTERCEPTOR,
   APP_PIPE,
-  ApiResponse,
-  ApiTags,
   Controller,
   Get,
   Global,
@@ -19,8 +17,6 @@ import {
   URL_SIGNING_SECRET,
   UrlGeneratorService,
   VelaFactory,
-  createOpenApiDocument,
-  getRequestContainer,
   type CallHandler,
   type CanActivate,
   type ExecutionContext,
@@ -28,8 +24,10 @@ import {
   type PipeTransform,
   type RequestContext,
 } from '../../index';
+import { ApiResponse, ApiTags, createOpenApiDocument } from '../../openapi/index';
+import { getRequestContainer } from '../../module-kit';
 import { I18nModule, I18nService } from '../../i18n';
-import { signUrl, verifySignedUrl } from '../../storage';
+import { signUrl, verifySignedUrl } from '../../security/index';
 import type { VelaApplication } from '../../application';
 
 // Smoke-test app for the workerd live-runtime suite. Each route exercises

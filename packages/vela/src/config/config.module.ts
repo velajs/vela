@@ -2,7 +2,7 @@ import { Container } from '../container/container';
 import { defineProvider, InjectionToken } from '../container/types';
 import type { DynamicModule } from '../module/types';
 import { defineModule } from '../module/define-module';
-import { attachModuleIdentity } from '../module/module-identity';
+import { attachModuleIdentity } from '../module/module-fingerprints';
 import { ConfigService } from './config.service';
 import { ConfigStore } from './config.store';
 import { CONFIG_OPTIONS } from './config.tokens';

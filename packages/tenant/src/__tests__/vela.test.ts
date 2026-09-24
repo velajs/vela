@@ -1,15 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  Controller,
-  Get,
-  Inject,
-  Module,
-  Reflector,
-  UseGuards,
-  VelaFactory,
-  setTrustedRequestIdentity,
-  clearTrustedRequestIdentity,
-} from '@velajs/vela';
+import { Controller, Get, Inject, Module, Reflector, UseGuards, VelaFactory } from '@velajs/vela';
+import { setTrustedRequestIdentity, clearTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { MemoryTenantRegistryStore, TenantRegistry, type TenantContextReader } from '../index';
 import {
   TenantModule,

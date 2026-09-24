@@ -10,8 +10,9 @@
  * `registerRouteContributor` call) into the graph even under
  * `sideEffects: false`.
  */
-import { Controller, defineMetadata, registerRouteContributor } from '@velajs/vela';
-import type { RouteContributor } from '@velajs/vela';
+import { Controller } from '@velajs/vela';
+import { defineMetadata, registerRouteContributor } from '@velajs/vela/module-kit';
+import type { RouteContributor } from '@velajs/vela/module-kit';
 import { STUDIO_DEFAULT_PATH } from '@velajs/studio-protocol';
 import { STUDIO_ADMIN_META } from '../tokens';
 import { StudioAppHolder } from '../introspect/app-holder';

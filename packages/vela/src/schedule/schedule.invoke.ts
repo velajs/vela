@@ -1,5 +1,4 @@
 import type { Container } from '../container/container';
-import { InternalDispatcher } from '../dispatch/index';
 import type { Entrypoint } from '../entrypoint/entrypoint.types';
 import { resolveEntrypoint } from '../entrypoint/execution-context';
 import { runInEntrypointScope } from '../entrypoint/execution-scope';
@@ -9,6 +8,7 @@ import {
   scheduledJobGuardsMessage,
   scheduledJobName,
 } from './schedule.diagnostics';
+import { getSignedScheduleRunner } from './schedule.signed';
 import { SCHEDULE_DISPATCH } from './schedule.tokens';
 import type {
   CronMetadata,
@@ -53,7 +53,10 @@ function jobRef(
  *   closed: it is refused, without being resolved, rather than run unguarded.
  * - **Signed**: with `ScheduleModule.forRoot({ dispatch: { kind: 'signed' } })`
  *   the job re-enters its route through `InternalDispatcher`, so that route runs
- *   the full request pipeline, including global guards.
+ *   the full request pipeline, including global guards. The policy
+ *   `ScheduleModule.forRoot()` contributes brings that dispatch with it, so a
+ *   runtime that fires jobs does not bundle the signing code; a signed policy
+ *   provided any other way is refused.
  *
  * A failure is reported once on the `schedule` edge and rethrown for the caller
  * to settle (the Node executor keeps running; a platform trigger fails). An
@@ -79,15 +82,15 @@ export async function invokeScheduledJob(
       ? await container.resolveAsync(SCHEDULE_DISPATCH)
       : undefined;
     if (dispatch?.kind === 'signed') {
-      if (!container.has(InternalDispatcher))
-        throw new Error('Signed schedule dispatch requires InternalDispatcher.');
-      const dispatcher = await container.resolveAsync(InternalDispatcher);
-      await dispatcher.run(dispatch.target(job), {
-        method: dispatch.method,
-        ttlSeconds: dispatch.ttlSeconds,
-        iss: `schedule:${job.methodName}`,
-        signal: invocation.signal,
-      });
+      const run = getSignedScheduleRunner(dispatch);
+      if (!run) {
+        throw new Error(
+          `${context.source}: a signed SCHEDULE_DISPATCH policy re-enters its routes only ` +
+            `through ScheduleModule.forRoot({ dispatch }), which supplies the signed dispatch. ` +
+            `Configure the policy there instead of providing SCHEDULE_DISPATCH yourself.`,
+        );
+      }
+      await run(container, job, invocation.signal);
       return;
     }
     if (scheduledJobComponents(container, entry).includes('@UseGuards')) {

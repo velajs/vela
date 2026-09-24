@@ -1,16 +1,8 @@
 import { sessionFixture } from './fixtures';
 import { RolesGuard, Roles } from '@velajs/authz/vela';
-import {
-  Controller,
-  Get,
-  Module,
-  Reflector,
-  Req,
-  ThrottlerModule,
-  UseGuards,
-  VelaFactory,
-  getTrustedRequestIdentity,
-} from '@velajs/vela';
+import { Controller, Get, Module, Reflector, Req, UseGuards, VelaFactory } from '@velajs/vela';
+import { ThrottlerModule } from '@velajs/vela/throttler';
+import { getTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@velajs/vela';
 import {

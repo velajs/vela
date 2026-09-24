@@ -1,8 +1,10 @@
 # Authoring Vela Modules
 
 The contract for building a Vela feature module — first-party or third-party.
-Everything here is public API from `@velajs/vela`; a module never needs
-`@velajs/vela/internal`.
+Everything here is public API: the application kit from `@velajs/vela` and the
+module-author seams (discovery, entrypoint kinds, execution scopes, the
+pipeline runner, `stableHash` and the other helpers) from
+`@velajs/vela/module-kit`. A module never needs `@velajs/vela/internal`.
 
 ## Configurable modules with `defineModule`
 
@@ -11,7 +13,8 @@ and registers providers from the module's options. Use `defineProvider` to check
 each provider against its token and infer factory dependencies:
 
 ```ts
-import { defineModule, defineProvider, InjectionToken, stableHash } from '@velajs/vela';
+import { defineModule, defineProvider, InjectionToken } from '@velajs/vela';
+import { stableHash } from '@velajs/vela/module-kit';
 
 export interface StorageDriver {
   read(key: string): Promise<string | undefined>;

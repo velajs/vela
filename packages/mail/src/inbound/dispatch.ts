@@ -1,14 +1,14 @@
+import type { Type } from '@velajs/vela';
 import {
   buildEntrypointExecutionContext,
-  type Container,
   type EntrypointRegistry,
   PipelineRunner,
   resolveErrorReporter,
   resolveScopedComponentsAsync,
   runInEntrypointScope,
   shouldFilterCatch,
-  type Type,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
 import { MailError } from '../mail.error';
 import { MAIL_INBOUND_GATE } from '../mail.tokens';
 import { DEFAULT_INBOUND_GATE, evaluateInboundGate } from './gate';

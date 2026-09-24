@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Controller, Get, Injectable, Module, ScheduleModule, VelaFactory } from '@velajs/vela';
+import { Controller, Get, Injectable, Module, VelaFactory } from '@velajs/vela';
+import { ScheduleModule } from '@velajs/vela/schedule';
 import type { ProviderDefinition, Type } from '@velajs/vela';
 import { AdminRpc, AdminLogBuffer, StudioModule } from '../src';
 import type { StudioModuleOptions } from '../src';

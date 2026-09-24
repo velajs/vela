@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  Container,
-  DiscoveryService,
   Scope,
   defineProvider,
   Controller,
@@ -10,7 +8,8 @@ import {
   Module,
   VelaFactory,
 } from '@velajs/vela';
-import type { ContributesEntrypoints, RouteDescription } from '@velajs/vela';
+import { Container, DiscoveryService } from '@velajs/vela/module-kit';
+import type { ContributesEntrypoints, RouteDescription } from '@velajs/vela/module-kit';
 import { parseStudioRpcResponse } from '@velajs/studio-protocol';
 import {
   StudioAppHolder,

@@ -1,16 +1,15 @@
 import {
   Body,
   Controller,
-  Cron,
   Get,
   InjectEnv,
   Injectable,
   Module,
   Param,
   Post,
-  type CronInvocation,
   type VelaEnv,
 } from '@velajs/vela';
+import { Cron, type CronInvocation } from '@velajs/vela/schedule';
 import { QueueConsumer, createCloudflareApp, createCloudflareWorker } from '@velajs/cloudflare';
 import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import {

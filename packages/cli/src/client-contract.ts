@@ -1,4 +1,4 @@
-import type { HttpVerb } from '@velajs/vela';
+import type { HttpVerb } from '@velajs/vela/openapi';
 import { parseClientContractDocument } from './client-contract-input.js';
 import type {
   ContractOperation,

@@ -1,5 +1,5 @@
 import { InjectionToken } from '../container/types';
-import type { InvocationTransport, NonceStore } from './types';
+import type { InvocationTransport } from './types';
 
 /**
  * Header carrying the signed invocation token on an internal re-entry request.
@@ -13,7 +13,9 @@ export const INVOCATION_HEADER = 'x-vela-invocation';
  * `app.fetch` short-circuit). {@link InternalDispatcher} resolves it lazily at
  * `run()` time — so it need not exist when the dispatcher is constructed.
  */
-export const INVOCATION_TRANSPORT = new InjectionToken<InvocationTransport>('INVOCATION_TRANSPORT');
+export const INVOCATION_TRANSPORT = /* @__PURE__ */ new InjectionToken<InvocationTransport>(
+  'INVOCATION_TRANSPORT',
+);
 
 /**
  * Optional dedicated HMAC secret for invocation tokens. Falls back to
@@ -21,7 +23,6 @@ export const INVOCATION_TRANSPORT = new InjectionToken<InvocationTransport>('INV
  * `@SignedInvocation`; the `aud` tag keeps the two token families
  * non-interchangeable. Provide it to enforce key separation.
  */
-export const INVOCATION_SIGNING_SECRET = new InjectionToken<string>('INVOCATION_SIGNING_SECRET');
-
-/** Overridable {@link NonceStore} token; defaults to `MemoryNonceStore`. */
-export const NONCE_STORE = new InjectionToken<NonceStore>('NONCE_STORE');
+export const INVOCATION_SIGNING_SECRET = /* @__PURE__ */ new InjectionToken<string>(
+  'INVOCATION_SIGNING_SECRET',
+);

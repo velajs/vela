@@ -1,16 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import {
-  Body,
-  Controller,
-  Injectable,
-  Module,
-  Post,
-  UsePipes,
-  ValidationPipe,
-  VelaFactory,
-} from '../index.js';
-import type { ArgumentMetadata, PipeType, Type } from '../index.js';
+import { Body, Controller, Injectable, Module, Post, UsePipes, VelaFactory } from '../index.js';
+import { ValidationPipe } from '../validation/index.js';
+import type { ArgumentMetadata, Type } from '../index.js';
+import type { PipeType } from '../module-kit.js';
 
 // A class metatype that carries its schema: the handler's `design:paramtypes`
 // hands it to a ValidationPipe constructed without an explicit schema.

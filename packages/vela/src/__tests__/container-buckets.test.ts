@@ -1,14 +1,8 @@
 import { defineProvider } from '../container/types';
 import { describe, expect, it } from 'vitest';
-import {
-  Container,
-  Inject,
-  Injectable,
-  InjectionToken,
-  ModuleVisibilityError,
-  MultipleProvidersFoundError,
-  ROOT_MODULE_ID,
-} from '../index.js';
+import { Inject, Injectable, InjectionToken } from '../index.js';
+import { ROOT_MODULE_ID } from '../internal.js';
+import { Container, ModuleVisibilityError, MultipleProvidersFoundError } from '../module-kit.js';
 
 const TOKEN = new InjectionToken<string>('BUCKET_TOKEN');
 

@@ -3,7 +3,6 @@ import {
   Catch,
   UseFilters,
   defineProvider,
-  getExecutionLifetime,
   Inject,
   Injectable,
   InjectionToken,
@@ -12,6 +11,7 @@ import {
   UseGuards,
   VelaFactory,
 } from '../index';
+import { getExecutionLifetime } from '../module-kit';
 import type { CanActivate, ExecutionContext } from '../index';
 import { dispatchQueueJob, inline, Process, Processor, QueueModule, queueToken } from '../queue';
 

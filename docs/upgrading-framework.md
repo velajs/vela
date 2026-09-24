@@ -7,6 +7,22 @@ integrations together using their published dependency ranges; consult each
 package's changelog for its version. A prepared version in this repository becomes
 installable only after publication to npm.
 
+## Import paths
+
+`@velajs/vela` exports each name from exactly one entry point. The root is the
+application kit: the factory, modules and dependency injection, controllers and
+their decorators, the request pipeline, HTTP exceptions, `ConfigModule` and
+`Logger`. Integrations and runtime adapters import `Container`,
+`MetadataRegistry`, discovery, entrypoint kinds, execution scopes,
+`PipelineRunner`, route contributors and `invokeScheduledJob` from
+`@velajs/vela/module-kit`. Optional features have their own subpaths: `/cache`,
+`/throttler`, `/schedule`, `/events`, `/health`, `/logging`, `/http-client`,
+`/openapi`, `/security`, `/dispatch`, `/validation` and `/websocket`.
+`@velajs/vela/internal` keeps only bootstrap plumbing. `@velajs/cloudflare` no
+longer re-exports the WebSocket gateway API; import it from
+`@velajs/vela/websocket`. The `@velajs/vela` changelog lists every moved name
+with its new import path.
+
 ## Dependency injection and module ownership
 
 A provider token registered in two modules now has a separate cached instance for

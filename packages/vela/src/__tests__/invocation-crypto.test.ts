@@ -4,8 +4,8 @@ import {
   verifyInvocation,
   INVOCATION_AUDIENCE,
   INVOCATION_DEFAULT_TTL_SECONDS,
-} from '../index.js';
-import type { InvocationClaim } from '../index.js';
+} from '../dispatch/index.js';
+import type { InvocationClaim } from '../dispatch/index.js';
 
 const SECRET = 'invocation-signing-secret';
 

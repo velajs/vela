@@ -15,7 +15,7 @@
  */
 
 import type { Context } from 'hono';
-import { getRequestContainer } from '@velajs/vela';
+import { getRequestContainer } from '@velajs/vela/module-kit';
 import { LiveInvalidation, stampCommitHeaders } from '@velajs/vela/live';
 import type { EngineResult } from './kernel/engine-request';
 import type { RuntimeCrudConfig, CrudLiveConfig } from './crud.types';

@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
-  CacheResponse,
-  Cacheable,
-  setTrustedRequestIdentity,
   Controller,
   Get,
   Post,
@@ -13,6 +10,11 @@ import {
   Module,
   UseGuards,
   VelaFactory,
+  type ExecutionContext,
+} from '../index';
+import {
+  CacheResponse,
+  Cacheable,
   ResponseCacheModule,
   ResponseCacheService,
   MemoryCacheStore,
@@ -20,9 +22,9 @@ import {
   CacheService,
   type AsyncCacheStore,
   type CacheInvalidationStore,
-  type ExecutionContext,
   type ResponseCacheScope,
-} from '../index';
+} from '../cache/index';
+import { setTrustedRequestIdentity } from '../module-kit';
 
 class AsyncStore implements AsyncCacheStore {
   readonly values = new Map<string, unknown>();

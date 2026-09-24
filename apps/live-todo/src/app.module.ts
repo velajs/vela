@@ -12,9 +12,8 @@ import {
   Param,
   Post,
   Res,
-  WebSocketGateway,
-  WebSocketModule,
 } from '@velajs/vela';
+import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
 import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
 import type { UpgradeAuthenticator, WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
 import {

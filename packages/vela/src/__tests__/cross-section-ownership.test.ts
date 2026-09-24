@@ -9,11 +9,11 @@ import {
   Scope,
   UseGuards,
   VelaFactory,
-  defineDynamicModule,
   defineProvider,
   type CanActivate,
   type ExecutionContext,
 } from '../index';
+import { defineDynamicModule } from '../module-kit';
 
 describe('module ownership across HTTP guards and async DI', () => {
   it('keeps two dynamic registrations and two applications isolated through the pipeline', async () => {

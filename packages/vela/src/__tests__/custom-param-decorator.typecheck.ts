@@ -1,4 +1,5 @@
-import { createLazyParamDecorator, createParamDecorator, ParseIntPipe } from '../index';
+import { createParamDecorator, ParseIntPipe } from '../index';
+import { createLazyParamDecorator } from '../module-kit';
 
 const Required = createParamDecorator((data: string) => data);
 Required('x');

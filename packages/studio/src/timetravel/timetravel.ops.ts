@@ -16,7 +16,8 @@
  * restore returned (`armRestore({ bookmark: undoMark })`), which itself yields a
  * fresh undo mark — so undo is reversible too.
  */
-import { Container, Inject, Injectable } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import type {
   RestoreOutcome,
   RestorePreview,

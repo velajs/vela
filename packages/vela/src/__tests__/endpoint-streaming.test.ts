@@ -1,7 +1,8 @@
 import { Context } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { ApiResponse, Controller, Get, Module, VelaFactory } from '../index';
+import { Controller, Get, Module, VelaFactory } from '../index';
+import { ApiResponse } from '../openapi/index';
 import { defineEndpoint, Endpoint } from '../openapi/endpoint';
 import { createOpenApiDocument } from '../openapi/document';
 import { mapEndpointResponse } from '../http/endpoint-executor';

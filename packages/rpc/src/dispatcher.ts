@@ -1,25 +1,18 @@
 /* eslint-disable no-await-in-loop -- Pipes and exception filters preserve declared pipeline order. */
 import { codeForStatus, toErrorBody, VelaError } from '@velajs/errors';
+import { HttpException } from '@velajs/vela';
 import {
   buildHttpExecutionContext,
   createDiscoverableDecorator,
   getRequestContainer,
-  HttpException,
   PipelineRunner,
   resolveErrorReporter,
   resolvePipelineComponents,
   resolveScopedComponentsAsync,
   shouldFilterCatch,
-} from '@velajs/vela';
-import type {
-  AdapterContext,
-  ExceptionFilter,
-  HttpExecutionContext,
-  RuntimeAdapter,
-  Token,
-  Type,
-  VelaContext,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
+import type { ExceptionFilter, HttpExecutionContext, Token, Type, VelaContext } from '@velajs/vela';
+import type { AdapterContext, RuntimeAdapter } from '@velajs/vela/module-kit';
 import {
   isValidationSchema,
   parseSchemaAsync,

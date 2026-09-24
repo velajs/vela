@@ -1,14 +1,12 @@
 import {
-  Cron,
   EXECUTION_LIFETIME,
   Inject,
   Injectable,
   Module,
-  ScheduleModule,
   Scope,
-  type CronInvocation,
   type ExecutionLifetime,
 } from '@velajs/vela';
+import { Cron, ScheduleModule, type CronInvocation } from '@velajs/vela/schedule';
 import {
   CLOUDFLARE_SCHEDULED_EVENT,
   createCloudflareWorker,

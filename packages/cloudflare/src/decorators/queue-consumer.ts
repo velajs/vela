@@ -1,4 +1,4 @@
-import { defineMetadata, getMetadata, registerEntrypointKind } from '@velajs/vela';
+import { defineMetadata, getMetadata, registerEntrypointKind } from '@velajs/vela/module-kit';
 
 const QUEUE_CONSUMER_METADATA_KEY = 'cloudflare:queue-consumer';
 

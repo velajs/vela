@@ -1,20 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Param,
-  Query,
-  Body,
-  Module,
-  defineDto,
-  ValidationPipe,
-  createOpenApiDocument,
-  ApiDoc,
-  ApiTags,
-} from '../index.js';
+import { Controller, Get, Post, Delete, Param, Query, Body, Module } from '../index.js';
+import { defineDto, ValidationPipe } from '../validation/index.js';
+import { createOpenApiDocument, ApiDoc, ApiTags } from '../openapi/index.js';
 
 describe('createOpenApiDocument — document shape', () => {
   it('produces a 3.1 document with info and empty paths for an empty module', () => {

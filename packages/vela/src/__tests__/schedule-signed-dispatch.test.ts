@@ -7,9 +7,9 @@ import {
   Controller,
   Post,
   Injectable,
-  SignedInvocation,
   URL_SIGNING_SECRET,
 } from '../index.js';
+import { SignedInvocation } from '../dispatch/index.js';
 import {
   ScheduleModule,
   Interval,

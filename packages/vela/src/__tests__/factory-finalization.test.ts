@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Injectable, Module, VelaFactory, type RuntimeAdapter } from '../index';
+import { Injectable, Module, VelaFactory } from '../index';
+import type { RuntimeAdapter } from '../module-kit';
 
 describe('application finalization cleanup', () => {
   it('always disposes resources when shutdown hooks fail and shares shutdown completion', async () => {

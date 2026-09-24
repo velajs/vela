@@ -2,11 +2,9 @@ import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   Catch,
-  Container,
   Inject,
   Injectable,
   InjectionToken,
-  MissingInjectionMetadataError,
   Module,
   ModuleRef,
   Optional,
@@ -14,6 +12,7 @@ import {
   defineProvider,
   forwardRef,
 } from '../index';
+import { Container, MissingInjectionMetadataError } from '../module-kit';
 import type { ExceptionFilter, MiddlewareConsumer, NestModule } from '../index';
 
 afterEach(() => {

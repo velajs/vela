@@ -1,14 +1,18 @@
 # WebSocket Gateways
 
-Real-time gateways with a runtime-agnostic core (`@velajs/vela/websocket`, also re-exported from the main barrel) and pluggable transports. Same gateway code runs on Node/Bun/Deno and Cloudflare Durable Objects.
+Real-time gateways with a runtime-agnostic core (`@velajs/vela/websocket`, the only import path for gateways; `@velajs/cloudflare` does not re-export them) and pluggable transports. Same gateway code runs on Node/Bun/Deno and Cloudflare Durable Objects.
 
 ## Gateway basics
 
 ```ts
 import {
-  WebSocketGateway, SubscribeMessage, MessageBody, ConnectedSocket, WebSocketServer,
-} from '@velajs/vela';
-import type { WsClient, WsServer, OnGatewayConnection } from '@velajs/vela';
+  WebSocketGateway,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
+  WebSocketServer,
+} from '@velajs/vela/websocket';
+import type { WsClient, WsServer, OnGatewayConnection } from '@velajs/vela/websocket';
 
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway implements OnGatewayConnection {
@@ -47,7 +51,7 @@ Throw `WsException(errorOrObject)` to send an `{ event: 'exception', data }` fra
 ## Module & sync driver
 
 ```ts
-import { WebSocketModule } from '@velajs/vela';
+import { WebSocketModule } from '@velajs/vela/websocket';
 
 @Module({ imports: [WebSocketModule.forRoot({})], providers: [ChatGateway] })
 class AppModule {}

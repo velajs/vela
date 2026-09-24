@@ -11,7 +11,8 @@
  *   `crudResourceToken(name)` (options-derived providers, queue-style).
  */
 
-import { Container, defineModule, defineProvider, stableHash } from '@velajs/vela';
+import { defineModule, defineProvider } from '@velajs/vela';
+import { Container, stableHash } from '@velajs/vela/module-kit';
 import type { DynamicModule } from '@velajs/vela';
 import type { CrudAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';

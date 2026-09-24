@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Controller, Get, Module, Post, SecurityModule, VelaFactory } from '../index.js';
+import { Controller, Get, Module, Post, VelaFactory } from '../index.js';
+import { SecurityModule } from '../security/index.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();

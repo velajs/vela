@@ -2,22 +2,23 @@ import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   Controller,
-  DiscoveryService,
   Get,
   Injectable,
   InjectionToken,
   Module,
   Scope,
   VelaFactory,
-  WebSocketModule,
-  WS_SERVER,
+} from '../index.js';
+import {
+  DiscoveryService,
   createDiscoverableDecorator,
   registerEntrypointKind,
   runInEntrypointScope,
-} from '../index.js';
+  Container,
+} from '../module-kit.js';
+import { WebSocketModule, WS_SERVER } from '../websocket/index.js';
 import { _resetEntrypointKinds } from '../entrypoint/entrypoint.registry.js';
-import type { ContributesEntrypoints, Entrypoint, RuntimeAdapter } from '../index.js';
-import { Container } from '../internal.js';
+import type { ContributesEntrypoints, Entrypoint, RuntimeAdapter } from '../module-kit.js';
 
 beforeEach(() => {
   _resetEntrypointKinds();

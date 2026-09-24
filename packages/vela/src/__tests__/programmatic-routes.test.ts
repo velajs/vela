@@ -8,15 +8,12 @@ import {
   Body,
   Module,
   Injectable,
-  MetadataRegistry,
-  ParamType,
-  defineDto,
-  ValidationPipe,
-  createOpenApiDocument,
   createParamDecorator,
-  getRequestContainer,
   REQUEST_CONTEXT,
 } from '../index.js';
+import { MetadataRegistry, ParamType, getRequestContainer } from '../module-kit.js';
+import { defineDto, ValidationPipe } from '../validation/index.js';
+import { createOpenApiDocument } from '../openapi/index.js';
 
 // =============================================================================
 // Programmatic routes with explicit param `metatype`

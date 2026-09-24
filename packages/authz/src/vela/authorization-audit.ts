@@ -1,12 +1,10 @@
+import type { CanActivate, Token, Type } from '@velajs/vela';
 import {
   MetadataRegistry,
   getScopedComponents,
   type AdapterContext,
-  type CanActivate,
   type RuntimeAdapter,
-  type Token,
-  type Type,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import { AUTHZ } from './tokens';
 import { RequirePermission } from './require-permission.decorator';
 import { Roles } from './roles.decorator';

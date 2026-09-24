@@ -12,7 +12,8 @@
  * Write ops (`data.writeRow`/`deleteRows`/`clearTable`/`generateRows`) are M7 and
  * intentionally have no handler here.
  */
-import { Container, Inject, Injectable } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import type {
   CascadePreviewRequest,
   CascadePreviewResponse,

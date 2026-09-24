@@ -1,16 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import {
-  Controller,
-  Get,
-  Post,
-  Module,
-  defineDto,
-  createOpenApiDocument,
-  ApiResponse,
-  HttpCode,
-  VelaFactory,
-} from '../index.js';
+import { Controller, Get, Post, Module, HttpCode, VelaFactory } from '../index.js';
+import { defineDto } from '../validation/index.js';
+import { createOpenApiDocument, ApiResponse } from '../openapi/index.js';
 import type { Type } from '../index.js';
 
 describe('@ApiResponse', () => {

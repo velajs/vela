@@ -16,7 +16,9 @@ export interface ExecutionLifetime {
   waitUntil(work: Promise<unknown>): void;
 }
 
-export const EXECUTION_LIFETIME = new InjectionToken<ExecutionLifetime>('vela.ExecutionLifetime');
+export const EXECUTION_LIFETIME = /* @__PURE__ */ new InjectionToken<ExecutionLifetime>(
+  'vela.ExecutionLifetime',
+);
 
 export interface ExecutionScopeOptions {
   readonly signal?: AbortSignal;

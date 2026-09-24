@@ -7,15 +7,19 @@ import {
   Controller,
   Injectable,
   Post,
+  URL_SIGNING_SECRET,
+} from '../index.js';
+import {
   SignedInvocation,
   InternalDispatcher,
-  MultipleProvidersFoundError,
-  NONCE_STORE,
-  URL_SIGNING_SECRET,
   INVOCATION_AUDIENCE,
   signInvocation,
-} from '../index.js';
-import type { InvocationClaim, NonceStore, RuntimeAdapter } from '../index.js';
+} from '../dispatch/index.js';
+import { MultipleProvidersFoundError } from '../module-kit.js';
+import { NONCE_STORE } from '../security/index.js';
+import type { InvocationClaim } from '../dispatch/index.js';
+import type { NonceStore } from '../security/index.js';
+import type { RuntimeAdapter } from '../module-kit.js';
 
 const SECRET = 'guard-signing-secret';
 const HEADER = 'x-vela-invocation';

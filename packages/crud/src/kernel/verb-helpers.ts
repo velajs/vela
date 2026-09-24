@@ -14,7 +14,11 @@ import { validatePredicate, matchesPredicate } from '../query/predicate';
  * `adapter.transaction()`; D1 rejects unsupported callback transactions.
  */
 
-import { parseSchemaAsync, SchemaValidationError, type StandardSchemaV1 } from '@velajs/vela';
+import {
+  parseSchemaAsync,
+  SchemaValidationError,
+  type StandardSchemaV1,
+} from '@velajs/vela/validation';
 import type { AdapterScope, TransactionContext } from '../adapter/contract';
 import type { FilterCondition, ListQuery, Lookup } from '../adapter/query-types';
 import {

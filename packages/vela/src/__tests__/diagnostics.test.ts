@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Injectable, Module, UnresolvedDependencyError, VelaFactory } from '../index.js';
-import { Container } from '../internal.js';
+import { Injectable, Module, VelaFactory } from '../index.js';
+import { UnresolvedDependencyError, Container } from '../module-kit.js';
 
 afterEach(() => {
   vi.restoreAllMocks();

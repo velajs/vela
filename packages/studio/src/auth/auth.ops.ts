@@ -10,7 +10,8 @@
  * `auth.revokeSession` is `mode: write, gate: opsEditable` in `STUDIO_OP_META`,
  * so a read-only Studio 403s it before it reaches the handler.
  */
-import { Container, Inject, Injectable } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import type {
   AuthOrgRow,
   AuthSessionRow,

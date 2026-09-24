@@ -25,7 +25,7 @@ export interface VelaEnv {}
  * and a required read without one fails. Framework readers inject it with
  * `@Optional()` and validate each value they use.
  */
-export const ENV = new InjectionToken<VelaEnv>('ENV');
+export const ENV = /* @__PURE__ */ new InjectionToken<VelaEnv>('ENV');
 
 /** Inject the application's {@link ENV}: `constructor(@InjectEnv() env: VelaEnv)`. */
 export function InjectEnv(): ParameterDecorator {

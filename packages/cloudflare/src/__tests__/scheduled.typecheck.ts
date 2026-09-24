@@ -1,4 +1,5 @@
-import { Cron, type InjectionToken, type ScheduleInvocation, type VelaEnv } from '@velajs/vela';
+import type { InjectionToken, VelaEnv } from '@velajs/vela';
+import { Cron, type ScheduleInvocation } from '@velajs/vela/schedule';
 import type { createCloudflareWorker } from '../cloudflare-factory';
 import type { CloudflareApplication } from '../cloudflare-application';
 import {

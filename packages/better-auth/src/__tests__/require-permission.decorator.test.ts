@@ -1,5 +1,5 @@
 import { RequirePermission } from '@velajs/authz/vela';
-import { MetadataRegistry } from '@velajs/vela';
+import { MetadataRegistry } from '@velajs/vela/module-kit';
 import { describe, expect, it } from 'vitest';
 import { REQUIRE_PERMISSION_KEY } from '@velajs/authz/vela';
 

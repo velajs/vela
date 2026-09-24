@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Reflector, getMetadata } from '../../index';
+import { Reflector } from '../../index';
+import { getMetadata } from '../../module-kit';
 
 // Applications declare typed decorators at module scope. The pool evaluates
 // test modules inside a request, so the global-scope restriction itself is

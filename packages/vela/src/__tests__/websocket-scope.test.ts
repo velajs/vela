@@ -11,12 +11,13 @@ import {
   UsePipes,
   UseFilters,
   UseInterceptors,
-  ValidationPipe,
   VelaFactory,
   defineProvider,
-  getExecutionLifetime,
 } from '../index';
-import type { CanActivate, ExecutionContext, Container, CallHandler } from '../index';
+import { ValidationPipe } from '../validation/index';
+import { getExecutionLifetime } from '../module-kit';
+import type { CanActivate, ExecutionContext, CallHandler } from '../index';
+import type { Container } from '../module-kit';
 import {
   WebSocketGateway,
   WebSocketModule,

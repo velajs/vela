@@ -4,9 +4,10 @@
  * with no token configured, `health` reports `{ enabled: false }` and every
  * other route 404s `STUDIO_DISABLED` (existence-hiding).
  */
-import { readJsonBody, UnsupportedMediaTypeException } from '@velajs/vela';
+import { UnsupportedMediaTypeException } from '@velajs/vela';
+import { readJsonBody } from '@velajs/vela/module-kit';
 import type { VelaContext as Context, VelaHono as Hono } from '@velajs/vela';
-import type { Container, RouteContributorContext } from '@velajs/vela';
+import type { Container, RouteContributorContext } from '@velajs/vela/module-kit';
 import {
   STUDIO_EXPORT_SUFFIX,
   STUDIO_HEALTH_SUFFIX,

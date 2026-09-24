@@ -2,17 +2,13 @@ import { z } from 'zod';
 import { matchesPredicate } from '@velajs/crud/query';
 import { bindAdapter } from '@velajs/crud/adapter';
 import { describe, expect, it, vi } from 'vitest';
+import { Injectable, defineProvider, Controller, Module, VelaFactory } from '@velajs/vela';
 import {
   Container,
   DiscoveryService,
-  Injectable,
-  defineProvider,
-  Controller,
   METADATA_KEYS,
-  Module,
-  VelaFactory,
   defineMetadata,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import {
   CRUD_DATABASES,
   CRUD_DEFAULT_ADAPTER,

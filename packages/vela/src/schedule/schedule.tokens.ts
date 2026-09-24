@@ -10,7 +10,9 @@ export const INTERVAL_METADATA = 'vela:interval';
  * `ScheduleModule.forRoot({ dispatch })` and read by `invokeScheduledJob` on
  * every runtime. Absent ⇒ direct in-isolate invocation (default).
  */
-export const SCHEDULE_DISPATCH = new InjectionToken<ScheduleDispatchMode>('vela:schedule:dispatch');
+export const SCHEDULE_DISPATCH = /* @__PURE__ */ new InjectionToken<ScheduleDispatchMode>(
+  'vela:schedule:dispatch',
+);
 
 /**
  * Optional, runtime-neutral hook a runtime adapter provides so a scheduled job
@@ -28,6 +30,6 @@ export const SCHEDULE_DISPATCH = new InjectionToken<ScheduleDispatchMode>('vela:
  * });
  * ```
  */
-export const SCHEDULE_INVOCATION_SEED = new InjectionToken<ScheduleInvocationSeed>(
+export const SCHEDULE_INVOCATION_SEED = /* @__PURE__ */ new InjectionToken<ScheduleInvocationSeed>(
   'vela:schedule:invocation-seed',
 );

@@ -6,7 +6,7 @@ import {
   ResponseCacheModule,
   type ResponseCacheOptions,
   type AsyncCacheStore,
-} from '../src/index';
+} from '../src/cache/index';
 
 const sync = new CacheService(new MemoryCacheStore());
 const write: void = sync.set('key', 1);

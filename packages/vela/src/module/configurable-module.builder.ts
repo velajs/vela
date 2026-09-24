@@ -7,7 +7,7 @@ import type {
   DefineConfigurableModuleSpec,
 } from './configurable-module.types';
 import { defineModule, type DefineModuleSpec } from './define-module';
-import { attachModuleIdentity } from './module-identity';
+import { attachModuleIdentity } from './module-fingerprints';
 import { stableHash } from './stable-hash';
 
 /**

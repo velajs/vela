@@ -1,6 +1,5 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import {
-  Container,
   defineProvider,
   VelaFactory,
   Module,
@@ -9,13 +8,13 @@ import {
   InjectionToken,
   ConfigModule,
   ConfigService,
-  ConfigStore,
-  CONFIG_OPTIONS,
   registerAs,
   type ConfigShape,
   type ConfigType,
   type VelaEnv,
 } from '../index.js';
+import { ConfigStore, CONFIG_OPTIONS } from '../internal.js';
+import { Container } from '../module-kit.js';
 
 /** Validate one synthetic string binding, as a namespace factory should. */
 function binding(env: VelaEnv, key: string): string | undefined {

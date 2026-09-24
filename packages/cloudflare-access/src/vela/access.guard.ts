@@ -3,12 +3,14 @@ import {
   Inject,
   Injectable,
   UnauthorizedException,
-  clearTrustedRequestIdentity,
-  setTrustedRequestIdentity,
-  getTrustedContextRequest,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
+import {
+  clearTrustedRequestIdentity,
+  setTrustedRequestIdentity,
+  getTrustedContextRequest,
+} from '@velajs/vela/module-kit';
 import type { ResolveIdentity } from '../types';
 import {
   ACCESS_MODULE_OPTIONS,
