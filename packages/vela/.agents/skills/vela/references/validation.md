@@ -60,15 +60,19 @@ behavior, with the existing request scope retained until the body settles.
 ## Parameter decorators with named descriptors
 
 ```ts
-import { Body, Post } from '@velajs/vela';
+import { Body, Controller, Post } from '@velajs/vela';
 import { defineDto } from '@velajs/vela/validation';
+import { z } from 'zod';
 
 const CreateProduct = defineDto(z.object({ name: z.string().min(1) }), { name: 'CreateProduct' });
 type CreateProduct = ReturnType<typeof CreateProduct.parse>;
 
-@Post()
-create(@Body(CreateProduct) body: CreateProduct) {
-  return body;
+@Controller('/products')
+class ProductsController {
+  @Post()
+  create(@Body(CreateProduct) body: CreateProduct) {
+    return body;
+  }
 }
 ```
 

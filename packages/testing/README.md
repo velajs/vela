@@ -72,22 +72,55 @@ const moduleRef = await Test.createTestingModule({ imports: [UsersModule] })
 `get(token)` and overrides infer their value contract from a class or `InjectionToken<Value>`. An incompatible mock fails typechecking. Raw string/symbol tokens resolve to `unknown`; use an injection token when the contract matters.
 
 ```ts
-.overrideGuard(AuthGuard).useValue({ canActivate: () => true })
-.overrideInterceptor(LogInterceptor).useClass(NoopInterceptor)
-.overrideProvider(CONFIG).useFactory({
+const builder = Test.createTestingModule({ imports: [AppModule] });
+builder.overrideGuard(AuthGuard).useValue({ canActivate: () => true });
+builder.overrideInterceptor(LogInterceptor).useClass(NoopInterceptor);
+builder.overrideProvider(CONFIG).useFactory({
   factory: (env) => ({ env: env.APP_ENV }),
   inject: [ENV],
-})
+});
 ```
 
 Here `ENV` is the framework environment token from `@velajs/vela`, with
 `APP_ENV: string` declared on `VelaEnv`, and `CONFIG` is an
 `InjectionToken<{ env: string }>`.
 
+### Replacing modules and mocking missing dependencies
+
+```ts
+import { Module } from '@velajs/vela';
+import { Test } from '@velajs/testing';
+
+@Module({})
+class NoMail {}
+
+const moduleRef = await Test.createTestingModule({ imports: [SignupModule] })
+  .overrideModule(MailModule)
+  .useModule(NoMail)
+  .useMocker((token) => (token === MailService ? { send: async () => {} } : undefined))
+  .compile();
+```
+
+`overrideModule(Module).useModule(Replacement)` loads the replacement (a module
+class or a `DynamicModule`) wherever the graph imports the module class, any
+`DynamicModule` of it, or exactly the `DynamicModule` object passed; the
+module's own metadata is not modified, so other testing modules still see the
+original. `exports: [Module]` re-exports follow the replacement. The last
+override of a module wins.
+
+`useMocker(factory)` supplies the dependencies no provider satisfies, as in
+Nest: after the overrides and before anything is constructed, `factory(token)`
+runs once for each token some constructor or factory needs and nothing visible
+provides, and its value is registered in each module that injects the token.
+`@Optional()` parameters, `ModuleRef`, `InjectionToken` defaults and provided or
+overridden tokens never reach it; `moduleRef.get(token)` returns the supplied
+value.
+
 ### Environment and runtime adapters
 
-The builder's second argument seeds the application's `ENV` and binds runtime
-adapters through the same bootstrap as `VelaFactory.create`:
+The builder's second argument takes the options of `VelaFactory.create`: it
+seeds the application's `ENV`, binds runtime adapters, and applies
+`globalPrefix`, `security` and `middleware` through the same bootstrap:
 
 ```ts
 const moduleRef = await Test.createTestingModule(

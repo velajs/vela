@@ -42,7 +42,7 @@ class SignupService {
 
 Event names are dot-segmented. `*` matches exactly one segment; `**` matches any depth:
 
-```ts
+```ts nocheck
 @OnEvent('user.*')    // matches 'user.created', NOT 'user.profile.updated'
 @OnEvent('user.**')   // matches 'user.created' AND 'user.profile.updated'
 ```

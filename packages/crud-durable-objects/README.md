@@ -4,13 +4,17 @@ SQLite CRUD transactions confined to one Durable Object. Install with
 `@velajs/crud`, `@velajs/crud-drizzle`, and `drizzle-orm`.
 
 ```ts
+import { DurableObject } from 'cloudflare:workers';
 import { durableObjectSqliteAdapter } from '@velajs/crud-durable-objects';
-const adapter = durableObjectSqliteAdapter({
-  storage: this.ctx.storage,
-  table: documents,
-  primaryKeys: ['tenantId', 'id'],
-  atomicUpsert: true, // conflict targets must have a PRIMARY KEY/UNIQUE constraint
-});
+
+export class DocumentStore extends DurableObject {
+  readonly adapter = durableObjectSqliteAdapter({
+    storage: this.ctx.storage,
+    table: documents,
+    primaryKeys: ['tenantId', 'id'],
+    atomicUpsert: true, // conflict targets must have a PRIMARY KEY/UNIQUE constraint
+  });
+}
 ```
 
 Use inside a SQLite-backed object, after applying application migrations. The

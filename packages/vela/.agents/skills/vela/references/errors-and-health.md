@@ -113,6 +113,8 @@ class ReportsController {
   @CacheTTL(30)
   summary() { return this.buildSummary(); }
 
+  private buildSummary() { return { total: 0 }; }
+
   @Get('/manual')
   manual() {
     const value = this.cache.get('n');

@@ -16,7 +16,7 @@ import type { WsClient, WsServer, OnGatewayConnection } from '@velajs/vela/webso
 
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway implements OnGatewayConnection {
-  @WebSocketServer() private readonly server!: WsServer;   // sugar for @Inject(WS_SERVER)
+  constructor(@WebSocketServer() private readonly server: WsServer) {} // @Inject(WS_SERVER)
 
   handleConnection(client: WsClient) {
     client.join('lobby');

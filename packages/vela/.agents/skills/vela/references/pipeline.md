@@ -23,6 +23,8 @@ HTTP resolves request controllers only when the pipeline invokes the handler, af
 Decorators work on a controller class or a method, and accept **classes** (DI-resolved) or **instances**:
 
 ```ts
+import { Body, Controller, Post, UseFilters, UseGuards, UseInterceptors } from '@velajs/vela';
+
 @Controller('/orders')
 @UseGuards(AuthGuard)                 // class → registered in this module, resolved from DI
 @UseInterceptors(new LoggingInterceptor())  // instance → used as-is
@@ -120,6 +122,9 @@ For authorization use the shared guards in `@velajs/authz/vela`; raw request hea
 Attach metadata with `@SetMetadata(key, value)` (or `Reflector.createDecorator()`), read it in a guard/interceptor:
 
 ```ts
+import { Injectable, Reflector, type CanActivate, type ExecutionContext } from '@velajs/vela';
+import { getTrustedRequestIdentity } from '@velajs/vela/module-kit';
+
 const RequireScope = Reflector.createDecorator<string>();
 
 @Injectable()

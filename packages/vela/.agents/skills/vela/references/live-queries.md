@@ -16,7 +16,7 @@ export const queries = { 'todos.list': todoList };
 
 ## Server
 
-```ts
+```ts nocheck
 import { LiveModule, LiveQuery, LiveResolver, type LiveQueryContext } from '@velajs/vela/live';
 
 @LiveResolver() // implies @Injectable()

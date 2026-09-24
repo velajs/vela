@@ -1,0 +1,7 @@
+---
+'@velajs/cloudflare': minor
+---
+
+`createCloudflareWorker()` attaches a non-enumerable descriptor under `CLOUDFLARE_WORKER` (`Symbol.for('vela.cloudflare.worker')`) to the Worker it returns: `{ rootModule, options, createOptions(env), createApplication(env) }`. Tools build the same application as the Worker from it without a platform event; `@velajs/cli` uses it to load a project without `vela.config`. The Worker is typed as the exported `CloudflareWorker` interface, and `CloudflareWorkerDescriptor` describes the descriptor.
+
+The new `@velajs/cloudflare/testing` subpath runs inside the Workers Vitest pool. `createTestingWorker(AppModule, { env?, overrides?, ...workerOptions })` builds the module as `createCloudflareWorker(AppModule, workerOptions)` does, through `@velajs/testing` (now an optional peer dependency), with `overrides` receiving the testing builder (`overrideProvider`, `overrideModule().useModule()`, `useMocker`). The returned worker's `fetch()`, `queue(queue, messages)` and `scheduled(cron)` drive the Worker handlers with `cloudflare:test`'s `createMessageBatch`, `getQueueResult` and `createScheduledController`: `queue()` reports the acknowledgements and whether the handler rejected, and `scheduled()` rejects a cron no `@Cron` job declares. `queueJob(queue, job, data)` builds the envelope `QueueClient.add()` sends, and `close()` cancels unread response bodies before waiting for background work. The subpath is not part of any Worker bundle.

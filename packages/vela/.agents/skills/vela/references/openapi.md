@@ -27,6 +27,8 @@ import { ApiDoc, ApiTags, ApiResponse } from '@velajs/vela/openapi';
 @Controller({ path: '/catalog', version: 1 })
 @ApiTags('catalog')
 class CatalogController {
+  constructor(private readonly products: ProductsService) {}
+
   @Get('/items', { name: 'catalog.list' })
   @ApiDoc({ summary: 'List products', operationId: 'listProducts' })
   @ApiResponse(200, { description: 'Product list', schema: PublicProductDto })

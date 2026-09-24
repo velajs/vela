@@ -1,16 +1,29 @@
 # Create a Workers API
 
-Use Node.js 24+ and pnpm 11.11.0. Create a project with the Vela CLI:
+Use Node.js 24+. Create a project with the Vela CLI:
 
 ```sh
 pnpm dlx @velajs/cli@latest new my-api
 cd my-api
 pnpm install
-pnpm dev
+pnpm run dev
 ```
 
 If the CLI is already installed, the creation command is `vela new my-api`.
-The command writes files without installing dependencies or initializing Git.
+Options choose what the command writes and does:
+
+| Option | Effect |
+| --- | --- |
+| `--template minimal` | The default: one module, controller and injected service. |
+| `--template api` | A todos API: a zod-validated resource stored in Workers KV, a queue job per created todo, a nightly cron job, and workerd specs for each. |
+| `--pm pnpm\|npm\|yarn\|bun` | The package manager the files and instructions use. By default, the one running the command (`npx` → npm, `bunx` → bun), else pnpm. |
+| `--install` | Install dependencies in the new directory. |
+| `--git` | Initialize a Git repository and commit the project as `chore: initial commit`. |
+
+```sh
+pnpm dlx @velajs/cli@latest new todo-api --template api --install --git
+```
+
 Use a name starting with a lowercase letter, followed by lowercase letters,
 digits, or single hyphens, up to 63 characters. Run it from the parent directory;
 paths, scoped package names, and reserved device names are rejected. An existing
@@ -24,14 +37,14 @@ curl http://localhost:5173
 # {"message":"Hello from Vela!"}
 ```
 
-`pnpm dev` runs `vite dev`: Vite and `@cloudflare/vite-plugin` serve
+`pnpm run dev` runs `vite dev`: Vite and `@cloudflare/vite-plugin` serve
 `src/worker.ts` in the local Workers runtime, with no build step first. No
 Cloudflare login, database, authentication setup, Studio, or live-query service
-is required. Use `pnpm dev --port 5174` if port 5173 is occupied.
+is required. Use `pnpm run dev --port 5174` if port 5173 is occupied.
 
 ## Understand the application
 
-The generated project has four source files:
+The minimal project has four source files:
 
 | File | Responsibility |
 | --- | --- |
@@ -71,7 +84,7 @@ the Worker when `src/` changes. Vite compiles TypeScript with Oxc. Constructor
 injection needs legacy decorators and the `design:paramtypes` metadata they
 record, and Oxc emits both only when asked, so `oxc.config.ts` enables them and
 both `vite.config.ts` and `vitest.config.ts` import that one setting. TypeScript
-checks the source separately with `pnpm typecheck`.
+checks the source separately with `pnpm run typecheck`.
 
 `wrangler.jsonc` points `main` at `src/worker.ts`; Vite builds it, so there is
 no Wrangler `build` block. Its compatibility date, 2026-09-20, enables Node.js
@@ -81,25 +94,43 @@ compatibility by default (from 2026-08-04 on), which provides the
 
 ## Test the Worker
 
-`pnpm test` runs `test/worker.spec.ts` inside the Workers runtime with
-`@cloudflare/vitest-plugin`. The spec calls the Worker's `fetch` handler and
-reads the response body before `waitOnExecutionContext(ctx)`, since a request
-completes only once its body is consumed:
+`pnpm run test` runs `test/` inside the Workers runtime with
+`@cloudflare/vitest-plugin`. The spec builds `AppModule` with
+`createTestingWorker()` from `@velajs/cloudflare/testing`, exactly as
+`src/worker.ts` does, and sends requests through the Worker's `fetch` handler;
+`overrides` replaces a provider for one test:
 
 ```ts
-const ctx = createExecutionContext();
-const response = await worker.fetch(new Request('http://localhost/'), env, ctx);
-const body = await response.json();
-await waitOnExecutionContext(ctx);
-expect(body).toEqual({ message: 'Hello from Vela!' });
+import { env } from 'cloudflare:workers';
+import { createTestingWorker } from '@velajs/cloudflare/testing';
+import { expect, it } from 'vitest';
+import { AppModule } from '../src/app.module.js';
+import { AppService } from '../src/app.service.js';
+
+it('injects a replacement service', async () => {
+  const worker = await createTestingWorker(AppModule, {
+    env,
+    overrides: (module) =>
+      module.overrideProvider(AppService).useValue({ getHello: () => 'Hello from a test!' }),
+  });
+  try {
+    const response = await worker.fetch('/');
+    expect(await response.json()).toEqual({ message: 'Hello from a test!' });
+  } finally {
+    await worker.close();
+  }
+});
 ```
+
+The api template's specs also deliver queue batches with `worker.queue()` and
+fire cron triggers with `worker.scheduled()`; see [testing](testing.md).
 
 ## Read bindings
 
 The native Workers environment is the framework `ENV`. The worker entry needs no
 environment token: `createCloudflareWorker` seeds `ENV` for each environment
 before any provider is constructed. Declare a binding or variable in
-`wrangler.jsonc`, run `pnpm types`, and inject it:
+`wrangler.jsonc`, run `pnpm run types`, and inject it:
 
 ```jsonc
 // wrangler.jsonc
@@ -119,46 +150,57 @@ export class AppService {
 }
 ```
 
-`pnpm types` runs `wrangler types --include-runtime=false`, which writes the
-bindings, variables and secret names (from `.dev.vars`) into
+The `types` script runs `wrangler types --include-runtime=false`, which writes
+the bindings, variables and secret names (from `.dev.vars`) into
 `worker-configuration.d.ts` as `Cloudflare.Env`. `@velajs/cloudflare` extends
-`VelaEnv` with it, so `this.env.GREETING` is typed. `pnpm dev` and
-`pnpm typecheck` regenerate the file first; run `pnpm types` yourself after
-editing `wrangler.jsonc`, and commit the file. Runtime types still come
-from `@cloudflare/workers-types`. Factories read the same object with
+`VelaEnv` with it, so `this.env.GREETING` is typed. The `dev` and `typecheck`
+scripts regenerate the file first; run `pnpm run types` yourself after editing
+`wrangler.jsonc`, and commit the file. Runtime types still come from
+`@cloudflare/workers-types`. Factories read the same object with
 `inject: [ENV]`, and `registerAs('app', (env) => ...)` config namespaces receive
 it too. Values arrive from outside the program, so validate what you read.
 
 Wrangler secrets such as `URL_SIGNING_SECRET` (signed URLs) and
 `VELA_STUDIO_TOKEN` (Studio) are part of `ENV` as well and take effect once set.
 
-## Inspect the application
-
-The project pins `@velajs/cli` as a dev dependency and includes
-`vela.config.ts`, which imports the application from `src/`. The CLI loads the
-config through Vite with the same Oxc decorator settings as the Worker build, so
-no build is needed first:
+`vela add` creates a resource and wires its binding in one step:
 
 ```sh
-pnpm vela route list
-pnpm vela doctor --app --json
+pnpm exec vela add d1 DB     # wrangler d1 create, types, and an injectable DB token
+pnpm exec vela add queue EMAILS
 ```
 
-Dependencies use pinned published npm versions. The generated
+## Grow the application
+
+The project pins `@velajs/cli` as a dev dependency. It needs no configuration
+file: it reads `main` from `wrangler.jsonc` and loads the application that
+`src/worker.ts` exports through Vite, with the same Oxc decorator settings as the
+Worker build, so no build is needed first:
+
+```sh
+pnpm exec vela route list
+pnpm exec vela generate resource notes     # src/notes/: module, controller, service
+pnpm exec vela g cron digest --schedule "0 6 * * *"
+pnpm exec vela cf sync --write             # adds the cron trigger to wrangler.jsonc
+pnpm exec vela deploy check
+```
+
+Generators write current-API code and register it in the right module; `vela cf
+sync` keeps `wrangler.jsonc` in line with the application's cron jobs, queues,
+Durable Objects and Workflows. See [tooling](tooling.md#the-cli-loop).
+
+Dependencies use pinned published npm versions. A pnpm project's
 `pnpm-workspace.yaml` allows the native build dependencies used by Wrangler and
 the Workers runtime; it has no dependency catalog or repository links. Commit
-the lockfile created by `pnpm install`.
+the lockfile your package manager writes.
 
 ## Next steps
 
-To deploy, run `pnpm exec wrangler login` and then `pnpm run deploy`. This requires
-your Cloudflare account; it runs `vite build`, then `wrangler deploy` uploads the
-built Worker from `dist/`. See [deployment](deployment.md).
+To deploy, run `pnpm exec wrangler login` and then `pnpm run deploy`. This
+requires your Cloudflare account; it runs `vite build`, then `wrangler deploy`
+uploads the built Worker from `dist/`. See [deployment](deployment.md).
 
 Continue with [module authoring](modules.md), [runtime values and types](types.md),
-and [Cloudflare integration](../packages/cloudflare/README.md) when adding routes
-or native bindings. The [complete API starter](../apps/api-starter/README.md)
+[testing](testing.md) and [Cloudflare integration](../packages/cloudflare/README.md)
+when adding routes or native bindings. The [complete API starter](../apps/api-starter/README.md)
 demonstrates authentication, D1, generated clients, live queries, and Studio.
-
-`vela new` currently creates this one Workers starter. Module, controller,
-service, and resource generators are follow-up work.

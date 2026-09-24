@@ -2,12 +2,14 @@
 
 `@velajs/cli` inspects a built Vela app — routes, module graph, entrypoints, OpenAPI, seeders — and serves the same surface to AI agents over MCP. Install as a dev dependency (`pnpm add -D @velajs/cli`); the binary is `vela` (space-separated commands). Subpaths include `.` (command runtime), `./config` and `./client`. Config and client helpers can be imported without Studio or MCP runtime loading.
 
-## Config — `defineVelaConfig`
+## Loading the application
 
-Add a `vela.config.{js,mjs,ts}` at the project root. The CLI tries those three names in that order in the current directory (override with `--config <path>`; no parent search). When the project installs Vite 8 (an optional peer of the CLI; `vela new` projects do), the CLI loads the config through a Vite module runner that stays open for the whole command, with Oxc legacy decorators + decorator metadata, so the config imports decorated `src/` files directly and no build runs first; packages still load from node_modules, and neither `vite.config.ts` nor tsconfig path aliases apply. Without Vite, Node imports the config: type stripping handles erasable `.ts` syntax but emits no decorators/DI metadata, so import compiled `.js` files with explicit extensions. Pin the CLI as a dev dependency and run it as `pnpm vela ...`.
+In a Workers project no configuration is needed. Without a `vela.config`, the CLI reads `main` from `wrangler.json`, `wrangler.jsonc` or `wrangler.toml` in the current directory (`--env <name>` selects a named environment's `main` and `vars`), loads that entry through a Vite module runner with Oxc legacy decorators and metadata, and reads the descriptor `createCloudflareWorker(AppModule, options)` attaches under `Symbol.for('vela.cloudflare.worker')` (`CLOUDFLARE_WORKER` from `@velajs/cloudflare`: `{ rootModule, options, createOptions(env), createApplication(env) }`). `cloudflare:*` imports resolve to inert Node stand-ins (a `DurableObject` or `WorkflowEntrypoint` subclass constructs; runtime-only calls throw). Listing commands build the application exactly as the Worker does, with the Cloudflare adapter, but seed `ENV` with the Wrangler `vars` only: no bindings or secrets, so module factories must not do binding I/O at bootstrap. `vela db seed` instead asks the project's Wrangler for local bindings (`getPlatformProxy()`, persisted like `vite dev`). A default export that is not `createCloudflareWorker(...)` fails with guidance.
+
+A `vela.config.{js,mjs,ts}` takes precedence when present (the CLI tries those three names, then the Wrangler files, in the current directory; `--config <path>` names one; no parent search). When the project installs Vite 8 (an optional peer; `vela new` projects do), the config and the Worker entry load through the same module runner, which stays open for the whole command; packages still load from node_modules, and neither `vite.config.ts` nor tsconfig path aliases apply. Without Vite, Node imports them: type stripping handles erasable `.ts` syntax but emits no decorators/DI metadata, so import compiled `.js` files with explicit extensions. Pin the CLI as a dev dependency and run it as `pnpm exec vela ...`.
 
 ```ts
-// vela.config.ts
+// vela.config.ts: only when the tools need an application built differently.
 import { defineVelaConfig } from '@velajs/cli/config';
 import { VelaFactory } from '@velajs/vela';
 import { AppModule } from './src/app.module.js';
@@ -18,13 +20,25 @@ export default defineVelaConfig({
 });
 ```
 
-`VelaConfig` requires `createApp` and accepts optional `rootModule`; `defineVelaConfig` preserves inferred app subtypes and custom properties. Supply local binding equivalents inside the factory if required. Config may be a default export or a named `config` export. Loading validates callable `createApp` and constructable `rootModule`. `resolveConfig` from `./config` resolves `{path, source, candidates}` without importing code. Commands that bootstrap an app dispose it after success/failure; cleanup warnings preserve the primary result.
+`VelaConfig` requires `createApp` and accepts optional `rootModule`; `defineVelaConfig` preserves inferred app subtypes and custom properties. Supply local binding equivalents inside the factory if required. Config may be a default export or a named `config` export. Loading validates callable `createApp` and constructable `rootModule`. `resolveConfig` from `./config` resolves `{path, source: 'explicit' | 'discovered' | 'wrangler', candidates}` without importing code. Commands that bootstrap an app dispose it after success/failure; cleanup warnings preserve the primary result.
+
+## Project commands
+
+| Command | Flags | What it does |
+|---|---|---|
+| `vela new <name>` | `--template minimal\|api`, `--pm pnpm\|npm\|yarn\|bun`, `--install`, `--git` | Scaffold a Workers project with pinned versions; `api` adds a zod-validated KV resource, a queue processor, a cron job and workerd specs. The package manager defaults to the one running the command |
+| `vela generate <schematic> <name>` (alias `g`) | `--path`, `--module`, `--flat`, `--skip-import`, `--dry-run`, `--schedule`, `--binding` | `module`, `controller`, `service`, `resource`, `queue`, `cron`, `durable-object` with current APIs, registered by editing the parent module with oxc-parser + magic-string (comments and formatting kept) |
+| `vela add <d1\|kv\|r2\|queue> <BINDING>` | `--name`, `--config`, `--env`, `--skip-import` | Create the resource with the project's Wrangler (`--binding --update-config`; a queue's producer and consumer are added to the JSONC), run the `types` script, then provide the binding from a global `BindingsModule` (`@Inject(DB) db: D1Database`) or register `QueueModule.registerQueue({ name, binding })` |
+| `vela cf sync` | `--config`, `--env`, `--write`, `--json` | Compare the Wrangler file with the app: a trigger per `@Cron` expression, a producer per registered binding, a consumer per processed or `@QueueConsumer` queue, a binding and `new_sqlite_classes` migration per exported Durable Object, a `workflows` entry per exported `WorkflowEntrypoint`. Exits 1 on differences; `--write` edits JSON/JSONC through jsonc-parser (comments kept); TOML is compared only. Stale triggers are removed, other stale entries are reported |
+
+Generators place files in `src/<name>/` and register a controller, service, cron job or processor in the module of that directory (else the nearest one up to the root module the Worker entry passes to `createCloudflareWorker`); a module or resource registers in the module above. `queue` also adds `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module once; `durable-object` adds `export { Name } from ...` to the Worker entry. Follow a generator or `add` with `vela cf sync --write` and the `types` script.
 
 ## Commands
 
 | Command | Flags | What it does |
 |---|---|---|
-| `vela doctor` | `--config`, `--app`, `--json` | Resolve config without import; opt-in `--app` bootstraps then snapshots app-local modules/routes/entrypoints without resolving lazy providers or emitting arbitrary metadata/values |
+| `vela deploy check` | `--config`, `--env`, `--entrypoints`, `--json` | Check the Wrangler file in the working directory at the top level (or `--env`) against the app's entrypoints: crons, queue producers/consumers, WebSocket Durable Object bindings, guarded direct cron jobs. Without `--entrypoints` the snapshot is computed from the app; with one, no application code is imported |
+| `vela doctor` | `--config`, `--env`, `--app`, `--json` | Resolve config without import; opt-in `--app` bootstraps then snapshots app-local modules/routes/entrypoints without resolving lazy providers or emitting arbitrary metadata/values |
 | `vela route list` | `--config`, `--json` | List HTTP routes (paths incl. prefix/version, named + contributed/CRUD routes, plus `(mounted)` sub-apps) |
 | `vela module graph` | `--config`, `--json` | Print the module import graph with `global`/`lazy` flags, provider/export counts |
 | `vela entrypoint list` | `--config`, `--json` | List declared entrypoint kinds (websocket, queue, cron, cf:*, …) and their entries |

@@ -123,6 +123,7 @@ Augment `FeatureFlagRegistry` to type the service methods and the `@FeatureFlag(
 declare module '@velajs/feature-flags' {
   interface FeatureFlagRegistry {
     'new-checkout': boolean;
+    beta: boolean;
     layout: string;
   }
 }

@@ -1,5 +1,5 @@
 # Opt-in example for a CONSUMING APPLICATION. This file is not an active workflow.
-# Provide snapshot:entrypoints using a local/test app config; it writes build/entrypoints.json.
+# The deploy check builds the application with the Wrangler vars only to read its entrypoints.
 name: Check staging deployment
 
 on:
@@ -24,8 +24,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm snapshot:entrypoints
-      - run: pnpm exec vela deploy check --config wrangler.jsonc --env staging --entrypoints build/entrypoints.json --json
+      - run: pnpm exec vela cf sync --env staging
+      - run: pnpm exec vela deploy check --env staging --json
       # Vite builds the staging Worker, decorator metadata included, and leaves the
       # redirect that `wrangler deploy` follows; `--config` would bypass it.
       - run: CLOUDFLARE_ENV=staging pnpm build

@@ -18,7 +18,7 @@ import {
 } from '@velajs/better-auth';
 
 const auth = betterAuth({
-  database: /* drizzle / prisma / kysely adapter */,
+  database: databaseAdapter, // a drizzle, prisma or kysely adapter
   emailAndPassword: { enabled: true },
   socialProviders: { github: { clientId, clientSecret } },
 });
@@ -148,13 +148,15 @@ import { BetterAuthService } from '@velajs/better-auth';
 
 @Injectable()
 class AdminUserService {
-  constructor(@Inject(BetterAuthService) private readonly auth: BetterAuthService<typeof auth>) {}
+  constructor(
+    @Inject(BetterAuthService) private readonly authService: BetterAuthService<typeof auth>,
+  ) {}
 
   listSessions(userId: string) {
-    return this.auth.api.listUserSessions({ userId });
+    return this.authService.api.listUserSessions({ userId });
   }
   revoke(token: string) {
-    return this.auth.api.revokeSession({ sessionToken: token });
+    return this.authService.api.revokeSession({ sessionToken: token });
   }
 }
 ```
