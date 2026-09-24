@@ -3134,6 +3134,8 @@ declare class LiveEngine implements OnApplicationBootstrap, ContributesEntrypoin
   private readonly maxRefreshFanout;
   private readonly maxTags;
   constructor(container: Container, discovery: DiscoveryService, log: CursorLog, driver: LiveDriver, options: LiveModuleOptions, presence?: PresenceService | undefined);
+
+  private dispatchPresenceInvalidation;
   onApplicationBootstrap(): Promise<void>;
 
   collectEntrypoints(): Entrypoint<LiveEntrypointMeta>[];
@@ -3312,6 +3314,8 @@ declare class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypo
   constructor(container: Container, discovery: DiscoveryService, server?: WsServer, routeManager?: RouteManager);
 
   private gatewayServer;
+
+  private moduleServer;
   private connectGatewayServers;
 
   get gatewayPaths(): string[];
