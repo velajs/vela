@@ -832,6 +832,95 @@ describe('LiveModule (tag-based live queries)', () => {
     }
   });
 
+  it('serves the presence of a 512-byte room on a long gateway path', async () => {
+    const path = '/workspaces/:workspace/realtime/ws';
+    @WebSocketGateway({ path, roomParam: 'workspace' })
+    class WorkspaceGateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [WorkspaceGateway],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const dispatcher = app.get(WsDispatcher);
+      const engine = app.get(LiveEngine);
+      const room = 'w'.repeat(512);
+      const member = new FakeClient('member');
+      const watcher = new FakeClient('watcher');
+      member.rooms.add(room);
+      watcher.rooms.add(room);
+      await dispatcher.handleOpen(path, member);
+      await dispatcher.handleOpen(path, watcher);
+      await dispatcher.dispatchMessage(
+        path,
+        watcher,
+        subFrame('roster', PRESENCE_ROSTER_QUERY, { room }),
+      );
+      expect(watcher.live()).toEqual([
+        { t: 'ack', sub: 'roster' },
+        expect.objectContaining({ t: 'data', sub: 'roster', snapshot: [] }),
+      ]);
+      watcher.clear();
+
+      await dispatcher.dispatchMessage(
+        path,
+        member,
+        JSON.stringify({ event: '$live', data: { t: 'presence', room, meta: { name: 'm' } } }),
+      );
+      await engine.whenIdle();
+      expect(watcher.live()).toEqual([
+        expect.objectContaining({
+          t: 'data',
+          snapshot: [expect.objectContaining({ id: 'member', meta: { name: 'm' } })],
+        }),
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reports a presence invalidation the driver rejects', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('invalidation log unavailable');
+    const driver: LiveDriver = {
+      kind: 'failing',
+      bind() {},
+      dispatch: () => Promise.reject(failure),
+    };
+    @WebSocketGateway({ path: '/ws' })
+    class Gateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot({ driver: () => driver })],
+      providers: [Gateway],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const client = new FakeClient();
+      client.rooms.add('lobby');
+      await app.get(WsDispatcher).handleOpen('/ws', client);
+      await app
+        .get(WsDispatcher)
+        .dispatchMessage(
+          '/ws',
+          client,
+          JSON.stringify({ event: '$live', data: { t: 'presence', room: 'lobby' } }),
+        );
+      await vi.waitFor(() =>
+        expect(errorSpy.mock.calls.some((call) => call.includes(failure))).toBe(true),
+      );
+      expect(app.get(PresenceService).roster('/ws', 'lobby')).toEqual([
+        expect.objectContaining({ id: 'c1' }),
+      ]);
+    } finally {
+      errorSpy.mockRestore();
+      await app.close();
+    }
+  });
+
   it('drops live subscriptions when the socket closes', async () => {
     const { client, dispatch, dispatcher, engine, invalidation, todos } = await makeTodoApp();
     await dispatch(subFrame('s1', 'todos.list', { listId: 'l1' }));

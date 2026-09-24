@@ -3,18 +3,24 @@ import { Inject } from '../container/decorators';
 import { assertWebSocketRoomId } from '../websocket/gateway-routing';
 import { LiveQuery, LiveResolver } from './live.decorators';
 import type { LiveQueryContext } from './live.types';
+import { sha256Hex } from './sha256';
 
 const encoder = new TextEncoder();
 
 /**
- * The invalidation tag for one gateway room's roster. `$`-prefixed: never
- * collides with app tags. The gateway path keeps rooms that share an id
- * across gateways apart.
+ * The invalidation tag for one gateway room's roster: `$presence:` and the
+ * SHA-256 hex digest of the JSON `[gatewayPath, room]`. `$`-prefixed, it never
+ * collides with app tags; the gateway path keeps rooms that share an id
+ * across gateways apart; the digest keeps every valid room id (up to 512
+ * bytes) on any gateway path within the 256-byte bound of an invalidation tag.
  */
 export const presenceTag = (gatewayPath: string, room: string): string => {
   assertWebSocketRoomId(room);
-  return `$presence:${JSON.stringify([gatewayPath, room])}`;
+  return `$presence:${sha256Hex(JSON.stringify([gatewayPath, room]))}`;
 };
+
+/** One gateway room's key in the presence service's scope. */
+const roomKey = (gatewayPath: string, room: string): string => JSON.stringify([gatewayPath, room]);
 
 /** The built-in roster query name (`useLiveQuery`-able like any app query). */
 export const PRESENCE_ROSTER_QUERY = '$presence.roster';
@@ -68,6 +74,8 @@ const presenceRosterDefinition = defineLiveQuery({
 
 interface RoomState {
   room: string;
+  /** The roster's invalidation tag, derived once per occupied gateway room. */
+  tag: string;
   members: Map<string, { meta?: unknown; lastSeen: number }>;
 }
 
@@ -85,7 +93,7 @@ interface RoomState {
  * exactly the room's roster).
  */
 export class PresenceService {
-  // Keyed by presenceTag(gatewayPath, room): one entry per gateway room.
+  // Keyed by roomKey(gatewayPath, room): one entry per gateway room.
   private readonly rooms = new Map<string, RoomState>();
   private readonly roomsByClient = new Map<string, Set<string>>();
   private invalidator?: (tags: string[]) => void;
@@ -106,7 +114,7 @@ export class PresenceService {
 
   beat(gatewayPath: string, room: string, clientId: string, meta?: unknown): void {
     if (!this.enabled) return;
-    const key = presenceTag(gatewayPath, room);
+    assertWebSocketRoomId(room);
     if (meta !== undefined) {
       let serialized: string | undefined;
       try {
@@ -123,9 +131,10 @@ export class PresenceService {
         );
       }
     }
+    const key = roomKey(gatewayPath, room);
     let state = this.rooms.get(key);
     if (!state) {
-      state = { room, members: new Map() };
+      state = { room, tag: presenceTag(gatewayPath, room), members: new Map() };
       this.rooms.set(key, state);
     }
     state.members.set(clientId, { meta, lastSeen: Date.now() });
@@ -137,7 +146,7 @@ export class PresenceService {
     }
     joined.add(key);
 
-    this.invalidator?.([key]);
+    this.invalidator?.([state.tag]);
   }
 
   /** Immediate departure on socket close — peers see it without a TTL wait. */
@@ -150,13 +159,14 @@ export class PresenceService {
       if (!state) continue;
       state.members.delete(clientId);
       if (state.members.size === 0) this.rooms.delete(key);
-      this.invalidator?.([key]);
+      this.invalidator?.([state.tag]);
     }
   }
 
   /** The live members of one gateway room. */
   roster(gatewayPath: string, room: string): PresenceMember[] {
-    const state = this.rooms.get(presenceTag(gatewayPath, room));
+    assertWebSocketRoomId(room);
+    const state = this.rooms.get(roomKey(gatewayPath, room));
     return state ? this.alive(state) : [];
   }
 

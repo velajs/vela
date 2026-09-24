@@ -50,6 +50,7 @@
     "@velajs/vela/dist/live/live.module.js",
     "@velajs/vela/dist/live/live.persistence.js",
     "@velajs/vela/dist/live/presence.js",
+    "@velajs/vela/dist/live/sha256.js",
     "@velajs/vela/dist/logging/application-logger.js",
     "@velajs/vela/dist/logging/log-levels.js",
     "@velajs/vela/dist/logging/log-serialization.js",

@@ -56,7 +56,7 @@ import type {
   LiveResolverMetadata,
   SubscriptionRecord,
 } from './live.types';
-import { PresenceService } from './presence';
+import { PRESENCE_ROSTER_QUERY, PresenceService } from './presence';
 
 /** How many subscriptions refresh concurrently per flush (lunora's socket-pool default). */
 const REFRESH_POOL_SIZE = 8;
@@ -272,9 +272,25 @@ export class LiveEngine
     );
     this.maxTags = this.boundedOption(options.maxTags, DEFAULT_MAX_TAGS, 1_000, 'maxTags');
     driver.bind(this);
-    this.presence?.bindInvalidator((tags) => {
-      void driver.dispatch({ tags });
-    });
+    this.presence?.bindInvalidator((tags) => this.dispatchPresenceInvalidation(driver, tags));
+  }
+
+  /**
+   * Heartbeats and departures invalidate rosters without waiting for the
+   * driver: a dispatch that fails reaches the error reporter instead of
+   * becoming an unhandled rejection.
+   */
+  private dispatchPresenceInvalidation(driver: LiveDriver, tags: string[]): void {
+    const report = (err: unknown): void =>
+      resolveErrorReporter(this.container).report(err, {
+        edge: 'live',
+        source: PRESENCE_ROSTER_QUERY,
+      });
+    try {
+      void Promise.resolve(driver.dispatch({ tags })).catch(report);
+    } catch (err) {
+      report(err);
+    }
   }
 
   async onApplicationBootstrap(): Promise<void> {
