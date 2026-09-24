@@ -31,7 +31,10 @@ export interface SecurityHeadersOptions {
 export interface SecurityModuleOptions {
   /** Exact cross-origin origins. Same-origin is always accepted; wildcard is forbidden. */
   allowedOrigins?: string[];
-  /** Set false to disable CORS response/preflight handling. */
+  /**
+   * Set false to disable CORS response/preflight handling. While it is on,
+   * `app.enableCors()` and the `cors` create option are refused.
+   */
   cors?: SecurityCorsOptions | false;
   /** Set false to disable credentialed unsafe-method Origin/CSRF protection. */
   originProtection?: OriginProtectionOptions | false;

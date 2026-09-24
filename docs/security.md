@@ -211,7 +211,8 @@ For plain CORS, enable it as in Nest: `app.enableCors(options?)`, or the `cors`
 create option (`VelaFactory.create(AppModule, { cors: { origin: ['https://app.example.com'] } })`,
 `createCloudflareWorker(AppModule, { cors })`). Hono's `cors` middleware answers
 preflights and stamps its headers ahead of body limits, routing and guards; a
-credentialed `'*'` origin is rejected.
+credentialed `'*'` origin is rejected. Without `allowMethods`, a preflight
+allows Nest's defaults: GET, HEAD, PUT, PATCH, POST and DELETE.
 
 Import `SecurityModule` for exact-origin CORS combined with credentialed
 unsafe-method Origin checks and restrictive response headers:
@@ -230,6 +231,12 @@ unsafe-method Origin checks and restrictive response headers:
 })
 class AppModule {}
 ```
+
+`SecurityModule` serves CORS itself unless its `cors` option is `false`, so it
+cannot be combined with `app.enableCors()` or the `cors` create option: that
+middleware would answer every preflight before `SecurityModule`'s method and
+header checks run. Configuring both fails at bootstrap, or when
+`app.enableCors()` is called.
 
 Wildcard origins are rejected. Cookie-authenticated POST/PUT/PATCH/DELETE
 requests require a same-origin or allowlisted `Origin` by default. The module

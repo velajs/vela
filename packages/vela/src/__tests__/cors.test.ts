@@ -8,8 +8,10 @@ import {
   VelaFactory,
   type CanActivate,
   type CorsOptions,
+  type VelaApplication,
 } from '../index.js';
 import * as security from '../security/index.js';
+import { SecurityModule } from '../security/index.js';
 
 @Controller('/test')
 class TestController {
@@ -108,6 +110,70 @@ describe('CORS (Nest-style enableCors and the cors factory option)', () => {
     );
     expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('X-Requested-With');
     expect(preflight.headers.get('Access-Control-Max-Age')).toBe('600');
+  });
+
+  it("allows Nest's default methods on a preflight when allowMethods is left out", async () => {
+    @Controller('/items')
+    class Items {
+      @Get('/:id') read() {
+        return { ok: true };
+      }
+    }
+    @Module({ controllers: [Items] })
+    class ItemsApp {}
+    const preflight = (app: VelaApplication, method: string) =>
+      app.getHonoApp().request(
+        '/items/1',
+        fromOrigin('https://app.example', {
+          method: 'OPTIONS',
+          headers: { 'Access-Control-Request-Method': method },
+        }),
+      );
+    const defaults = 'GET,HEAD,PUT,PATCH,POST,DELETE';
+
+    const wildcard = await preflight(await VelaFactory.create(ItemsApp, { cors: true }), 'DELETE');
+    expect(wildcard.status).toBe(204);
+    expect(wildcard.headers.get('Access-Control-Allow-Methods')).toBe(defaults);
+
+    const listed = await VelaFactory.create(ItemsApp, {
+      cors: { origin: ['https://app.example'] },
+    });
+    expect((await preflight(listed, 'PUT')).headers.get('Access-Control-Allow-Methods')).toBe(
+      defaults,
+    );
+
+    const enabled = (await VelaFactory.create(ItemsApp)).enableCors({
+      origin: 'https://app.example',
+    });
+    const response = await preflight(enabled, 'PATCH');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example');
+    expect(response.headers.get('Access-Control-Allow-Methods')).toBe(defaults);
+  });
+
+  it("refuses to serve CORS alongside SecurityModule's own CORS policy", async () => {
+    const secured = (cors?: false) =>
+      SecurityModule.forRoot({
+        allowedOrigins: ['https://app.example'],
+        ...(cors === false ? { cors } : {}),
+      });
+    @Module({ imports: [secured()], controllers: [TestController] })
+    class Secured {}
+    await expect(
+      VelaFactory.create(Secured, { cors: { origin: ['https://app.example'] } }),
+    ).rejects.toThrow("SecurityModule's cors");
+    const app = await VelaFactory.create(Secured);
+    expect(() => app.enableCors({ origin: 'https://app.example' })).toThrow(
+      "SecurityModule's cors",
+    );
+
+    // With its CORS handling off, SecurityModule leaves CORS to enableCors().
+    @Module({ imports: [secured(false)], controllers: [TestController] })
+    class CorsOff {}
+    const off = await VelaFactory.create(CorsOff, { cors: { origin: ['https://app.example'] } });
+    const response = await off
+      .getHonoApp()
+      .request('/test/hello', fromOrigin('https://app.example'));
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example');
   });
 
   it('rejects credentialed wildcard origins and invalid preflight lifetimes', async () => {

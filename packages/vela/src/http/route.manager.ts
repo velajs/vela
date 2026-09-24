@@ -192,6 +192,13 @@ function trackResponseStream(
   };
 }
 
+function corsConflict(owner: string): Error {
+  return new Error(
+    `${owner} already serves CORS for this application. Configure CORS in one place: ` +
+      `turn off ${owner}, or leave out app.enableCors() and the cors create option.`,
+  );
+}
+
 // A middleware's `priority`: a class's static field, or an instance's own
 // field or its class's static one.
 function priorityOf(value: unknown): number | undefined {
@@ -282,6 +289,7 @@ export class RouteManager {
   private readonly queryMaxBytes: number | false;
   private readonly clientIpResolver: (c: Context) => string | null;
   private corsHandler: MiddlewareHandler | undefined;
+  private corsOwner: string | undefined;
 
   constructor(
     private container: Container,
@@ -431,8 +439,19 @@ export class RouteManager {
 
   /** Serve CORS ahead of every route; the latest call replaces earlier options. */
   enableCors(options: CorsOptions = {}): this {
+    if (this.corsOwner !== undefined) throw corsConflict(this.corsOwner);
     this.corsHandler = corsMiddleware(options);
     return this;
+  }
+
+  /**
+   * @internal A module that answers CORS itself, later in the chain, claims it:
+   * enableCors() would otherwise answer every preflight ahead of that module's
+   * policy. Fails when CORS is already enabled.
+   */
+  reserveCors(owner: string): void {
+    if (this.corsHandler !== undefined) throw corsConflict(owner);
+    this.corsOwner = owner;
   }
 
   setGlobalPrefix(prefix: string): this {

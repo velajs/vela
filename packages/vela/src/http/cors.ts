@@ -12,7 +12,7 @@ export interface CorsOptions {
    * allow (or nothing to refuse). Default `'*'`, which cannot be credentialed.
    */
   origin?: string | string[] | ((origin: string) => string | undefined | null);
-  /** Methods a preflight allows. Default GET, HEAD, PUT, POST, DELETE, PATCH. */
+  /** Methods a preflight allows. Default, as in Nest: GET, HEAD, PUT, PATCH, POST, DELETE. */
   allowMethods?: string[];
   /** Request headers a preflight allows. Default: the requested headers. */
   allowHeaders?: string[];
@@ -23,6 +23,10 @@ export interface CorsOptions {
   /** Preflight cache lifetime in seconds. */
   maxAge?: number;
 }
+
+// Nest's `enableCors()` default, stated here rather than taken from Hono,
+// whose own default list differs between versions.
+const DEFAULT_METHODS = ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'];
 
 /** Validate CORS options and build the middleware that serves them. */
 export function corsMiddleware(options: CorsOptions): MiddlewareHandler {
@@ -43,7 +47,8 @@ export function corsMiddleware(options: CorsOptions): MiddlewareHandler {
   }
   return cors({
     origin: typeof origin === 'function' ? (value) => origin(value) : origin,
-    allowMethods: options.allowMethods,
+    // Hono spreads these over its defaults, so an undefined key would erase one.
+    allowMethods: options.allowMethods ?? DEFAULT_METHODS,
     allowHeaders: options.allowHeaders,
     exposeHeaders: options.exposeHeaders,
     credentials: options.credentials,
