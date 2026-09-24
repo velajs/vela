@@ -348,6 +348,42 @@ describe('LiveModule (tag-based live queries)', () => {
       ['unknown_query', true],
       ['unsupported_protocol', true],
     ]);
+    expect(client.live()[1]).toMatchObject({ message: "no live query named 'nope' is registered" });
+  });
+
+  it('names both declarations when two live query definitions share a name', async () => {
+    const duplicate = defineLiveQuery({
+      name: 'todos.list',
+      args: z.unknown(),
+      result: z.number(),
+    });
+    @LiveResolver()
+    class FirstLive {
+      @LiveQuery(todoListQuery, { tags: ['todos'] })
+      list() {
+        return [];
+      }
+    }
+    @LiveResolver()
+    class SecondLive {
+      @LiveQuery(duplicate, { tags: ['todos'] })
+      count() {
+        return 0;
+      }
+    }
+    @WebSocketGateway({ path: '/ws' })
+    class Gw {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [Gw, FirstLive, SecondLive],
+    })
+    class AppModule {}
+
+    const created = VelaFactory.create(AppModule);
+    await expect(created).rejects.toThrow(
+      /two live query definitions are named 'todos\.list' \(FirstLive\.list and SecondLive\.count/,
+    );
+    await expect(created).rejects.not.toThrow(/@LiveQuery\('/);
   });
 
   it('validates args at subscribe through the shared definition', async () => {

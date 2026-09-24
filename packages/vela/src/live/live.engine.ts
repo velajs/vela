@@ -291,11 +291,14 @@ export class LiveEngine
       { metadataOnly: true },
     )) {
       for (const declared of getLiveQueries(found.metatype)) {
-        if (this.queries.has(declared.name)) {
-          const msg =
-            `[vela] duplicate @LiveQuery('${declared.name}') ` +
-            `(${found.metatype.name}, owner ${found.moduleId}); query names must be unique.`;
-          throw new Error(msg);
+        const existing = this.queries.get(declared.name);
+        if (existing) {
+          throw new Error(
+            `[vela] two live query definitions are named '${declared.name}' ` +
+              `(${existing.token.name}.${String(existing.methodName)} and ` +
+              `${found.metatype.name}.${String(declared.methodName)}, owner ${found.moduleId}); ` +
+              'give each defineLiveQuery({ name }) a unique name.',
+          );
         }
         this.queries.set(declared.name, {
           ...declared,
@@ -487,7 +490,7 @@ export class LiveEngine
         t: 'error',
         sub: frame.sub,
         code: LIVE_ERROR_CODES.UNKNOWN_QUERY,
-        message: `no @LiveQuery('${frame.query}') is registered`,
+        message: `no live query named '${frame.query}' is registered`,
         fatal: true,
       });
       return;
