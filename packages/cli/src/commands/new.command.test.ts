@@ -307,8 +307,17 @@ describe('vela new', () => {
     expect(await read('src/todos/todos.cron.ts')).toContain(
       "@Cron('0 3 * * *', { dialect: 'cloudflare' })",
     );
+    expect(await read('src/app.module.ts')).toContain(
+      "OpenApiModule.forRoot({ info: { title: 'todo-api', version: '0.0.0' } })",
+    );
     const spec = await read('test/todos.spec.ts');
-    for (const usage of ['worker.queue(', 'worker.scheduled(', '.overrideModule(', '.useMocker(']) {
+    for (const usage of [
+      'worker.queue(',
+      'worker.scheduled(',
+      '.overrideModule(',
+      '.useMocker(',
+      "'/openapi.json'",
+    ]) {
       expect(spec).toContain(usage);
     }
     const readme = await read('README.md');

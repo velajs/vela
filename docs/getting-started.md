@@ -15,7 +15,7 @@ Options choose what the command writes and does:
 | Option | Effect |
 | --- | --- |
 | `--template minimal` | The default: one module, controller and injected service. |
-| `--template api` | A todos API: a zod-validated resource stored in Workers KV, a queue job per created todo, a nightly cron job, and workerd specs for each. |
+| `--template api` | A todos API: a zod-validated resource stored in Workers KV, a queue job per created todo, a nightly cron job, the OpenAPI document at `/openapi.json` (`OpenApiModule`), and workerd specs for each. |
 | `--pm pnpm\|npm\|yarn\|bun` | The package manager the files and instructions use. By default, the one running the command (`npx` → npm, `bunx` → bun), else pnpm. |
 | `--install` | Install dependencies in the new directory. |
 | `--git` | Initialize a Git repository and commit the project as `chore: initial commit`. |

@@ -61,7 +61,7 @@ Cloudflare login.
 | Option | Effect |
 | --- | --- |
 | `--template minimal` | The default: one module, controller and injected service. |
-| `--template api` | A todos resource validated with zod and stored in Workers KV, a `todo-events` queue processor, a nightly `@Cron` job, and specs that drive `fetch`, `queue()` and `scheduled()`. |
+| `--template api` | A todos resource validated with zod and stored in Workers KV, a `todo-events` queue processor, a nightly `@Cron` job, `OpenApiModule` serving `/openapi.json`, and specs that drive `fetch`, `queue()` and `scheduled()`. |
 | `--pm pnpm\|npm\|yarn\|bun` | The package manager the files and instructions use; by default the one running the command, else pnpm. pnpm projects get `pnpm-workspace.yaml` build approvals, Yarn projects `nodeLinker: node-modules`, Bun projects `trustedDependencies`. |
 | `--install` | Run the package manager's install in the new directory. |
 | `--git` | `git init` and commit the project as `chore: initial commit`. |

@@ -1,7 +1,8 @@
 # __PROJECT_NAME__
 
 A Vela API on Cloudflare Workers: a validated todos resource stored in Workers
-KV, a queue job for every created todo, and a nightly cron job. Requires
+KV, a queue job for every created todo, a nightly cron job and the OpenAPI
+document of its routes at `/openapi.json`. Requires
 Node.js 24+. Local development needs no Cloudflare login: Vite runs the Worker
 with local KV, queues and cron triggers.
 
@@ -16,6 +17,7 @@ In another terminal:
 curl -X POST http://localhost:5173/todos \
   -H 'content-type: application/json' -d '{"title":"Try Vela"}'
 curl http://localhost:5173/todos
+curl http://localhost:5173/openapi.json
 ```
 
 ## Layout
@@ -23,7 +25,7 @@ curl http://localhost:5173/todos
 | File | Responsibility |
 | --- | --- |
 | `src/worker.ts` | `export default createCloudflareWorker(AppModule)` |
-| `src/app.module.ts` | The queue driver (`QueueModule.forRoot`) and the feature modules |
+| `src/app.module.ts` | The queue driver (`QueueModule.forRoot`), `OpenApiModule` and the feature modules |
 | `src/todos/todos.module.ts` | Registers the `todo-events` queue, the controller, service, processor and cron job |
 | `src/todos/todos.controller.ts` | `GET/POST /todos`, `GET/PATCH/DELETE /todos/:id`, bodies validated with zod |
 | `src/todos/todos.service.ts` | Reads and writes the `TODOS` KV namespace and adds a `todo.created` job |

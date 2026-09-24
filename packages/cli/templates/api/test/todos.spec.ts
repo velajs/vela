@@ -60,6 +60,20 @@ describe('todos API', () => {
     }
   });
 
+  it('serves the OpenAPI document of its routes', async () => {
+    const worker = await createTestingWorker(AppModule, { env });
+    try {
+      const response = await worker.fetch('/openapi.json');
+      expect(response.status).toBe(200);
+      const document = await response.json<{ paths: Record<string, unknown> }>();
+      expect(Object.keys(document.paths)).toEqual(
+        expect.arrayContaining(['/todos', '/todos/{id}']),
+      );
+    } finally {
+      await worker.close();
+    }
+  });
+
   it('notifies when a todo.created job is processed', async () => {
     const notified: string[] = [];
     const worker = await createTestingWorker(AppModule, {

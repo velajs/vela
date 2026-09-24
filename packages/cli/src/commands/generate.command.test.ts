@@ -111,7 +111,7 @@ export class BillingModule {}
       'create(@Body(CreateCategory) body: CreateCategory): Category {',
     );
     expect(await read('src/app.module.ts')).toContain(
-      'imports: [QueueModule.forRoot({ driver: cloudflareQueues() }), TodosModule, CategoriesModule],',
+      '    TodosModule,\n    CategoriesModule,\n  ],',
     );
   });
 
