@@ -119,14 +119,10 @@ export class McpServeCommand extends Command {
       this.context.stderr.write(`${message}\n`);
     };
 
-    const loaded = await loadConfig(process.cwd(), this.config, {
-      environment: this.environment,
-    });
-    const rootModule: Type | DynamicModule | undefined = loaded.config.rootModule;
-
     return withApp(
-      loaded,
-      async (app) => {
+      () => loadConfig(process.cwd(), this.config, { environment: this.environment }),
+      async (app, loaded) => {
+        const rootModule: Type | DynamicModule | undefined = loaded.config.rootModule;
         const identity = await readCliIdentity();
         const server = new McpServer(identity);
 

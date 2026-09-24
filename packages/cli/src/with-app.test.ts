@@ -5,8 +5,31 @@ import type { LoadedVelaConfig, VelaConfig } from './config.js';
 import { withApp } from './with-app.js';
 
 /** A loaded config whose module runner records when it closes. */
-function loadedConfig(config: VelaConfig, dispose = vi.fn(async () => {})): LoadedVelaConfig {
-  return { config, path: '/project/vela.config.ts', dispose };
+function loadedConfig(
+  config: VelaConfig,
+  dispose = vi.fn(async () => {}),
+): Pick<LoadedVelaConfig, 'config' | 'dispose'> {
+  return { config, dispose };
+}
+
+/** Load `loaded`, as `loadConfig()` does once it has imported the files. */
+const load =
+  <Loaded>(loaded: Loaded) =>
+  async (): Promise<Loaded> =>
+    loaded;
+
+/** A log stream that keeps what it is sent. */
+function logStream() {
+  const stream = {
+    text: '',
+    writable: new Writable({
+      write(chunk, _encoding, callback) {
+        stream.text += String(chunk);
+        callback();
+      },
+    }),
+  };
+  return stream;
 }
 
 describe('command application ownership', () => {
@@ -23,7 +46,7 @@ describe('command application ownership', () => {
     };
     expect(
       await withApp(
-        loadedConfig(config),
+        load(loadedConfig(config)),
         async (current) => {
           await Promise.resolve();
           expect(current).toBe(app);
@@ -54,7 +77,7 @@ describe('command application ownership', () => {
     const failure = new Error('work failed');
     await expect(
       withApp(
-        loadedConfig({ createApp: () => app }),
+        load(loadedConfig({ createApp: () => app })),
         () => {
           throw failure;
         },
@@ -73,7 +96,7 @@ describe('command application ownership', () => {
     const cleanup = vi.spyOn(app.getContainer(), 'dispose');
     expect(
       await withApp(
-        loadedConfig({ createApp: () => app }),
+        load(loadedConfig({ createApp: () => app })),
         () => 0,
         () => {
           throw new Error('stream closed');
@@ -91,7 +114,7 @@ describe('command application ownership', () => {
         throw failure;
       },
     });
-    await expect(withApp(loaded, work, vi.fn())).rejects.toBe(failure);
+    await expect(withApp(load(loaded), work, vi.fn())).rejects.toBe(failure);
     expect(work).not.toHaveBeenCalled();
     // The module runner still closes, so the command can exit.
     expect(loaded.dispose).toHaveBeenCalledOnce();
@@ -113,7 +136,7 @@ describe('command application ownership', () => {
     );
     expect(
       await withApp(
-        loaded,
+        load(loaded),
         () => {
           events.push('work');
           return 3;
@@ -145,7 +168,7 @@ describe('command application ownership', () => {
     });
     const original = { log: console.log, info: console.info, error: console.error };
     const result = await withApp(
-      loadedConfig({ createApp: () => VelaFactory.create(Root) }),
+      load(loadedConfig({ createApp: () => VelaFactory.create(Root) })),
       () => {
         console.info('working');
         console.error('careful');
@@ -159,16 +182,63 @@ describe('command application ownership', () => {
     expect({ log: console.log, info: console.info, error: console.error }).toEqual(original);
   });
 
+  it('sends the console output of the loading application files to the log stream', async () => {
+    @Module({})
+    class Root {}
+    const logs = logStream();
+    const log = console.log;
+    const loaded = loadedConfig({ createApp: () => VelaFactory.create(Root) });
+    const result = await withApp(
+      async () => {
+        // Module-scope code of the Worker entry or config runs while it loads.
+        console.log('entry loaded');
+        return loaded;
+      },
+      (_app, current) => {
+        expect(current).toBe(loaded);
+        return 'done';
+      },
+      vi.fn(),
+      logs.writable,
+    );
+    expect(result).toBe('done');
+    expect(logs.text).toBe('entry loaded\n');
+    expect(console.log).toBe(log);
+  });
+
+  it('restores the console when loading the application fails', async () => {
+    const log = console.log;
+    const failure = new Error('cannot import the entry');
+    const logs = logStream();
+    const work = vi.fn();
+    await expect(
+      withApp(
+        async () => {
+          console.warn('importing');
+          throw failure;
+        },
+        work,
+        vi.fn(),
+        logs.writable,
+      ),
+    ).rejects.toBe(failure);
+    expect(work).not.toHaveBeenCalled();
+    expect(logs.text).toBe('importing\n');
+    expect(console.log).toBe(log);
+  });
+
   it('restores the console when the application fails to build', async () => {
     const log = console.log;
     const failure = new Error('bootstrap failed');
     await expect(
       withApp(
-        loadedConfig({
-          createApp() {
-            throw failure;
-          },
-        }),
+        load(
+          loadedConfig({
+            createApp() {
+              throw failure;
+            },
+          }),
+        ),
         vi.fn(),
         vi.fn(),
         new Writable({ write: (_chunk, _encoding, callback) => callback() }),
@@ -188,7 +258,7 @@ describe('command application ownership', () => {
         throw new Error('runner close failed');
       }),
     );
-    expect(await withApp(loaded, () => 'done', warn)).toBe('done');
+    expect(await withApp(load(loaded), () => 'done', warn)).toBe('done');
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('runner close failed'));
   });
 });

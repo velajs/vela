@@ -118,6 +118,29 @@ describe('generated project workflow in Node', () => {
     expect(JSON.parse(result.stdout)).toContainEqual(expect.objectContaining({ path: '/typed/' }));
   });
 
+  it('sends console output of the files it loads to stderr, keeping stdout for the command', () => {
+    writeFileSync(
+      join(project, 'noisy.config.ts'),
+      `
+      import { VelaFactory } from '@velajs/vela';
+      import { AppModule } from './src/app.module.js';
+      console.log('config module loaded');
+      console.info('config module ready');
+      export default { rootModule: AppModule, createApp: () => VelaFactory.create(AppModule) };
+    `,
+    );
+    for (const args of [
+      ['route', 'list', '--json'],
+      ['entrypoint', 'list', '--json'],
+      ['doctor', '--app', '--json'],
+    ]) {
+      const result = run([cli, ...args, '--config', 'noisy.config.ts']);
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(() => JSON.parse(result.stdout), result.stdout).not.toThrow();
+      expect(result.stderr).toContain('config module loaded\nconfig module ready\n');
+    }
+  });
+
   it('keeps the module runner open for application files the config imports lazily', () => {
     writeFileSync(
       join(project, 'lazy.config.ts'),

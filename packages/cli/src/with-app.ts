@@ -52,15 +52,17 @@ function redirectConsole(logs: Writable): () => void {
 }
 
 /**
- * Own one app for the whole command, including output and long-lived
- * transports, then the module runner that loaded its config: files the config
- * imports while the app runs load through that runner, so it closes last,
- * even when `createApp()` or the work throws. Meanwhile the application's
- * console output, `Logger` lines included, goes to `logs` (stderr).
+ * Own one app for the whole command: load it with `load` (`loadConfig()`,
+ * which imports the config or Worker entry), build it, run `work` with it and
+ * the loaded config, then dispose it and close the module runner that loaded
+ * it: files the config imports while the app runs load through that runner,
+ * so it closes last, even when `createApp()` or the work throws. From the
+ * first import on, the application's console output (module-scope code and
+ * `Logger` lines included) goes to `logs` (stderr).
  */
-export async function withApp<Result>(
-  loaded: Pick<LoadedVelaConfig, 'config' | 'dispose'>,
-  work: (app: VelaApplication) => Result | Promise<Result>,
+export async function withApp<Loaded extends Pick<LoadedVelaConfig, 'config' | 'dispose'>, Result>(
+  load: () => Promise<Loaded>,
+  work: (app: VelaApplication, loaded: Loaded) => Result | Promise<Result>,
   warn: (message: string) => void,
   logs: Writable = process.stderr,
 ): Promise<Result> {
@@ -72,10 +74,17 @@ export async function withApp<Result>(
     }
   };
   const restoreConsole = redirectConsole(logs);
+  let loaded: Loaded;
+  try {
+    loaded = await load();
+  } catch (error) {
+    restoreConsole();
+    throw error;
+  }
   try {
     const app = await loaded.config.createApp();
     try {
-      return await work(app);
+      return await work(app, loaded);
     } finally {
       try {
         // Older 1.x apps may not implement full application disposal.

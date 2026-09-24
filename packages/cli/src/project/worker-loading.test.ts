@@ -108,7 +108,7 @@ describe('loading the Worker entry without a vela.config', () => {
     const root = loaded.config.rootModule;
     expect(typeof root === 'function' ? root.name : root).toBe('AppModule');
     const described = await withApp(
-      loaded,
+      async () => loaded,
       (app) => ({
         env: app.get(ENV),
         routes: app.describeRoutes().map((route) => `${route.method} ${route.path}`),
@@ -121,7 +121,7 @@ describe('loading the Worker entry without a vela.config', () => {
   it('selects the main and vars of a named environment', async () => {
     const loaded = await loadConfig(project, undefined, { environment: 'staging' });
     const described = await withApp(
-      loaded,
+      async () => loaded,
       (app) => ({ env: app.get(ENV), prefix: app.getGlobalPrefix() }),
       () => {},
     );
@@ -131,7 +131,7 @@ describe('loading the Worker entry without a vela.config', () => {
   it("uses Wrangler's local platform for local bindings and closes it with the config", async () => {
     const loaded = await loadConfig(project, undefined, { bindings: 'local' });
     const env = await withApp(
-      loaded,
+      async () => loaded,
       (app) => app.get(ENV),
       () => {},
     );
@@ -164,7 +164,7 @@ describe('loading the Worker entry without a vela.config', () => {
     const loaded = await loadConfig(project, undefined, { wrangler: 'wrangler.preview.jsonc' });
     expect(loaded.path).toBe(join(project, 'wrangler.preview.jsonc'));
     const described = await withApp(
-      loaded,
+      async () => loaded,
       (app) => ({ env: app.get(ENV), prefix: app.getGlobalPrefix() }),
       () => {},
     );
@@ -176,7 +176,7 @@ describe('loading the Worker entry without a vela.config', () => {
     const root = loaded.config.rootModule;
     expect(typeof root === 'object' ? root.module.name : root).toBe('AppModule');
     const described = await withApp(
-      loaded,
+      async () => loaded,
       (app) => ({
         routes: app.describeRoutes().map((route) => `${route.method} ${route.path}`),
         paths: root === undefined ? [] : Object.keys(createOpenApiDocument(root).paths),

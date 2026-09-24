@@ -39,12 +39,12 @@ export class SeedCommand extends Command {
     if (this.list && this.continueOnError)
       throw new UsageError('--list cannot be combined with --continue-on-error.');
     // Without a config, seeders write to the local bindings `vite dev` uses.
-    const loaded = await loadConfig(process.cwd(), this.config, {
-      environment: this.environment,
-      bindings: 'local',
-    });
     return withApp(
-      loaded,
+      () =>
+        loadConfig(process.cwd(), this.config, {
+          environment: this.environment,
+          bindings: 'local',
+        }),
       async (app) => {
         if (this.list) {
           const inventory = app

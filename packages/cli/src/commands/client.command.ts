@@ -79,19 +79,14 @@ export class ClientGenerateCommand extends Command {
   }
 
   async #fromApp(): Promise<OpenApiDocument> {
-    const loaded = await loadConfig(process.cwd(), this.config, {
-      environment: this.environment,
-    });
-    const rootModule = loaded.config.rootModule;
-    if (!rootModule) {
-      await loaded.dispose();
-      throw new Error(
-        'client generate needs rootModule in vela.config, or pass --input openapi.json.',
-      );
-    }
     return withApp(
-      loaded,
-      async (app) => {
+      () => loadConfig(process.cwd(), this.config, { environment: this.environment }),
+      async (app, { config: { rootModule } }) => {
+        if (!rootModule) {
+          throw new Error(
+            'client generate needs rootModule in vela.config, or pass --input openapi.json.',
+          );
+        }
         const document = createOpenApiDocument(rootModule, {
           globalPrefix: app.getGlobalPrefix(),
         });

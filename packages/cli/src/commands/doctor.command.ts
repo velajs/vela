@@ -69,9 +69,8 @@ export class DoctorCommand extends Command {
     try {
       report.config = await resolveConfig(report.cwd, this.config);
       if (this.app) {
-        const loaded = await loadConfig(report.cwd, this.config, { environment: this.environment });
         report.application = await withApp(
-          loaded,
+          () => loadConfig(report.cwd, this.config, { environment: this.environment }),
           describeApplication,
           (message) => {
             report.issues.push(message);
