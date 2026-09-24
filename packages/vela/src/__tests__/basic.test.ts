@@ -583,7 +583,7 @@ describe('Exception Filters', () => {
     const hono = app.getHonoApp();
 
     const res = await hono.request('/filtered/99');
-    expect(res.status).toBe(200); // filter returns a plain object, not a Response
+    expect(res.status).toBe(404); // a plain object keeps the exception's status
     expect(await res.json()).toEqual({
       statusCode: 404,
       error: 'Custom Not Found',

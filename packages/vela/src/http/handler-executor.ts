@@ -1,10 +1,6 @@
-import { toErrorBody } from '@velajs/errors';
 import type { Context } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Container } from '../container/container';
 import type { TypedToken, Type } from '../container/types';
-import { HttpException } from '../errors/http-exception';
-import { httpExceptionBody } from '../exceptions/http-exception-body';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { shouldFilterCatch } from '../pipeline/decorators';
 import { PipelineRunner } from '../pipeline/pipeline-runner';
@@ -27,6 +23,7 @@ import type { ArgumentResolver } from './argument-resolver';
 import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
 import { getEndpointBinding } from './endpoint-registry';
+import { mapFilterResult, sendHttpError } from './error-response';
 import { instantiateAsync, instantiateManyAsync } from './instantiate';
 import {
   applyResponseHeaders,
@@ -224,8 +221,15 @@ export class HandlerExecutor {
           try {
             const filter = await instantiateAsync<ExceptionFilter>(entry, requestContainer, owner);
             if (shouldFilterCatch(filter, error)) {
-              const filtered = await filter.catch(error, executionContext);
-              return mapResponse(c, filtered);
+              // The first matching filter decides; `undefined` leaves the
+              // error to the default renderer.
+              const filtered = mapFilterResult(
+                c,
+                await filter.catch(error, executionContext),
+                error,
+              );
+              if (filtered) return filtered;
+              break;
             }
           } catch (filterError) {
             reporter.report(filterError, {
@@ -237,17 +241,7 @@ export class HandlerExecutor {
           }
         }
 
-        const rendered = reporter.render(error, executionContext);
-        if (rendered instanceof Response) return rendered;
-        if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
-
-        if (error instanceof HttpException) {
-          const { body, status } = httpExceptionBody(error, reporter.catalog);
-          return c.json(body, status as ContentfulStatusCode);
-        }
-
-        const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
-        return c.json(body, status as ContentfulStatusCode);
+        return sendHttpError(c, error, reporter, executionContext);
       }
     };
   }

@@ -1656,7 +1656,7 @@ describe('APP_FILTER global exception filter', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/filter-test');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ caught: true, global: true });
   });
 
@@ -4336,8 +4336,11 @@ describe('ValidationPipe with Zod schemas', () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({
-      message: 'Validation failed',
-      errors: [expect.objectContaining({ path: ['count'] })],
+      error: {
+        code: 'bad_request',
+        message: 'Validation failed',
+        details: { issues: [expect.objectContaining({ path: ['count'] })] },
+      },
     });
   });
 

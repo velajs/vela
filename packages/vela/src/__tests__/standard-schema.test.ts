@@ -3,6 +3,7 @@ import * as v from 'valibot';
 import { z } from 'zod';
 import { defineDto, ValidationPipe, validateSchema, type StandardSchemaV1 } from '../validation';
 import { zodToJsonSchema } from '../openapi/zod-to-json-schema';
+import { BadRequestException } from '../errors/http-exception';
 
 describe('Standard Schema validation', () => {
   it('supports Valibot transformations and retains distinct DTO input/output', async () => {
@@ -74,9 +75,9 @@ it('normalizes Standard issue paths and does not downgrade unexpected errors car
     await new ValidationPipe(invalid).transform({}, { type: 'body' });
     throw Error('expected validation');
   } catch (error) {
-    expect(error).toMatchObject({ statusCode: 400 });
-    expect((error as { getResponse(): unknown }).getResponse()).toMatchObject({
-      errors: [{ path: ['users', 0, 'email'], message: 'Required' }],
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error instanceof BadRequestException && error.getDetails()).toMatchObject({
+      issues: [{ path: ['users', 0, 'email'], message: 'Required' }],
     });
   }
   const failure = Object.assign(new Error('validator offline'), {
@@ -120,13 +121,10 @@ it('maps async legacy input failures without forwarding vendor values', async ()
     await pipe.transform({}, { type: 'body' });
     throw new Error('expected rejection');
   } catch (error) {
-    expect(error).toMatchObject({ statusCode: 400 });
-    const body =
-      error instanceof Error && 'getResponse' in error && typeof error.getResponse === 'function'
-        ? error.getResponse()
-        : undefined;
-    expect(body).toMatchObject({ errors: [{ message: 'Invalid', path: ['value'] }] });
-    expect(JSON.stringify(body)).not.toContain('secret');
+    expect(error).toBeInstanceOf(BadRequestException);
+    const details = error instanceof BadRequestException ? error.getDetails() : undefined;
+    expect(details).toMatchObject({ issues: [{ message: 'Invalid', path: ['value'] }] });
+    expect(JSON.stringify(details)).not.toContain('secret');
   }
 });
 

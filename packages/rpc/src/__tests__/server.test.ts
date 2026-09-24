@@ -243,6 +243,56 @@ describe('Vela RPC adapter', () => {
     }
   });
 
+  it('keeps an explicit filter status and renders exception-owned responses', async () => {
+    const explicit = defineProcedure({
+      name: 'filter.explicit',
+      input: z.null(),
+      output: z.string(),
+    });
+    const owned = defineProcedure({ name: 'error.owned', input: z.null(), output: z.string() });
+    class LockedError extends Error {
+      toResponse() {
+        return { status: 409, body: { locked: 'internal lock owner' } };
+      }
+    }
+    const filter: ExceptionFilter = {
+      catch() {
+        return { status: 422, body: { retry: false } };
+      },
+    };
+    @Injectable()
+    class Handler {
+      @Rpc(explicit) @UseFilters(filter) call(_: null): string {
+        throw new Error('hidden');
+      }
+      @Rpc(owned) locked(_: null): string {
+        throw new LockedError('hidden');
+      }
+    }
+    @Module({ providers: [Handler] })
+    class App {}
+    const app = await VelaFactory.create(App, {
+      adapters: [rpcAdapter({ authorize: 'public' })],
+      diagnostics: 'silent',
+    });
+    try {
+      await expect(client(app).call(explicit, null)).rejects.toMatchObject({
+        name: 'RpcError',
+        status: 422,
+      });
+      const response = await app.fetch(request(owned.name, null));
+      expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        ok: false,
+        error: { code: 'conflict', message: 'RPC request failed', status: 409 },
+      });
+      expect(JSON.stringify(body)).not.toContain('internal lock owner');
+    } finally {
+      await app.dispose();
+    }
+  });
+
   it('executes transforms once, preserves #private receivers and request disposal', async () => {
     let inputs = 0;
     let outputs = 0;

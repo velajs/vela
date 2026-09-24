@@ -204,16 +204,23 @@ export {
   ServiceUnavailableException,
   GatewayTimeoutException,
 } from './errors/index';
+export type {
+  ExceptionResponse,
+  HttpErrorResponse,
+  HttpExceptionOptions,
+} from './errors/index';
 
 // Exception handling — the ExceptionHandler contract, plus the core
 // @velajs/errors surface so one import authors handlers, throws branded errors,
 // and defines/composes catalogs.
-export { ErrorsModule, matchesAny } from './exceptions/index';
+export { ErrorsModule, getErrorStatus, matchesAny, renderHttpError } from './exceptions/index';
 export type {
   ErrorMatcher,
   ErrorReportContext,
   ErrorsModuleOptions,
   ExceptionHandler,
+  RenderedHttpError,
+  RenderHttpErrorOptions,
 } from './exceptions/index';
 export {
   VelaError,

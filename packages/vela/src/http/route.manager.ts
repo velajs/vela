@@ -1,6 +1,4 @@
 import { type Next, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
-import { toErrorBody } from '@velajs/errors';
 import type {
   VelaContext as Context,
   VelaHono as HonoApp,
@@ -12,11 +10,13 @@ import { contextStorage } from 'hono/context-storage';
 import { baseRoutePath, matchedRoutes, routePath } from 'hono/route';
 import { TrieRouter } from 'hono/router/trie-router';
 import { splitRoutingPath } from 'hono/utils/url';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, Scope } from '../constants';
-import { HttpException } from '../errors/http-exception';
+import {
+  BadRequestException,
+  NotFoundException,
+  PayloadTooLargeException,
+} from '../errors/http-exception';
 import { createExecutionScope, finishExecutionScope } from '../entrypoint/execution-scope';
-import { httpExceptionBody } from '../exceptions/http-exception-body';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
@@ -36,12 +36,12 @@ import {
   type RouteTarget,
 } from './route-target';
 import { buildMiddlewareExecutionContext } from './execution-context';
+import { mapFilterResult, sendHttpError } from './error-response';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany, instantiateAsync } from './instantiate';
 import { REQUEST_CONTEXT, createRequestContext } from './request-context';
 import { findRequestContainer, setRequestContainer } from './request-container';
 import type { HttpRequestCompletion, HttpRequestObserver } from './request-observer';
-import { mapResponse } from './response-mapper';
 import { shouldFilterCatch } from '../pipeline/decorators';
 import { getScopedComponents } from '../pipeline/scoped-components';
 import type {
@@ -575,7 +575,9 @@ export class RouteManager {
       try {
         const filter = await instantiateAsync<ExceptionFilter>(entry, requestContainer);
         if (shouldFilterCatch(filter, error)) {
-          return mapResponse(c, await filter.catch(error, host));
+          const filtered = mapFilterResult(c, await filter.catch(error, host), error);
+          if (filtered) return filtered;
+          break;
         }
       } catch (filterError) {
         reporter.report(filterError, { edge: 'http', source, note: 'middleware filter failed' });
@@ -583,23 +585,21 @@ export class RouteManager {
       }
     }
 
-    const rendered = reporter.render(error, host);
-    if (rendered instanceof Response) return rendered;
-    if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
+    return sendHttpError(c, error, reporter, host);
+  }
 
-    if (error instanceof HttpException) {
-      const { body, status } = httpExceptionBody(error, reporter.catalog);
-      return c.json(body, status as ContentfulStatusCode);
-    }
-    if (error instanceof HTTPException) {
-      if (error.status < 500) return error.getResponse();
-      return c.json(
-        { error: { code: 'internal', message: 'Internal Server Error' } },
-        error.status as ContentfulStatusCode,
-      );
-    }
-    const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
-    return c.json(body, status as ContentfulStatusCode);
+  // Framework rejections (request limits, unmatched routes) are expected
+  // client faults: rendered through the application's render hook and the
+  // shared renderer, but never reported or offered to exception filters, so
+  // a catch-all filter cannot turn them into a success.
+  private rejectRequest(c: Context, error: unknown): Response {
+    const container = findRequestContainer(c) ?? this.container;
+    return sendHttpError(
+      c,
+      error,
+      resolveErrorReporter(container),
+      buildMiddlewareExecutionContext(c),
+    );
   }
 
   registerController(controller: Type, moduleId?: string): this {
@@ -790,7 +790,10 @@ export class RouteManager {
         const maxSize = this.resolveBodyLimit(c.req.path, c.req.method);
         return maxSize === false
           ? await normalizedNext()
-          : await honoBodyLimit({ maxSize })(c, normalizedNext);
+          : await honoBodyLimit({
+              maxSize,
+              onError: (limited) => this.rejectRequest(limited, new PayloadTooLargeException()),
+            })(c, normalizedNext);
       } finally {
         // A rejected/failed body never reaches next(). Seed its original
         // request before Hono's error reporter runs inside the active lifetime.
@@ -809,9 +812,9 @@ export class RouteManager {
           ? ''
           : rawUrl.slice(queryStart + 1, fragmentStart < 0 ? undefined : fragmentStart);
       if (this.queryMaxBytes !== false && rawQuery.length > this.queryMaxBytes) {
-        return c.json(
-          { error: { code: 'bad_request', message: 'Query string exceeds the configured limit' } },
-          400,
+        return this.rejectRequest(
+          c,
+          new BadRequestException('Query string exceeds the configured limit'),
         );
       }
       if (rawQuery.length > 0) {
@@ -819,25 +822,15 @@ export class RouteManager {
         for (const [key] of new URL(c.req.raw.url).searchParams) {
           count++;
           if (this.queryMaxParameters !== false && count > this.queryMaxParameters) {
-            return c.json(
-              {
-                error: {
-                  code: 'bad_request',
-                  message: 'Query parameter count exceeds the configured limit',
-                },
-              },
-              400,
+            return this.rejectRequest(
+              c,
+              new BadRequestException('Query parameter count exceeds the configured limit'),
             );
           }
           if (this.queryMaxDepth !== false && queryKeyDepth(key) > this.queryMaxDepth) {
-            return c.json(
-              {
-                error: {
-                  code: 'bad_request',
-                  message: 'Query parameter depth exceeds the configured limit',
-                },
-              },
-              400,
+            return this.rejectRequest(
+              c,
+              new BadRequestException('Query parameter depth exceeds the configured limit'),
             );
           }
         }
@@ -1001,6 +994,7 @@ export class RouteManager {
     }
 
     this.checkMiddlewareTargets(app.routes.slice(firstRoute));
+    app.notFound((c) => this.rejectRequest(c, new NotFoundException()));
     return app;
   }
 

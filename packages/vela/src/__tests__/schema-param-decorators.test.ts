@@ -70,8 +70,11 @@ describe('schema arguments on parameter decorators', () => {
     const invalid = await request(NotesModule, '/notes', postJson({ title: '' }));
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toMatchObject({
-      message: 'Validation failed',
-      errors: [expect.objectContaining({ path: ['title'] })],
+      error: {
+        code: 'bad_request',
+        message: 'Validation failed',
+        details: { issues: [expect.objectContaining({ path: ['title'] })] },
+      },
     });
   });
 
@@ -186,7 +189,7 @@ describe('schema arguments on parameter decorators', () => {
     });
     expect(shortTenant.status).toBe(400);
     expect(await shortTenant.json()).toMatchObject({
-      errors: [{ message: 'Expected at least 3 characters' }],
+      error: { details: { issues: [{ message: 'Expected at least 3 characters' }] } },
     });
 
     const unknownTheme = await request(TenantModule, '/tenant', {

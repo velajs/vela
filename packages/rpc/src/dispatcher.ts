@@ -1,6 +1,6 @@
 /* eslint-disable no-await-in-loop -- Pipes and exception filters preserve declared pipeline order. */
-import { codeForStatus, toErrorBody, VelaError } from '@velajs/errors';
-import { HttpException } from '@velajs/vela';
+import { codeForStatus, VelaError } from '@velajs/errors';
+import { getErrorStatus, HttpException, renderHttpError } from '@velajs/vela';
 import {
   buildHttpExecutionContext,
   createDiscoverableDecorator,
@@ -11,7 +11,14 @@ import {
   resolveScopedComponentsAsync,
   shouldFilterCatch,
 } from '@velajs/vela/module-kit';
-import type { ExceptionFilter, HttpExecutionContext, Token, Type, VelaContext } from '@velajs/vela';
+import type {
+  ExceptionFilter,
+  HttpExecutionContext,
+  RenderedHttpError,
+  Token,
+  Type,
+  VelaContext,
+} from '@velajs/vela';
 import type { AdapterContext, RuntimeAdapter } from '@velajs/vela/module-kit';
 import {
   isValidationSchema,
@@ -141,7 +148,7 @@ export class RpcRegistry {
       return c.json({ error: { code: 'bad_request', message: 'Malformed RPC request' } }, 400);
     }
     const entry = this.#entries.get(rpc.procedure);
-    if (!entry) return failure(rpc, new VelaError('not_found'));
+    if (!entry) return failure(rpc, renderHttpError(new VelaError('not_found')));
     const context: RpcExecutionContext = {
       ...buildHttpExecutionContext(c, entry.metatype, entry.method, entry.moduleId),
       procedure: entry.procedure,
@@ -233,19 +240,11 @@ export class RpcRegistry {
         if (!shouldFilterCatch(filter, error)) continue;
         try {
           // eslint-disable-next-line promise/valid-params -- This is the Vela ExceptionFilter method.
-          const filtered = await filter.catch(error, context);
+          const status = filterStatus(await filter.catch(error, context), error);
           // Filters retain HTTP terminal semantics, but cannot turn a denial
-          // into RPC success. Their status is preserved inside a failure frame.
-          if (filtered instanceof Response) {
-            void filtered.body?.cancel().catch(() => {});
-            return failure(
-              rpc,
-              new HttpException(
-                'RPC request failed',
-                filtered.status >= 400 ? filtered.status : 500,
-              ),
-            );
-          }
+          // into RPC success. Their status is preserved inside a failure frame;
+          // `undefined` leaves the error to the default renderer.
+          if (status !== undefined) return statusFailure(rpc, status);
         } catch (filterError) {
           reporter.report(filterError, {
             edge: 'http',
@@ -256,52 +255,66 @@ export class RpcRegistry {
         break;
       }
       const rendered = reporter.render(error, context);
-      if (rendered instanceof Response) {
-        void rendered.body?.cancel().catch(() => {});
-        return failure(
-          rpc,
-          new HttpException('RPC request failed', rendered.status >= 400 ? rendered.status : 500),
-        );
-      }
-      if (rendered)
-        return failure(
-          rpc,
-          new HttpException('RPC request failed', rendered.status >= 400 ? rendered.status : 500),
-        );
-      return failure(rpc, error, reporter.catalog);
+      if (rendered instanceof Response) void rendered.body?.cancel().catch(() => {});
+      if (rendered) return statusFailure(rpc, rendered.status);
+      // An RPC frame cannot carry an exception-owned body, so a 5xx one is redacted.
+      return failure(
+        rpc,
+        renderHttpError(error, { catalog: reporter.catalog, redactServerBodies: true }),
+      );
     }
   }
 }
 
-function failure(
-  rpc: Pick<RpcRequest, 'id' | 'procedure'>,
-  error: unknown,
-  catalog?: ReturnType<typeof resolveErrorReporter>['catalog'],
-): Response {
-  const options = catalog ? { catalog } : {};
-  let mapped;
-  if (error instanceof HttpException && error.getStatus() >= 400 && error.getStatus() < 500) {
-    // Only a 4xx is a client fault whose text is meant for the caller.
-    const status = error.getStatus();
-    const raw = error.getRawResponse();
-    mapped = toErrorBody(
-      new VelaError(codeForStatus(status), {
-        message: typeof raw === 'string' ? raw : 'RPC request failed',
-        status,
-      }),
-      options,
-    );
-  } else
-    mapped = toErrorBody(error, {
-      ...options,
-      ...(error instanceof HttpException ? { fallbackStatus: error.getStatus() } : {}),
-    });
-  const status = mapped.status >= 400 && mapped.status <= 599 ? mapped.status : 500;
-  const code = /^[A-Za-z0-9_.:-]{1,160}$/.test(mapped.body.error.code)
-    ? mapped.body.error.code
-    : 'internal';
+// The status an exception filter's result asks for, as in HTTP: a Response's
+// status, an explicit `{ status, body }`, or the exception's own status.
+function filterStatus(result: unknown, error: unknown): number | undefined {
+  if (result === undefined) return undefined;
+  if (result instanceof Response) {
+    void result.body?.cancel().catch(() => {});
+    return result.status;
+  }
+  if (
+    typeof result === 'object' &&
+    result !== null &&
+    Object.keys(result).length === 2 &&
+    'status' in result &&
+    'body' in result &&
+    typeof result.status === 'number'
+  )
+    return result.status;
+  return getErrorStatus(error);
+}
+
+function statusFailure(rpc: Pick<RpcRequest, 'id' | 'procedure'>, status: number): Response {
+  return failure(
+    rpc,
+    renderHttpError(new HttpException('RPC request failed', status >= 400 ? status : 500)),
+  );
+}
+
+// The canonical `{ error: { code, message } }` of a rendered body, if any.
+function wireError(body: unknown): { code: string; message: string } | undefined {
+  if (typeof body !== 'object' || body === null || !('error' in body)) return undefined;
+  const error = body.error;
+  if (typeof error !== 'object' || error === null || !('code' in error) || !('message' in error))
+    return undefined;
+  const { code, message } = error;
+  return typeof code === 'string' && typeof message === 'string' ? { code, message } : undefined;
+}
+
+function failure(rpc: Pick<RpcRequest, 'id' | 'procedure'>, rendered: RenderedHttpError): Response {
+  const status = rendered.status >= 400 && rendered.status <= 599 ? rendered.status : 500;
+  // A body the exception owns (not the canonical shape) keeps only its status.
+  const wire = wireError(rendered.body);
+  const code =
+    wire && /^[A-Za-z0-9_.:-]{1,160}$/.test(wire.code) ? wire.code : codeForStatus(status);
   const message =
-    code === 'internal' ? 'Internal Server Error' : mapped.body.error.message.slice(0, 2048);
+    code === 'internal'
+      ? 'Internal Server Error'
+      : wire
+        ? wire.message.slice(0, 2048)
+        : 'RPC request failed';
   const response: RpcFailure = {
     version: 1,
     id: rpc.id,
