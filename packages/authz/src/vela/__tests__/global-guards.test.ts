@@ -114,6 +114,61 @@ describe('AuthzModule global guards', () => {
     }
   });
 
+  it('enforces roles an ancestor declares on a method the controller inherits', async () => {
+    class Base {
+      review() {
+        return { ok: true };
+      }
+    }
+    const review = Object.getOwnPropertyDescriptor(Base.prototype, 'review')!;
+    Roles(['reviewer'])(Base.prototype, 'review', review);
+    // Routes the inherited method without overriding it.
+    class Reviews extends Base {}
+    Controller('/reviews')(Reviews);
+    Get()(Reviews.prototype, 'review', review);
+    // Its own override declares its own roles, which win.
+    class Drafts extends Base {
+      override review() {
+        return { ok: true };
+      }
+    }
+    Controller('/drafts')(Drafts);
+    const draft = Object.getOwnPropertyDescriptor(Drafts.prototype, 'review')!;
+    Get()(Drafts.prototype, 'review', draft);
+    Roles(['editor'])(Drafts.prototype, 'review', draft);
+    // A sibling that declares nothing on its own undecorated copy stays open.
+    class Notes {
+      review() {
+        return { ok: true };
+      }
+    }
+    class PublicNotes extends Notes {}
+    Controller('/notes')(PublicNotes);
+    Get()(PublicNotes.prototype, 'review', Object.getOwnPropertyDescriptor(Notes.prototype, 'review')!);
+
+    class App {}
+    Module({
+      imports: [AuthzModule.forRoot({ roles: [editor] })],
+      controllers: [Reviews, Drafts, PublicNotes],
+      providers: [
+        HeaderAuthentication,
+        defineProvider(APP_GUARD, { useExisting: HeaderAuthentication }),
+      ],
+    })(App);
+    const app = await VelaFactory.create(App);
+    const status = async (path: string, role: string) =>
+      (await app.getHonoApp().request(path, { headers: { 'x-role': role } })).status;
+    try {
+      expect(await status('/reviews', 'editor')).toBe(403);
+      expect(await status('/reviews', 'reviewer')).toBe(200);
+      expect(await status('/drafts', 'reviewer')).toBe(403);
+      expect(await status('/drafts', 'editor')).toBe(200);
+      expect(await status('/notes', 'editor')).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("leaves routes to explicit guards with guard: 'none'", async () => {
     const app = await application(AuthzModule.forRoot({ roles: [editor], guard: 'none' }));
     try {

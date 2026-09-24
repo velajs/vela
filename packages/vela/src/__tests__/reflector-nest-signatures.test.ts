@@ -353,6 +353,110 @@ describe("Reflector accepts Nest's (key, target | target[]) signatures", () => {
     expect(reflector.getAllAndOverride(IsPublic, [Base.prototype.list, PublicDocs])).toBe(true);
   });
 
+  it('reads method metadata an ancestor declares through the execution context', async () => {
+    const seen: Array<Array<string[] | undefined>> = [];
+
+    // As in Nest's RolesGuard: a route without roles is open, and the caller's
+    // role (a header here) must be one of the roles a route requires.
+    @Injectable()
+    class RolesGuard implements CanActivate {
+      constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+      canActivate(context: ExecutionContext): boolean {
+        const reads = [
+          this.reflector.get(Roles, context),
+          this.reflector.getHandler(Roles, context),
+          this.reflector.getAllAndOverride(Roles, context),
+          this.reflector.getAll(Roles, context)[0],
+          this.reflector.getAllAndOverride(Roles, [context.getHandler(), context.getClass()]),
+        ];
+        seen.push(reads);
+        const roles = this.reflector.getAllAndOverride(Roles, context);
+        const role = context.getRequest().headers.get('x-role') ?? '';
+        return roles === undefined || roles.includes(role);
+      }
+    }
+
+    class Base {
+      @Roles(['admin'])
+      list() {
+        return ['listed'];
+      }
+    }
+    const inherited = Object.getOwnPropertyDescriptor(Base.prototype, 'list')!;
+    // Routes the method it inherits, unchanged.
+    @Controller('/reports')
+    @UseGuards(RolesGuard)
+    class Reports extends Base {}
+    Get()(Reports.prototype, 'list', inherited);
+    // Two levels down: the nearest declaration is still the ancestor's.
+    @Controller('/archive')
+    @UseGuards(RolesGuard)
+    class Archive extends Reports {}
+    Get()(Archive.prototype, 'list', inherited);
+    // Its own override, with its own roles, wins over the ancestor's.
+    @Controller('/members')
+    @UseGuards(RolesGuard)
+    class Members extends Base {
+      @Get()
+      @Roles(['member'])
+      override list() {
+        return ['members'];
+      }
+    }
+    // An intermediate class declaring the inherited method is nearer than Base.
+    class Editorial extends Base {}
+    Roles(['editor'])(Editorial.prototype, 'list', inherited);
+    @Controller('/drafts')
+    @UseGuards(RolesGuard)
+    class Drafts extends Editorial {}
+    Get()(Drafts.prototype, 'list', inherited);
+
+    // Siblings sharing an undecorated method: one declares it, the other stays open.
+    class Shared {
+      list() {
+        return ['shared'];
+      }
+    }
+    const shared = Object.getOwnPropertyDescriptor(Shared.prototype, 'list')!;
+    @Controller('/restricted')
+    @UseGuards(RolesGuard)
+    class Restricted extends Shared {}
+    Get()(Restricted.prototype, 'list', shared);
+    Roles(['admin'])(Restricted.prototype, 'list', shared);
+    @Controller('/open')
+    @UseGuards(RolesGuard)
+    class Open extends Shared {}
+    Get()(Open.prototype, 'list', shared);
+
+    @Module({
+      controllers: [Reports, Archive, Members, Drafts, Restricted, Open],
+      providers: [RolesGuard],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const status = async (path: string, role: string) =>
+      (await app.getHonoApp().request(path, { headers: { 'x-role': role } })).status;
+    try {
+      expect(await status('/reports', 'member')).toBe(403);
+      expect(seen.at(-1)).toEqual([['admin'], ['admin'], ['admin'], ['admin'], ['admin']]);
+      expect(await status('/reports', 'admin')).toBe(200);
+      expect(await status('/archive', 'member')).toBe(403);
+      expect(await status('/archive', 'admin')).toBe(200);
+      expect(await status('/members', 'admin')).toBe(403);
+      expect(await status('/members', 'member')).toBe(200);
+      expect(await status('/drafts', 'admin')).toBe(403);
+      expect(seen.at(-1)).toEqual([['editor'], ['editor'], ['editor'], ['editor'], ['editor']]);
+      expect(await status('/drafts', 'editor')).toBe(200);
+      expect(await status('/restricted', 'member')).toBe(403);
+      expect(await status('/open', 'member')).toBe(200);
+      expect(seen.at(-1)).toEqual([undefined, undefined, undefined, undefined, undefined]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('reads a function several controllers decorate with equal plain values', () => {
     class Base {
       list() {

@@ -163,8 +163,11 @@ function isClassTarget(target: ReflectorTarget): target is Type {
   );
 }
 
+// The routed method's metadata: the controller's own declaration, else that of
+// the nearest ancestor whose method the controller inherits unchanged, as the
+// function forms read it.
 function readHandler(context: ReflectorContext, key: string): unknown {
-  return MetadataRegistry.getCustomHandlerMeta(context.getClass(), context.getHandlerName(), key);
+  return methodMeta(context.getClass(), context.getHandlerName(), key);
 }
 
 function readAll(key: string, targets: ReflectorContext | readonly ReflectorTarget[]): unknown[] {
@@ -188,6 +191,9 @@ function readAll(key: string, targets: ReflectorContext | readonly ReflectorTarg
  * class), or Nest's targets: `get(key, context.getHandler())`,
  * `get(key, context.getClass())` and
  * `getAllAndOverride(key, [context.getHandler(), context.getClass()])`.
+ * Every form reads a method the controller inherits unchanged with the
+ * metadata of its nearest declaration: the controller's own, else the nearest
+ * ancestor's; a method the controller overrides reads only its own.
  * A handler function reads the metadata of the method it is: the method a
  * decorator declared it as, or the method a route calls, which an outer
  * decorator may have wrapped. When a list names a class, it reads the method

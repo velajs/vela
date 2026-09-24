@@ -89,6 +89,28 @@ describe('mounted HTTP authorization audit', () => {
     }
   });
 
+  it('audits a requirement an ancestor declares on a method the controller inherits', async () => {
+    class Base {
+      read() {
+        return 'private';
+      }
+    }
+    const read = Object.getOwnPropertyDescriptor(Base.prototype, 'read')!;
+    Roles(['admin'])(Base.prototype, 'read', read);
+    class Routes extends Base {}
+    Controller('/private')(Routes);
+    Get()(Routes.prototype, 'read', read);
+    class App {}
+    Module({ controllers: [Routes] })(App);
+    const diagnostics: AuthorizationWiringDiagnostic[] = [];
+    await expect(
+      VelaFactory.create(App, {
+        adapters: [authorizationAudit({ onDiagnostic: (d) => diagnostics.push(d) })],
+      }),
+    ).rejects.toThrow('Routes.read');
+    expect(diagnostics.map((d) => d.code)).toEqual(['roles-guard-unverified']);
+  });
+
   it('verifies request-scoped class guards and scoped aliases without construction', async () => {
     class Routes {
       read() {

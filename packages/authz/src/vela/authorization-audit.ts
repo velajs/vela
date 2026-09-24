@@ -1,6 +1,5 @@
-import type { CanActivate, Token, Type } from '@velajs/vela';
+import { Reflector, type CanActivate, type Token, type Type } from '@velajs/vela';
 import {
-  MetadataRegistry,
   getScopedComponents,
   type AdapterContext,
   type RuntimeAdapter,
@@ -83,6 +82,7 @@ export function inspectAuthorizationWiring(
   context: AuditContext,
 ): readonly AuthorizationWiringDiagnostic[] {
   const diagnostics: AuthorizationWiringDiagnostic[] = [];
+  const reflector = new Reflector();
   const globals = context.routeManager.getGlobalComponents().guards;
   for (const { controller, moduleId, routes } of context.routeManager.getControllers()) {
     const handlers = new Set(routes.map((route) => route.handlerName));
@@ -102,10 +102,11 @@ export function inspectAuthorizationWiring(
       const wired = (guard: Type<CanActivate>) =>
         globals.some((ref) => hasGuard(ref, guard, context.container)) ||
         scoped.some((ref) => hasGuard(ref, guard, context.container, moduleId));
+      // Reads each requirement as the guards do, including a method
+      // declaration the controller inherits.
+      const route = { getClass: () => controller, getHandlerName: () => handler };
       const requirements = (key: string): boolean => {
-        const value =
-          MetadataRegistry.getCustomHandlerMeta(controller, handler, key) ??
-          MetadataRegistry.getCustomClassMeta(controller, key);
+        const value = reflector.getAllAndOverride(key, route);
         return Array.isArray(value) && value.length > 0;
       };
       if (requirements(RequirePermission.KEY)) {

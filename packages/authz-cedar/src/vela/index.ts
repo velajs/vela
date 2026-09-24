@@ -53,16 +53,22 @@ export interface CedarModuleOptions {
   auditModules?: readonly Type[];
 }
 export const CEDAR_AUTHORIZER = new InjectionToken<CedarModuleOptions>('vela.cedar.authorizer');
-/** Opt-in module audit. Inherited class declarations apply to all its handlers. */
+/**
+ * Opt-in module audit. A class declaration applies to all its handlers; a
+ * method declaration applies where the controller routes that method,
+ * including one it inherits unchanged. It reads declarations as `CedarGuard` does.
+ */
 export function auditCedarRoutes(modules: readonly Type[]): void {
+  const reflector = new Reflector();
   for (const module of modules) {
     const metadata = MetadataRegistry.getModuleOptions(module);
     if (!metadata) throw new Error(`Cannot audit non-module '${module.name}'`);
     for (const controller of metadata.controllers ?? []) {
       for (const route of MetadataRegistry.getRoutes(controller)) {
-        const value =
-          MetadataRegistry.getCustomHandlerMeta(controller, route.handlerName, declaration.KEY) ??
-          MetadataRegistry.getCustomClassMeta(controller, declaration.KEY);
+        const value = reflector.getAllAndOverride(declaration, {
+          getClass: () => controller,
+          getHandlerName: () => route.handlerName,
+        });
         if (value === undefined)
           throw new Error(
             `Authorization declaration missing: ${controller.name}.${String(route.handlerName)}`,
