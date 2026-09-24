@@ -141,4 +141,53 @@ describe('AuthzModule global guards', () => {
     }
     expect(statuses).toEqual([403, 200]);
   });
+
+  it('serves each module its own engine from one global install under distinct keys', async () => {
+    class Drafts {
+      write() {
+        return { ok: true };
+      }
+    }
+    Controller('/drafts')(Drafts);
+    const write = Object.getOwnPropertyDescriptor(Drafts.prototype, 'write')!;
+    Get('/write')(Drafts.prototype, 'write', write);
+    RequirePermission(['posts:write'])(Drafts.prototype, 'write', write);
+    // Editors write posts but not drafts.
+    const feature = (controller: typeof Posts | typeof Drafts, authz: DynamicModule) => {
+      class Feature {}
+      Module({ imports: [authz], controllers: [controller] })(Feature);
+      return Feature;
+    };
+    const build = (posts: DynamicModule, drafts: DynamicModule) => {
+      class App {}
+      Module({
+        imports: [feature(Posts, posts), feature(Drafts, drafts)],
+        providers: [
+          HeaderAuthentication,
+          defineProvider(APP_GUARD, { useExisting: HeaderAuthentication }),
+        ],
+      })(App);
+      return VelaFactory.create(App);
+    };
+    const draftEditor = defineRole('editor', []);
+    // Two engines under one instance key are two configurations of one instance.
+    await expect(
+      build(
+        AuthzModule.forRoot({ roles: [editor], guard: 'none' }),
+        AuthzModule.forRoot({ roles: [draftEditor], guard: 'none' }),
+      ),
+    ).rejects.toThrow(/imported again with different options/);
+    const app = await build(
+      AuthzModule.forRoot({ key: 'posts', roles: [editor] }),
+      AuthzModule.forRoot({ key: 'drafts', roles: [draftEditor], guard: 'none' }),
+    );
+    try {
+      const hono = app.getHonoApp();
+      const headers = { 'x-role': 'editor' };
+      expect((await hono.request('/posts/write', { headers })).status).toBe(200);
+      expect((await hono.request('/drafts/write', { headers })).status).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
 });
