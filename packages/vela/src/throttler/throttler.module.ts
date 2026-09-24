@@ -5,7 +5,9 @@ import { Module } from '../module/decorators';
 import { defineProvider } from '../container/types';
 import { DiscoveryService } from '../discovery/discovery.service';
 import { defineModule } from '../module/define-module';
+import { Reflector } from '../pipeline/reflector';
 import { APP_GUARD } from '../pipeline/tokens';
+import { MetadataRegistry } from '../registry/metadata.registry';
 import {
   ThrottlerGuard,
   checkThrottleRecord,
@@ -33,6 +35,7 @@ class ThrottlerConfiguration {
     @Inject(THROTTLER_OPTIONS) private readonly options: ThrottlerModuleOptions,
     @Inject(THROTTLER_STORAGE) private readonly storage: ThrottlerStore,
     @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
+    @Inject(Reflector) private readonly reflector: Reflector,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -56,6 +59,20 @@ class ThrottlerConfiguration {
         throttlers,
         fixedLimits,
       );
+    }
+    // Each route read as ThrottlerGuard reads it, so the declarations a
+    // controller inherits from an ancestor class are checked too.
+    for (const { metatype } of this.discovery.getRegistrations(filter)) {
+      for (const { handlerName } of MetadataRegistry.getRoutes(metatype)) {
+        const context = { getClass: () => metatype, getHandlerName: () => handlerName };
+        const [onRoute, onController] = this.reflector.getAll<ThrottleRecord>(
+          THROTTLE_METADATA,
+          context,
+        );
+        const route = `${metatype.name}.${String(handlerName)}`;
+        checkThrottleRecord(onRoute, route, throttlers, fixedLimits);
+        checkThrottleRecord(onController, metatype.name, throttlers, fixedLimits);
+      }
     }
   }
 }

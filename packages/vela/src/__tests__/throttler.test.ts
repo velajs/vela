@@ -815,6 +815,63 @@ describe('named throttlers (Nest v5)', () => {
     );
   });
 
+  it('checks the @Throttle() declarations a controller inherits at bootstrap, as the guard reads them', async () => {
+    const store: ThrottlerStore = {
+      fixedLimits: true,
+      increment: (_key, ttl) => ({ count: 0, ttlMs: ttl, allowed: true }),
+      reset: () => undefined,
+    };
+    const bootstrapWith = (controller: Type, storage?: ThrottlerStore) => {
+      @Module({
+        imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }], storage })],
+        controllers: [controller],
+      })
+      class App {}
+      return VelaFactory.create(App);
+    };
+
+    // On an ancestor class.
+    @Throttle({ burst: { limit: 1 } })
+    abstract class ThrottledBase {}
+    @Controller('/inherited-class')
+    class InheritedClass extends ThrottledBase {
+      @Get() read() {
+        return { ok: true };
+      }
+    }
+    await expect(bootstrapWith(InheritedClass)).rejects.toThrow(
+      "@Throttle() on InheritedClass names throttler 'burst'",
+    );
+
+    // On a method the controller routes unchanged.
+    class LimitedBase {
+      @Throttle({ default: { limit: 1 } })
+      read() {
+        return { ok: true };
+      }
+    }
+    @Controller('/inherited-method')
+    class InheritedMethod extends LimitedBase {}
+    Get()(
+      InheritedMethod.prototype,
+      'read',
+      Object.getOwnPropertyDescriptor(LimitedBase.prototype, 'read')!,
+    );
+    await expect(bootstrapWith(InheritedMethod, store)).rejects.toThrow(
+      "enforces throttler 'default' at its declared 5 requests per 60000ms",
+    );
+
+    // An override reads only its own declarations.
+    @Controller('/overridden')
+    class Overridden extends LimitedBase {
+      @Get() override read() {
+        return { ok: true };
+      }
+    }
+    const hono = (await bootstrapWith(Overridden, store)).getHonoApp();
+    expect((await hono.request('/overridden')).status).toBe(200);
+  });
+
   it('rejects @Throttle() limits and windows that are not positive integers', () => {
     for (const config of [
       { limit: Number.NaN },
