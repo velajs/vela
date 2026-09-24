@@ -32,7 +32,7 @@ and, redacted:
 
 ## HTTP rendering in Vela
 
-`@velajs/vela` calls this seam through one HTTP renderer, `renderHttpError`, shared by controller handlers, middleware, the unmatched-route 404, request limits, RPC and GraphQL. Before reaching `toErrorBody` it applies two HTTP rules: an exception that owns its response through `toResponse()` renders that `{ status, body }` (redacted to the status title for a 5xx from raw Hono middleware), and a string `HttpException` becomes a `VelaError` for its status only below 500, so its text and `details` reach the client on a 4xx and are redacted on a 5xx. Branded and unbranded errors then follow the rules above.
+`@velajs/vela` calls this seam through one HTTP renderer, `renderHttpError`, shared by controller handlers, middleware, the unmatched-route 404, request limits, RPC and GraphQL. Before reaching `toErrorBody` it applies two HTTP rules: an exception that owns its response through `toResponse()` (an `HttpException` or a subclass; another object's `toResponse()` is ignored) renders that `{ status, body }` (redacted to the status title for a 5xx from raw Hono middleware), and a string `HttpException` becomes a `VelaError` for its status only below 500, so its text and `details` reach the client on a 4xx and are redacted on a 5xx. Branded and unbranded errors then follow the rules above.
 
 ## The brand contract
 

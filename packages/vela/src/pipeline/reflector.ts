@@ -1,6 +1,7 @@
 import { Injectable } from '../container/decorators';
 import { declareRootDefault } from '../container/root-defaults';
 import type { Type } from '../container/types';
+import { inheritedClassMeta, inheritedHandlerMeta } from '../registry/inherited-metadata';
 import {
   MetadataRegistry,
   allocateDecoratorKey,
@@ -69,22 +70,6 @@ function declaresFor(owner: Constructor, target: ReflectorTarget): boolean {
   return owner === target || (typeof prototype === 'object' && prototype instanceof owner);
 }
 
-// The metadata of method `name` as `type` routes it: its own, else that of the
-// nearest ancestor whose method is the same function (inherited unchanged).
-function methodMeta(type: Constructor, name: string | symbol, key: string): unknown {
-  const handler: unknown = Reflect.get(type.prototype, name);
-  let current: unknown = type;
-  while (typeof current === 'function') {
-    const value = MetadataRegistry.getCustomHandlerMeta(current, name, key);
-    if (value !== undefined) return value;
-    current = Object.getPrototypeOf(current);
-    const prototype: unknown = typeof current === 'function' ? current.prototype : undefined;
-    if (typeof prototype !== 'object' || prototype === null) return undefined;
-    if (Reflect.get(prototype, name) !== handler) return undefined;
-  }
-  return undefined;
-}
-
 // The methods a function target stands for. Alone, every method it was
 // recorded as: decorated by SetMetadata, or called by a route. Listed with
 // classes, the method each class routes through it (as its own or inherited
@@ -131,15 +116,16 @@ function samePlainData(a: unknown, b: unknown, depth = 0): boolean {
 }
 
 // A handler function reads the metadata of the method it stands for; any other
-// function (a class) reads class metadata, as does metadata defined on the
-// function itself. A function that stands for several methods whose metadata
-// for `key` differs, such as one inherited method several controllers route
-// and decorate differently, or one wrapper function replacing several methods
-// of a controller, cannot say which one it serves: the read throws.
+// function (a class) reads class metadata, its own or its nearest ancestor's,
+// as does metadata defined on the function itself. A function that stands for
+// several methods whose metadata for `key` differs, such as one inherited
+// method several controllers route and decorate differently, or one wrapper
+// function replacing several methods of a controller, cannot say which one it
+// serves: the read throws.
 function readTarget(target: ReflectorTarget, key: string, classes: readonly Type[] = []): unknown {
   const values: unknown[] = [];
   for (const [type, name] of methodsOf(target, classes)) {
-    const value = methodMeta(type, name, key);
+    const value = inheritedHandlerMeta(type, name, key);
     if (!values.some((known) => samePlainData(known, value))) values.push(value);
   }
   if (values.length > 1) {
@@ -152,7 +138,7 @@ function readTarget(target: ReflectorTarget, key: string, classes: readonly Type
     );
   }
   const [value] = values;
-  return value ?? MetadataRegistry.getCustomClassMeta(target, key);
+  return value ?? inheritedClassMeta(target, key);
 }
 
 // A listed class (`[context.getHandler(), context.getClass()]`): a target with
@@ -163,17 +149,22 @@ function isClassTarget(target: ReflectorTarget): target is Type {
   );
 }
 
+// The routed method's metadata: the controller's own declaration, else that of
+// the nearest ancestor whose method the controller inherits unchanged, as the
+// function forms read it.
 function readHandler(context: ReflectorContext, key: string): unknown {
-  return MetadataRegistry.getCustomHandlerMeta(context.getClass(), context.getHandlerName(), key);
+  return inheritedHandlerMeta(context.getClass(), context.getHandlerName(), key);
+}
+
+// The controller's class metadata: its own, else its nearest ancestor's.
+function readClass(context: Pick<ExecutionContext, 'getClass'>, key: string): unknown {
+  return inheritedClassMeta(context.getClass(), key);
 }
 
 function readAll(key: string, targets: ReflectorContext | readonly ReflectorTarget[]): unknown[] {
   if (!Array.isArray(targets)) {
     const context = targets as ReflectorContext;
-    return [
-      readHandler(context, key),
-      MetadataRegistry.getCustomClassMeta(context.getClass(), key),
-    ];
+    return [readHandler(context, key), readClass(context, key)];
   }
   const classes = targets.filter(isClassTarget);
   return targets.map((target: ReflectorTarget) => readTarget(target, key, classes));
@@ -188,6 +179,11 @@ function readAll(key: string, targets: ReflectorContext | readonly ReflectorTarg
  * class), or Nest's targets: `get(key, context.getHandler())`,
  * `get(key, context.getClass())` and
  * `getAllAndOverride(key, [context.getHandler(), context.getClass()])`.
+ * Every form reads a method the controller inherits unchanged with the
+ * metadata of its nearest declaration: the controller's own, else the nearest
+ * ancestor's; a method the controller overrides reads only its own. Class
+ * metadata is inherited the same way, as reflect-metadata resolves it in
+ * Nest: the controller's own, else that of the nearest class it extends.
  * A handler function reads the metadata of the method it is: the method a
  * decorator declared it as, or the method a route calls, which an outer
  * decorator may have wrapped. When a list names a class, it reads the method
@@ -260,8 +256,7 @@ export class Reflector {
   get<T = unknown>(key: MetadataKey<T>, target: ReflectorContext | ReflectorTarget): T | undefined {
     const resolved = resolveKey(key);
     if (typeof target === 'function') return readTarget(target, resolved) as T | undefined;
-    return (readHandler(target, resolved) ??
-      MetadataRegistry.getCustomClassMeta(target.getClass(), resolved)) as T | undefined;
+    return (readHandler(target, resolved) ?? readClass(target, resolved)) as T | undefined;
   }
 
   /** Metadata from the handler (method) level only. */
@@ -274,9 +269,7 @@ export class Reflector {
     key: MetadataKey<T>,
     context: Pick<ExecutionContext, 'getClass'>,
   ): T | undefined {
-    return MetadataRegistry.getCustomClassMeta(context.getClass(), resolveKey(key)) as
-      | T
-      | undefined;
+    return readClass(context, resolveKey(key)) as T | undefined;
   }
 
   /**

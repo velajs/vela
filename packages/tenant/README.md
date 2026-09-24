@@ -43,7 +43,13 @@ controller (the Better Auth handler, a storage controller) opts out with
 `TenantGuard` because it declares `static readonly skippable = true`. Pass `guard: 'none'`
 (beside the factory for `forRootAsync`) to apply `@UseGuards(TenantGuard)` after a
 route-level authentication guard instead; a route-level `TenantGuard` in a module that
-cannot see `TenantModule` answers 403. Required is the guard's default;
+cannot see `TenantModule` answers 403. Each `guard: 'global'` registration installs its
+own global `TenantGuard`, including each keyed instance (`forRoot({ key, ... })`), and
+every installed guard runs on every application route. The installed guard admits
+through the `TenantModule` the route's module sees, so one global installation serves
+every module: when several modules register their own configuration, give each
+registration its own `key`, keep `guard: 'global'` on one and pass `guard: 'none'` on
+the others. Required is the guard's default;
 optional permits absence, but an explicit selector still requires authentication.
 Ignored routes do not admit a tenant. Conflicting authenticated tenant IDs fail.
 The guard publishes the canonical tenant into the trusted identity and CRUD's

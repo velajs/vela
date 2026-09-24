@@ -1,5 +1,6 @@
 import { Injectable } from '../container/decorators';
 import { DiscoveryService } from '../discovery/discovery.service';
+import { Reflector } from '../pipeline/reflector';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { CACHEABLE_METADATA, RESPONSE_CACHE_METADATA } from './cache.tokens';
 import { Module } from '../module/decorators';
@@ -19,6 +20,7 @@ class ResponseCacheConfiguration {
   constructor(
     private readonly discovery: DiscoveryService,
     private readonly cache: ResponseCacheService,
+    private readonly reflector: Reflector,
   ) {}
   onApplicationBootstrap(): void {
     const registrations = this.discovery.getRegistrations({ metadataOnly: true, deferLazy: true });
@@ -27,9 +29,10 @@ class ResponseCacheConfiguration {
     }
     for (const { metatype } of registrations) {
       for (const route of MetadataRegistry.getRoutes(metatype)) {
-        const read = (key: string) =>
-          MetadataRegistry.getCustomHandlerMeta(metatype, route.handlerName, key) ??
-          MetadataRegistry.getCustomClassMeta(metatype, key);
+        // Read as ResponseCacheInterceptor reads each request, inherited
+        // declarations included.
+        const context = { getClass: () => metatype, getHandlerName: () => route.handlerName };
+        const read = (key: string) => this.reflector.getAllAndOverride(key, context);
         const config = read(RESPONSE_CACHE_METADATA);
         if (typeof config !== 'object' || config === null) continue;
         if (read(CACHEABLE_METADATA) === true)

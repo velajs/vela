@@ -34,12 +34,12 @@ function guardedController() {
 async function appWith(
   controller: ReturnType<typeof guardedController>,
   driver: FeatureFlagDriver,
-  moduleOpts: { globalGuard?: boolean; manifest?: FlagManifest } = {},
+  moduleOpts: { guard?: 'global' | 'none'; manifest?: FlagManifest } = {},
 ) {
   // Per-route gating through the controller's @UseGuards, without the app-wide guard.
   const moduleRef = await Test.createTestingModule({
     controllers: [controller],
-    imports: [FeatureFlagsModule.forRoot({ drivers: [driver], globalGuard: false, ...moduleOpts })],
+    imports: [FeatureFlagsModule.forRoot({ drivers: [driver], guard: 'none', ...moduleOpts })],
   }).compile();
   const app = await moduleRef.createApplication();
   return app.getHonoApp();
@@ -130,7 +130,7 @@ describe('FeatureFlagGuard (integration)', () => {
     expect((await app.request('/checkout/v2')).status).toBe(404);
   });
 
-  it('gates app-wide by default (no @UseGuards, no globalGuard option)', async () => {
+  it('gates app-wide by default (no @UseGuards, no guard option)', async () => {
     @Controller('/promo')
     class PromoController {
       @FeatureFlag('promo')
@@ -142,8 +142,15 @@ describe('FeatureFlagGuard (integration)', () => {
     const driver = memoryFlagDriver({ values: { promo: false } });
     for (const imports of [
       [FeatureFlagsModule.forRoot({ drivers: [driver] })],
+      [FeatureFlagsModule.forRoot({ drivers: [driver], guard: 'global' })],
       [FeatureFlagsModule.forRoot({ drivers: [driver], isGlobal: true })],
       [FeatureFlagsModule.forRootAsync({ useFactory: () => ({ drivers: [driver] }) })],
+      [
+        FeatureFlagsModule.forRootAsync({
+          guard: 'global',
+          useFactory: () => ({ drivers: [driver] }),
+        }),
+      ],
     ]) {
       driver.set('promo', false);
       const moduleRef = await Test.createTestingModule({
@@ -160,7 +167,7 @@ describe('FeatureFlagGuard (integration)', () => {
     }
   });
 
-  it('leaves gating to @UseGuards with globalGuard: false', async () => {
+  it("leaves gating to @UseGuards with guard: 'none'", async () => {
     @Controller('/promo')
     class UngatedController {
       @FeatureFlag('promo')
@@ -172,10 +179,35 @@ describe('FeatureFlagGuard (integration)', () => {
     const driver = memoryFlagDriver({ values: { promo: false } });
     const moduleRef = await Test.createTestingModule({
       controllers: [UngatedController],
-      imports: [FeatureFlagsModule.forRoot({ drivers: [driver], globalGuard: false })],
+      imports: [FeatureFlagsModule.forRoot({ drivers: [driver], guard: 'none' })],
     }).compile();
     const app = await moduleRef.createApplication();
     expect((await app.getHonoApp().request('/promo/show')).status).toBe(200);
     await app.close();
+    // Beside a forRootAsync factory too.
+    const asyncRef = await Test.createTestingModule({
+      controllers: [UngatedController],
+      imports: [
+        FeatureFlagsModule.forRootAsync({
+          guard: 'none',
+          useFactory: () => ({ drivers: [driver] }),
+        }),
+      ],
+    }).compile();
+    const asyncApp = await asyncRef.createApplication();
+    expect((await asyncApp.getHonoApp().request('/promo/show')).status).toBe(200);
+    await asyncApp.close();
+  });
+
+  it("rejects a guard option other than 'global' or 'none'", () => {
+    const driver = memoryFlagDriver({ values: {} });
+    // As an untyped caller would pass the previous boolean option.
+    for (const guard of [true, false, 'app']) {
+      expect(() =>
+        Reflect.apply(FeatureFlagsModule.forRoot, FeatureFlagsModule, [
+          { drivers: [driver], guard },
+        ]),
+      ).toThrow("FeatureFlagsModule guard must be 'global' or 'none'");
+    }
   });
 });

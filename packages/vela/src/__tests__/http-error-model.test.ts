@@ -49,6 +49,17 @@ class LeakyUpstreamException extends HttpException {
   }
 }
 
+// Not a framework exception: any object may define toResponse().
+class ForeignUpstreamError extends Error {
+  toResponse(): HttpErrorResponse {
+    return { status: 503, body: { upstream: 'db password=hunter2' } };
+  }
+}
+const foreignClientFault = {
+  message: 'not ours',
+  toResponse: (): HttpErrorResponse => ({ status: 400, body: { injected: 'shape' } }),
+};
+
 async function appWith(controllers: Type[]) {
   @Module({ controllers })
   class AppModule {}
@@ -102,6 +113,38 @@ describe('renderHttpError', () => {
       body: { error: { code: 'bad_gateway', message: 'Bad Gateway' } },
       redacted: true,
     });
+  });
+
+  it('renders a foreign object with toResponse() as an unknown error', () => {
+    const internal = {
+      status: 500,
+      body: { error: { code: 'internal', message: 'Internal Server Error' } },
+      redacted: true,
+    };
+    expect(renderHttpError(new ForeignUpstreamError('upstream'))).toEqual(internal);
+    expect(renderHttpError(foreignClientFault)).toEqual(internal);
+    // A framework prototype without the framework constructor owns nothing either.
+    const forged: unknown = Object.assign(Object.create(BadRequestException.prototype), {
+      toResponse: (): HttpErrorResponse => ({ status: 502, body: { upstream: 'secret' } }),
+    });
+    expect(renderHttpError(forged)).toEqual(internal);
+    expect(getErrorStatus(forged)).toBe(500);
+  });
+
+  it('renders an HttpException built with a status outside 400-599 as an internal error', () => {
+    const internal = {
+      status: 500,
+      body: { error: { code: 'internal', message: 'Internal Server Error' } },
+      redacted: true,
+    };
+    for (const status of [101, 200, 204, 302, 600]) {
+      // As in Nest, construction accepts any status and getStatus() returns it.
+      const moved = new HttpException('moved', status);
+      expect(moved.getStatus()).toBe(status);
+      expect(renderHttpError(moved)).toEqual(internal);
+      expect(renderHttpError(new HttpException({ ok: true }, status))).toEqual(internal);
+      expect(getErrorStatus(moved)).toBe(500);
+    }
   });
 
   it('renders object HttpException responses through the default toResponse()', () => {
@@ -301,6 +344,84 @@ describe('HTTP edges share one renderer', () => {
     const raw = await hono.request('/raw/boom');
     expect(raw.status).toBe(502);
     expect(await raw.json()).toEqual({ error: { code: 'bad_gateway', message: 'Bad Gateway' } });
+  });
+
+  it('reports and redacts a foreign toResponse() object on handler and middleware edges', async () => {
+    @Controller('/foreign')
+    class ForeignController {
+      @Get('/server')
+      server() {
+        throw new ForeignUpstreamError('upstream');
+      }
+
+      @Get('/client')
+      client() {
+        throw foreignClientFault;
+      }
+    }
+    @Module({ controllers: [ForeignController] })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, {
+      middleware: [
+        async (c: Context, next: Next) => {
+          if (c.req.path === '/foreign/middleware') throw new ForeignUpstreamError('upstream');
+          await next();
+        },
+      ],
+    });
+    const hono = app.getHonoApp();
+    const internal = { error: { code: 'internal', message: 'Internal Server Error' } };
+    for (const path of ['/foreign/server', '/foreign/client', '/foreign/middleware']) {
+      errorSpy.mockClear();
+      const response = await hono.request(path);
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual(internal);
+      // Report-first: the raw error reaches the server log.
+      expect(errorSpy).toHaveBeenCalledOnce();
+    }
+  });
+
+  it('reports and answers 500 for an HttpException thrown with a non-error status', async () => {
+    @Controller('/moved')
+    class MovedController {
+      @Get()
+      moved() {
+        throw new HttpException('moved elsewhere', 302);
+      }
+    }
+    const app = await appWith([MovedController]);
+    const response = await app.getHonoApp().request('/moved');
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: { code: 'internal', message: 'Internal Server Error' },
+    });
+    expect(errorSpy).toHaveBeenCalledOnce();
+  });
+
+  it('reports a Hono HTTPException from raw middleware whenever it renders as a 500', async () => {
+    const app = await appWith([]);
+    const hono = app.getHonoApp();
+    // Raw Hono middleware bypasses Vela's wrapping; only onError sees its throw.
+    hono.use('/raw/*', async (c: Context, _next: Next) => {
+      if (c.req.path === '/raw/moved') throw new HTTPException(302, { message: 'moved' });
+      if (c.req.path === '/raw/ok') throw new HTTPException(200, { message: 'fine' });
+      throw new HTTPException(403, { message: 'nope' });
+    });
+    for (const path of ['/raw/moved', '/raw/ok']) {
+      errorSpy.mockClear();
+      const response = await hono.request(path);
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        error: { code: 'internal', message: 'Internal Server Error' },
+      });
+      // Report-first, as on the handler edge.
+      expect(errorSpy).toHaveBeenCalledOnce();
+    }
+    errorSpy.mockClear();
+    const denied = await hono.request('/raw/denied');
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: { code: 'forbidden', message: 'nope' } });
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('renders validation failures as bad_request with the issue list', async () => {

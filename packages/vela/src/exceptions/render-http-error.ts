@@ -7,7 +7,7 @@ import {
   type Catalog,
 } from '@velajs/errors';
 import { HTTPException } from 'hono/http-exception';
-import { HttpException, type HttpErrorResponse } from '../errors/http-exception';
+import { isOwnedHttpError, type HttpErrorResponse } from '../errors/http-exception';
 
 /** The status and JSON body an error renders as on an HTTP edge. */
 export interface RenderedHttpError {
@@ -29,22 +29,37 @@ export interface RenderHttpErrorOptions {
   redactServerBodies?: boolean;
 }
 
-/**
- * The status of a caught error: `HttpException.getStatus()`, a branded
- * `VelaError`'s `status`, Hono's `HTTPException.status`, else 500.
- */
-export function getErrorStatus(error: unknown): number {
-  if (error instanceof HttpException) return error.getStatus();
+// An HTTP error status. An exception may carry any status (as in Nest,
+// `new HttpException(body, 302)` constructs), but an error edge answers only
+// 400–599: anything else is an internal fault.
+function isErrorStatus(status: number): boolean {
+  return Number.isInteger(status) && status >= 400 && status <= 599;
+}
+
+function declaredStatus(error: unknown): number {
+  if (isOwnedHttpError(error)) return error.getStatus();
   if (isVelaError(error)) return error.status;
   if (error instanceof HTTPException) return error.status;
   return 500;
 }
 
-// An error's own `toResponse()`: a 400–599 status and a JSON body. A missing,
-// invalid or throwing hook falls back to the canonical body.
+/**
+ * The status of a caught error: `HttpException.getStatus()`, a branded
+ * `VelaError`'s `status`, Hono's `HTTPException.status`, else 500. A status
+ * outside 400–599 is 500, as {@link renderHttpError} renders it.
+ */
+export function getErrorStatus(error: unknown): number {
+  const status = declaredStatus(error);
+  return isErrorStatus(status) ? status : 500;
+}
+
+// A framework exception's own `toResponse()`: a 400–599 status and a JSON
+// body. A missing, invalid or throwing hook falls back to the canonical body.
+// Only exceptions the `HttpException` constructor built own their response; a
+// foreign object's `toResponse()` is never called.
 function ownedResponse(error: unknown): HttpErrorResponse | undefined {
-  if (typeof error !== 'object' || error === null || !('toResponse' in error)) return undefined;
-  const hook = error.toResponse;
+  if (!isOwnedHttpError(error)) return undefined;
+  const hook: unknown = error.toResponse;
   if (typeof hook !== 'function') return undefined;
   let owned: unknown;
   try {
@@ -73,12 +88,18 @@ function ownedResponse(error: unknown): HttpErrorResponse | undefined {
  *
  * 1. An exception-owned `toResponse()` (an object `HttpException` renders
  *    verbatim; `@velajs/crud` renders its envelope), unless it is a 5xx and
- *    `redactServerBodies` is set.
+ *    `redactServerBodies` is set. Only exceptions constructed as
+ *    `HttpException` or a subclass own a response; any other object with a
+ *    `toResponse()` is an unknown error (step 4).
  * 2. `HttpException`: `{ error: { code, message, details? } }`. Only a 4xx
  *    echoes its text and details; any other status is redacted to its title.
  * 3. Hono's `HTTPException`: its message below 500, redacted from 500.
  * 4. Anything else through `toErrorBody`: branded `VelaError`s render their
  *    code, message and data; unbranded and internal errors are redacted.
+ *
+ * It answers only 400–599. An error that declares any other status, such as
+ * an `HttpException` constructed with 200 or 302 (which Nest accepts), renders
+ * as a redacted 500; the edges report it first, like any unknown error.
  *
  * Exception filters and the application's `ExceptionHandler.render` hook run
  * before this.
@@ -88,6 +109,9 @@ export function renderHttpError(
   options: RenderHttpErrorOptions = {},
 ): RenderedHttpError {
   const catalog = options.catalog ?? CORE_CATALOG;
+  // Such as an HttpException built with 200 or 302: never sent as that status.
+  // The edge has reported the error already; it renders as an unknown one.
+  if (!isErrorStatus(declaredStatus(error))) return toErrorBody(undefined, { catalog });
   const owned = ownedResponse(error);
   if (owned) {
     if (!options.redactServerBodies || owned.status < 500) {
@@ -110,11 +134,10 @@ export function renderHttpError(
           redacted: true,
         };
   }
-  if (error instanceof HttpException) {
+  if (isOwnedHttpError(error)) {
     const status = error.getStatus();
     // Only a client fault's text and details are meant for the caller.
-    if (status < 400 || status >= 500)
-      return toErrorBody(error, { catalog, fallbackStatus: status });
+    if (status >= 500) return toErrorBody(error, { catalog, fallbackStatus: status });
     const details = error.getDetails();
     return toErrorBody(
       new VelaError(codeForStatus(status), {

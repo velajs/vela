@@ -64,6 +64,19 @@ export function assertDefinedEntries(
   });
 }
 
+/**
+ * @internal The methods a generated module class configures itself with, as
+ * [sync, async]: a static, non-enumerable property `defineModule` defines on
+ * its host class, which subclasses inherit.
+ */
+export const GENERATED_MODULE_METHODS = Symbol('vela:generated-module-methods');
+
+/** @internal The methods a generated module class (or its subclass) configures itself with. */
+export function generatedModuleMethods(moduleClass: object): readonly string[] | undefined {
+  const methods: unknown = Reflect.get(moduleClass, GENERATED_MODULE_METHODS);
+  return Array.isArray(methods) ? methods : undefined;
+}
+
 // Call-time inputs that decide what a (class, key) module instance contributes.
 // Non-enumerable, so spreading or comparing a DynamicModule never carries it.
 export const MODULE_IDENTITY = Symbol('vela:module-identity');

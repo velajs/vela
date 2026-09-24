@@ -81,11 +81,11 @@ export interface FeatureFlagsOptions {
    */
   context?: (ctx: RequestContext) => FlagContext | Promise<FlagContext>;
   /**
-   * Register {@link FeatureFlagGuard} application-wide (`APP_GUARD`), so every
-   * `@FeatureFlag()` route is gated without `@UseGuards`. Default `true`;
-   * `false` gates only the routes that declare `@UseGuards(FeatureFlagGuard)`.
-   * Structural: pass it alongside a `forRootAsync` factory. Visibility is the
-   * separate `isGlobal`.
+   * `'global'` (default) installs {@link FeatureFlagGuard} as a global guard
+   * (`APP_GUARD`), so every `@FeatureFlag()` route is gated without
+   * `@UseGuards`. `'none'` gates only the routes that declare
+   * `@UseGuards(FeatureFlagGuard)`. Structural: with `forRootAsync`, pass it
+   * beside the factory. Visibility is the separate `isGlobal`.
    */
-  globalGuard?: boolean;
+  guard?: 'global' | 'none';
 }
