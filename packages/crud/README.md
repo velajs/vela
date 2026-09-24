@@ -77,6 +77,11 @@ defineCrudFeature({
 });
 ```
 
+An `@Override()` handler answers the status of the verb it takes over (201 for
+create, batch create and clone; 200 for the others, including POST verbs such as
+restore and upsert) unless it declares its own `@HttpCode`; OpenAPI documents
+the status it answers.
+
 A method decorator that changes or returns the descriptor wraps the handler the
 route calls, as it would written above a method, `@Override()` handlers included.
 Class decorators apply after the generated handlers exist, as TypeScript applies

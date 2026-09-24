@@ -202,12 +202,13 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
       );
     }
 
-    // The success status each generated verb answers: 201 for the verbs that
-    // create, 200 otherwise. A generated POST that answers 200 declares it, so
-    // the OpenAPI walk does not document POST's default 201; an @Override'd
-    // handler owns its status and declares its own @HttpCode.
-    const success = CREATING_VERBS.has(endpoint) ? 201 : 200;
-    if (method === 'post' && success === 200 && overrideMethod === undefined) {
+    // The success status each verb answers: 201 for the verbs that create,
+    // 200 otherwise. A POST that answers 200 declares it, so the route does not
+    // answer POST's default 201; an @Override'd handler answers the status of
+    // the verb it overrides unless it declares its own @HttpCode.
+    const declared = MetadataRegistry.getHandlerHttpMeta(controller, handlerName)?.httpCode;
+    const success = declared ?? (CREATING_VERBS.has(endpoint) ? 201 : 200);
+    if (method === 'post' && success === 200 && declared === undefined) {
       HttpCode(200)(proto, handlerName, descriptor);
     }
 
