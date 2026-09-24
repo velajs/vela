@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  Global,
   Injectable,
   Module,
   VelaFactory,
@@ -267,6 +268,45 @@ describe('WebSocketModule forwarding upgrade routes', () => {
       });
       expect(conflicting.status).toBe(403);
       expect(transport.forwarded).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("serves the gateway server and upgrade route from an application's global transport", async () => {
+    const platform = new ForwardingTransport();
+    const custom = new ForwardingTransport();
+    const server = new RecordingServer();
+    const application: WebSocketTransport = {
+      createServer: () => server,
+      forwardUpgrade: (upgrade) => custom.forwardUpgrade(upgrade),
+    };
+
+    @WebSocketGateway({ path: '/chat', binding: 'CHAT', authenticator: StaticAuthenticator })
+    class ChatGateway {}
+    @Global()
+    @Module({
+      providers: [defineProvider(WS_TRANSPORT, { useValue: application })],
+      exports: [WS_TRANSPORT],
+    })
+    class TransportModule {}
+    @Module({
+      imports: [TransportModule, WebSocketModule.forRoot()],
+      providers: [ChatGateway],
+    })
+    class AppModule {}
+
+    // The adapter registers its transport as a platform default; the
+    // application's global module overrides it for every reader.
+    const app = await VelaFactory.create(AppModule, { adapters: [transportAdapter(platform)] });
+    try {
+      expect(app.get(WS_SERVER)).toBe(server);
+      const response = await app.getHonoApp().request('/chat', {
+        headers: { upgrade: 'websocket' },
+      });
+      expect(response.status).toBe(200);
+      expect(custom.forwarded.map(({ binding }) => binding)).toEqual(['CHAT']);
+      expect(platform.forwarded).toEqual([]);
     } finally {
       await app.close();
     }

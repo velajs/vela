@@ -1,19 +1,11 @@
-import { Inject, Injectable, Optional } from '../container/decorators';
 import { defineProvider } from '../container/types';
 import { defineModule } from '../module/define-module';
 import type { DynamicModule } from '../registry/types';
-import { WebSocketRoutesModule } from './upgrade-routes';
+import { WebSocketPlatform, WebSocketRoutesModule } from './upgrade-routes';
 import { WsDispatcher } from './ws-dispatcher';
 import { WsServerImpl } from './ws-server';
 import { InMemoryRoomRegistry, local, type RoomRegistry, type SyncDriver } from './ws-sync';
-import {
-  WS_MODULE_OPTIONS,
-  WS_ROOM_REGISTRY,
-  WS_SERVER,
-  WS_SYNC_DRIVER,
-  WS_TRANSPORT,
-} from './websocket.tokens';
-import type { WebSocketTransport } from './websocket.types';
+import { WS_MODULE_OPTIONS, WS_ROOM_REGISTRY, WS_SERVER, WS_SYNC_DRIVER } from './websocket.tokens';
 
 export interface WebSocketModuleOptions {
   /**
@@ -28,12 +20,6 @@ export interface WebSocketModuleOptions {
    * in-memory implementation.
    */
   registry?: RoomRegistry;
-}
-
-/** The platform transport a runtime adapter registered, when there is one. */
-@Injectable()
-class WebSocketPlatform {
-  constructor(@Optional() @Inject(WS_TRANSPORT) readonly transport?: WebSocketTransport) {}
 }
 
 /**
@@ -65,7 +51,6 @@ const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
   setup: ({ OPTIONS }) => ({
     imports: [WebSocketRoutesModule],
     providers: [
-      WebSocketPlatform,
       defineProvider(WS_ROOM_REGISTRY, {
         useFactory: (o: WebSocketModuleOptions) => o.registry ?? new InMemoryRoomRegistry(),
         inject: [OPTIONS],

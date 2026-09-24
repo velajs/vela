@@ -1,4 +1,5 @@
 import type { Container } from '../container/container';
+import { Inject, Injectable, Optional } from '../container/decorators';
 import { EntrypointRegistry } from '../entrypoint/entrypoint.registry';
 import { Controller } from '../http/decorators';
 import type { VelaContext as Context, VelaHono as Hono } from '../http/hono.types';
@@ -25,11 +26,26 @@ class WebSocketUpgradeRoutes {}
 defineMetadata(UPGRADE_ROUTES_METADATA, true, WebSocketUpgradeRoutes);
 
 /**
+ * The platform transport a runtime adapter registered, when there is one.
+ * Every reader (each `WebSocketModule` instance's server and the upgrade
+ * routes) takes this one instance, so all of them apply the same precedence:
+ * an application's `@Global()` `WS_TRANSPORT` overrides the adapter's.
+ */
+@Injectable()
+export class WebSocketPlatform {
+  constructor(@Optional() @Inject(WS_TRANSPORT) readonly transport?: WebSocketTransport) {}
+}
+
+/**
  * Imported by every `WebSocketModule` instance. A static module loads once per
  * application, so the upgrade routes mount once however many instances
- * discover the same gateways.
+ * discover the same gateways, and the platform transport resolves once.
  */
-@Module({ controllers: [WebSocketUpgradeRoutes] })
+@Module({
+  controllers: [WebSocketUpgradeRoutes],
+  providers: [WebSocketPlatform],
+  exports: [WebSocketPlatform],
+})
 export class WebSocketRoutesModule {}
 
 function isIdentityField(value: unknown): value is string {
@@ -151,13 +167,13 @@ registerRouteContributor({
   id: 'vela:websocket-upgrade',
   claimsMetaKey: UPGRADE_ROUTES_METADATA,
   async buildRoutes(app, { container }) {
-    if (!container.has(WS_TRANSPORT) || !container.has(EntrypointRegistry)) return;
-    const transport = await container.resolveAsync(WS_TRANSPORT);
-    const forwardUpgrade = transport.forwardUpgrade?.bind(transport);
+    if (!container.has(EntrypointRegistry)) return;
+    const { transport } = await container.resolveAsync(WebSocketPlatform);
+    const forwardUpgrade = transport?.forwardUpgrade?.bind(transport);
     if (!forwardUpgrade) return;
     const forwarding: ForwardingTransport = {
       forwardUpgrade,
-      forwardingHeaders: transport.forwardingHeaders,
+      forwardingHeaders: transport?.forwardingHeaders,
     };
     const mounted = new Set<string>();
     const entries = container.resolve(EntrypointRegistry).ofKind('websocket', readWsEntrypointMeta);
