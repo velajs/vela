@@ -1,4 +1,5 @@
 import {
+  APP_GUARD,
   Inject,
   InjectionToken,
   Injectable,
@@ -155,10 +156,15 @@ const { ConfigurableModuleClass } = defineModule<CedarModuleOptions>({
               : { ...resolved, undeclared: options.undeclared };
           },
         }),
-        CedarGuard,
+        // The installed guard answers to CedarGuard, so testing overrides reach it.
+        ...(guard === 'global'
+          ? [
+              defineProvider(CedarGuard, { useClass: InstalledCedarGuard }),
+              defineProvider(APP_GUARD, { useExisting: CedarGuard }),
+            ]
+          : [CedarGuard]),
       ],
       exports: [CEDAR_AUTHORIZER, CedarGuard],
-      global: guard === 'global' ? { guards: [InstalledCedarGuard] } : {},
     };
   },
 });

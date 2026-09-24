@@ -16,6 +16,7 @@ import {
   getTrustedRequestIdentity,
   SkipGuardPhases,
 } from '@velajs/vela/module-kit';
+import { Test } from '@velajs/testing';
 import { MemoryTenantRegistryStore, TenantRegistry, type TenantContextReader } from '../index';
 import {
   TenantModule,
@@ -316,6 +317,28 @@ describe('Vela tenant admission', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('lets a testing module override the globally installed TenantGuard', async () => {
+    const Tenanted = route(reply('tenanted'), '/tenanted');
+    const imports = [
+      TenantModule.forRoot({ lookup: new MemoryTenantRegistryStore([]), authorize: () => false }),
+    ];
+    const real = await (
+      await Test.createTestingModule({ imports, controllers: [Tenanted] }).compile()
+    ).createApplication();
+    expect((await real.getHonoApp().request('/tenanted')).status).toBe(400);
+    class AllowAll extends TenantGuard {
+      override async canActivate(): Promise<boolean> {
+        return true;
+      }
+    }
+    const moduleRef = await Test.createTestingModule({ imports, controllers: [Tenanted] })
+      .overrideGuard(TenantGuard)
+      .useValue(new AllowAll(new Reflector()))
+      .compile();
+    const app = await moduleRef.createApplication();
+    expect((await app.getHonoApp().request('/tenanted')).status).toBe(200);
   });
 
   it('keeps a route-level TenantGuard fail-closed where no TenantModule is visible', async () => {

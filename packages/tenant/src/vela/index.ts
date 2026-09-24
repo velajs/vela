@@ -1,4 +1,5 @@
 import {
+  APP_GUARD,
   Inject,
   Injectable,
   InjectionToken,
@@ -104,8 +105,14 @@ const { ConfigurableModuleClass } = defineModule<TenantModuleOptions>({
   name: 'Tenant',
   optionsToken: OPTIONS,
   setup: ({ OPTIONS, options }) => ({
-    global: installGuard(options.guard) ? { guards: [InstalledTenantGuard] } : {},
     providers: [
+      // The installed guard answers to TenantGuard, so testing overrides reach it.
+      ...(installGuard(options.guard)
+        ? [
+            defineProvider(TenantGuard, { useClass: InstalledTenantGuard }),
+            defineProvider(APP_GUARD, { useExisting: TenantGuard }),
+          ]
+        : []),
       defineProvider(TENANT_SERVICE, {
         inject: [OPTIONS],
         useFactory: (options) => new TenantService(options),

@@ -5,6 +5,7 @@ import {
   clearTrustedRequestIdentity,
   SkipGuardPhases,
 } from '@velajs/vela/module-kit';
+import { Test } from '@velajs/testing';
 import {
   auditCedarRoutes,
   CedarGuard,
@@ -215,6 +216,25 @@ describe('resource authorization declarations', () => {
     } finally {
       await app.close();
     }
+  });
+  it('lets a testing module override the globally installed CedarGuard', async () => {
+    const Undeclared = route('/undeclared');
+    const imports = [CedarModule.forRoot({ authorize: async () => false })];
+    const real = await (
+      await Test.createTestingModule({ imports, controllers: [Undeclared] }).compile()
+    ).createApplication();
+    expect((await real.getHonoApp().request('/undeclared')).status).toBe(403);
+    class AllowAll extends CedarGuard {
+      override async canActivate(): Promise<boolean> {
+        return true;
+      }
+    }
+    const moduleRef = await Test.createTestingModule({ imports, controllers: [Undeclared] })
+      .overrideGuard(CedarGuard)
+      .useValue(new AllowAll(new Reflector()))
+      .compile();
+    const app = await moduleRef.createApplication();
+    expect((await app.getHonoApp().request('/undeclared')).status).toBe(200);
   });
   it('keeps a route-level CedarGuard fail-closed where no CedarModule is visible', async () => {
     const Undeclared = route('/undeclared');
