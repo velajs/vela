@@ -5119,7 +5119,7 @@ interface ModuleOptions {
 interface ModuleRecord extends ModuleOptions {
   global?: boolean;
   /** @internal */
-  dynamicHost?: true;
+  hostOnly?: true;
 }
 interface ModuleMetadata {
   providers: readonly Provider[];
