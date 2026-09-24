@@ -5,7 +5,7 @@ import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { VelaFactory } from '@velajs/vela';
 import { registerWebSocketGateways } from '@velajs/vela/websocket-node';
-import { TodoAppModule } from './app.module.js';
+import { AppModule } from './app.module.js';
 
 const PORT = 8788;
 // `pnpm run bundle:web` writes the page and its client bundle to public/.
@@ -13,7 +13,8 @@ const webDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'public
 const indexHtml = readFileSync(join(webDir, 'index.html'), 'utf8');
 const mainJs = readFileSync(join(webDir, 'main.js'), 'utf8');
 
-const app = await VelaFactory.create(TodoAppModule.forRoot());
+// The same AppModule the Worker runs; with no environment it keeps todos in memory.
+const app = await VelaFactory.create(AppModule);
 
 const hono = app.getHonoApp();
 hono.get('/', (c) => c.html(indexHtml));

@@ -11,8 +11,8 @@ import {
   defineProvider,
   type VelaEnv,
 } from '@velajs/vela';
-import { ApiResponse, createOpenApiDocument } from '@velajs/vela/openapi';
-import { WebSocketGateway } from '@velajs/vela/websocket';
+import { ApiResponse, OpenApiModule } from '@velajs/vela/openapi';
+import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
 import { LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
 import {
   BETTER_AUTH_UPGRADE_TENANT,
@@ -25,12 +25,7 @@ import {
 } from '@velajs/better-auth';
 import { Crud, CrudModule, defineModel } from '@velajs/crud';
 import { drizzleAdapter } from '@velajs/crud-drizzle';
-import {
-  CloudflareWebSocketModule,
-  durableObjectCursorLog,
-  durableObjectLive,
-  durableObjectRoomName,
-} from '@velajs/cloudflare';
+import { durableObjectRoomName } from '@velajs/cloudflare';
 import { StudioModule } from '@velajs/studio';
 import { StudioCrudModule } from '@velajs/studio/crud';
 import { StudioLiveModule } from '@velajs/studio/live';
@@ -89,25 +84,6 @@ class HealthController {
   }
 }
 
-@Controller('/openapi.json')
-class OpenApiController {
-  @Get()
-  @Public(true)
-  @ApiResponse(200, {
-    description: 'OpenAPI 3.1 document',
-    schema: {
-      type: 'object',
-      required: ['openapi', 'paths'],
-      properties: { openapi: { type: 'string' }, paths: { type: 'object' } },
-    },
-  })
-  document() {
-    return createOpenApiDocument(AppModule, {
-      info: { title: 'Vela API starter', version: '1.0.0' },
-    });
-  }
-}
-
 @LiveResolver()
 class TodoQueries {
   constructor(@InjectEnv() private readonly native: VelaEnv) {}
@@ -129,8 +105,9 @@ class TodoGateway {}
 
 /**
  * The whole application, declared once. Each native environment builds its own
- * auth instance, CRUD adapter, live driver and Studio source in the factories
- * below; secrets never live in process-wide globals.
+ * auth instance, CRUD adapter and Studio source in the factories below; secrets
+ * never live in process-wide globals. The Cloudflare adapter wires WebSockets
+ * and live queries to the LIVE_ROOM Durable Object that TodoGateway names.
  */
 @Module({
   imports: [
@@ -160,13 +137,11 @@ class TodoGateway {}
         }),
       }),
     }),
-    CloudflareWebSocketModule.forRoot(),
-    LiveModule.forRootAsync({
-      inject: [ENV],
-      useFactory: (env) => ({
-        log: () => durableObjectCursorLog(),
-        driver: () => durableObjectLive({ namespace: env.LIVE_ROOM, gatewayPath: GATEWAY }),
-      }),
+    WebSocketModule.forRoot(),
+    LiveModule.forRoot(),
+    OpenApiModule.forRoot({
+      path: '/openapi.json',
+      info: { title: 'Vela API starter', version: '1.0.0' },
     }),
     // Studio documents this module (ROOT_MODULE) and reads its VELA_STUDIO_TOKEN
     // secret from ENV; it stays closed without one.
@@ -187,7 +162,7 @@ class TodoGateway {}
       }),
     }),
   ],
-  controllers: [TodosController, MeController, HealthController, OpenApiController],
+  controllers: [TodosController, MeController, HealthController],
   providers: [
     TodoGateway,
     TodoQueries,

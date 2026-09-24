@@ -2,7 +2,10 @@
 
 A single-file chat room: `src/index.ts` declares a `@WebSocketGateway` whose
 rooms live in the `ChatRoom` Durable Object, serves a small browser page, and
-exports the Worker. Every client in a room receives the others' messages, and
+exports the Worker. `AppModule` imports the core `WebSocketModule.forRoot()`;
+the Cloudflare adapter serves the gateway's upgrade route in the Worker and
+forwards each authenticated upgrade to the room's `ChatRoom`, where the same
+module broadcasts to the room's sockets. Every client in a room receives the others' messages, and
 the sender gets an `ack` frame.
 
 From the repository root, after `pnpm install --frozen-lockfile` and

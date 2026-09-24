@@ -6,18 +6,7 @@ import {
 } from '@velajs/vela/module-kit';
 import type { VelaApplication } from '@velajs/vela';
 import type { Entrypoint, Container } from '@velajs/vela/module-kit';
-
-const reported = new Set<string>();
-
-/** `'throw'` fails the caller, `'log'` warns once per message in this isolate. */
-function reportScheduleDiagnostic(container: Container, message: string): void {
-  const mode = container.getDiagnostics();
-  if (mode === 'silent') return;
-  if (mode === 'throw') throw new Error(message);
-  if (reported.has(message)) return;
-  reported.add(message);
-  console.warn(message);
-}
+import { reportDiagnostic as reportScheduleDiagnostic } from './diagnostics';
 
 function jobName(entry: Entrypoint<{ methodName: string }>): string {
   const owner = typeof entry.token === 'function' ? entry.token.name : String(entry.token);

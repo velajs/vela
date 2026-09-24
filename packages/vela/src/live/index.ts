@@ -17,6 +17,7 @@ export {
   LIVE_DRIVER,
   LIVE_CURSOR_LOG,
   LIVE_MODULE_OPTIONS,
+  LIVE_PLATFORM,
   LIVE_RESOLVER_METADATA,
 } from './live.tokens';
 export type {
@@ -29,6 +30,7 @@ export type {
   LiveIdentity,
   LiveInvalidationSink,
   LiveModuleOptions,
+  LivePlatform,
   LivePresenceOptions,
   LiveQueryContext,
   LiveQueryMetadata,

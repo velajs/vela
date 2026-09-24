@@ -10,6 +10,7 @@ import type {
 import { buildDoRuntime } from './do-bootstrap';
 import { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
 import { armDoPitr, readDoPitrBookmark } from './do-pitr';
+import { FORWARDED_UPGRADE_HEADERS as FORWARDED } from './worker-transport';
 import type { CloudflareRoot } from '../root-module';
 import type {
   DoPitrArmOptions,
@@ -42,7 +43,10 @@ function isIdentityField(value: string | null): value is string {
  *
  * It owns the raw hibernation socket lifecycle (Hono's `upgradeWebSocket` cannot
  * bridge DO hibernation) and forwards every event into the runtime-agnostic
- * `WsDispatcher` via {@link DoWebSocketHost}. The DO's `env` is the
+ * `WsDispatcher` via {@link DoWebSocketHost}. The application imports the core
+ * `WebSocketModule.forRoot()`: this object registers the platform that binds
+ * its server to these sockets, delivers live invalidations locally and keeps
+ * the live cursor log in its SQLite storage. The DO's `env` is the
  * application's ENV, as in the Worker.
  */
 export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
@@ -97,10 +101,10 @@ export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
       // Headers are primary (carry auth + multi-gateway routing); fall back to the
       // DO's own name (set via idFromName(room)) and the single gateway path so a
       // plain `stub.fetch(request)` forward still works.
-      const roomId = request.headers.get('x-vela-room') ?? this.ctx.id.name ?? url.pathname;
-      const path = request.headers.get('x-vela-path') ?? this.host.defaultPath() ?? url.pathname;
-      const userId = request.headers.get('x-vela-user') || undefined;
-      const rawExpiresAtMs = request.headers.get('x-vela-expires-at-ms');
+      const roomId = request.headers.get(FORWARDED.room) ?? this.ctx.id.name ?? url.pathname;
+      const path = request.headers.get(FORWARDED.path) ?? this.host.defaultPath() ?? url.pathname;
+      const userId = request.headers.get(FORWARDED.user) || undefined;
+      const rawExpiresAtMs = request.headers.get(FORWARDED.expiresAtMs);
       const parsedExpiresAtMs = rawExpiresAtMs === null ? undefined : Number(rawExpiresAtMs);
       if (
         parsedExpiresAtMs !== undefined &&
@@ -109,10 +113,10 @@ export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
         return new Response('Invalid WebSocket identity expiry', { status: 403 });
       }
 
-      const issuer = request.headers.get('x-vela-issuer');
-      const subject = request.headers.get('x-vela-subject');
-      const principalType = request.headers.get('x-vela-principal-type');
-      const tenantId = request.headers.get('x-vela-tenant');
+      const issuer = request.headers.get(FORWARDED.issuer);
+      const subject = request.headers.get(FORWARDED.subject);
+      const principalType = request.headers.get(FORWARDED.principalType);
+      const tenantId = request.headers.get(FORWARDED.tenant);
       const hasPrincipalHeader =
         issuer !== null || subject !== null || principalType !== null || tenantId !== null;
       let principal: WsConnectionPrincipal | undefined;

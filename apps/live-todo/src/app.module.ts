@@ -6,15 +6,17 @@ import {
   defineProvider,
   Get,
   Inject,
+  InjectEnv,
   Injectable,
   InjectionToken,
   Module,
+  Optional,
   Param,
   Post,
   Res,
+  type VelaEnv,
 } from '@velajs/vela';
 import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
-import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
 import type { UpgradeAuthenticator, WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
 import {
   LiveInvalidation,
@@ -66,6 +68,78 @@ export class MemoryTodoStore implements TodoStore {
     if (index === -1) return false;
     this.todos.splice(index, 1);
     return true;
+  }
+}
+
+/** The key-value operations the shared store uses (a Workers KV namespace provides them). */
+interface TodoKv {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string): Promise<void>;
+}
+
+const KV_KEY = 'todos';
+
+/**
+ * Cloudflare variant: todos in the TODOS KV namespace, which the Worker and
+ * the Durable Object both bind. The example's read-modify-write store
+ * illustrates sharing and does not provide concurrent-write atomicity.
+ */
+export class KvTodoStore implements TodoStore {
+  constructor(private readonly kv: TodoKv) {}
+
+  async all(): Promise<Todo[]> {
+    const raw = await this.kv.get(KV_KEY);
+    if (raw === null) return [...SEED];
+    const parsed: unknown = JSON.parse(raw);
+    return todoListDefinition.result.parse(parsed);
+  }
+
+  async add(text: string): Promise<Todo> {
+    const todos = await this.all();
+    const todo: Todo = { id: crypto.randomUUID(), text, createdAt: Date.now() };
+    await this.kv.put(KV_KEY, JSON.stringify([...todos, todo]));
+    return todo;
+  }
+
+  async remove(id: string): Promise<boolean> {
+    const todos = await this.all();
+    const next = todos.filter((todo) => todo.id !== id);
+    if (next.length === todos.length) return false;
+    await this.kv.put(KV_KEY, JSON.stringify(next));
+    return true;
+  }
+}
+
+/** The environment's TODOS namespace, validated as the operations the store calls. */
+function readTodoKv(env: VelaEnv | undefined): TodoKv | undefined {
+  const binding: unknown = env ? Reflect.get(env, 'TODOS') : undefined;
+  if (typeof binding !== 'object' || binding === null) return undefined;
+  const get: unknown = Reflect.get(binding, 'get');
+  const put: unknown = Reflect.get(binding, 'put');
+  if (typeof get !== 'function' || typeof put !== 'function') return undefined;
+  return {
+    get: async (key) => {
+      const value: unknown = await Reflect.apply(get, binding, [key]);
+      return typeof value === 'string' ? value : null;
+    },
+    put: async (key, value) => {
+      await Reflect.apply(put, binding, [key, value]);
+    },
+  };
+}
+
+/**
+ * Picks where todos live for each application: the TODOS namespace when its
+ * environment binds one (the Worker and its Durable Object), process memory
+ * otherwise (the node host, which seeds no environment).
+ */
+@Injectable()
+export class TodoStoreFactory {
+  constructor(@Optional() @InjectEnv() private readonly env?: VelaEnv) {}
+
+  create(): TodoStore {
+    const kv = readTodoKv(this.env);
+    return kv ? new KvTodoStore(kv) : new MemoryTodoStore();
   }
 }
 
@@ -173,35 +247,26 @@ export class AnonymousDemoAuthenticator implements UpgradeAuthenticator {
 })
 export class RoomsGateway {}
 
-export interface TodoAppOptions {
-  /** The WebSocket transport. Defaults to the core (Node) `WebSocketModule`. */
-  websocketModule?: DynamicModule;
-  /** The live module with this runtime's driver and cursor log. Defaults to in-memory. */
-  liveModule?: DynamicModule;
-  /** Provides `TODO_STORE`. Defaults to the in-memory store. */
-  storeProvider?: Type | ProviderDefinition;
-}
-
 /**
- * The application both runtimes share, declared once. Each runtime's entry
- * calls `TodoAppModule.forRoot(...)` once, at module scope, with its own
- * transport, live module and store.
+ * The application, declared once for both runtimes. On node, the host serves
+ * the gateway in this process (registerWebSocketGateways) and LiveModule
+ * delivers locally. On Workers, the Cloudflare adapter forwards each upgrade
+ * to the room's LiveRoom Durable Object (the gateway's CHAT_ROOM binding), and
+ * LiveModule sends Worker invalidations there; inside that object, delivery is
+ * local and the cursor log lives in its SQLite storage.
  */
 @Module({
+  imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
   controllers: [TodosController],
-  providers: [RoomsGateway, TodosService, TodoLive],
+  providers: [
+    RoomsGateway,
+    TodosService,
+    TodoLive,
+    TodoStoreFactory,
+    defineProvider(TODO_STORE, {
+      useFactory: (stores: TodoStoreFactory) => stores.create(),
+      inject: [TodoStoreFactory],
+    }),
+  ],
 })
-export class TodoAppModule {
-  static forRoot(options: TodoAppOptions = {}): DynamicModule {
-    return {
-      module: TodoAppModule,
-      imports: [
-        options.websocketModule ?? WebSocketModule.forRoot({}),
-        options.liveModule ?? LiveModule.forRoot({}),
-      ],
-      providers: [
-        options.storeProvider ?? defineProvider(TODO_STORE, { useClass: MemoryTodoStore }),
-      ],
-    };
-  }
-}
+export class AppModule {}

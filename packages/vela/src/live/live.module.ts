@@ -1,12 +1,34 @@
 import { defineModule } from '../module/define-module';
+import { Inject, Injectable, Optional } from '../container/decorators';
 import { defineProvider } from '../container/types';
+import type { DynamicModule } from '../registry/types';
 import { stableHash } from '../module/stable-hash';
 import { InMemoryCursorLog } from './live.cursor';
 import { LiveEngine } from './live.engine';
 import { LiveInvalidation, localLive } from './live.invalidation';
-import { LIVE_CURSOR_LOG, LIVE_DRIVER, LIVE_MODULE_OPTIONS } from './live.tokens';
-import type { LiveModuleOptions } from './live.types';
+import { LIVE_CURSOR_LOG, LIVE_DRIVER, LIVE_MODULE_OPTIONS, LIVE_PLATFORM } from './live.tokens';
+import type { CursorLog, LiveDriver, LiveModuleOptions, LivePlatform } from './live.types';
 import { PresenceResolver, PresenceService } from './presence';
+
+/** The platform wiring a runtime adapter registered, when there is one. */
+@Injectable()
+class LivePlatformRef {
+  constructor(@Optional() @Inject(LIVE_PLATFORM) readonly platform?: LivePlatform) {}
+
+  cursorLog(options: LiveModuleOptions): CursorLog | Promise<CursorLog> {
+    return options.log?.() ?? this.platform?.cursorLog?.() ?? new InMemoryCursorLog();
+  }
+
+  driver(options: LiveModuleOptions): LiveDriver | Promise<LiveDriver> {
+    const bind = (driver: LiveDriver): LiveDriver => {
+      this.platform?.bindDriver?.(driver);
+      return driver;
+    };
+    const configured = options.driver?.();
+    if (configured instanceof Promise) return configured.then(bind);
+    return bind(configured ?? this.platform?.liveDriver() ?? localLive());
+  }
+}
 
 const liveReferenceIds = new WeakMap<object, number>();
 let nextLiveReferenceId = 1;
@@ -31,8 +53,12 @@ function liveReferenceId(value: unknown): string {
  * `@velajs/live-protocol`).
  *
  * ```ts
- * imports: [WebSocketModule.forRoot({}), LiveModule.forRoot({})]
+ * imports: [WebSocketModule.forRoot(), LiveModule.forRoot()]
  * ```
+ *
+ * A runtime adapter's `LIVE_PLATFORM` supplies the driver and cursor log the
+ * options leave open (`@velajs/cloudflare` routes Worker invalidations to the
+ * gateway's room Durable Object and keeps a SQLite log inside it).
  *
  * App code declares `@LiveResolver` classes with `@LiveQuery(name, definition, { tags })`
  * methods; clients subscribe over the `$live` reserved WebSocket event; writes
@@ -61,15 +87,16 @@ const { ConfigurableModuleClass } = defineModule<LiveModuleOptions>({
     }),
   setup: ({ OPTIONS, options }) => ({
     providers: [
+      LivePlatformRef,
       defineProvider(LIVE_CURSOR_LOG, {
-        useFactory: (options) => options.log?.() ?? new InMemoryCursorLog(),
-        inject: [OPTIONS],
+        useFactory: (resolved, platform: LivePlatformRef) => platform.cursorLog(resolved),
+        inject: [OPTIONS, LivePlatformRef],
       }),
       defineProvider(LIVE_DRIVER, {
         // Configuration can be reused by many applications. Each application
         // owns its driver, including its sink and any platform binding state.
-        useFactory: (options) => options.driver?.() ?? localLive(),
-        inject: [OPTIONS],
+        useFactory: (resolved, platform: LivePlatformRef) => platform.driver(resolved),
+        inject: [OPTIONS, LivePlatformRef],
       }),
       defineProvider(PresenceService, {
         useFactory: (options) => {
@@ -93,4 +120,11 @@ const { ConfigurableModuleClass } = defineModule<LiveModuleOptions>({
   }),
 });
 
-export class LiveModule extends ConfigurableModuleClass {}
+type LiveModuleRegistration = Parameters<(typeof ConfigurableModuleClass)['forRoot']>[0];
+
+export class LiveModule extends ConfigurableModuleClass {
+  /** Register the live-query engine; every option is optional. */
+  static override forRoot(options: LiveModuleRegistration = {}): DynamicModule {
+    return super.forRoot(options);
+  }
+}
