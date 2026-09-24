@@ -22,7 +22,7 @@ import {
   type ContractQuery,
 } from '../contract/index';
 import { ApiResponse, createOpenApiDocument } from '../openapi/index';
-import type { SchemaOutput } from '../validation/index';
+import { ValidationPipe, type SchemaOutput } from '../validation/index';
 
 const Todo = z.object({ id: z.string(), title: z.string(), done: z.boolean() });
 const CreateTodo = z.object({ title: z.string().min(1) });
@@ -68,6 +68,59 @@ const counted = defineRoute({
   body: z.object({ title: z.string() }),
   response: z.object({ id: z.string(), slug: z.string(), title: z.string() }),
 });
+
+// Parameter classes whose static schemas are also the contract's groups; their
+// transforms do not accept their own output.
+class Stamp {
+  static schema = z.object({ at: z.string().transform((at) => at.length) });
+  declare at: number;
+}
+class Page {
+  static schema = z.object({ page: z.string().regex(/^\d+$/).transform(Number) });
+  declare page: number;
+}
+class StampId {
+  static schema = z.object({ id: z.string().regex(/^\d+$/).transform(Number) });
+  declare id: number;
+}
+const stamps = {
+  create: defineRoute({
+    method: 'POST',
+    path: '/api/stamps',
+    body: Stamp.schema,
+    response: z.object({ at: z.number() }),
+  }),
+  list: defineRoute({
+    method: 'GET',
+    path: '/api/stamps',
+    query: Page.schema,
+    response: z.object({ page: z.number() }),
+  }),
+  read: defineRoute({
+    method: 'GET',
+    path: '/api/stamps/:id',
+    params: StampId.schema,
+    response: z.object({ id: z.number() }),
+  }),
+};
+
+@Controller('/stamps')
+class Stamps {
+  @Post(stamps.create)
+  create(@Body() body: Stamp) {
+    return { at: body.at };
+  }
+
+  @Get(stamps.list)
+  list(@Query() query: Page) {
+    return { page: query.page };
+  }
+
+  @Get('/:id', stamps.read)
+  read(@Param() params: StampId) {
+    return { id: params.id };
+  }
+}
 
 @Controller('/todos')
 class ContractTodos {
@@ -204,6 +257,28 @@ describe('defineRoute contracts', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ id: 'ABC', slug: 'ABC', title: 'Renamed' });
       expect(validations).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    ['without a global pipe', false],
+    ['beside a global ValidationPipe', true],
+  ])('hands a contract-validated value to a schema-carrying class %s', async (_label, pipe) => {
+    const { app } = await start(Stamps);
+    if (pipe) app.useGlobalPipes(new ValidationPipe());
+    try {
+      const created = await send(app, 'POST', '/stamps', { at: 'noon' });
+      expect(created.status).toBe(201);
+      expect(await created.json()).toEqual({ at: 4 });
+      const listed = await send(app, 'GET', '/stamps?page=2');
+      expect(listed.status).toBe(200);
+      expect(await listed.json()).toEqual({ page: 2 });
+      const read = await send(app, 'GET', '/stamps/7');
+      expect(read.status).toBe(200);
+      expect(await read.json()).toEqual({ id: 7 });
+      expect((await send(app, 'POST', '/stamps', { at: 1 })).status).toBe(400);
     } finally {
       await app.close();
     }

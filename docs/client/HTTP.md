@@ -114,7 +114,8 @@ Standard Schema (`class CreateUser { static schema = CreateUserSchema }`, or a
 class that is itself a Standard Schema), with no global pipe; a named
 `@Body('user') user: CreateUser` validates that member. A global
 `ValidationPipe` leaves a value the route validated (`ArgumentMetadata.validated`)
-as is. Named descriptors work too: `const BodyDto = defineDto(schema, { name:
+as is while the pipes before it pass that value on unchanged; a value an earlier
+pipe changed (a trimming pipe, say) is validated again. Named descriptors work too: `const BodyDto = defineDto(schema, { name:
 'CreateUser' })`, then `@Body(BodyDto)`; OpenAPI then references a named
 component. Erased TypeScript interfaces cannot supply schemas.
 
@@ -126,8 +127,9 @@ a global `ValidationPipe` validates). Without a schema, a named parameter
 follows its declared type: `@Query('sort') sort: string` (or `number`,
 `boolean`) receives the first value, `@Query('tags') tags: string[]` without a
 pipe always receives an array, and a parameter typed `unknown` or a union
-receives an array for a repeated key. Declare a schema for security-relevant
-query values. OpenAPI documents array query parameters with `style: form` and
+receives an array for a repeated key. `string | undefined` and `string | null`
+are unions too; declare the parameter optional (`sort?: string`) to receive the
+first value. Declare a schema for security-relevant query values. OpenAPI documents array query parameters with `style: form` and
 `explode: true`.
 
 ### Shared `defineRoute` contracts
@@ -175,7 +177,9 @@ export class UsersController {
 A contract takes `params`, `query` and `body` schemas, one of `json`, `form` or
 `multipart` for the body's encoding and limits, and the response options above.
 The route validates each group once per request; `@Body()`, `@Query()` and
-`@Param()` (whole or named) read the validated values. The decorator's method
+`@Param()` (whole or named) read the validated values, which a global
+`ValidationPipe` leaves as is, also for a parameter class carrying a static
+schema. The decorator's method
 must match the contract's, and the application fails to start when the
 contract's `path` is not the path the route serves (global prefix and version
 included), or when the route adds `@HttpCode`: `ContractApp` clients are typed

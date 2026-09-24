@@ -93,9 +93,10 @@ export interface ArgumentMetadata {
   metatype?: unknown;
   data?: string;
   /**
-   * The route's request reader already validated the value against
-   * `metatype`'s own schema (`@Body()` of a class carrying a static Standard
-   * Schema); `ValidationPipe` leaves such a value as is.
+   * The route's request reader validated the value: a `defineRoute` body,
+   * query or params group, or `@Body()` of a class carrying a static Standard
+   * Schema. `ValidationPipe` leaves such a value as is. The flag clears once a
+   * pipe returns a different value, which a later `ValidationPipe` validates.
    */
   validated?: boolean;
 }

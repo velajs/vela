@@ -41,8 +41,7 @@ export class ValidationPipe implements PipeTransform {
       metatype.validationOwner === 'handler'
     )
       return undefined;
-    // The route's `@Body()` reader already validated the value against the
-    // class's own schema.
+    // The route's reader validated the value and no pipe has changed it since.
     if (metadata.validated) return undefined;
     return resolveValidationSchema(metatype);
   }

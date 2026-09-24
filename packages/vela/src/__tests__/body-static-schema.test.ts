@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { Body, Controller, Module, Post, VelaFactory, type VelaApplication } from '../index';
+import {
+  Body,
+  Controller,
+  Module,
+  Post,
+  VelaFactory,
+  type PipeTransform,
+  type VelaApplication,
+} from '../index';
 import { MetadataRegistry, ParamType } from '../module-kit';
 import { createOpenApiDocument } from '../openapi/index';
 import { ValidationPipe, type StandardSchemaV1 } from '../validation/index';
@@ -52,6 +60,31 @@ class LooseItem {
   declare sku: string;
 }
 
+class Note {
+  static schema = z.object({ text: z.string().min(1) });
+  declare text: string;
+}
+
+// A pipe returning a new value: every string of an object body, trimmed.
+class TrimPipe implements PipeTransform {
+  transform(value: unknown) {
+    if (value === null || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.entries(value).map(([key, member]) => [
+        key,
+        typeof member === 'string' ? member.trim() : member,
+      ]),
+    );
+  }
+}
+
+// A pipe returning the value it receives.
+class PassPipe implements PipeTransform {
+  transform(value: unknown) {
+    return value;
+  }
+}
+
 @Controller('/todos')
 class Todos {
   @Post()
@@ -77,6 +110,11 @@ class Todos {
   @Post('/loose')
   loose(@Body('item') item: LooseItem) {
     return { item: item ?? null };
+  }
+
+  @Post('/notes')
+  note(@Body() body: Note) {
+    return body;
   }
 }
 
@@ -118,6 +156,38 @@ describe('@Body() with a schema-carrying parameter class', () => {
     class App {}
     const app = await VelaFactory.create(App);
     app.useGlobalPipes(new ValidationPipe());
+    try {
+      transforms = 0;
+      const created = await post(app, '', { title: ' Once ' });
+      expect(await created.json()).toEqual({ title: 'Once' });
+      expect(transforms).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('validates again a value an earlier pipe changed before the global ValidationPipe', async () => {
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new TrimPipe(), new ValidationPipe());
+    try {
+      const blank = await post(app, '/notes', { text: '   ' });
+      expect(blank.status).toBe(400);
+      expect((await blank.json()).error.details.issues[0].path).toEqual(['text']);
+      const trimmed = await post(app, '/notes', { text: ' hi ' });
+      expect(trimmed.status).toBe(201);
+      expect(await trimmed.json()).toEqual({ text: 'hi' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('validates once when the pipes before the global ValidationPipe keep the value', async () => {
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new PassPipe(), new ValidationPipe());
     try {
       transforms = 0;
       const created = await post(app, '', { title: ' Once ' });

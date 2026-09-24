@@ -53,6 +53,18 @@ class SearchController {
   tags(@Query('tags') tags: string[]) {
     return { tags: tags ?? null };
   }
+
+  // An optional parameter keeps its declared type.
+  @Get('/optional')
+  optional(@Query('role') role?: string) {
+    return { role: role ?? null };
+  }
+
+  // `string | undefined` is a union: repeated keys arrive as an array.
+  @Get('/union')
+  union(@Query('role') role: string | undefined) {
+    return { role: role ?? null };
+  }
 }
 
 @Module({ controllers: [SearchController] })
@@ -124,6 +136,13 @@ describe('array-aware @Query', () => {
         role: 'admin',
         admin: true,
       });
+      expect(await (await get(app, '/optional?role=user&role=admin')).json()).toEqual({
+        role: 'user',
+      });
+      expect(await (await get(app, '/union?role=user&role=admin')).json()).toEqual({
+        role: ['user', 'admin'],
+      });
+      expect(await (await get(app, '/union?role=user')).json()).toEqual({ role: 'user' });
       // An array parameter is an array even when sent once.
       expect(await (await get(app, '/tags?tags=a')).json()).toEqual({ tags: ['a'] });
       expect(await (await get(app, '/tags?tags=a&tags=b')).json()).toEqual({ tags: ['a', 'b'] });

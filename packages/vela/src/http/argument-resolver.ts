@@ -62,12 +62,15 @@ export class ArgumentResolver {
         data: param.name,
         metatype: param.metatype ?? paramTypes?.[param.index],
       };
-      if (extract?.validatesMetatype) metadata.validated = true;
+      // The reader's validation holds while pipes pass its value on unchanged.
+      const read = value;
+      if (extract?.validated) metadata.validated = true;
 
       for (const pipe of pipes) {
         value = await (pipe.transformAsync
           ? pipe.transformAsync(value, metadata)
           : pipe.transform(value, metadata));
+        metadata.validated &&= value === read;
       }
 
       if (param.pipes && param.pipes.length > 0) {
@@ -80,6 +83,7 @@ export class ArgumentResolver {
           value = await (pipeInstance.transformAsync
             ? pipeInstance.transformAsync(value, metadata)
             : pipeInstance.transform(value, metadata));
+          metadata.validated &&= value === read;
         }
       }
 

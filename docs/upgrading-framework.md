@@ -127,15 +127,19 @@ arrays even when sent once; a repeated scalar fails its schema. A named
 parameter without a schema follows its declared type: `string`, `number` and
 `boolean` parameters still receive the first value, an array parameter without
 a pipe always receives an array, and an `unknown` or union parameter receives
-an array for a repeated key. Declare a schema, or `ParseArrayPipe`, for values
-that may be one or many.
+an array for a repeated key. `string | undefined` and `string | null` are
+unions: declare such a parameter optional (`role?: string`) to keep the first
+value. Declare a schema, or `ParseArrayPipe`, for values that may be one or
+many.
 
 `@Body()` with no schema validates a parameter class carrying a static Standard
 Schema even without a global pipe, so bodies such a class rejects now answer
 400; a named `@Body('item') item: Item` validates the `item` member. A global
 `ValidationPipe` leaves a value the route validated as is
-(`ArgumentMetadata.validated`) and still validates body parameters registered
-without a route reader.
+(`ArgumentMetadata.validated`), a `defineRoute` group included, while the pipes
+before it pass that value on unchanged; a value an earlier pipe changed is
+validated again. It still validates body parameters registered without a route
+reader.
 
 Method decorators with `response` or `format` are `RouteMethodDecorator<Result>`
 values that check the handler's result; they are no longer assignable to

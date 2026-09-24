@@ -5277,7 +5277,7 @@ interface ParamExtractionRoute {
 }
 
 type ParamReader = ((c: Context) => unknown) & {
-  readonly validatesMetatype?: boolean;
+  readonly validated?: boolean;
 };
 
 type ParamExtractorFactory = (route: ParamExtractionRoute, param: ParamMetadata, metatype: unknown) => ParamReader;

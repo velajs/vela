@@ -25,11 +25,12 @@ export interface ParamExtractionRoute {
 }
 
 /**
- * A parameter's request reader, built once per route. `validatesMetatype`
- * marks a reader that validates the value against the parameter class's own
- * schema, so pipes receive it as `ArgumentMetadata.validated`.
+ * A parameter's request reader, built once per route. `validated` marks a
+ * reader that returns a validated value (a `defineRoute` group, or the static
+ * schema of the parameter's class), so pipes receive it as
+ * `ArgumentMetadata.validated`.
  */
-export type ParamReader = ((c: Context) => unknown) & { readonly validatesMetatype?: boolean };
+export type ParamReader = ((c: Context) => unknown) & { readonly validated?: boolean };
 
 /**
  * Builds a parameter's request reader for one route. Built-in `@Body`,

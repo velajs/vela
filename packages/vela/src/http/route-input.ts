@@ -17,7 +17,7 @@ import {
 import { ValidationPipe } from '../validation/validation.pipe';
 import { readBoundedBody, readJsonBody } from './json-body';
 import type { ResolvedRouteBody } from './route-contract';
-import type { ParamExtractorFactory, ParamMetadata } from './types';
+import type { ParamExtractorFactory, ParamMetadata, ParamReader } from './types';
 
 // Request values for `@Body()`, `@Query()` and `@Param()`. These readers ship
 // with the parameter decorators, so an application that declares none of
@@ -92,6 +92,11 @@ function properties(json: JsonObject | undefined): [string, JsonObject][] {
         isObject(entry[1]),
       )
     : [];
+}
+
+// A reader returning validated values, which `ValidationPipe` then leaves as is.
+function validated(read: (c: Context) => Promise<unknown>): ParamReader {
+  return Object.assign(read, { validated: true });
 }
 
 async function validate(schema: ValidationSchema, value: unknown): Promise<unknown> {
@@ -232,15 +237,13 @@ export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => 
   };
   if (contract && group) {
     const key = groupKey(contract, 'body');
-    return async (c) =>
-      pick(await once(c, key, async () => validate(group, await raw(c))), param.name);
+    return validated(async (c) =>
+      pick(await once(c, key, async () => validate(group, await raw(c))), param.name),
+    );
   }
   // The class describes the value the parameter receives: the whole body, or
   // the member a named parameter reads.
-  if (auto)
-    return Object.assign(async (c: Context) => validate(auto, pick(await raw(c), param.name)), {
-      validatesMetatype: true,
-    });
+  if (auto) return validated(async (c) => validate(auto, pick(await raw(c), param.name)));
   return async (c) => pick(await raw(c), param.name);
 };
 
@@ -290,8 +293,9 @@ export const readQueryParam: ParamExtractorFactory = (route, param, metatype) =>
   const keys = arrays === true ? new Set<string>() : arrays;
   if (contract && group) {
     const key = groupKey(contract, 'query');
-    return async (c) =>
-      pick(await once(c, key, () => validate(group, wireQuery(c, keys))), param.name);
+    return validated(async (c) =>
+      pick(await once(c, key, () => validate(group, wireQuery(c, keys))), param.name),
+    );
   }
   const name = param.name;
   if (name === undefined) return (c) => wireQuery(c, keys);
@@ -310,5 +314,7 @@ export const readPathParam: ParamExtractorFactory = (route, param) => {
   if (!contract || !group)
     return (c) => (param.name === undefined ? c.req.param() : c.req.param(param.name));
   const key = groupKey(contract, 'params');
-  return async (c) => pick(await once(c, key, () => validate(group, c.req.param())), param.name);
+  return validated(async (c) =>
+    pick(await once(c, key, () => validate(group, c.req.param())), param.name),
+  );
 };
