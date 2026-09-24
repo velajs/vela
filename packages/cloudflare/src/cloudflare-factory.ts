@@ -7,6 +7,7 @@ import { assertCloudflareEnvironment } from './environment';
 import { registerCloudflarePlatform } from './platform';
 import { reportCloudflareScheduleDiagnostics } from './schedule-diagnostics';
 import { registerScheduledEventSeed, type ScheduledEvent } from './scheduled-event';
+import { reportUnservedGateways } from './websocket/binding-gateways';
 import { workerLivePlatform } from './websocket/live-driver';
 import { workerWebSocketTransport } from './websocket/worker-transport';
 import type { CloudflareRoot } from './root-module';
@@ -71,8 +72,9 @@ function assertQueueConsumerOwnership(entrypoints: VelaApplication['entrypoints'
  * forwards each authenticated gateway upgrade to the room's Durable Object,
  * and `LiveModule` sends invalidations there. It supplies the
  * `InternalDispatcher` transport, so signed queue and schedule dispatch
- * re-enter this application's routes, and reports schedule declarations a
- * cron trigger cannot honor through the diagnostics policy.
+ * re-enter this application's routes, and reports, through the diagnostics
+ * policy, schedule declarations a cron trigger cannot honor and binding-backed
+ * gateways without `WebSocketModule`.
  */
 export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
   const { env } = options;
@@ -98,9 +100,10 @@ export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
       });
       registerScheduledEventSeed(container);
     },
-    onBootstrap: ({ app, container }) => {
+    onBootstrap: ({ app, container, discovery }) => {
       assertQueueConsumerOwnership(app.entrypoints);
       reportCloudflareScheduleDiagnostics(container, app.entrypoints);
+      reportUnservedGateways(container, discovery);
     },
   };
 }

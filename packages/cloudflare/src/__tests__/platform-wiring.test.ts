@@ -216,6 +216,32 @@ describe('Cloudflare WebSocket platform wiring', () => {
     }
   });
 
+  it('reports a binding-backed gateway the Worker cannot serve without WebSocketModule', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    @WebSocketGateway({ path: '/unserved', binding: 'UNSERVED', authenticator: TestAuthenticator })
+    class UnservedGateway {}
+    @Module({ providers: [UnservedGateway] })
+    class WithoutWebSockets {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [UnservedGateway] })
+    class WithWebSockets {}
+
+    const env = {};
+    const unserved = await createCloudflareApp(WithoutWebSockets, { env });
+    const served = await createCloudflareApp(WithWebSockets, { env });
+    try {
+      const messages = warn.mock.calls.map(([message]) => String(message));
+      expect(messages.filter((message) => message.includes("'/unserved'"))).toEqual([
+        expect.stringMatching(/UnservedGateway.*binding 'UNSERVED'.*WebSocketModule\.forRoot\(\)/),
+      ]);
+      const upgrade = new Request('https://worker.test/unserved', {
+        headers: { upgrade: 'websocket' },
+      });
+      expect((await unserved.fetch(upgrade, env)).status).toBe(404);
+    } finally {
+      await Promise.all([unserved.close(), served.close()]);
+    }
+  });
+
   it('requires WebSocketModule in an application served by a WebSocket Durable Object', async () => {
     @Module({})
     class WithoutWebSockets {}
@@ -305,6 +331,39 @@ describe('Cloudflare live platform wiring', () => {
       ]);
     } finally {
       await Promise.all([ambiguous.close(), byBinding.close(), byPath.close()]);
+    }
+  });
+
+  it('delivers a Worker invalidation sent from a lifecycle hook', async () => {
+    const calls: Array<{ label: string; id: string; cmd: InvalidationCommand }> = [];
+    const stamps: Array<CommitStamp | undefined> = [];
+    @Injectable()
+    class Startup {
+      constructor(private readonly live: LiveInvalidation) {}
+      async onModuleInit() {
+        stamps.push(await this.live.invalidate({ tags: ['init'] }));
+      }
+      async onApplicationBootstrap() {
+        stamps.push(await this.live.invalidate({ tags: ['bootstrap'] }));
+      }
+    }
+    @WebSocketGateway({ path: PATH, roomParam: 'id', binding: 'ROOMS' })
+    class RoomsGateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [RoomsGateway, Startup],
+    })
+    class App {}
+
+    const app = await createCloudflareApp(App, { env: { ROOMS: liveNamespace('rooms', calls) } });
+    try {
+      expect(stamps).toEqual([
+        { cursor: 3, epoch: 'rooms' },
+        { cursor: 3, epoch: 'rooms' },
+      ]);
+      expect(calls.map(({ cmd }) => cmd.tags)).toEqual([['init'], ['bootstrap']]);
+    } finally {
+      await app.close();
     }
   });
 

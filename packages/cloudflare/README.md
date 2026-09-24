@@ -363,7 +363,9 @@ chooses. Inside the Durable Object, the gateway server broadcasts to its
 hibernatable sockets, invalidations apply locally, and the cursor log is a
 `DoCursorLog` in the object's SQLite storage (in memory when the class is not
 SQLite-backed). The same `RoomModule` serves the Worker, every Durable Object
-and a node host.
+and a node host. Without `WebSocketModule`, the Worker mounts no upgrade route,
+and the adapter reports each binding-backed gateway through the diagnostics
+policy.
 
 Declare gateways with `@WebSocketGateway({ path, roomParam, binding, ... })` and
 configure origins and upgrade authentication for your application.

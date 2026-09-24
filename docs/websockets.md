@@ -325,6 +325,9 @@ supplies the platform through the global `WS_TRANSPORT` token: in the Worker,
 Object; inside the Durable Object, the server gateways inject broadcasts to the
 object's hibernatable sockets. A gateway's server has no sockets in the Worker
 isolate, so pushes from there fail with guidance; use `broadcastToRoom` below.
+Without `WebSocketModule`, the Worker mounts no upgrade route: its upgrades
+answer 404, and the adapter reports each binding-backed gateway through the
+diagnostics policy (a warning by default).
 
 ```ts
 // Worker entry (src/index.ts)

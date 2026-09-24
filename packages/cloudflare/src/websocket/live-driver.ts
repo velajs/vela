@@ -1,5 +1,5 @@
 import type { VelaEnv } from '@velajs/vela';
-import { EntrypointRegistry, getMetadata, type Container } from '@velajs/vela/module-kit';
+import { DiscoveryService, type Container } from '@velajs/vela/module-kit';
 import type {
   CommitStamp,
   InvalidationCommand,
@@ -7,7 +7,7 @@ import type {
   LiveInvalidationSink,
   LivePlatform,
 } from '@velajs/vela/live';
-import { WS_GATEWAY_METADATA, type WebSocketGatewayOptions } from '@velajs/vela/websocket';
+import { bindingGateways, type BindingGateway } from './binding-gateways';
 import { roomToDurableId } from './room-id';
 
 const DEFAULT_ROOM = 'default';
@@ -38,16 +38,10 @@ export interface LiveNamespace {
   get(id: DurableObjectId): LiveInvalidateStub;
 }
 
-/** A gateway whose rooms live in Durable Objects: its path and namespace binding. */
-interface BindingGateway {
-  path: string;
-  binding: string;
-}
-
 /** @internal What the Worker's live platform hands a driver. */
 interface WorkerLiveContext {
   env: VelaEnv;
-  gateways(): readonly BindingGateway[];
+  gateways(): readonly Pick<BindingGateway, 'path' | 'binding'>[];
 }
 
 function describeFilter({ binding, gatewayPath }: DurableObjectLiveOptions): string {
@@ -183,21 +177,6 @@ export function durableObjectLive(options: DurableObjectLiveOptions = {}): CfLiv
   return new CfLiveDriver(options);
 }
 
-/** Gateways that name a binding, in discovery order, once per path. */
-function bindingGateways(container: Container): BindingGateway[] {
-  if (!container.has(EntrypointRegistry)) return [];
-  const gateways = new Map<string, BindingGateway>();
-  for (const entry of container.resolve(EntrypointRegistry).ofKind('websocket')) {
-    if (typeof entry.token !== 'function') continue;
-    // The gateway class's own decorator metadata is authoritative.
-    const options = getMetadata<WebSocketGatewayOptions>(WS_GATEWAY_METADATA, entry.token);
-    const path = options?.path ?? '';
-    if (typeof options?.binding !== 'string' || gateways.has(path)) continue;
-    gateways.set(path, { path, binding: options.binding });
-  }
-  return [...gateways.values()];
-}
-
 let workerLocalLiveWarned = false;
 
 /**
@@ -207,7 +186,10 @@ let workerLocalLiveWarned = false;
  * per isolate: subscriptions live in the Durable Object, so it would reach none.
  */
 export function workerLivePlatform(env: VelaEnv, container: Container): LivePlatform {
-  const context: WorkerLiveContext = { env, gateways: () => bindingGateways(container) };
+  const context: WorkerLiveContext = {
+    env,
+    gateways: () => bindingGateways(container.resolve(DiscoveryService)),
+  };
   return {
     liveDriver: () => durableObjectLive(),
     bindDriver(driver) {
