@@ -75,6 +75,18 @@ describe('api-starter compiled by Oxc under workerd', () => {
     expect((await call(worker, '/todos')).response.status).toBe(401);
   });
 
+  it("serves the application's OpenAPI document without documenting itself", async () => {
+    const { response, text } = await call(worker, '/openapi.json');
+    expect(response.status).toBe(200);
+    const document: unknown = JSON.parse(text);
+    expect(document).toMatchObject({
+      openapi: '3.1.0',
+      info: { title: 'Vela API starter', version: '1.0.0' },
+      paths: { '/todos': {}, '/me': {}, '/healthz': {} },
+    });
+    expect(document).not.toHaveProperty(['paths', '/openapi.json']);
+  });
+
   it('signs up, reads the session and upgrades into the LiveRoom Durable Object', async () => {
     const { email, cookie } = await signUp(worker);
     const me = await call(worker, '/me', { headers: { origin, cookie } });

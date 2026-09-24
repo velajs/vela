@@ -67,8 +67,8 @@ app.useGlobalGuards(new RolesGuard(app.get(Reflector)))
    .useGlobalInterceptors(new SerializerInterceptor())
    .useGlobalFilters(new AllExceptionsFilter());
 
-// 3. From a custom module via provideGlobal()
-providers: [AuthGuard, ...provideGlobal('guard', AuthGuard)]
+// 3. From a defineModule setup via the `global:` slot, or a provider
+setup: () => ({ global: { guards: [AuthGuard] } })   // or providers: [{ provide: APP_GUARD, useClass: AuthGuard }]
 ```
 
 `APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `APP_MIDDLEWARE` are `InjectionToken`s. Multiple providers for one token all execute.
@@ -108,7 +108,7 @@ Route targets resolve at route build:
 - `forRoutes(UsersController)` runs exactly when Hono dispatches the request to one of the controller's own handlers (its method, global prefix, URI version, a parent app's base path). It is the most precise target and the one to use for authentication. A controller that declares no routes throws.
 - A string or `{ path, method }` target gets the global prefix and also covers the paths beneath it: `forRoutes('/users')` under `globalPrefix: '/api'` matches `/api/users` and `/api/users/42`. Write it without the prefix; a target that starts with the prefix throws at route build.
 - `exclude()` targets get the global prefix and match exactly: `exclude('/users/me')` does not exclude `/users/me/keys`.
-- `{ path, method?, absolute: true }` matches the path as written, for routes outside the global prefix: `mountOpenApi()` documents, the `RpcModule` endpoint, Cloudflare WebSocket upgrades and raw Hono routes.
+- `{ path, method?, absolute: true }` matches the path as written, for routes outside the global prefix: the `OpenApiModule` document, `mountOpenApi()` documents, the `RpcModule` endpoint, Cloudflare WebSocket upgrades and raw Hono routes.
 - After route build, relative targets are checked against the registered routes, reading a `{regex}`-constrained route parameter as one segment: one that matches only a route outside the global prefix (e.g. `forRoutes('rpc')`) throws and names `{ path, absolute: true }`; a `forRoutes()` target that matches no route at all is reported through `diagnostics` (routes added to the Hono app after startup need `absolute: true` and the path they are served on; the report suggests the resolved path, prefix included, such as `{ path: '/api/users/:id', absolute: true }`).
 - Path targets use a small grammar that Vela matches segment by segment, in time linear in the path, without adding routes to the app. Segments are literals, matched exactly and case-sensitively against the decoded path, or `:name` with an identifier name, which matches one segment, decoded line terminators (`%0A`, `%E2%80%A8`) included. Hono's LinearRouter (`hono/quick`) serves `:name` on an empty segment, so in `forRoutes()` `:name` also matches an empty segment (fail closed); in `exclude()` it matches only a non-empty one. The last segment may be `*` or `{*name}` (the parent path and everything beneath it: `cats/*` matches `/cats`, `/cats/` and `/cats/1/toys`) or `*name` (one or more characters beneath the parent, never `/cats` itself). A trailing `(.*)` reads as `{*name}` in `forRoutes()`, as Nest 11 rewrites it (`forRoutes('cats/(.*)')` covers `/cats` too), and as `*name` in `exclude()` (fail closed both ways). A trailing `/` is significant in `exclude()`. `'*'`, `'/*'` and `'{*splat}'` match every request and never get the prefix, as does a lone `'(.*)'` in `forRoutes()`.
 - Everything else throws at route build with its cause: `{regex}` constraints (`:id{[0-9]+}`, `:action{login|register}`), optional `?` (`:id?`), a wildcard before the last segment (`files/*/raw`, `files/*path/download`), `*` or `:` inside a segment (`us*`, `abc:name`), a parameter name that is not an identifier (`:name.pdf`, `:from-to`), other parentheses or braces (`:id(\d+)`, `users{/:id}`) and empty segments (`a//b`). Use `:name`, list the paths, or target the controller.

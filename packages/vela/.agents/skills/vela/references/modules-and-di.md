@@ -16,9 +16,9 @@ import { Module } from '@velajs/vela';
 class UserModule {}
 ```
 
-`ModuleOptions`: `imports`, `controllers`, `providers`, `exports`, `isGlobal?`, `lazy?`. `@Global()` sets `isGlobal` (only **exported** tokens become app-wide). `lazy: true` defers the whole module to first use — see `lazy-and-lifecycle.md`.
+`ModuleOptions`: `imports`, `controllers`, `providers`, `exports`, `lazy?`. `lazy: true` defers the whole module to first use — see `lazy-and-lifecycle.md`.
 
-> Field-name gotcha: it is `isGlobal` on `@Module`/`ModuleOptions`, but `global` on a `DynamicModule` object.
+`global` lives in two places only: `@Global()` on a module class, and `global: true` on one `DynamicModule` instance (the `isGlobal` extra of `forRoot`/`forRootAsync` sets it). `@Module` has no global option. Only **exported** tokens become app-wide.
 
 Modules are static. Declare every module, controller and provider class once at module scope, and never decorate a class inside a function: each call would declare new classes, and the isolate-global metadata registry keeps them all. The application root is a module class or a `DynamicModule` (`AppModule.forRoot(...)`) declared the same way, and any module can inject it as the global `ROOT_MODULE`. Runtime values (bindings, secrets, per-environment clients) enter through DI: `forRootAsync({ inject: [ENV], useFactory })`, `useFactory` providers, `@InjectEnv()`, or an injectable class a decorator names (such as a gateway's `authenticator`). Those run per application, so several applications, including one per Workers environment, share the classes but no instances.
 
@@ -123,7 +123,7 @@ A provider is private to its declaring module unless listed in that module's `ex
 
 ## Dynamic modules — `forRoot` / `forRootAsync`
 
-Configurable modules expose `forRoot(options)` (sync) and `forRootAsync({ useFactory, inject, imports })` (DI-resolved):
+Every first-party configurable module exposes `forRoot(options)` (sync) and `forRootAsync({ useFactory, inject, imports })` (DI-resolved). A module's **structural** options (those that shape its graph, such as a bucket `name` or an `http` mount) go next to the factory; the factory returns the rest:
 
 ```ts
 @Module({
@@ -133,26 +133,32 @@ Configurable modules expose `forRoot(options)` (sync) and `forRootAsync({ useFac
       inject: [SecretLoader],
       useFactory: async (loader: SecretLoader) => ({ config: await loader.load() }),
     }),
+    StorageModule.forRootAsync({
+      name: 'uploads',                                   // structural: at the call site
+      inject: [ENV],
+      useFactory: (env) => ({ driver: () => r2Driver({ bucket: env.UPLOADS }) }),
+    }),
     RegionModule.forRootAsync({ useFactory: () => ({ region: 'eu' }) }), // no parameters: no inject
   ],
 })
 class AppModule {}
 ```
 
-Same options dedup (via a `stableHash(options)` key); distinct options coexist. For hand-rolled dynamic modules use `defineDynamicModule({ module, key, providers, exports })`.
+The instance key comes from the structural options only, so most modules have one instance per class: the same configuration imported twice deduplicates, while a second configuration under the same key fails bootstrap in every diagnostics mode, even when its `isGlobal` differs too. A repeat with the same options and only another `isGlobal` is reported (`'log'` warns, `'throw'` fails bootstrap) and the first is kept. An extra at its default, a structural option at the module's default (`globalGuard: true`) or an option passed as `undefined` (at any depth) counts as not given. A bare class import configures nothing: a configured import under its key (`HttpModule.forRoot({ key: 'default', baseURL })` next to `HttpModule`) fails bootstrap in either order. Give a second instance its own `key` (`MailModule.forRoot({ ..., key: 'marketing' })`). `key`, `lazy` and `isGlobal` never change the key or reach the options token. `isGlobal` only makes exports visible everywhere; options that register app-wide components are named for them (`CacheModule`'s `globalInterceptor`, `BetterAuthModule`'s and `FeatureFlagsModule`'s `globalGuard`).
 
 ## Authoring a configurable module — `defineModule`
 
-`defineModule` is THE module-authoring engine: one spec generates `forRoot` **and** `forRootAsync`, a deterministic instance key, and options-derived contributions:
+`defineModule` is THE module-authoring engine: one spec generates `forRoot` **and** `forRootAsync`, the instance key, and contributions computed from the structural options:
 
 ```ts
 import { defineModule, defineProvider, InjectionToken } from '@velajs/vela';
 
 const STORAGE_OPTIONS = new InjectionToken<StorageOptions>('STORAGE_OPTIONS');
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StorageOptions>({
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StorageOptions, 'http'>({
   name: 'Storage',
   optionsToken: STORAGE_OPTIONS,
+  structural: ['http'],                    // setup/key see only these; the async factory returns the rest
   setup: ({ OPTIONS, options }) => ({
     providers: [defineProvider(DRIVER, { useFactory: (o) => o.driver(), inject: [OPTIONS] })],
     controllers: options.http ? [StorageController] : [],
@@ -163,4 +169,4 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StorageOp
 export class StorageModule extends ConfigurableModuleClass {}
 ```
 
-`ConfigurableModuleBuilder` is an adapter over the same engine; retain the returned builder from each configuration step. Prefer the single-spec `defineModule` API for new modules. For the full authoring contract (keys, `lazyProvider`, `provideGlobal`, `sideEffectModule`, discovery, entrypoints, route contributors), read the repo's `docs/modules.md`.
+`defaults: { ... }` gives structural options the values a call site may leave out, so spelling out a default keys and compares like leaving it out. `key: (options) => ...` overrides the default key (`stableHash` of the structural options over `defaults`); `referenceKey(...values)` from `@velajs/vela/module-kit` keys stateful values by reference. `ConfigurableModuleBuilder` is the NestJS-shaped facade over the same engine: it generates Nest's `register`/`registerAsync` (rename with `setClassMethodName('forRoot')`); retain the returned builder from each configuration step. For the full authoring contract (structural options, keys, `lazyProvider`, `sideEffectModule`, discovery, entrypoints, route contributors), read the repo's `docs/modules.md`.

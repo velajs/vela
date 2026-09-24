@@ -73,30 +73,49 @@ async function makeApp(transport: SpyTransport, withQueue: boolean) {
 
 describe('MailModule + MailService', () => {
   describe('security-sensitive module identity', () => {
-    it('dedups the same references but separates equal-shaped transport and render instances', async () => {
+    it('dedups the same references and reports equal-shaped transport and render instances', async () => {
       const transport = spyTransport();
       const render: RenderSeam = async () => ({ text: 'rendered' });
       const first = MailModule.forRoot({ from: FROM, transport, render });
       const repeat = MailModule.forRoot({ from: FROM, transport, render });
       expect(repeat.key).toBe(first.key);
 
+      @Module({ imports: [first, repeat] })
+      class Same {}
+      const same = await VelaFactory.create(Same, { diagnostics: 'throw' });
+      disposers.push(() => same.dispose());
+      expect(same.getContainer().getOwnerModuleIds(MAIL_OPTIONS)).toHaveLength(1);
+
+      // Another transport under the same key is a conflicting configuration,
+      // never merged into the first mailer.
       const otherTransport = MailModule.forRoot({ from: FROM, transport: spyTransport(), render });
-      expect(otherTransport.key).not.toBe(first.key);
+      @Module({ imports: [first, otherTransport] })
+      class Conflicting {}
+      await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
+        /MailModule#\w+ was imported again with different options/,
+      );
 
       const makeRender = (): RenderSeam => async () => ({ text: 'rendered' });
-      const otherRender = MailModule.forRoot({ from: FROM, transport, render: makeRender() });
-      const anotherRender = MailModule.forRoot({ from: FROM, transport, render: makeRender() });
-      expect(otherRender.key).not.toBe(anotherRender.key);
+      @Module({
+        imports: [
+          MailModule.forRoot({ from: FROM, transport, render: makeRender() }),
+          MailModule.forRoot({ from: FROM, transport, render: makeRender() }),
+        ],
+      })
+      class SameSourceRenders {}
+      await expect(VelaFactory.create(SameSourceRenders, { diagnostics: 'throw' })).rejects.toThrow(
+        /was imported again with different options/,
+      );
 
-      @Module({ imports: [first, otherTransport] })
-      class App {}
-
-      const app = await VelaFactory.create(App);
-      disposers.push(() => app.dispose());
-      expect(app.getContainer().getOwnerModuleIds(MAIL_OPTIONS)).toHaveLength(2);
+      // Two mailers coexist under their own keys.
+      @Module({ imports: [first, { ...otherTransport, key: 'secondary' }] })
+      class TwoMailers {}
+      const two = await VelaFactory.create(TwoMailers, { diagnostics: 'throw' });
+      disposers.push(() => two.dispose());
+      expect(two.getContainer().getOwnerModuleIds(MAIL_OPTIONS)).toHaveLength(2);
     });
 
-    it('separates equal-looking inbound authentication and policy instances', () => {
+    it('gives each inbound gate object its own global host', () => {
       const sharedPolicy = () => true;
       const makeGate = (): MailInboundGate => ({
         require: ['dmarc'],
@@ -104,15 +123,14 @@ describe('MailModule + MailService', () => {
       });
       const firstGate = makeGate();
       const secondGate = makeGate();
+      const hostKey = (module: DynamicModule) =>
+        (module.imports?.[0] as DynamicModule | undefined)?.key;
       const first = MailModule.forRoot({ from: FROM, inbound: { gate: firstGate } });
       const repeat = MailModule.forRoot({ from: FROM, inbound: { gate: firstGate } });
       const second = MailModule.forRoot({ from: FROM, inbound: { gate: secondGate } });
 
-      expect(repeat.key).toBe(first.key);
-      expect(second.key).not.toBe(first.key);
-      expect((second.imports?.[0] as DynamicModule | undefined)?.key).not.toBe(
-        (first.imports?.[0] as DynamicModule | undefined)?.key,
-      );
+      expect(hostKey(repeat)).toBe(hostKey(first));
+      expect(hostKey(second)).not.toBe(hostKey(first));
 
       const makePolicy = () => () => true;
       const mutableGate: MailInboundGate = { require: ['dmarc'], policy: makePolicy() };
@@ -125,10 +143,10 @@ describe('MailModule + MailService', () => {
         from: FROM,
         inbound: { gate: mutableGate },
       });
-      expect(afterPolicyChange.key).not.toBe(beforePolicyChange.key);
+      expect(hostKey(afterPolicyChange)).not.toBe(hostKey(beforePolicyChange));
     });
 
-    it('keys same-source async closures by factory identity and keeps async wiring functional', async () => {
+    it('reports same-source async closures and keeps async wiring functional', async () => {
       const makeFactory = (transport: MailTransport) => () => ({ from: FROM, transport });
       const firstTransport = spyTransport();
       const first = MailModule.forRootAsync({
@@ -137,7 +155,13 @@ describe('MailModule + MailService', () => {
       const second = MailModule.forRootAsync({
         useFactory: makeFactory(spyTransport()),
       });
-      expect(second.key).not.toBe(first.key);
+      expect(second.key).toBe(first.key);
+
+      @Module({ imports: [first, second] })
+      class Conflicting {}
+      await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
+        /MailModule#\w+ was imported again with different options/,
+      );
 
       @Module({ imports: [first] })
       class App {}
@@ -155,7 +179,7 @@ describe('MailModule + MailService', () => {
       ).toThrow(/MailModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
     });
 
-    it('separates one async factory wired to distinct equal-named configuration tokens', () => {
+    it('reports one async factory wired to distinct equal-named configuration tokens', async () => {
       interface MailConfig {
         transport: MailTransport;
       }
@@ -165,15 +189,23 @@ describe('MailModule + MailService', () => {
 
       const first = MailModule.forRootAsync({ inject: [firstConfig], useFactory });
       const second = MailModule.forRootAsync({ inject: [secondConfig], useFactory });
-
-      expect(second.key).not.toBe(first.key);
+      @Module({ imports: [first, second] })
+      class Conflicting {}
+      await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
+        /was imported again with different options/,
+      );
     });
 
-    it('keeps registrations with the same label but distinct configuration separate', () => {
+    it('reports registrations with the same label but distinct configuration', async () => {
       const key = 'mail-security-explicit-conflict';
       const first = MailModule.forRoot({ from: FROM, transport: spyTransport(), key });
       const second = MailModule.forRoot({ from: FROM, transport: spyTransport(), key });
-      expect(second.key).not.toBe(first.key);
+      expect(second.key).toBe(first.key);
+      @Module({ imports: [first, second] })
+      class Conflicting {}
+      await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
+        `MailModule#${key} was imported again with different options`,
+      );
     });
   });
 

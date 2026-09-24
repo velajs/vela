@@ -107,12 +107,15 @@ Alternatively, an application transport module can export a global
 explicit `transport`, then that token. A missing transport fails at delivery with
 `no_transport`, so producer-only queue workers can enqueue without one.
 
-Registrations deduplicate only when configuration and stateful transport,
-renderer, gate/policy, and factory references match. An explicit `key` is an
-additional label, not a process-wide claim: separate applications can reuse it.
-Different configurations remain separate even with the same label. Consumers of
-multiple mailers should import the intended registration in separate feature
-modules; root `app.get(MailService)` is not a multi-mailer selector.
+A mailer's instance key comes from its structural `queue` and `inbound` options
+only. The same configuration imported twice deduplicates into one mailer. A
+second configuration under the same key, such as another `from`, `transport` or
+`render` with the same (or no) queue settings, fails bootstrap instead of
+running on the first mailer's configuration. Give each additional mailer its own
+distinct `key`: `MailModule.forRoot({ ..., key: 'marketing' })`. Keys are
+per application, so separate applications can reuse one. Consumers of multiple
+mailers should import the intended registration in separate feature modules;
+root `app.get(MailService)` is not a multi-mailer selector.
 
 ## Queued delivery
 
@@ -264,8 +267,9 @@ The standalone checkout remains untouched. npm returned E404 for `@velajs/mail`
 on 2026-09-21; the package retains source version 1.0.0 with a pending root changeset.
 
 Intentional 1.x integration changes: use checked `defineProvider` descriptors,
-explicit async `inject` tuples, structural queue/inbound options, configuration-aware
-keys without global claims, unique mail queue names per app, and nonempty
+explicit async `inject` tuples, structural queue/inbound options, instance keys
+from those structural options (another mailer takes its own `key`), unique mail
+queue names per app, and nonempty
 authentication requirements. Public subpaths and `InboundEmail` are preserved.
 Releases, catalogs, and lockfiles are owned by the monorepo root. The release
 consumer checks every mail subpath from the packed archive outside the workspace,

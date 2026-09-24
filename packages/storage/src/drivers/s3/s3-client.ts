@@ -57,11 +57,14 @@ export interface PostPolicyOptions {
 export class S3Client {
   readonly #aws: AwsClient;
   readonly #cfg: S3DriverOptions;
-  readonly #fetch: typeof fetch;
+  readonly #fetch: (request: Request) => Promise<Response>;
 
   constructor(cfg: S3DriverOptions) {
     this.#cfg = cfg;
-    this.#fetch = cfg.fetch ?? fetch;
+    // Call the transport without a receiver: workerd rejects the platform
+    // fetch invoked as a method of another object ("Illegal invocation").
+    const transport = cfg.fetch ?? fetch;
+    this.#fetch = (request) => transport(request);
     this.#aws = new AwsClient({
       accessKeyId: cfg.credentials.accessKeyId,
       secretAccessKey: cfg.credentials.secretAccessKey,

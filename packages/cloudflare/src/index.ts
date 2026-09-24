@@ -9,10 +9,11 @@ export {
   createCloudflareWorker,
 } from './cloudflare-factory';
 export type {
-  CreateCloudflareAppOptions,
+  CloudflareAppOptions,
   CloudflareWorker,
   CloudflareWorkerDescriptor,
   CloudflareWorkerOptions,
+  CreateCloudflareAppOptions,
 } from './cloudflare-factory';
 export { CloudflareApplication } from './cloudflare-application';
 export type { MountOpenApiOptions } from './cloudflare-application';
@@ -44,9 +45,10 @@ export { QueueConsumer } from './decorators/queue-consumer';
 export { CLOUDFLARE_SCHEDULED_EVENT } from './scheduled-event';
 export type { CloudflareScheduledEvent, ScheduledEvent } from './scheduled-event';
 
-// WebSocket (Durable Object transport for the Vela WebSocketModule)
-export { CloudflareWebSocketModule, broadcastToRoom } from './websocket/index';
-export type { WsGatewayRoute, BroadcastNamespace } from './websocket/index';
+// WebSocket: the adapter wires WebSocketModule to a Durable Object per gateway room;
+// this helper pushes to a room from the Worker.
+export { broadcastToRoom } from './websocket/index';
+export type { BroadcastNamespace } from './websocket/index';
 
 // Durable Object PITR (point-in-time recovery) — raw bookmark wrappers + the RPC
 // contract types. The WS Durable Object exposes `pitrCurrentBookmark`,
@@ -69,12 +71,7 @@ export type {
 } from './websocket/index';
 
 // Live queries (Durable Object transport for @velajs/vela/live)
-export {
-  DoCursorLog,
-  durableObjectCursorLog,
-  durableObjectLive,
-  liveInvalidateToRoom,
-} from './websocket/index';
+export { DoCursorLog, durableObjectLive, liveInvalidateToRoom } from './websocket/index';
 export type { CfLiveDriver, DurableObjectLiveOptions, LiveNamespace } from './websocket/index';
 
 // Types

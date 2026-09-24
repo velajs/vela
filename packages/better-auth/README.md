@@ -49,15 +49,18 @@ export default app; // edge-compatible (.fetch)
 
 ```ts
 BetterAuthModule.forRoot({
-  auth,                          // pre-constructed betterAuth({ ... }) instance
+  auth,                          // betterAuth({ ... }) instance, or () => betterAuth({ ... })
   issuer: 'my-app:better-auth',  // stable namespace paired with user ids
   basePath: '/api/auth',         // default — must match your better-auth config
-  isGlobal: true,                // default — register AuthGuard as APP_GUARD
+  globalGuard: true,             // default — register AuthGuard as APP_GUARD
   mountHandler: true,            // mount /api/auth/* catch-all controller
+  isGlobal: false,               // default — true makes BetterAuthService visible to every module
 });
 ```
 
-Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `isGlobal: false` is intended only for applications that install an equivalent global authentication guard themselves.
+Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `globalGuard: false` is intended only for applications that install an equivalent global authentication guard themselves.
+
+`basePath`, `mountHandler` and `globalGuard` are structural: `forRootAsync` takes them next to its factory, which returns the other options. An `auth` function runs on the first authentication, not while the application initializes.
 
 ## Three composition patterns
 
@@ -67,7 +70,6 @@ Authentication has no allow-by-default compatibility mode. Use `@Public(true)` f
 imports: [
   BetterAuthModule.forRoot({
     auth: betterAuth({ database, plugins: [magicLink({ sendMagicLink }), apiKey()] }),
-    isGlobal: true,
   }),
 ]
 ```
@@ -80,15 +82,18 @@ imports: [
 imports: [
   BetterAuthModule.forRootAsync({
     inject: [ENV, EmailService],
-    useFactory: (env, email) => betterAuth({
-        database: drizzleAdapter(drizzle(env.DB), { provider: 'sqlite' }),
-        plugins: [
-          magicLink({ sendMagicLink: (data) => email.send(data) }), // DI'd EmailService
-          apiKey(),
-          twoFactor(),
-        ],
+    useFactory: (env, email) => ({
+      // Built on the first authentication, not while the application initializes.
+      auth: () =>
+        betterAuth({
+          database: drizzleAdapter(drizzle(env.DB), { provider: 'sqlite' }),
+          plugins: [
+            magicLink({ sendMagicLink: (data) => email.send(data) }), // DI'd EmailService
+            apiKey(),
+            twoFactor(),
+          ],
+        }),
     }),
-    isGlobal: true,
   }),
 ]
 ```
@@ -130,8 +135,9 @@ export class MagicLinkAuthModule {}
     BetterAuthModule.forRootAsync({
       imports: [MagicLinkAuthModule, OAuthAuthModule],
       inject: [MAGIC_LINK_PLUGIN, OAUTH_PLUGIN],
-      useFactory: (magicLink, oauth) => betterAuth({ database, plugins: [magicLink, oauth] }),
-      isGlobal: true,
+      useFactory: (magicLink, oauth) => ({
+        auth: () => betterAuth({ database, plugins: [magicLink, oauth] }),
+      }),
     }),
   ],
 })
@@ -161,7 +167,7 @@ class AdminUserService {
 }
 ```
 
-Under `forRootAsync`, the underlying `betterAuth({...})` instance is constructed lazily on first `.auth` / `.api` / `.handler` access. The Workers adapter supplies the typed environment before DI and owns a separate application for each environment, so a cached auth instance never crosses environments.
+When `auth` is a function (`auth: () => betterAuth({...})`), the instance is constructed on first `.auth` / `.api` / `.handler` access and cached. The Workers adapter supplies the typed environment before DI and owns a separate application for each environment, so a cached auth instance never crosses environments.
 
 ## Decorators
 

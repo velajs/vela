@@ -25,7 +25,7 @@ export default createCloudflareWorker(AppModule);
 
 The root is static: a module class, or a `DynamicModule` such as `AppModule.forRoot(...)`, declared once at module scope and passed as-is to `createCloudflareWorker`, `createCloudflareApp` and `VelaWebSocketDurableObject`. There is no environment-factory root (`{ create(env) }`) and nothing is decorated inside a function. Read bindings in `forRootAsync({ inject: [ENV], useFactory })` factories, `useFactory` providers and `@InjectEnv()` constructors; they run for each application, so a second environment builds new instances but declares no new classes.
 
-The worker exposes `fetch`, `queue`, and `scheduled`, plus a descriptor under the symbol key `CLOUDFLARE_WORKER` (`Symbol.for('vela.cloudflare.worker')`: `rootModule`, `options`, `createOptions(env)`, `createApplication(env)`) that `@velajs/cli` and `@velajs/cloudflare/testing` build the same application from. It is enumerable, so an entry that adds handlers by spreading (`export default { ...worker, email }`) or `Object.assign` keeps it. Applications are cached by environment object identity; concurrent first events share bootstrap, different environments get separate applications, and failed bootstrap retries on the next event. For explicit construction use `createCloudflareApp(AppModule, { env })` or `cloudflareAdapter({ env })`; `adapters: RuntimeAdapter[]` on either entry composes further adapters. Bindings exist before DI factories run; binding I/O still belongs inside a platform event. An explicitly constructed app rejects events from another environment. Separate Workers sharing one repository type-check as separate programs, each with its own `wrangler types` output.
+The worker exposes `fetch`, `queue`, and `scheduled`, plus a descriptor under the symbol key `CLOUDFLARE_WORKER` (`Symbol.for('vela.cloudflare.worker')`: `rootModule`, `options`, `createOptions(env)`, `createApplication(env)`) that `@velajs/cli` and `@velajs/cloudflare/testing` build the same application from. It is enumerable, so an entry that adds handlers by spreading (`export default { ...worker, email }`) or `Object.assign` keeps it. Applications are cached by environment object identity; concurrent first events share bootstrap, different environments get separate applications, and failed bootstrap retries on the next event. For explicit construction use `createCloudflareApp(AppModule, { env })` or `cloudflareAdapter({ env })`; `adapters: RuntimeAdapter[]` on either entry composes further adapters. There is no `middleware(env)` option: request middleware is a consumer middleware class (`configure(consumer)` in a module) that injects `ENV` like any provider. `createCloudflareWorker(AppModule, { configure(app, env) {} })` finishes each application's HTTP surface (extra Hono routes) once per environment, synchronously and without I/O, before any event, including concurrent cold events, reaches it; a throw fails that construction and the next event retries. `createTestingWorker()` runs the same `configure`; the descriptor's `createApplication(env)` builds the application without it. Bindings exist before DI factories run; binding I/O still belongs inside a platform event. An explicitly constructed app rejects events from another environment. Separate Workers sharing one repository type-check as separate programs, each with its own `wrangler types` output.
 
 ## Queue and cron handlers
 
@@ -36,30 +36,21 @@ For portable jobs, use `QueueModule.forRoot({ driver: cloudflareQueues() })` (fr
 ## Durable Objects and live queries
 
 ```ts
-import { ENV, Module } from '@velajs/vela';
+import { Module } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
-import { CloudflareWebSocketModule, durableObjectCursorLog, durableObjectLive } from '@velajs/cloudflare';
+import { WebSocketModule } from '@velajs/vela/websocket';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
-// wrangler types declares ROOMS: DurableObjectNamespace<Room> on ENV.
+// RoomsGateway: @WebSocketGateway({ path: '/rooms/:room/ws', roomParam: 'room', binding: 'ROOMS', ... })
 @Module({
-  imports: [
-    CloudflareWebSocketModule.forRoot(),
-    LiveModule.forRootAsync({
-      inject: [ENV],
-      useFactory: (env) => ({
-        driver: () => durableObjectLive({ namespace: env.ROOMS, gatewayPath: '/rooms/:room/ws' }),
-        log: () => durableObjectCursorLog(),
-      }),
-    }),
-  ],
+  imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
   providers: [RoomsGateway, TodoLive],
 })
 class RoomModule {}
 export class Room extends VelaWebSocketDurableObject(RoomModule) {}
 ```
 
-Import native classes only in Worker entry files. Use `CloudflareWebSocketModule`, never the core `WebSocketModule`, in a module a WebSocket Durable Object bootstraps: the Durable Object refuses to start with the core server. The Worker warns once when `LiveModule` keeps the default `localLive()` driver there, because its invalidations would never reach the Durable Object's subscriptions. Configure the namespace and `new_sqlite_classes` migration in Wrangler. Gateway options declare `path`, `roomParam`, `binding`, `allowedOrigins` (origins or `(env) => origins`) and `authenticator`, an `UpgradeAuthenticator` class each application resolves through DI from the declaring module (`websocket.md`); a gateway without one refuses every upgrade. Core trusted identity, tenant, and expiry cross the upgrade boundary; caller-supplied identity headers are not authority. Driver/log factories return fresh state per application. Read `live-queries.md` for shared query schemas and delivery authorization.
+Import the core modules on every runtime; there is no Cloudflare WebSocket module. `cloudflareAdapter` registers the platform as the global `WS_TRANSPORT` and `LIVE_PLATFORM` tokens before modules load and never replaces module providers. In the Worker, `WebSocketModule` serves an upgrade route for every gateway naming a `binding` (authenticating before the Durable Object is derived) and forwards it to the gateway + room Durable Object; without `WebSocketModule` no upgrade route mounts (upgrades answer 404) and the adapter reports each binding-backed gateway. The Worker's `@WebSocketServer()` throws on push (use `broadcastToRoom`). `LiveModule` defaults to `durableObjectLive()`: Worker invalidations go to the room Durable Object of the single binding-backed gateway, its namespace read from `ENV` when first needed; with several, the first invalidation fails with an ambiguity error, so pass `driver: () => durableObjectLive({ gatewayPath })` (or `{ binding }`, `defaultRoom`). Inside the Durable Object, the server broadcasts to its hibernatable sockets, invalidations apply locally, and the cursor log is a SQLite `DoCursorLog` (in memory without `new_sqlite_classes`). A Worker configured with `localLive()` warns once. Import native classes only in Worker entry files. Configure the namespace and `new_sqlite_classes` migration in Wrangler. Gateway options declare `path`, `roomParam`, `binding`, `allowedOrigins` (origins or `(env) => origins`) and `authenticator`, an `UpgradeAuthenticator` class each application resolves through DI from the declaring module (`websocket.md`); a gateway without one refuses every upgrade. Core trusted identity, tenant, and expiry cross the upgrade boundary; caller-supplied identity headers are not authority. Driver/log factories return fresh state per application. Read `live-queries.md` for shared query schemas and delivery authorization.
 
 ## Storage, caches, and flags
 

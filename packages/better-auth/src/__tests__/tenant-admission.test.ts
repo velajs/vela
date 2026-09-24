@@ -59,7 +59,7 @@ async function application(issuer: string) {
     imports: [
       BetterAuthModule.forRoot({
         issuer,
-        isGlobal: false,
+        globalGuard: false,
         mountHandler: false,
         auth: {
           api: {

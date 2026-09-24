@@ -11,7 +11,7 @@ import {
   VelaFactory,
   defineProvider,
 } from '@velajs/vela';
-import { provideGlobal, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
+import { setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import {
   AUTHZ,
   AuthzModule,
@@ -78,7 +78,7 @@ describe('mounted HTTP authorization audit', () => {
       controllers: [Routes],
       providers: [
         defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory }),
-        ...provideGlobal('guard', PermissionGuard),
+        { provide: APP_GUARD, useClass: PermissionGuard },
       ],
     })(App);
     const app = await VelaFactory.create(App, { adapters: [authorizationAudit()] });

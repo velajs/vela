@@ -2,6 +2,7 @@ import type { WebSocketSendPolicy, WebSocketSendResult } from '@velajs/live-prot
 import type { Type } from '../container/types';
 import type { VelaEnv } from '../env';
 import type { ExecutionContext, WsArgumentsHost } from '../pipeline/types';
+import type { SyncDriver } from './ws-sync';
 
 export type { WsArgumentsHost };
 
@@ -126,7 +127,11 @@ export interface UpgradeAuthenticator {
 export interface WebSocketGatewayOptions {
   /** Route path the upgrade is served on (e.g. `/rooms/:id/ws`). */
   path?: string;
-  /** Cloudflare Durable Object binding name that hosts this gateway's sockets. */
+  /**
+   * Platform binding that hosts this gateway's sockets, such as a Cloudflare
+   * Durable Object namespace. A forwarding transport serves the upgrade route
+   * and delivers each upgrade there; in-process hosts ignore it.
+   */
   binding?: string;
   /**
    * Path parameter used as the room id. Required for every parameterized path
@@ -190,6 +195,55 @@ export interface ReservedWsEventHandler {
     context?: WsExecutionContext,
   ): void | Promise<void>;
   handleSocketClose?(path: string, client: WsClient): void | Promise<void>;
+}
+
+/**
+ * An authenticated upgrade that a forwarding {@link WebSocketTransport}
+ * delivers to the instance holding its room's sockets.
+ */
+export interface ForwardedWebSocketUpgrade {
+  /**
+   * The upgrade request: its `ticket` query parameter and every client copy of
+   * the transport's `forwardingHeaders` are removed.
+   */
+  request: Request;
+  /** The gateway's route path (`@WebSocketGateway({ path })`). */
+  gatewayPath: string;
+  /** The room this socket joins, resolved from the gateway's `roomParam`. */
+  room: string;
+  /** The gateway's `binding`: the platform namespace that owns the room. */
+  binding: string;
+  /**
+   * The identity the gateway's authenticator verified. When a trusted request
+   * identity also exists, both must agree, and the earlier expiry wins.
+   */
+  identity: WebSocketUpgradeIdentity;
+}
+
+/**
+ * Platform wiring for `WebSocketModule`: a runtime adapter registers one as
+ * the global `WS_TRANSPORT`. Without one, sockets live in this process and a
+ * host serves them (`registerWebSocketGateways` on node, Bun and Deno).
+ */
+export interface WebSocketTransport {
+  /**
+   * Build the server gateways inject with `@WebSocketServer()`. `driver` is
+   * the module's sync driver; a transport that owns socket delivery may ignore
+   * it. Defaults to a server that broadcasts through `driver`.
+   */
+  createServer?(driver: SyncDriver): WsServer;
+  /**
+   * Deliver an upgrade to the isolate that holds the room's sockets. When the
+   * transport forwards, `WebSocketModule` mounts an upgrade route for each
+   * gateway that names a `binding`: the route authenticates the upgrade before
+   * any remote allocation, then calls this method.
+   */
+  forwardUpgrade?(upgrade: ForwardedWebSocketUpgrade): Promise<Response>;
+  /**
+   * Headers `forwardUpgrade` uses to carry trusted values. Client-supplied
+   * copies are removed before any application hook sees the upgrade.
+   */
+  readonly forwardingHeaders?: readonly string[];
 }
 
 /**

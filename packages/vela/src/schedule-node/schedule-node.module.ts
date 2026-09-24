@@ -1,19 +1,27 @@
 import { Module } from '../module/decorators';
-import type { DynamicModule } from '../module/types';
-import { ScheduleRegistry } from '../schedule/schedule.registry';
+import { defineModule } from '../module/define-module';
+import { DEFAULT_MODULE_KEY } from '../module/module-identity';
+import { ScheduleRegistryModule } from '../schedule/schedule.module';
 import { ScheduleExecutor } from './schedule.executor';
 
+/** `ScheduleNodeModule` takes no options; `forRoot()` is the uniform entry. */
+export type ScheduleNodeModuleOptions = Record<never, never>;
+
+// The bare import's key: `forRoot()` and `imports: [ScheduleNodeModule]` are
+// one instance, so an application never runs two executors (every job twice).
+const { ConfigurableModuleClass } = defineModule<ScheduleNodeModuleOptions>({
+  name: 'ScheduleNode',
+  key: () => DEFAULT_MODULE_KEY,
+});
+
 /**
- * Zero-config module (Tier C): providers live on the `@Module` bag; the
- * `forRoot()` static is NestJS-parity sugar returning the bare dynamic module
- * (default key — repeated calls dedup).
+ * Runs the application's `@Cron`/`@Interval` jobs in a long-lived Node
+ * process. It shares the application's one `ScheduleRegistry` with
+ * `ScheduleModule`, so importing both keeps a single registry.
  */
 @Module({
-  providers: [ScheduleRegistry, ScheduleExecutor],
-  exports: [ScheduleRegistry, ScheduleExecutor],
+  imports: [ScheduleRegistryModule],
+  providers: [ScheduleExecutor],
+  exports: [ScheduleRegistryModule, ScheduleExecutor],
 })
-export class ScheduleNodeModule {
-  static forRoot(): DynamicModule {
-    return { module: ScheduleNodeModule };
-  }
-}
+export class ScheduleNodeModule extends ConfigurableModuleClass {}

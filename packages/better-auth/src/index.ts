@@ -37,6 +37,7 @@ export type {
   BetterAuthInstance,
   BetterAuthModuleOptions,
   BetterAuthRuntimeOptions,
+  BetterAuthStructuralOption,
   Session,
   User,
 } from './better-auth.types';

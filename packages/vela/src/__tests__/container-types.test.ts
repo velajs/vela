@@ -9,7 +9,7 @@ import {
   type TypedToken,
 } from '../container/types';
 import { defineModule } from '../module/define-module';
-import { lazyProvider, provideGlobal } from '../module/lazy-provider';
+import { lazyProvider } from '../module/lazy-provider';
 import type { AsyncModuleOptions } from '../registry/types';
 import { VelaApplication } from '../application';
 import { Module } from '../module/decorators';
@@ -96,8 +96,11 @@ function invalidWiring(container: Container, moduleRef: ModuleRef, app: VelaAppl
   ConfigurableModuleClass.forRootAsync<readonly [typeof label]>({
     useFactory: (value: string) => ({ value: value.length }),
   });
-  // @ts-expect-error A global guard registration must implement CanActivate.
-  provideGlobal('guard', { transform: (value: unknown) => value });
+  defineModule<{ value: number }>({
+    name: 'GlobalSlot',
+    // @ts-expect-error A global guard registration must implement CanActivate.
+    setup: () => ({ global: { guards: [{ transform: (value: unknown) => value }] } }),
+  });
   void asyncOptions;
   // @ts-expect-error Module provider arrays accept checked definitions, not erased plain objects.
   Module({ providers: [{ provide: count, useValue: 'wrong' }] });

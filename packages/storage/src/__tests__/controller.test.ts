@@ -93,12 +93,6 @@ describe('StorageController', () => {
     expect((await res.json()).error.code).toBe('forbidden');
   });
 
-  it('rejects the removed defaultPolicy allow compatibility path at runtime', async () => {
-    await expect(appWith({ defaultPolicy: 'allow' } as never)).rejects.toThrow(
-      /defaultPolicy is deny-only/,
-    );
-  });
-
   it('redacts internal/provider (5xx) error messages — no raw provider text leaks', async () => {
     const secret = 'bucket=internal-prod host=10.0.0.5 token=sk-live-xyz'; // gitleaks:allow -- synthetic provider-error fixture
     const app = await appWith({

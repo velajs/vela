@@ -2,6 +2,7 @@
 import '../metadata';
 
 export { HealthModule } from './health.module';
+export type { HealthModuleOptions } from './health.module';
 export { HealthCheckService, HealthCheckException } from './health.service';
 export { HealthIndicatorService } from './health.indicator';
 export { HttpHealthIndicator } from './health.http';

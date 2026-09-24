@@ -64,6 +64,33 @@ describe('Worker descriptor', () => {
     expect(Object.assign({}, worker)[CLOUDFLARE_WORKER]).toBe(worker[CLOUDFLARE_WORKER]);
   });
 
+  it("leaves the configure hook to the Worker's own application", async () => {
+    const configured: unknown[] = [];
+    const worker = createCloudflareWorker(AppModule, {
+      configure(app, env) {
+        configured.push(env);
+        app.getHonoApp().get('/extra', (c) => c.text('extra'));
+      },
+    });
+    const env = { GREETING: 'hello' };
+    const descriptor = worker[CLOUDFLARE_WORKER];
+    expect(descriptor.createOptions(env)).not.toHaveProperty('configure');
+    const app = await descriptor.createApplication(env);
+    try {
+      expect(configured).toEqual([]);
+      expect((await app.fetch(new Request('http://worker/extra'), env)).status).toBe(404);
+    } finally {
+      await app.dispose();
+    }
+    const served = await worker.fetch(new Request('http://worker/extra'), env, {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    });
+    expect(await served.text()).toBe('extra');
+    expect(configured).toEqual([env]);
+  });
+
   it('builds the same application for an environment as the Worker does', async () => {
     const worker = createCloudflareWorker(AppModule, { globalPrefix: '/api' });
     const env = { GREETING: 'from the descriptor' };

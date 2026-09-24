@@ -69,6 +69,14 @@ export function assertDefinedEntries(
 export const MODULE_IDENTITY = Symbol('vela:module-identity');
 
 /**
+ * @internal The inputs of an import that configures nothing: a bare class
+ * import, or a generated definition that adds nothing to its class (no
+ * options, extras, contributions or laziness the class does not declare).
+ * Two of them agree; one never agrees with a configured import.
+ */
+export const UNCONFIGURED_MODULE: unique symbol = Symbol('vela:unconfigured-module');
+
+/**
  * @internal What a generated DynamicModule records about the inputs it was
  * built from (see `attachModuleIdentity`). The record also creates the
  * comparer the module loader uses for repeated imports, so only applications

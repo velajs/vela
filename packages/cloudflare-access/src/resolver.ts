@@ -151,7 +151,6 @@ const buildResolvedIdentity = (
     issuer,
     subject,
     principalType: derivePrincipalType(claims),
-    userId: subject,
     expiresAtMs,
     claims,
   };

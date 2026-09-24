@@ -53,7 +53,7 @@ Throw `WsException(errorOrObject)` to send an `{ event: 'exception', data }` fra
 ```ts
 import { WebSocketModule } from '@velajs/vela/websocket';
 
-@Module({ imports: [WebSocketModule.forRoot({})], providers: [ChatGateway] })
+@Module({ imports: [WebSocketModule.forRoot()], providers: [ChatGateway] })
 class AppModule {}
 ```
 
@@ -79,8 +79,8 @@ The gateway + module are identical across runtimes; you only choose the wiring:
 | Runtime | Wiring | Sync |
 |---|---|---|
 | Node / Bun / Deno | `@velajs/vela/websocket-node` → `registerWebSocketGateways(app, upgradeWebSocket)` | `redis()` for multi-process |
-| Cloudflare Workers | `@velajs/cloudflare` → `CloudflareWebSocketModule.forRoot()` + a `VelaWebSocketDurableObject(AppModule)` from `/durable-objects` (the Worker and DO each seed `ENV`) | native per-room Durable Object |
+| Cloudflare Workers | the same `WebSocketModule.forRoot()`; `createCloudflareWorker` and a `VelaWebSocketDurableObject(AppModule)` from `@velajs/cloudflare/durable-objects` register the platform (`WS_TRANSPORT`), and each seeds its own `ENV` | native per-room Durable Object |
 
-On Node/Bun/Deno, pass the runtime's Hono `upgradeWebSocket` factory (`@hono/node-ws`, `hono/bun`, or `hono/deno`); `registerWebSocketGateways` iterates `app.entrypoints.ofKind('websocket')` and mounts each gateway route (auto-joining the room from a `:id` path param). On Cloudflare, the Durable Object owns the raw socket via `WebSocketPair` + hibernation (`ctx.acceptWebSocket`), which Hono's `upgradeWebSocket` cannot bridge — one DO per room gives native horizontal scale.
+On Node/Bun/Deno, pass the runtime's Hono `upgradeWebSocket` factory (`@hono/node-ws`, `hono/bun`, or `hono/deno`); `registerWebSocketGateways` iterates `app.entrypoints.ofKind('websocket')` and mounts each gateway route (auto-joining the room from a `:id` path param). On Cloudflare, the Worker mounts an upgrade route for each gateway naming a `binding`, authenticates the upgrade, and forwards it to the gateway + room Durable Object, which owns the raw socket via `WebSocketPair` + hibernation (`ctx.acceptWebSocket`), which Hono's `upgradeWebSocket` cannot bridge — one DO per room gives native horizontal scale. The Worker's `@WebSocketServer()` has no sockets and throws on push; use `broadcastToRoom`. Other runtime adapters wire a platform the same way: register a `WebSocketTransport` as the global `WS_TRANSPORT` (`createServer(driver)`; `forwardUpgrade` + `forwardingHeaders` when sockets live in another isolate).
 
 For the full transport walkthrough, read the repo's `docs/websockets.md`.

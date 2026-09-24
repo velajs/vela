@@ -1,7 +1,15 @@
 import { Test } from '@velajs/testing';
+import { Module, VelaFactory, type DynamicModule, type VelaApplication } from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
-import { StorageModule, StorageService, storageToken } from '../index';
+import { StorageModule, StorageService, storageToken, type StorageModuleOptions } from '../index';
 import { memoryDriver } from '../drivers/memory';
+
+/** An application importing `imports`, with wiring problems failing bootstrap. */
+function appWith(imports: DynamicModule[]): Promise<VelaApplication> {
+  class Root {}
+  Module({ imports })(Root);
+  return VelaFactory.create(Root, { diagnostics: 'throw' });
+}
 
 describe('StorageModule', () => {
   it('forRoot provides a working StorageService', async () => {
@@ -20,73 +28,207 @@ describe('StorageModule', () => {
     expect(await svc.exists('missing')).toBe(false);
   });
 
-  it('does not collapse distinct security-sensitive registrations with equal-looking options', () => {
+  it('reports distinct security-sensitive registrations of one bucket instead of merging them', async () => {
     const driverA = memoryDriver();
     const driverB = memoryDriver();
     const authorizeA = () => true;
     const authorizeB = () => true;
+    const register = (overrides: Partial<StorageModuleOptions> = {}) =>
+      StorageModule.forRoot({
+        driver: driverA,
+        http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
+        ...overrides,
+      });
 
-    const first = StorageModule.forRoot({
-      driver: driverA,
-      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
-    });
-    const same = StorageModule.forRoot({
-      driver: driverA,
-      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
-    });
-    const otherDriver = StorageModule.forRoot({
-      driver: driverB,
-      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
-    });
-    const otherAuthorizer = StorageModule.forRoot({
-      driver: driverA,
-      http: { authorize: authorizeB, multipartGrantSecret: 'a'.repeat(32) },
-    });
-    const otherSecret = StorageModule.forRoot({
-      driver: driverA,
-      http: { authorize: authorizeA, multipartGrantSecret: 'b'.repeat(32) },
-    });
+    const first = register();
+    // One bucket name is one instance key; the key never carries a secret.
+    expect(first.key).toBe('default');
+    const conflicting = [
+      register({ driver: driverB }),
+      register({ http: { authorize: authorizeB, multipartGrantSecret: 'a'.repeat(32) } }),
+      register({ http: { authorize: authorizeA, multipartGrantSecret: 'b'.repeat(32) } }),
+    ];
+    for (const other of conflicting) {
+      expect(other.key).toBe(first.key);
+      await expect(appWith([first, other])).rejects.toThrow(
+        /StorageModule#default was imported again with different options/,
+      );
+    }
 
-    expect(same.key).toBe(first.key);
-    expect(otherDriver.key).not.toBe(first.key);
-    expect(otherAuthorizer.key).not.toBe(first.key);
-    expect(otherSecret.key).not.toBe(first.key);
+    const app = await appWith([first, register()]);
+    expect(app.get(StorageService)).toBeInstanceOf(StorageService);
+    await app.close();
   });
 
-  it('includes async factory identity in the dynamic-module key', () => {
-    const factoryA = () => memoryDriver();
-    const factoryB = () => memoryDriver();
+  it('fails bootstrap when two features register the default bucket with different drivers', async () => {
+    const privateDriver = memoryDriver({ initial: { 'secret.txt': 'private' } });
+    const publicDriver = memoryDriver();
+    @Module({
+      imports: [
+        StorageModule.forRoot({
+          driver: privateDriver,
+          http: { basePath: '/files', authorize: () => false },
+        }),
+      ],
+    })
+    class PrivateFeature {}
+    @Module({
+      imports: [
+        StorageModule.forRoot({
+          driver: publicDriver,
+          http: { basePath: '/public', authorize: () => true },
+        }),
+      ],
+    })
+    class PublicFeature {}
+    @Module({ imports: [PrivateFeature, PublicFeature] })
+    class App {}
+
+    // Under the default diagnostics policy, keeping the first bucket would
+    // serve it through the second feature's routes and authorizer.
+    await expect(VelaFactory.create(App)).rejects.toThrow(
+      /StorageModule#default was imported again with different options/,
+    );
+  });
+
+  it('fails bootstrap when a second feature also asks for a global bucket, in either order', async () => {
+    const privateBucket = StorageModule.forRoot({
+      driver: memoryDriver({ initial: { 'secret.txt': 'private' } }),
+      http: { basePath: '/files' },
+    });
+    const publicBucket = StorageModule.forRoot({
+      driver: memoryDriver(),
+      isGlobal: true,
+      http: { basePath: '/public' },
+    });
+    for (const [first, second] of [
+      [privateBucket, publicBucket],
+      [publicBucket, privateBucket],
+    ]) {
+      @Module({ imports: [first] })
+      class FeatureA {}
+      @Module({ imports: [second] })
+      class FeatureB {}
+      @Module({ imports: [FeatureA, FeatureB] })
+      class App {}
+      // A global flag that differs too never lets one feature write into the
+      // other's driver, whatever the diagnostics policy.
+      for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+        await expect(VelaFactory.create(App, { diagnostics })).rejects.toThrow(
+          /StorageModule#default was imported again with different options/,
+        );
+      }
+    }
+  });
+
+  it('reports a registration that differs only in its global flag', async () => {
+    const driver = memoryDriver();
+    const authorize = () => true;
+    const local = StorageModule.forRoot({ driver, http: { basePath: '/files', authorize } });
+    const global = StorageModule.forRoot({
+      driver,
+      isGlobal: true,
+      http: { basePath: '/files', authorize },
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const imports of [
+        [local, global],
+        [global, local],
+      ]) {
+        await expect(appWith(imports)).rejects.toThrow(
+          /StorageModule#default was imported again with a different global flag/,
+        );
+        warn.mockClear();
+        class Root {}
+        Module({ imports })(Root);
+        const app = await VelaFactory.create(Root);
+        expect(warn).toHaveBeenCalledWith(expect.stringMatching(/different global flag/));
+        expect(app.get(StorageService)).toBeInstanceOf(StorageService);
+        await app.close();
+      }
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('treats an extra at its default and an undefined option as absent', async () => {
+    const driver = memoryDriver();
+    const app = await appWith([
+      StorageModule.forRoot({ driver }),
+      StorageModule.forRoot({ driver, isGlobal: false }),
+      StorageModule.forRoot({ driver, prefix: undefined }),
+    ]);
+    expect(app.getContainer().getOwnerModuleIds(StorageService)).toEqual(['StorageModule#default']);
+    await app.close();
+  });
+
+  it('treats the default bucket name spelled out as the default bucket', async () => {
+    const driver = memoryDriver();
+    const app = await appWith([
+      StorageModule.forRoot({ driver }),
+      StorageModule.forRoot({ driver, name: 'default' }),
+    ]);
+    expect(app.getContainer().getOwnerModuleIds(StorageService)).toEqual(['StorageModule#default']);
+    await app.close();
+  });
+
+  it('mounts the routes of an identical repeated registration once', async () => {
+    const driver = memoryDriver();
+    const authorize = () => true;
+    const register = () =>
+      StorageModule.forRoot({ driver, http: { basePath: '/files', authorize } });
+    const app = await appWith([register(), register()]);
+    const routes = app
+      .describeRoutes()
+      .filter((route) => route.path.startsWith('/files'))
+      .map((route) => `${route.method} ${route.path}`);
+    expect(routes.length).toBeGreaterThan(0);
+    expect(new Set(routes).size).toBe(routes.length);
+    await app.close();
+  });
+
+  it('reports a second async factory for one bucket', async () => {
+    const factoryA = () => ({ driver: memoryDriver() });
+    const factoryB = () => ({ driver: memoryDriver() });
     const first = StorageModule.forRootAsync({ useFactory: factoryA });
     const same = StorageModule.forRootAsync({ useFactory: factoryA });
     const other = StorageModule.forRootAsync({ useFactory: factoryB });
 
     expect(same.key).toBe(first.key);
-    expect(other.key).not.toBe(first.key);
+    expect(other.key).toBe(first.key);
+    await expect(appWith([first, other])).rejects.toThrow(
+      /was imported again with different options/,
+    );
+    const app = await appWith([first, same]);
+    await app.close();
   });
 
   it('rejects a driver factory that declares parameters but no inject', () => {
     expect(() =>
       StorageModule.forRootAsync({
         // @ts-expect-error A factory with parameters names the tokens that supply them.
-        useFactory: (bucket: string) => memoryDriver({ initial: { bucket } }),
+        useFactory: (bucket: string) => ({ driver: memoryDriver({ initial: { bucket } }) }),
       }),
     ).toThrow(/StorageModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
   });
 
-  it('forRootAsync builds the driver lazily (edge-binding safe)', async () => {
+  it('builds a driver function lazily (edge-binding safe)', async () => {
     let calls = 0;
     const moduleRef = await Test.createTestingModule({
       imports: [
         StorageModule.forRootAsync({
-          useFactory: () => {
-            calls += 1;
-            return memoryDriver();
-          },
+          useFactory: () => ({
+            driver: () => {
+              calls += 1;
+              return memoryDriver();
+            },
+          }),
         }),
       ],
     }).compile();
 
-    expect(calls).toBe(0); // not built at module load
+    expect(calls).toBe(0); // not built at bootstrap
     const svc = moduleRef.get(StorageService);
     expect(calls).toBe(0); // not built on service construction
 
@@ -96,12 +238,12 @@ describe('StorageModule', () => {
     expect(calls).toBe(1); // cached
   });
 
-  it('forRootAsync runs the factory again on the next operation until it succeeds', async () => {
+  it('runs a driver function again on the next operation until it succeeds', async () => {
     let calls = 0;
     const moduleRef = await Test.createTestingModule({
       imports: [
-        StorageModule.forRootAsync({
-          useFactory: () => {
+        StorageModule.forRoot({
+          driver: () => {
             calls += 1;
             if (calls === 1) throw new Error('binding not ready');
             return memoryDriver();

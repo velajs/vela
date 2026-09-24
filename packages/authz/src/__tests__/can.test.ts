@@ -34,7 +34,6 @@ describe('createAuthz + can (role-backed default resolver)', () => {
       issuer: 'https://issuer.example',
       subject: 'user-1',
       principalType: 'user' as const,
-      userId: 'user-1',
       roles: ['editor'],
     };
     expect(await authz.can(identity, 'posts:write')).toBe(true);

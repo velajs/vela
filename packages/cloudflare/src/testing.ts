@@ -7,10 +7,10 @@ import type { VelaEnv } from '@velajs/vela';
 import { parseCronMetadata } from '@velajs/vela/module-kit';
 import type { QueueJob, QueueJobDefinition, QueueJobInput } from '@velajs/vela/queue';
 import { Test, type TestingModule, type TestingModuleBuilder } from '@velajs/testing';
-import type { CloudflareApplication } from './cloudflare-application';
+import { CloudflareApplication } from './cloudflare-application';
 import {
   cloudflareCreateOptions,
-  toCloudflareApplication,
+  configureCloudflareApplication,
   type CloudflareWorkerOptions,
 } from './cloudflare-factory';
 import type { CloudflareRoot } from './root-module';
@@ -91,9 +91,9 @@ export interface TestingWorker {
 }
 
 /**
- * Build `rootModule` as `createCloudflareWorker(rootModule, options)` does,
- * through `@velajs/testing`, and drive its Worker handlers inside the Workers
- * Vitest pool.
+ * Build `rootModule` as `createCloudflareWorker(rootModule, options)` does
+ * (its adapters, then its `configure` hook), through `@velajs/testing`, and
+ * drive its Worker handlers inside the Workers Vitest pool.
  *
  * ```ts
  * const worker = await createTestingWorker(AppModule, {
@@ -109,15 +109,19 @@ export async function createTestingWorker(
   rootModule: CloudflareRoot,
   options: TestingWorkerOptions = {},
 ): Promise<TestingWorker> {
-  const { env = workersEnv, overrides, ...workerOptions } = options;
+  const { env = workersEnv, overrides, configure, ...appOptions } = options;
   const builder = Test.createTestingModule(
     { imports: [rootModule] },
-    cloudflareCreateOptions({ ...workerOptions, env }),
+    cloudflareCreateOptions({ ...appOptions, env }),
   );
   const module = await (overrides ? overrides(builder) : builder).compile();
   let app: CloudflareApplication;
   try {
-    app = toCloudflareApplication(await module.createApplication(), env);
+    app = await configureCloudflareApplication(
+      new CloudflareApplication(await module.createApplication(), env),
+      env,
+      configure,
+    );
   } catch (error) {
     await module.close();
     throw error;

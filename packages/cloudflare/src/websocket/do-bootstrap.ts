@@ -1,25 +1,22 @@
 import { VelaApplication } from '@velajs/vela';
 import { bootstrap } from '@velajs/vela/internal';
 import type { DynamicModule, Type, VelaEnv } from '@velajs/vela';
-import {
-  local,
-  readWsEntrypointMeta,
-  WsDispatcher,
-  WsServerImpl,
-  WS_SERVER,
-} from '@velajs/vela/websocket';
+import type { Container } from '@velajs/vela/module-kit';
+import { local, readWsEntrypointMeta, WsDispatcher, WsServerImpl } from '@velajs/vela/websocket';
 import type { WsServer } from '@velajs/vela/websocket';
 import type { LiveEngine } from '@velajs/vela/live';
-import { registerCloudflareEnvironment } from '../environment';
+import { registerCloudflarePlatform } from '../platform';
 import { CfWsClient } from './cf-ws-client';
 import { CfRoomRegistry } from './cf-room-registry';
-import { initDoLive, initializeDoLiveResources } from './do-live';
+import { durableObjectLivePlatform, initDoLive } from './do-live';
 import type { DoStateLike } from './do-state';
-import { WsServerHolder } from './ws-server-holder';
 
 export interface DoRuntime {
+  /** The Durable Object application's container. */
+  container: Container;
   dispatcher: WsDispatcher;
   registry: CfRoomRegistry;
+  /** The server gateways inject: it broadcasts to this object's hibernatable sockets. */
   server: WsServer;
   /** Gateway paths from `app.entrypoints.ofKind('websocket')` (discovery order). */
   gatewayPaths: string[];
@@ -32,42 +29,38 @@ export interface DoRuntime {
  * Slim DI bootstrap for the Durable Object isolate: wires the container and runs
  * `OnModuleInit`/`OnApplicationBootstrap` (so `WsDispatcher` discovers gateways)
  * WITHOUT building the Hono app/routes the DO never serves. The DO's `env` is
- * seeded as the global ENV before providers construct, and the ctx-backed server
- * is bound before bootstrap lifecycle so gateway `afterInit`/handlers see it.
+ * seeded as the global ENV before providers construct, next to this object's
+ * platform: `WebSocketModule` builds its server over this object's sockets,
+ * and `LiveModule` delivers locally with a SQLite cursor log when the class is
+ * SQLite-backed.
  */
 export async function buildDoRuntime(
   rootModule: Type | DynamicModule,
   ctx: DoStateLike,
   options: { env: VelaEnv },
 ): Promise<DoRuntime> {
-  const { container, routeManager, loader } = await bootstrap(rootModule, {
-    configureContainer: (container) => {
-      registerCloudflareEnvironment(container, options.env);
-    },
-  });
-
   const registry = new CfRoomRegistry(ctx);
   const driver = local();
   driver.bind(registry);
   const server = new WsServerImpl(driver);
 
-  if (container.has(WS_SERVER)) {
-    const holder = await container.resolveAsync(WS_SERVER);
-    // The core WebSocketModule's server broadcasts through its own sync driver,
-    // which never reaches this Durable Object's hibernatable sockets.
-    if (!(holder instanceof WsServerHolder)) {
-      throw new Error(
-        '[vela] The WebSocket Durable Object found a WS_SERVER from the core WebSocketModule, ' +
-          'which cannot reach Durable Object sockets. On Cloudflare, import ' +
-          'CloudflareWebSocketModule.forRoot() instead of WebSocketModule.forRoot().',
-      );
-    }
-    holder.setTarget(server);
+  const { container, routeManager, loader } = await bootstrap(rootModule, {
+    configureContainer: (target) => {
+      registerCloudflarePlatform(target, options.env, {
+        websocket: { createServer: () => server },
+        live: durableObjectLivePlatform(ctx),
+      });
+    },
+  });
+  if (!container.has(WsDispatcher)) {
+    throw new Error(
+      '[vela] A WebSocket Durable Object serves the gateways of WebSocketModule: import ' +
+        'WebSocketModule.forRoot() from @velajs/vela/websocket in the application it is built from.',
+    );
   }
 
   const app = new VelaApplication(container, routeManager);
   app.setInstances(await loader.resolveAllInstances());
-  initializeDoLiveResources(container, ctx);
   await app.callOnModuleInit();
   await app.callOnApplicationBootstrap();
 
@@ -85,11 +78,11 @@ export async function buildDoRuntime(
     return dispatcher.authorizeDelivery(path, client);
   });
 
-  // Live queries: wire the SQLite cursor log + local driver mode and replay
-  // hibernation-persisted subscriptions into the fresh engine.
+  // Live queries: replay hibernation-persisted subscriptions into the fresh engine.
   const live = initDoLive(app, ctx, registry);
 
   return {
+    container,
     // Zero gateways still yields a live dispatcher (module imported, nothing
     // decorated) — fall back to resolving it directly.
     dispatcher,

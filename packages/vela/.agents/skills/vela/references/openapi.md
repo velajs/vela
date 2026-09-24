@@ -1,6 +1,20 @@
 # OpenAPI
 
-Generate an OpenAPI 3.1 document from your modules and serve it with Swagger UI, Scalar, or ReDoc. All on `@velajs/vela`.
+Generate an OpenAPI 3.1 document from your modules and serve it with `OpenApiModule`, or with Swagger UI, Scalar, or ReDoc. All on `@velajs/vela/openapi`.
+
+## Serving the document with OpenApiModule
+
+```ts
+import { OpenApiModule } from '@velajs/vela/openapi';
+
+@Module({
+  imports: [OpenApiModule.forRoot({ path: '/openapi.json', info: { title: 'API', version: '1.0.0' } })],
+  controllers: [UsersController],
+})
+export class AppModule {}
+```
+
+The route serves the application root's document (`ROOT_MODULE`, contributor paths included) under the app's global prefix, built on the first request and kept for that application; there is no `OpenApiController` to write. `path` (default `/openapi.json`) is mounted as given, outside the global prefix; the route runs no guards and leaves itself out of the document. Options: `path`, `info`, `tags`, `servers`, `securitySchemes`, `security`; `forRootAsync` resolves them through DI. `@ApiExclude()` on a controller or handler leaves it out of the document and generated clients while it is still served (`isApiExcluded(target, handler?)` reads it).
 
 ## Generating the document
 
@@ -67,7 +81,7 @@ app.mountOpenApi({ document, ui: 'all' });                       // swagger + sc
 | `redocPath` | `/redoc` | ReDoc path |
 | `title` | — | UI page title |
 
-Each UI is a self-contained HTML shell (CDN-loaded), so mounting docs adds no server bundling and stays edge-safe. (`path`/`uiPath` are deprecated aliases for `specPath`/single-UI path.)
+Each UI is a self-contained HTML shell (CDN-loaded), so mounting docs adds no server bundling and stays edge-safe.
 
 ## Schema-bound Hono RPC
 

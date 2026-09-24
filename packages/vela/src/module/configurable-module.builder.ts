@@ -1,22 +1,10 @@
-import type { DynamicModule } from '../registry/types';
 import type {
   ConfigurableModuleBuilderOptions,
   ConfigurableModuleExtras,
   ConfigurableModuleExtrasTransform,
   ConfigurableModuleHost,
-  DefineConfigurableModuleSpec,
 } from './configurable-module.types';
 import { defineModule, type DefineModuleSpec } from './define-module';
-import { attachModuleIdentity } from './module-fingerprints';
-import { stableHash } from './stable-hash';
-
-/**
- * Blessed key-derivation helper for hand-written `forRoot` statics: the one
- * documented way to derive a `DynamicModule.key` from an options bag so
- * identical configurations dedup (HMR-idempotent) and distinct ones coexist.
- * Alias of {@link stableHash} with a module-authoring name.
- */
-export const moduleKey: (options: unknown) => string = stableHash;
 
 /** Immutable typed state shared by the fluent builder's returned branches. */
 class ConfiguredModuleBuilder<
@@ -25,7 +13,9 @@ class ConfiguredModuleBuilder<
   FactoryMethodKey extends string,
   Extras extends ConfigurableModuleExtras,
 > {
-  constructor(private readonly spec: DefineModuleSpec<Opts, Extras, MethodKey, FactoryMethodKey>) {}
+  constructor(
+    private readonly spec: DefineModuleSpec<Opts, never, Extras, MethodKey, FactoryMethodKey>,
+  ) {}
 
   setExtras<NewExtras extends ConfigurableModuleExtras>(
     defaults: NewExtras,
@@ -56,15 +46,12 @@ class ConfiguredModuleBuilder<
 }
 
 /**
- * NestJS-parity builder that generates `forRoot`/`forRootAsync` (and `key`,
- * `global`, factory-param inference) from a tiny spec — so a module is just its
- * tokens + options type + service + a `@Module({...})` bag, while vela keeps its
- * encapsulation (`exports`/visibility) and multi-instance `key` dedup.
- *
- * Since 1.11 this is a thin adapter over {@link defineModule} — the single
- * authoring engine. Prefer `defineModule` for new modules: it additionally
- * supports contributions (providers/controllers/imports/exports/global
- * components) computed as functions of the options.
+ * NestJS-shaped facade over {@link defineModule}: it generates Nest's
+ * `register`/`registerAsync` statics (rename them with `setClassMethodName`),
+ * an `isGlobal` extra and factory-parameter inference, while the module keeps
+ * Vela's encapsulation and `(class, key)` instance identity. First-party
+ * modules use `defineModule`, which generates `forRoot`/`forRootAsync` and
+ * computes contributions from structural options.
  *
  * @example
  * ```ts
@@ -76,11 +63,12 @@ class ConfiguredModuleBuilder<
  *   exports: [FooService],
  * })
  * export class FooModule extends ConfigurableModuleClass {}
+ * // FooModule.register({ ... }) / FooModule.registerAsync({ useFactory })
  * ```
  */
 export class ConfigurableModuleBuilder<Opts> extends ConfiguredModuleBuilder<
   Opts,
-  'forRoot',
+  'register',
   'create',
   { isGlobal?: boolean }
 > {
@@ -88,33 +76,8 @@ export class ConfigurableModuleBuilder<Opts> extends ConfiguredModuleBuilder<
     super({
       name: options.moduleName ?? 'ConfigurableModule',
       optionsToken: options.optionsInjectionToken,
-      methodName: 'forRoot',
+      methodName: 'register',
       factoryMethodName: 'create',
     });
   }
-}
-
-/**
- * Lower-level engine for cases a class-mixin can't express — chiefly a
- * runtime-generated module class whose providers depend on a call-time arg
- * (Cloudflare binding modules). Returns an object with a single static named by
- * `spec.methodName` (default `forRoot`).
- */
-export function defineConfigurableModule<Args>(
-  spec: DefineConfigurableModuleSpec<Args>,
-): Record<string, (args: Args) => DynamicModule> {
-  const methodName = spec.methodName ?? 'forRoot';
-  return {
-    [methodName](args: Args): DynamicModule {
-      const definition: DynamicModule = {
-        module: spec.module,
-        key: spec.keyFrom(args),
-        providers: spec.providers(args),
-      };
-      if (spec.imports) definition.imports = spec.imports(args);
-      if (spec.exports) definition.exports = spec.exports;
-      if (spec.global) definition.global = true;
-      return attachModuleIdentity(definition, args);
-    },
-  };
 }

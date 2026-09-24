@@ -1,5 +1,7 @@
 import { defineProvider } from '../container/types';
 import { defineModule } from '../module/define-module';
+import type { DynamicModule } from '../registry/types';
+import { WebSocketPlatform, WebSocketRoutesModule } from './upgrade-routes';
 import { WsDispatcher } from './ws-dispatcher';
 import { WsServerImpl } from './ws-server';
 import { InMemoryRoomRegistry, local, type RoomRegistry, type SyncDriver } from './ws-sync';
@@ -8,13 +10,14 @@ import { WS_MODULE_OPTIONS, WS_ROOM_REGISTRY, WS_SERVER, WS_SYNC_DRIVER } from '
 export interface WebSocketModuleOptions {
   /**
    * Cross-instance sync driver. Defaults to `local()` (single instance). Use
-   * `durableObject()` from `@velajs/cloudflare` or `redis()` from
-   * `@velajs/vela/websocket-node` for horizontal scale.
+   * `redis()` from `@velajs/vela/websocket-node` for horizontal scale. A
+   * platform transport that owns delivery (Cloudflare's Durable Object per
+   * room) may ignore it.
    */
   sync?: SyncDriver;
   /**
-   * Local room registry the transport reads/writes. Defaults to the in-memory
-   * implementation (node/bun/deno); the Cloudflare transport supplies its own.
+   * Local room registry the sync driver reads/writes. Defaults to the
+   * in-memory implementation.
    */
   registry?: RoomRegistry;
 }
@@ -25,20 +28,30 @@ export interface WebSocketModuleOptions {
  * registry, the sync driver, and the `@WebSocketServer()`-injected server
  * handle.
  *
+ * The platform decides where sockets live. A runtime adapter registers the
+ * global `WS_TRANSPORT` (`@velajs/cloudflare` does): its `createServer` builds
+ * the server gateways inject, and a forwarding transport receives each
+ * binding-backed gateway's authenticated upgrade from the route this module
+ * mounts. Without a transport, a host serves the gateways in this process
+ * (`registerWebSocketGateways` on node, Bun and Deno).
+ *
  * Construction lives in chained provider factories — registry → driver
  * (bound to THAT registry) → server — so the single shared registry instance
  * is preserved and everything materializes at bootstrap's eager
  * instantiation, before any lifecycle hook or message dispatch.
  *
- * The instance key derives from the sync driver kind: two `forRoot()` calls
- * with the same driver kind dedup (HMR-idempotent); pass an explicit `key`
- * to run multiple same-kind instances side by side.
+ * The instance key derives from the structural sync driver's kind: importing
+ * the same configuration again dedups (HMR-idempotent), a different driver of
+ * the same kind fails bootstrap; pass an explicit `key` to run multiple same-kind
+ * instances side by side.
  */
-const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions, 'sync'>({
   name: 'WebSocket',
   optionsToken: WS_MODULE_OPTIONS,
+  structural: ['sync'],
   key: (options) => `ws#${options.sync?.kind ?? 'local'}`,
   setup: ({ OPTIONS }) => ({
+    imports: [WebSocketRoutesModule],
     providers: [
       defineProvider(WS_ROOM_REGISTRY, {
         useFactory: (o: WebSocketModuleOptions) => o.registry ?? new InMemoryRoomRegistry(),
@@ -53,8 +66,9 @@ const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
         inject: [OPTIONS, WS_ROOM_REGISTRY],
       }),
       defineProvider(WS_SERVER, {
-        useFactory: (driver: SyncDriver) => new WsServerImpl(driver),
-        inject: [WS_SYNC_DRIVER],
+        useFactory: (driver: SyncDriver, platform: WebSocketPlatform) =>
+          platform.transport?.createServer?.(driver) ?? new WsServerImpl(driver),
+        inject: [WS_SYNC_DRIVER, WebSocketPlatform],
       }),
       WsDispatcher,
     ],
@@ -62,4 +76,11 @@ const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
   }),
 });
 
-export class WebSocketModule extends ConfigurableModuleClass {}
+type WebSocketModuleRegistration = Parameters<(typeof ConfigurableModuleClass)['forRoot']>[0];
+
+export class WebSocketModule extends ConfigurableModuleClass {
+  /** Register the gateway machinery; every option is optional. */
+  static override forRoot(options: WebSocketModuleRegistration = {}): DynamicModule {
+    return super.forRoot(options);
+  }
+}

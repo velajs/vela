@@ -8,8 +8,6 @@ export interface Identity {
   subject?: string;
   /** Whether this principal represents an interactive user or a service identity. */
   principalType?: PrincipalType;
-  /** @deprecated Compatibility alias for `subject`. */
-  userId?: string;
   tenantId?: string;
   expiresAtMs?: number;
   roles?: readonly string[];

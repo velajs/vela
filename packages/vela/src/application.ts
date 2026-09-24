@@ -210,8 +210,7 @@ export class VelaApplication {
    * bundled server-side and no extra dependency is required.
    *
    * Defaults: spec at `/openapi.json`, Scalar at `/scalar`, Swagger UI at
-   * `/docs`, ReDoc at `/redoc`. The deprecated `path` / `uiPath` aliases are
-   * retained for migration from the previous single-UI shape.
+   * `/docs`, ReDoc at `/redoc`.
    *
    * ```ts
    * const doc = createOpenApiDocument(AppModule);
@@ -224,15 +223,12 @@ export class VelaApplication {
     const doc = options.document;
     const title = options.title;
 
-    // Spec JSON: new default `/openapi.json`. The deprecated `path` alias is
-    // honored as an override only (does not change the default).
-    const specPath = options.specPath ?? options.path ?? '/openapi.json';
+    const specPath = options.specPath ?? '/openapi.json';
     app.get(specPath, (c) => c.json(doc));
 
     // Normalize the requested UI set. Default is Scalar only.
     const uiOption = options.ui;
     let uis: OpenApiUi[];
-    let singleStringUi = false;
     if (uiOption === undefined) {
       uis = ['scalar'];
     } else if (uiOption === 'all') {
@@ -241,25 +237,19 @@ export class VelaApplication {
       uis = uiOption;
     } else {
       uis = [uiOption];
-      singleStringUi = true;
     }
 
     for (const ui of uis) {
-      // Back-compat: the old `{ ui: 'scalar', uiPath }` form mapped a single
-      // string UI to `uiPath`. Honor that only when exactly one UI was
-      // requested as a string.
-      const legacyPath = singleStringUi && uis.length === 1 ? options.uiPath : undefined;
-
       if (ui === 'swagger') {
-        const path = legacyPath ?? options.swaggerPath ?? '/docs';
+        const path = options.swaggerPath ?? '/docs';
         const html = renderSwaggerUi(specPath, title);
         app.get(path, (c) => c.html(html));
       } else if (ui === 'redoc') {
-        const path = legacyPath ?? options.redocPath ?? '/redoc';
+        const path = options.redocPath ?? '/redoc';
         const html = renderRedocUi(specPath, title);
         app.get(path, (c) => c.html(html));
       } else {
-        const path = legacyPath ?? options.scalarPath ?? '/scalar';
+        const path = options.scalarPath ?? '/scalar';
         const html = renderScalarUi(specPath, title);
         app.get(path, (c) => c.html(html));
       }

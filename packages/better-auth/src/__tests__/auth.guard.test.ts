@@ -196,7 +196,7 @@ describe('AuthGuard', () => {
     expect(res.status).toBe(401);
   });
 
-  it('@Public() bypasses the guard even with isGlobal:true', async () => {
+  it('@Public() bypasses the guard even with globalGuard:true', async () => {
     const auth = mockAuth(null);
 
     @Controller('/health')
@@ -209,7 +209,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, isGlobal: true })],
+      imports: [BetterAuthModule.forRoot({ auth, globalGuard: true })],
       controllers: [HealthController],
     })
     class AppModule {}
@@ -261,7 +261,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, isGlobal: true, mountHandler: false })],
+      imports: [BetterAuthModule.forRoot({ auth, globalGuard: true, mountHandler: false })],
       controllers: [PrivateController],
     })
     class AppModule {}
