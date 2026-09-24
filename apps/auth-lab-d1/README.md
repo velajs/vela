@@ -31,19 +31,21 @@ import { createCloudflareWorker } from '@velajs/cloudflare';
   imports: [
     BetterAuthModule.forRootAsync({
       inject: [ENV],
-      // useFactory returns the betterAuth() instance directly.
-      useFactory: (env) =>
-        betterAuth({
-          // Pass `schema` so the adapter maps better-auth's models to typed
-          // drizzle tables — required on D1 (Date columns use `{ mode:
-          // 'timestamp' }`; a bare adapter throws D1_TYPE_ERROR on a Date).
-          database: drizzleAdapter(drizzle(env.DB, { schema }), {
-            provider: 'sqlite',
-            schema,
+      // useFactory returns the module options; `auth` builds the betterAuth()
+      // instance on first authentication.
+      useFactory: (env) => ({
+        auth: () =>
+          betterAuth({
+            // Pass `schema` so the adapter maps better-auth's models to typed
+            // drizzle tables — required on D1 (Date columns use `{ mode:
+            // 'timestamp' }`; a bare adapter throws D1_TYPE_ERROR on a Date).
+            database: drizzleAdapter(drizzle(env.DB, { schema }), {
+              provider: 'sqlite',
+              schema,
+            }),
+            // ...
           }),
-          // ...
-        }),
-      isGlobal: true,
+      }),
     }),
   ],
 })

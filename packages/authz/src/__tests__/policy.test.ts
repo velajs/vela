@@ -4,24 +4,24 @@ import { defineRole } from '../roles';
 import { anyOf, allOf, hasPerm, mask } from '../policy';
 
 const authz = createAuthz({ roles: [defineRole('editor', ['posts:write'])] });
-const owner = (ctx: { identity: { userId?: string } }, r: { authorId: string }) =>
-  ctx.identity.userId === r.authorId;
+const owner = (ctx: { identity: { subject?: string } }, r: { authorId: string }) =>
+  ctx.identity.subject === r.authorId;
 
 describe('composition', () => {
   it('anyOf is OR', async () => {
     const p = anyOf(owner, hasPerm(authz, 'posts:write'));
-    expect(await p({ identity: { userId: 'u1', roles: [] } }, { authorId: 'u1' })).toBe(true); // owner
-    expect(await p({ identity: { userId: 'x', roles: ['editor'] } }, { authorId: 'u1' })).toBe(
+    expect(await p({ identity: { subject: 'u1', roles: [] } }, { authorId: 'u1' })).toBe(true); // owner
+    expect(await p({ identity: { subject: 'x', roles: ['editor'] } }, { authorId: 'u1' })).toBe(
       true,
     ); // perm
-    expect(await p({ identity: { userId: 'x', roles: [] } }, { authorId: 'u1' })).toBe(false); // neither
+    expect(await p({ identity: { subject: 'x', roles: [] } }, { authorId: 'u1' })).toBe(false); // neither
   });
   it('allOf is AND', async () => {
     const p = allOf(owner, hasPerm(authz, 'posts:write'));
-    expect(await p({ identity: { userId: 'u1', roles: ['editor'] } }, { authorId: 'u1' })).toBe(
+    expect(await p({ identity: { subject: 'u1', roles: ['editor'] } }, { authorId: 'u1' })).toBe(
       true,
     );
-    expect(await p({ identity: { userId: 'u1', roles: [] } }, { authorId: 'u1' })).toBe(false); // missing perm
+    expect(await p({ identity: { subject: 'u1', roles: [] } }, { authorId: 'u1' })).toBe(false); // missing perm
   });
   it('FAIL-CLOSED: empty anyOf denies', async () => {
     expect(await anyOf()({ identity: {} }, {})).toBe(false);

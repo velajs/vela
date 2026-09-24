@@ -263,28 +263,31 @@ export interface StudioCloudflareTimeTravelModuleOptions {
   shardKey?: (scope?: TimeTravelScope) => string;
 }
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
-  defineModule<StudioCloudflareTimeTravelModuleOptions>({
-    name: 'StudioCloudflareTimeTravel',
-    setup: ({ OPTIONS, options: moduleOptions }) => ({
-      imports: moduleOptions.imports,
-      providers: [
-        defineProvider(TIME_TRAVEL_PORT, {
-          useFactory: (
-            confirm: ConfirmTokenSigner,
-            options: StudioCloudflareTimeTravelModuleOptions,
-          ) =>
-            new CloudflareDoTimeTravelPort({
-              namespace: options.namespace,
-              confirm,
-              ...(options.shardKey !== undefined ? { shardKey: options.shardKey } : {}),
-            }),
-          inject: [ConfirmTokenSigner, OPTIONS],
-        }),
-      ],
-      exports: [TIME_TRAVEL_PORT],
-    }),
-  });
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
+  StudioCloudflareTimeTravelModuleOptions,
+  'imports'
+>({
+  name: 'StudioCloudflareTimeTravel',
+  structural: ['imports'],
+  setup: ({ OPTIONS, options: moduleOptions }) => ({
+    imports: moduleOptions.imports,
+    providers: [
+      defineProvider(TIME_TRAVEL_PORT, {
+        useFactory: (
+          confirm: ConfirmTokenSigner,
+          options: StudioCloudflareTimeTravelModuleOptions,
+        ) =>
+          new CloudflareDoTimeTravelPort({
+            namespace: options.namespace,
+            confirm,
+            ...(options.shardKey !== undefined ? { shardKey: options.shardKey } : {}),
+          }),
+        inject: [ConfirmTokenSigner, OPTIONS],
+      }),
+    ],
+    exports: [TIME_TRAVEL_PORT],
+  }),
+});
 
 /**
  * Binds {@link CloudflareDoTimeTravelPort} to `TIME_TRAVEL_PORT`. Import it with

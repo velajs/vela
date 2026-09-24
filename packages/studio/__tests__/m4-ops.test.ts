@@ -127,12 +127,12 @@ describe('app.modules', () => {
 
     const appNode = modules.find((m) => m.moduleId.startsWith('AppModule'));
     const api = modules.find((m) => m.moduleId.startsWith('ApiModule'));
-    const schedule = modules.find((m) => m.moduleId.startsWith('ScheduleModule'));
+    const schedule = modules.find((m) => m.moduleId.startsWith('ScheduleRegistryModule'));
     expect(api).toBeDefined();
     expect(schedule).toBeDefined();
     // The root app module imports the fixture module (edge preserved).
     expect(appNode?.imports).toContain(api!.moduleId);
-    // ScheduleModule is a lazy module — the lazy flag surfaces honestly.
+    // The schedule registry is a lazy module — the lazy flag surfaces honestly.
     expect(schedule?.lazy).toBe(true);
   });
 });

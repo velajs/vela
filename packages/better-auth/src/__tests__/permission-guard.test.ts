@@ -247,8 +247,8 @@ describe('PermissionGuard (e2e)', () => {
 
     @Module({
       imports: [
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:*'])] }),
+        AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ key: 'secondary', roles: [defineRole('editor', ['posts:*'])] }),
         BetterAuthModule.forRoot({ auth }),
       ],
       controllers: [AmbiguousController],

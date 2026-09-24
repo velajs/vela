@@ -27,13 +27,13 @@ class ApiController {
 }
 @Module({
   imports: [
-    RpcClientModule.registerAsync({
+    RpcClientModule.forRootAsync({
       name: 'catalog',
       binding: 'CATALOG',
       inject: [ENV],
       useFactory: (env) => ({ url: 'https://catalog/rpc', fetch: env.CATALOG }),
     }),
-    RpcClientModule.registerAsync({
+    RpcClientModule.forRootAsync({
       name: 'accounts',
       binding: 'ACCOUNTS',
       inject: [ENV],

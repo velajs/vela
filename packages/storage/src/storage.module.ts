@@ -1,25 +1,24 @@
 import {
+  type ConfigurableModuleAsyncOptions,
   defineModule,
   defineProvider,
-  type DynamicModule,
   type Token,
   type TypedToken,
   type Type,
 } from '@velajs/vela';
-import {
-  assertFactoryInject,
-  lazyProvider,
-  stableHash,
-  type FactoryInject,
-  type InferTokens,
-} from '@velajs/vela/module-kit';
+import { lazyProvider } from '@velajs/vela/module-kit';
 import {
   createStorageController,
   type ResolvedHttpOptions,
   type StorageControllerOptions,
 } from './storage.controller';
-import { StorageService, type StorageServiceOptions } from './storage.service';
-import { DEFAULT_STORAGE_NAME, storageDriverBuilder, storageToken } from './storage.tokens';
+import { StorageService } from './storage.service';
+import {
+  DEFAULT_STORAGE_NAME,
+  storageControllerOptions,
+  storageDriverBuilder,
+  storageToken,
+} from './storage.tokens';
 import type { StorageDriver, StorageHooks } from './storage.types';
 import type { StorageAuthorizer } from './http/authorizer.types';
 import { validateMultipartGrantSecret } from './http/multipart-grant';
@@ -30,8 +29,6 @@ export interface StorageHttpOptions {
   basePath?: string;
   /** Fine-grained per-action authorizer (deny / allow / allow-with-overrides). */
   authorize?: StorageAuthorizer;
-  /** @deprecated Storage HTTP routes are deny-only without `authorize`. */
-  defaultPolicy?: 'deny';
   /** `redirect` to a signed URL (default) or `proxy` bytes through the Worker. */
   download?: 'redirect' | 'proxy';
   /** Set `false` to configure options without mounting the controller. Default mounts. */
@@ -41,7 +38,8 @@ export interface StorageHttpOptions {
   maxUploadSize?: number;
   /**
    * HMAC key for stateless multipart grants, at least 32 bytes: a shorter one
-   * throws when the module is set up. Required for multipart HTTP endpoints.
+   * throws when the module is set up. Required for multipart HTTP endpoints,
+   * unless the top-level `multipartGrantSecret` option supplies it.
    */
   multipartGrantSecret?: string | Uint8Array;
   /** Maximum browser-direct multipart parts. Default 10,000. */
@@ -51,136 +49,41 @@ export interface StorageHttpOptions {
 }
 
 export interface StorageModuleOptions {
-  driver: StorageDriver;
-  /** Optional caller namespace; it is combined with, never substituted for, instance identity. */
-  key?: string;
+  /**
+   * The bucket's driver, or a function that builds it. A function runs on the
+   * first storage operation (and again on the next one until it succeeds), so
+   * a `forRootAsync` factory can return `{ driver: () => r2Driver(...) }`
+   * without touching a binding while the application initializes.
+   */
+  driver: StorageDriver | (() => StorageDriver);
+  /** Bucket name; each name is its own `StorageService` token. Structural. */
   name?: string;
   prefix?: string;
   readonly?: boolean;
   hooks?: StorageHooks;
+  /** The HTTP controller. Structural: it decides the mounted routes. */
   http?: StorageHttpOptions;
-}
-
-/**
- * What a `forRootAsync` factory may return instead of a bare driver: the
- * driver with values that come through DI, such as a secret read from `ENV`.
- */
-export interface StorageAsyncResult {
-  driver: StorageDriver;
   /**
-   * HMAC key for stateless multipart grants, at least 32 bytes: a shorter one
-   * fails every storage operation until the factory returns a valid result.
-   * Takes precedence over `http.multipartGrantSecret`.
+   * HMAC key for stateless multipart grants, at least 32 bytes, such as a
+   * secret a `forRootAsync` factory reads from `ENV`. Takes precedence over
+   * `http.multipartGrantSecret`; a shorter one fails every multipart grant.
    */
   multipartGrantSecret?: string | Uint8Array;
 }
 
+/** The options `forRootAsync` takes alongside its factory: they shape the module graph. */
+export type StorageStructuralOption = 'name' | 'http';
+
 /** Deferred registration; a driver factory without parameters may omit `inject`. */
-export type StorageModuleAsyncOptions<Inject extends readonly Token[] = readonly Token[]> = {
-  imports?: DynamicModule['imports'];
-  useFactory: (...deps: InferTokens<Inject>) => StorageDriver | StorageAsyncResult;
-  name?: string;
-  prefix?: string;
-  readonly?: boolean;
-  hooks?: StorageHooks;
-  http?: StorageHttpOptions;
-  /** Optional caller namespace; it is combined with, never substituted for, factory identity. */
-  key?: string;
-} & FactoryInject<Inject>;
-
-/**
- * The internal, normalized options the module engine works with: the driver is
- * always a `() => StorageDriver` thunk so both `forRoot` (a built driver) and
- * `forRootAsync` (a deferred factory) flow through one options token and one
- * {@link lazyProvider}. The thunk is only *called* on first storage operation
- * (edge-binding safe), never at module load or service construction.
- */
-interface StorageSetupOptions extends StorageControllerOptions {
-  driver: () => StorageDriver;
-  registrationIdentity: string;
-  name?: string;
-  prefix?: string;
-  readonly?: boolean;
-  hooks?: StorageHooks;
-  http?: StorageHttpOptions;
-}
-
-const objectIdentities = new WeakMap<object, number>();
-const symbolIdentities = new Map<symbol, number>();
-const stringIdentities = new Map<string, number>();
-let nextIdentity = 1;
-
-/** Process-local identity avoids source-code and presence-only collisions for stateful options. */
-function instanceIdentity(value: unknown): string {
-  if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
-    const key = value;
-    let id = objectIdentities.get(key);
-    if (id === undefined) {
-      id = nextIdentity++;
-      objectIdentities.set(key, id);
-    }
-    return `object:${id}`;
-  }
-  if (typeof value === 'symbol') {
-    let id = symbolIdentities.get(value);
-    if (id === undefined) {
-      id = nextIdentity++;
-      symbolIdentities.set(value, id);
-    }
-    return `symbol:${id}`;
-  }
-  return `${typeof value}:${String(value)}`;
-}
-
-function secretIdentity(value: string | Uint8Array | undefined): string {
-  if (value === undefined) return 'none';
-  if (value instanceof Uint8Array) return instanceIdentity(value);
-  let id = stringIdentities.get(value);
-  if (id === undefined) {
-    id = nextIdentity++;
-    stringIdentities.set(value, id);
-  }
-  return `secret:${id}`;
-}
-
-function securityIdentity(input: {
-  owner: unknown;
-  callerKey?: string;
-  hooks?: StorageHooks;
-  http?: StorageHttpOptions;
-  inject?: readonly unknown[];
-  imports?: readonly unknown[];
-}): string {
-  return stableHash({
-    owner: instanceIdentity(input.owner),
-    callerKey: input.callerKey ?? null,
-    hooks: input.hooks ? instanceIdentity(input.hooks) : null,
-    authorize: input.http?.authorize ? instanceIdentity(input.http.authorize) : null,
-    multipartGrantSecret: secretIdentity(input.http?.multipartGrantSecret),
-    inject: input.inject?.map(instanceIdentity) ?? [],
-    imports: input.imports?.map(instanceIdentity) ?? [],
-  });
-}
-
-/**
- * The stable, identifying subset of the HTTP options folded into the instance
- * key — matches what `buildControllers` bakes into the mounted controller so
- * two registrations that differ only in HTTP behavior get distinct keys.
- */
-function httpKeyPart(http: StorageHttpOptions | undefined): Record<string, unknown> {
-  if (!http || http.mountController === false) return {};
-  return {
-    basePath: http.basePath ?? '/api/storage',
-    download: http.download ?? 'redirect',
-    defaultExpiresIn: http.defaultExpiresIn ?? 900,
-    maxExpiresIn: http.maxExpiresIn ?? 3600,
-    maxUploadSize: http.maxUploadSize ?? null,
-    maxListLimit: http.maxListLimit ?? 1000,
-    deleteConcurrency: http.deleteConcurrency ?? 8,
-    maxMultipartParts: http.maxMultipartParts ?? 10_000,
-    multipartGrants: http.multipartGrantSecret !== undefined,
+export type StorageModuleAsyncOptions<Inject extends readonly Token[] = readonly Token[]> =
+  ConfigurableModuleAsyncOptions<
+    StorageModuleOptions,
+    StorageStructuralOption,
+    'create',
+    Inject
+  > & {
+    isGlobal?: boolean;
   };
-}
 
 function positiveInteger(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) {
@@ -193,35 +96,28 @@ function optionalPositiveInteger(value: number | undefined, label: string): numb
   return value === undefined ? undefined : positiveInteger(value, label);
 }
 
-/** Normalize and check what a `forRootAsync` factory returned. */
-function readAsyncResult(value: StorageDriver | StorageAsyncResult): StorageAsyncResult {
-  const result = 'upload' in value ? { driver: value } : value;
-  const secret: unknown = result.multipartGrantSecret;
+/** The driver itself, or the one its builder function returns, checked. */
+function buildDriver(driver: StorageModuleOptions['driver']): StorageDriver {
+  const built: unknown = typeof driver === 'function' ? driver() : driver;
   if (
-    typeof result.driver?.upload !== 'function' ||
-    (secret !== undefined && typeof secret !== 'string' && !(secret instanceof Uint8Array))
+    typeof built !== 'object' ||
+    built === null ||
+    typeof Reflect.get(built, 'upload') !== 'function'
   ) {
     throw new TypeError(
-      '@velajs/storage: forRootAsync useFactory must return a StorageDriver or ' +
-        '{ driver, multipartGrantSecret? } with a string or Uint8Array secret',
+      '@velajs/storage: `driver` must be a StorageDriver or a function that returns one',
     );
   }
-  if (secret !== undefined) validateMultipartGrantSecret(secret);
-  return result;
+  return built as StorageDriver;
 }
 
 function buildControllers(
   name: string,
   serviceToken: TypedToken<StorageService>,
-  optionsToken: TypedToken<StorageSetupOptions>,
+  optionsToken: TypedToken<StorageControllerOptions>,
   http: StorageHttpOptions | undefined,
 ): Type[] {
   if (!http || http.mountController === false) return [];
-  if (http.defaultPolicy !== undefined && http.defaultPolicy !== 'deny') {
-    throw new TypeError(
-      '@velajs/storage: defaultPolicy is deny-only; use an explicit authorize callback for public access',
-    );
-  }
   if (http.multipartGrantSecret !== undefined) {
     validateMultipartGrantSecret(http.multipartGrantSecret);
   }
@@ -243,107 +139,55 @@ function buildControllers(
   return [createStorageController(basePath, serviceToken, resolved, optionsToken)];
 }
 
-const { ConfigurableModuleClass } = defineModule<StorageSetupOptions>({
+const { ConfigurableModuleClass } = defineModule<StorageModuleOptions, StorageStructuralOption>({
   name: 'Storage',
-  // Value-shaped identity only: never the (stateful) driver thunk. Same
-  // name+prefix+readonly+hooks+http dedups (HMR-idempotent); a distinct bucket
-  // name coexists.
-  key: (o) =>
-    stableHash({
-      name: o.name ?? DEFAULT_STORAGE_NAME,
-      prefix: o.prefix ?? '',
-      readonly: !!o.readonly,
-      hooks: !!o.hooks,
-      registrationIdentity: o.registrationIdentity,
-      ...httpKeyPart(o.http),
-    }),
+  structural: ['name', 'http'],
+  defaults: { name: DEFAULT_STORAGE_NAME },
+  // One instance per bucket name: the name decides the provided tokens, so a
+  // second registration of a name with different options fails bootstrap
+  // rather than serving one bucket through the other's routes. Never keyed by
+  // a secret.
+  key: (options) => options.name ?? DEFAULT_STORAGE_NAME,
   setup: ({ OPTIONS, options }) => {
     const name = options.name ?? DEFAULT_STORAGE_NAME;
     const builderToken = storageDriverBuilder(name);
     const serviceToken = name === DEFAULT_STORAGE_NAME ? StorageService : storageToken(name);
-    const svcOptions: StorageServiceOptions = {
-      name,
-      prefix: options.prefix,
-      readonly: options.readonly,
-      hooks: options.hooks,
-    };
+    const controllerOptions = storageControllerOptions(name);
     return {
       providers: [
         // Deferred, memoized driver construction — the seam that keeps
-        // Cloudflare bindings / `c.env` reads out of module load.
+        // Cloudflare bindings out of module load and application bootstrap.
         lazyProvider({
           provide: builderToken,
           inject: [OPTIONS],
-          useFactory: (o: StorageSetupOptions) => o.driver(),
+          useFactory: (resolved: StorageModuleOptions) => buildDriver(resolved.driver),
         }),
         defineProvider(serviceToken, {
-          useFactory: (build) => new StorageService(build, svcOptions),
-          inject: [builderToken],
+          useFactory: (build, resolved) =>
+            new StorageService(build, {
+              name,
+              prefix: resolved.prefix,
+              readonly: resolved.readonly,
+              hooks: resolved.hooks,
+            }),
+          inject: [builderToken, OPTIONS],
+        }),
+        defineProvider(controllerOptions, {
+          useFactory: (resolved) => ({ multipartGrantSecret: () => resolved.multipartGrantSecret }),
+          inject: [OPTIONS],
         }),
       ],
-      controllers: buildControllers(name, serviceToken, OPTIONS, options.http),
+      controllers: buildControllers(name, serviceToken, controllerOptions, options.http),
       exports: [serviceToken, builderToken],
     };
   },
 });
 
-export class StorageModule {
-  /** Synchronous registration — the driver is provided directly. */
-  static forRoot(options: StorageModuleOptions): DynamicModule {
-    const { driver, key, ...rest } = options;
-    const registrationIdentity = securityIdentity({
-      owner: driver,
-      callerKey: key,
-      hooks: rest.hooks,
-      http: rest.http,
-    });
-    return {
-      ...ConfigurableModuleClass.forRoot({
-        ...rest,
-        registrationIdentity,
-        driver: () => driver,
-      }),
-      module: StorageModule,
-    };
-  }
-
-  /** Deferred / DI-driven registration — `useFactory` runs lazily on first use. */
-  static forRootAsync<const Inject extends readonly Token[] = readonly Token[]>(
-    options: StorageModuleAsyncOptions<Inject>,
-  ): DynamicModule {
-    const { useFactory } = options;
-    // The wrapper below hides the factory's arity from the module engine.
-    assertFactoryInject('StorageModule.forRootAsync', useFactory, options.inject);
-    const registrationIdentity = securityIdentity({
-      owner: useFactory,
-      callerKey: options.key,
-      hooks: options.hooks,
-      http: options.http,
-      inject: options.inject,
-      imports: options.imports,
-    });
-    return {
-      ...ConfigurableModuleClass.forRootAsync<Inject>({
-        ...options,
-        // The caller key is part of registrationIdentity, which the module
-        // key hashes; it never names the module instance by itself.
-        key: undefined,
-        registrationIdentity,
-        // Wrap the caller's driver factory in a thunk so resolving the options
-        // token (at bootstrap) does NOT build the driver — only the first
-        // storage operation, or multipart grant, calls it: once, or again on
-        // the next one until it succeeds.
-        useFactory: (...deps: InferTokens<Inject>) => {
-          let result: StorageAsyncResult | undefined;
-          const build = (): StorageAsyncResult => (result ??= readAsyncResult(useFactory(...deps)));
-          return {
-            registrationIdentity,
-            driver: () => build().driver,
-            multipartGrantSecret: () => build().multipartGrantSecret,
-          };
-        },
-      }),
-      module: StorageModule,
-    };
-  }
-}
+/**
+ * Registers one storage bucket: its `StorageService` (the default bucket) or
+ * `storageToken(name)` service, and optionally the HTTP controller.
+ *
+ * `name` and `http` are structural: `forRootAsync` takes them alongside its
+ * factory, which returns the driver and the other options.
+ */
+export class StorageModule extends ConfigurableModuleClass {}

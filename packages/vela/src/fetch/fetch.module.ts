@@ -1,13 +1,13 @@
 import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
-import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
+import { defineModule } from '../module/define-module';
 import { HttpService, HTTP_MODULE_OPTIONS } from './fetch.service';
 import type { HttpModuleOptions } from './fetch.types';
 
-const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<HttpModuleOptions>({
-  moduleName: 'Http',
-  optionsInjectionToken: HTTP_MODULE_OPTIONS,
-}).build();
+const { ConfigurableModuleClass } = defineModule<HttpModuleOptions>({
+  name: 'Http',
+  optionsToken: HTTP_MODULE_OPTIONS,
+});
 
 @Module({
   providers: [

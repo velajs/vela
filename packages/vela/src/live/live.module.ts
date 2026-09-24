@@ -2,7 +2,6 @@ import { defineModule } from '../module/define-module';
 import { Inject, Injectable, Optional } from '../container/decorators';
 import { defineProvider } from '../container/types';
 import type { DynamicModule } from '../registry/types';
-import { stableHash } from '../module/stable-hash';
 import { InMemoryCursorLog } from './live.cursor';
 import { LiveEngine } from './live.engine';
 import { LiveInspector } from './live.inspector';
@@ -31,22 +30,6 @@ class LivePlatformRef {
   }
 }
 
-const liveReferenceIds = new WeakMap<object, number>();
-let nextLiveReferenceId = 1;
-
-function liveReferenceId(value: unknown): string {
-  if (value === undefined) return 'none';
-  if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
-    let id = liveReferenceIds.get(value);
-    if (id === undefined) {
-      id = nextLiveReferenceId++;
-      liveReferenceIds.set(value, id);
-    }
-    return `object:${id}`;
-  }
-  return `${typeof value}:${String(value)}`;
-}
-
 /**
  * First-party live-query module (tag-based realtime reactivity) — authored,
  * like the queue module, entirely on vela's public API (`live-openness.test.ts`
@@ -73,20 +56,13 @@ function liveReferenceId(value: unknown): string {
  * writes that never touch a live token — so the lazy-module contract
  * ("nothing self-drives") rules laziness out.
  */
-const { ConfigurableModuleClass } = defineModule<LiveModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<LiveModuleOptions, 'presence'>({
   name: 'Live',
   optionsToken: LIVE_MODULE_OPTIONS,
-  key: (options) =>
-    stableHash({
-      driver: liveReferenceId(options?.driver),
-      log: liveReferenceId(options?.log),
-      identity: liveReferenceId(options?.identity),
-      authorizeDelivery: liveReferenceId(options?.authorizeDelivery),
-      maxSubscriptionsPerSocket: options?.maxSubscriptionsPerSocket ?? 100,
-      maxRefreshFanout: options?.maxRefreshFanout ?? 10_000,
-      maxTags: options?.maxTags ?? 100,
-      presence: options?.presence === false ? false : { ttlMs: options?.presence?.ttlMs ?? 30_000 },
-    }),
+  // One engine per application: a second configuration fails bootstrap, not merged.
+  structural: ['presence'],
+  // Presence is on unless disabled: `{}` and an absent `presence` are one engine.
+  defaults: { presence: {} },
   setup: ({ OPTIONS, options }) => ({
     providers: [
       LivePlatformRef,
@@ -114,10 +90,9 @@ const { ConfigurableModuleClass } = defineModule<LiveModuleOptions>({
       }),
       LiveEngine,
       LiveInspector,
-      // The built-in `$presence.roster` resolver. Skipping it is STRUCTURAL
-      // (`presence: false` must be visible at forRoot/forRootAsync call time,
-      // like queue's `queues`); a disabled-at-runtime service still no-ops.
-      ...(options?.presence === false ? [] : [PresenceResolver]),
+      // The built-in `$presence.roster` resolver. Skipping it is structural:
+      // `presence: false` is visible at the forRoot/forRootAsync call site.
+      ...(options.presence === false ? [] : [PresenceResolver]),
     ],
     exports: [
       LiveEngine,

@@ -43,13 +43,15 @@ export interface WebSocketModuleOptions {
  * is preserved and everything materializes at bootstrap's eager
  * instantiation, before any lifecycle hook or message dispatch.
  *
- * The instance key derives from the sync driver kind: two `forRoot()` calls
- * with the same driver kind dedup (HMR-idempotent); pass an explicit `key`
- * to run multiple same-kind instances side by side.
+ * The instance key derives from the structural sync driver's kind: importing
+ * the same configuration again dedups (HMR-idempotent), a different driver of
+ * the same kind fails bootstrap; pass an explicit `key` to run multiple same-kind
+ * instances side by side.
  */
-const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions, 'sync'>({
   name: 'WebSocket',
   optionsToken: WS_MODULE_OPTIONS,
+  structural: ['sync'],
   key: (options) => `ws#${options.sync?.kind ?? 'local'}`,
   setup: ({ OPTIONS }) => ({
     imports: [WebSocketRoutesModule],

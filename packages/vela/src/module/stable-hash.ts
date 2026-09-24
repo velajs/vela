@@ -9,6 +9,10 @@
  * `__cls:ClassName` markers. Two distinct closures with the same source code
  * collide; module authors who care about that should pass an explicit `key`.
  *
+ * A property set to `undefined` is left out at every depth, as the module
+ * loader's comparison of repeated imports leaves it out: `{ a: undefined }`
+ * hashes like `{}`. Array positions still count.
+ *
  * Not cryptographic. Sufficient for discriminating module instances within
  * an app.
  */
@@ -47,7 +51,9 @@ function stableStringify(value: unknown): string {
 }
 
 function stringifyOwnProps(obj: Record<string, unknown>): string {
-  const keys = Object.keys(obj).sort();
+  const keys = Object.keys(obj)
+    .filter((key) => obj[key] !== undefined)
+    .toSorted();
   const parts = keys.map((k) => JSON.stringify(k) + ':' + stableStringify(obj[k]));
   return '{' + parts.join(',') + '}';
 }

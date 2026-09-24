@@ -57,13 +57,13 @@ describe('VelaApplication.mountOpenApi', () => {
     expect(html).toContain('data-url="/openapi.json"');
   });
 
-  it('respects a custom uiPath and JSON path together', async () => {
+  it('respects a custom UI path and JSON path together', async () => {
     const { app, document } = await buildApp();
     app.mountOpenApi({
       document,
-      path: '/v3/api-docs',
+      specPath: '/v3/api-docs',
       ui: 'scalar',
-      uiPath: '/api-docs',
+      scalarPath: '/api-docs',
     });
 
     const json = await app.getHonoApp().request('/v3/api-docs');

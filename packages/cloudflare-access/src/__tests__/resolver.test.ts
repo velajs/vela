@@ -34,28 +34,28 @@ describe('createAccessResolver', () => {
     expect(identity?.issuer).toBe(preset.issuer);
     expect(identity?.subject).toBe('user-42');
     expect(identity?.principalType).toBe('user');
-    expect(identity?.userId).toBe('user-42');
+    expect(identity?.subject).toBe('user-42');
     expect(identity?.email).toBe('ada@example.com');
     expect(identity?.groups).toEqual(['admins']);
     expect(Number.isSafeInteger(identity?.expiresAtMs)).toBe(true);
     expect(identity?.claims.iss).toBe(preset.issuer);
   });
 
-  it('derives userId from sub, then email, then common_name', async () => {
+  it('derives the subject from sub, then email, then common_name', async () => {
     const bySub = await resolver()(
       requestWithHeader(preset.header, await tokenRequest({}, 'sub-1')),
     );
-    expect(bySub?.userId).toBe('sub-1');
+    expect(bySub?.subject).toBe('sub-1');
 
     const byEmail = await resolver()(
       requestWithHeader(preset.header, await tokenRequest({ email: 'ada@example.com' })),
     );
-    expect(byEmail?.userId).toBe('ada@example.com');
+    expect(byEmail?.subject).toBe('ada@example.com');
 
     const byCommonName = await resolver()(
       requestWithHeader(preset.header, await tokenRequest({ common_name: 'svc-token' })),
     );
-    expect(byCommonName?.userId).toBe('svc-token');
+    expect(byCommonName?.subject).toBe('svc-token');
     expect(byCommonName?.commonName).toBe('svc-token');
   });
 
@@ -74,7 +74,7 @@ describe('createAccessResolver', () => {
     const identity = await custom(
       requestWithHeader(preset.header, await tokenRequest({}, 'user-42')),
     );
-    expect(identity?.userId).toBe('user-42');
+    expect(identity?.subject).toBe('user-42');
     expect(identity?.displayLabel).toBe('Ada');
   });
 
@@ -150,7 +150,6 @@ describe('composeResolvers', () => {
     issuer: 'https://issuer.example',
     subject: 'from-second',
     principalType: 'user',
-    userId: 'from-second',
     expiresAtMs: Date.now() + 60_000,
     claims: {},
   };

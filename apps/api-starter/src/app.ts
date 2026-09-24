@@ -111,18 +111,22 @@ class TodoGateway {}
   imports: [
     BetterAuthModule.forRootAsync({
       inject: [ENV],
-      issuer: 'api-starter',
-      useFactory: (env) => {
-        const db = drizzle(env.DB, { schema: authSchema });
-        return betterAuth({
-          secret: env.BETTER_AUTH_SECRET,
-          baseURL: env.APP_ORIGIN,
-          database: authAdapter(db, { provider: 'sqlite', schema: authSchema }),
-          emailAndPassword: { enabled: true, autoSignIn: true },
-          user: { deleteUser: { enabled: true } },
-          trustedOrigins: [env.APP_ORIGIN],
-        });
-      },
+      useFactory: (env) => ({
+        issuer: 'api-starter',
+        // Built on first authentication, not while the application initializes.
+        auth: () =>
+          betterAuth({
+            secret: env.BETTER_AUTH_SECRET,
+            baseURL: env.APP_ORIGIN,
+            database: authAdapter(drizzle(env.DB, { schema: authSchema }), {
+              provider: 'sqlite',
+              schema: authSchema,
+            }),
+            emailAndPassword: { enabled: true, autoSignIn: true },
+            user: { deleteUser: { enabled: true } },
+            trustedOrigins: [env.APP_ORIGIN],
+          }),
+      }),
     }),
     CrudModule.forRootAsync({
       inject: [ENV],

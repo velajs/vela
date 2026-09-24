@@ -4,11 +4,16 @@ import { BetterAuthService } from './better-auth.service';
 import { Public } from './decorators/public.decorator';
 import { normalizeBetterAuthBasePath } from './base-path';
 
+// One decorated class per base path: every registration of a path, and every
+// call, shares it (the class reads nothing else).
+const controllers = new Map<string, Type>();
+
 /**
  * Build a catch-all controller that mounts better-auth's handler at `basePath`
  * (default `/api/auth`). This is a factory because vela reads a controller's
  * route off the class at decoration time, so a custom base path needs its own
  * decorated class — the path can't be parametrized on a single shared class.
+ * Calls with the same base path return the same class.
  *
  * Two base paths to keep consistent:
  * - this `basePath` is RELATIVE to vela's `globalPrefix` (always prepended);
@@ -19,6 +24,8 @@ import { normalizeBetterAuthBasePath } from './base-path';
  */
 export function createBetterAuthCatchallController(basePath: string = '/api/auth'): Type {
   const normalizedBasePath = normalizeBetterAuthBasePath(basePath);
+  const existing = controllers.get(normalizedBasePath);
+  if (existing) return existing;
   @Public(true)
   @Controller(normalizedBasePath)
   class BetterAuthCatchallController {
@@ -32,5 +39,6 @@ export function createBetterAuthCatchallController(basePath: string = '/api/auth
       return this.auth.handler(c.req.raw);
     }
   }
+  controllers.set(normalizedBasePath, BetterAuthCatchallController);
   return BetterAuthCatchallController;
 }

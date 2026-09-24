@@ -56,7 +56,6 @@ export function getContextIdentity(context: ExecutionContext): TrustedRequestIde
 export function identityFromTrusted(identity: TrustedRequestIdentity): Identity {
   return {
     ...identity.principal,
-    userId: identity.principal.subject,
     roles: identity.roles ?? [],
     ...(identity.tenantId === undefined ? {} : { tenantId: identity.tenantId }),
     ...(identity.expiresAtMs === undefined ? {} : { expiresAtMs: identity.expiresAtMs }),

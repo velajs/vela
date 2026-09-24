@@ -83,7 +83,7 @@ describe('CloudflareApplication.mountOpenApi', () => {
     expect(result).toBe(app);
   });
 
-  it('honors custom path / uiPath options', async () => {
+  it('honors custom specPath / scalarPath options', async () => {
     @Module({})
     class AppModule {}
 
@@ -91,9 +91,9 @@ describe('CloudflareApplication.mountOpenApi', () => {
     const app = await createCloudflareApp(AppModule, { env });
     app.mountOpenApi({
       document,
-      path: '/openapi.json',
+      specPath: '/openapi.json',
       ui: 'scalar',
-      uiPath: '/reference',
+      scalarPath: '/reference',
     });
     const hono = app.getHonoApp();
 

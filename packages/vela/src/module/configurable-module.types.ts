@@ -4,23 +4,29 @@ import type { DynamicModule, ModuleImport } from '../registry/types';
 /**
  * Arbitrary extra keys a module accepts alongside its options bag (e.g.
  * `isGlobal`). Kept separate from the options type so the extras-transform can
- * reshape the generated {@link DynamicModule} without polluting `Opts`.
+ * reshape the generated {@link DynamicModule} without polluting `Opts`: extras
+ * never reach the options token and never change the instance key.
  */
 export type ConfigurableModuleExtras = Record<string, unknown>;
 
 /** Controls shared by synchronous and asynchronous module registrations. */
 export interface ModuleRegistrationOptions {
+  /** Names the instance explicitly; identical `(class, key)` imports are one instance. */
   key?: string;
+  /** Defer the instance to first use (see {@link DynamicModule.lazy}). */
   lazy?: boolean;
 }
 
-/** Call-time structure excludes keys consumed by asynchronous DI wiring. */
-type StructuralModuleOptions<Opts> = {
-  [K in Exclude<
-    keyof Opts,
-    'imports' | 'key' | 'lazy' | 'inject' | 'useFactory' | 'useClass' | 'useExisting'
-  >]?: Opts[K] | undefined;
-};
+/**
+ * What an asynchronous options factory returns: the options minus the
+ * structural fields `S`, which the call site supplies (a returned structural
+ * field fails to compile). Distributes over a union of option shapes.
+ */
+export type ModuleFactoryOptions<Opts, S extends keyof Opts = never> = [S] extends [never]
+  ? Opts
+  : Opts extends unknown
+    ? Omit<Opts, S> & Partial<Record<S, never>>
+    : never;
 
 /**
  * Reshape the generated definition based on the resolved extras. Runs after the
@@ -41,21 +47,21 @@ export type ConfigurableModuleOptionsFactory<Opts, MethodName extends string> = 
 };
 
 /**
- * Async configuration accepted by the generated `<method>Async` static.
- *
- * Superset of `AsyncModuleOptions` (`registry/types.ts`): adds NestJS's
- * `useClass`/`useExisting` while preserving the headline `const Inject` tuple
- * inference for `useFactory` params (no `as const` needed at the call site).
+ * Async configuration accepted by the generated `<method>Async` static: the
+ * structural fields `Pick<Opts, S>` at the call site, and a factory that
+ * returns the rest (`Omit<Opts, S>`). The `const Inject` tuple infers the
+ * `useFactory` parameters (no `as const` needed at the call site).
  */
 export type ConfigurableModuleAsyncOptions<
   Opts,
+  S extends keyof Opts = never,
   MethodName extends string = 'create',
   Inject extends readonly Token[] = readonly Token[],
 > = {
   imports?: ModuleImport[];
 } & ModuleRegistrationOptions &
-  StructuralModuleOptions<Opts> &
-  ConfigurableModuleAsyncFactory<Opts, MethodName, Inject>;
+  Pick<Opts, S> &
+  ConfigurableModuleAsyncFactory<ModuleFactoryOptions<Opts, S>, MethodName, Inject>;
 
 /** DI factory alternatives kept separate from call-time structural options. */
 export type ConfigurableModuleAsyncFactory<
@@ -93,6 +99,11 @@ export interface ConfigurableModuleBuilderOptions<Opts = unknown> {
   optionsInjectionToken?: InjectionToken<Opts>;
 }
 
+/** The synchronous static's options: optional when every option is. */
+type SyncOptionsArgs<Opts, Extras extends ConfigurableModuleExtras> = {} extends Opts
+  ? [options?: Opts & Partial<Extras> & ModuleRegistrationOptions]
+  : [options: Opts & Partial<Extras> & ModuleRegistrationOptions];
+
 /**
  * The generated base class type, carrying dynamically-named `<method>` and
  * `<method>Async` statics. A module does `class Foo extends ConfigurableModuleClass {}`
@@ -103,17 +114,13 @@ export type ConfigurableModuleClassType<
   MethodKey extends string,
   FactoryMethodKey extends string,
   Extras extends ConfigurableModuleExtras,
+  S extends keyof Opts = never,
 > = (new () => object) &
-  Record<
-    MethodKey,
-    (options: Opts & Partial<Extras> & ModuleRegistrationOptions) => DynamicModule
-  > &
+  Record<MethodKey, (...options: SyncOptionsArgs<Opts, Extras>) => DynamicModule> &
   Record<
     `${MethodKey}Async`,
     <const Inject extends readonly Token[]>(
-      options: ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey, Inject> &
-        Partial<Extras> &
-        ModuleRegistrationOptions,
+      options: ConfigurableModuleAsyncOptions<Opts, S, FactoryMethodKey, Inject> & Partial<Extras>,
     ) => DynamicModule
   >;
 
@@ -122,37 +129,20 @@ export interface ConfigurableModuleHost<
   MethodKey extends string = 'forRoot',
   FactoryMethodKey extends string = 'create',
   Extras extends ConfigurableModuleExtras = { isGlobal?: boolean },
+  S extends keyof Opts = never,
 > {
   /** Base class to `extends`. */
-  ConfigurableModuleClass: ConfigurableModuleClassType<Opts, MethodKey, FactoryMethodKey, Extras>;
+  ConfigurableModuleClass: ConfigurableModuleClassType<
+    Opts,
+    MethodKey,
+    FactoryMethodKey,
+    Extras,
+    S
+  >;
   /** The options token — inject it into derived providers (`inject: [MODULE_OPTIONS_TOKEN]`). */
   MODULE_OPTIONS_TOKEN: InjectionToken<Opts>;
   /** Type-only helper: the shape accepted by the sync `<method>` static. */
   OPTIONS_TYPE: Opts & Partial<Extras> & ModuleRegistrationOptions;
   /** Type-only helper: the shape accepted by the `<method>Async` static. */
-  ASYNC_OPTIONS_TYPE: ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey> &
-    Partial<Extras> &
-    ModuleRegistrationOptions;
-}
-
-/**
- * Low-level engine spec (see `defineConfigurableModule`). Used for the cases a
- * class-mixin can't express — notably runtime-generated module classes whose
- * providers depend on a call-time argument (e.g. Cloudflare binding modules).
- */
-export interface DefineConfigurableModuleSpec<Args> {
-  /** The module class to reference in `{ module }`. */
-  module: Type;
-  /** Static method name to generate (e.g. `forRoot`). */
-  methodName?: string;
-  /** Derive the instance `key` from the call args. */
-  keyFrom: (args: Args) => string;
-  /** Build the provider list from the call args. */
-  providers: (args: Args) => DynamicModule['providers'];
-  /** Optional exports (usually prefer declaring these on `@Module`). */
-  exports?: DynamicModule['exports'];
-  /** Optional imports. */
-  imports?: (args: Args) => DynamicModule['imports'];
-  /** Mark the produced module global. */
-  global?: boolean;
+  ASYNC_OPTIONS_TYPE: ConfigurableModuleAsyncOptions<Opts, S, FactoryMethodKey> & Partial<Extras>;
 }

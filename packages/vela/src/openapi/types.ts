@@ -201,8 +201,4 @@ export interface MountOpenApiOptions {
   redocPath?: string;
   /** Page title for the UIs. */
   title?: string;
-  /** @deprecated use `specPath`. Back-compat alias; if set, overrides specPath default. */
-  path?: string;
-  /** @deprecated single-UI path override; applies to the single `ui` when a string. */
-  uiPath?: string;
 }

@@ -4,20 +4,14 @@ import {
   APP_GUARD,
   Controller,
   Get,
+  Global,
   Injectable,
   InjectionToken,
   Module,
   VelaFactory,
   defineModule,
 } from '../index.js';
-import {
-  lazyProvider,
-  moduleKey,
-  moduleToken,
-  provideGlobal,
-  sideEffectModule,
-  stableHash,
-} from '../module-kit.js';
+import { lazyProvider, sideEffectModule, stableHash } from '../module-kit.js';
 import type { CanActivate, DynamicModule } from '../index.js';
 
 interface WidgetOptions {
@@ -28,30 +22,32 @@ interface WidgetOptions {
 const WIDGET_OPTIONS = new InjectionToken<WidgetOptions>('WIDGET_OPTIONS_TEST');
 
 describe('defineModule', () => {
-  it('generates forRoot with a stableHash-derived key and the options provider', () => {
-    const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<WidgetOptions>({
+  it('generates forRoot with a structural key and the options provider', () => {
+    const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<WidgetOptions, 'color'>({
       name: 'Widget',
       optionsToken: WIDGET_OPTIONS,
+      structural: ['color'],
     });
     class WidgetModule extends ConfigurableModuleClass {}
 
-    const dyn = WidgetModule.forRoot({ color: 'red' });
+    const dyn = WidgetModule.forRoot({ color: 'red', size: 1 });
     expect(dyn.module).toBe(WidgetModule);
     expect(dyn.key).toBe(stableHash({ color: 'red' }));
     expect(MODULE_OPTIONS_TOKEN).toBe(WIDGET_OPTIONS);
     expect(dyn.providers).toContainEqual(
-      defineProvider(WIDGET_OPTIONS, { useValue: { color: 'red' } }),
+      defineProvider(WIDGET_OPTIONS, { useValue: { color: 'red', size: 1 } }),
     );
 
-    // Identical options dedup; distinct coexist; explicit key wins.
-    expect(WidgetModule.forRoot({ color: 'red' }).key).toBe(dyn.key);
+    // Structural fields decide the key; other options never do; explicit key wins.
+    expect(WidgetModule.forRoot({ color: 'red', size: 2 }).key).toBe(dyn.key);
     expect(WidgetModule.forRoot({ color: 'blue' }).key).not.toBe(dyn.key);
     expect(WidgetModule.forRoot({ color: 'red', key: 'A' }).key).toBe('A');
   });
 
   it('spec.key overrides the default derivation', () => {
-    const { ConfigurableModuleClass } = defineModule<WidgetOptions>({
+    const { ConfigurableModuleClass } = defineModule<WidgetOptions, 'color'>({
       name: 'Widget',
+      structural: ['color'],
       key: (o) => `w#${o.color ?? 'none'}`,
     });
     class WidgetModule extends ConfigurableModuleClass {}
@@ -60,7 +56,7 @@ describe('defineModule', () => {
     expect(WidgetModule.forRoot({ color: 'red', size: 2 }).key).toBe('w#red');
   });
 
-  it('setup() contributes providers/exports computed from options, and the global slot lowers to APP_* wiring', () => {
+  it('setup() contributes providers/exports computed from structural options, and the global slot lowers to APP_* wiring', () => {
     const SIZE = new InjectionToken<number>('WIDGET_SIZE_TEST');
 
     @Injectable()
@@ -70,8 +66,9 @@ describe('defineModule', () => {
       }
     }
 
-    const { ConfigurableModuleClass } = defineModule<WidgetOptions>({
+    const { ConfigurableModuleClass } = defineModule<WidgetOptions, 'size'>({
       name: 'Widget',
+      structural: ['size'],
       setup: ({ OPTIONS, options }) => ({
         providers: [
           defineProvider(SIZE, {
@@ -92,16 +89,10 @@ describe('defineModule', () => {
     expect(dyn.providers).toContainEqual(defineProvider(APP_GUARD, { useExisting: WidgetGuard }));
   });
 
-  it('forRootAsync merges structural fields under the resolved options', async () => {
-    const seen: WidgetOptions[] = [];
-
-    @Injectable()
-    class Probe {
-      constructor() {}
-    }
-
-    const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<WidgetOptions>({
+  it('forRootAsync completes the resolved options with the structural fields', async () => {
+    const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<WidgetOptions, 'size'>({
       name: 'Widget',
+      structural: ['size'],
     });
     class WidgetModule extends ConfigurableModuleClass {}
 
@@ -114,9 +105,7 @@ describe('defineModule', () => {
 
     const app = await VelaFactory.create(AppModule);
     const resolved = await app.getContainer().resolveAsync<WidgetOptions>(MODULE_OPTIONS_TOKEN);
-    seen.push(resolved);
     expect(resolved).toEqual({ size: 7, color: 'green' });
-    void Probe;
   });
 
   it('an app actually resolves derived providers wired through setup()', async () => {
@@ -148,10 +137,10 @@ describe('lazyProvider', () => {
     const build = vi.fn(() => ({ id: 1 }));
     const THUNK = new InjectionToken<() => { id: number }>('LAZY_TEST');
 
+    @Global()
     @Module({
       providers: [lazyProvider(defineProvider(THUNK, { inject: [], useFactory: () => build() }))],
       exports: [THUNK],
-      isGlobal: true,
     })
     class LazyModule {}
 
@@ -172,12 +161,12 @@ describe('lazyProvider', () => {
     const build = vi.fn(() => ({}));
     const THUNK = new InjectionToken<() => object>('LAZY_NO_MEMO_TEST');
 
+    @Global()
     @Module({
       providers: [
         lazyProvider({ inject: [], provide: THUNK, useFactory: () => build(), memoize: false }),
       ],
       exports: [THUNK],
-      isGlobal: true,
     })
     class LazyModule {}
 
@@ -191,23 +180,8 @@ describe('lazyProvider', () => {
   });
 });
 
-describe('provideGlobal / sideEffectModule / moduleToken / moduleKey', () => {
-  it('provideGlobal returns the class provider + APP_* useExisting pair', () => {
-    @Injectable()
-    class G implements CanActivate {
-      canActivate(): boolean {
-        return true;
-      }
-    }
-    expect(provideGlobal('guard', G)).toEqual([G, defineProvider(APP_GUARD, { useExisting: G })]);
-
-    const instance = { canActivate: () => true };
-    expect(provideGlobal('guard', instance)).toEqual([
-      defineProvider(APP_GUARD, { useValue: instance }),
-    ]);
-  });
-
-  it('sideEffectModule string owners stay isolated even for identical contributions', async () => {
+describe('sideEffectModule', () => {
+  it('string owners stay isolated even for identical contributions', async () => {
     const MSGS = new InjectionToken<string[]>('SIDE_EFFECT_MSGS_TEST');
     const contribution = (): DynamicModule =>
       sideEffectModule('TestMessages', {
@@ -235,11 +209,5 @@ describe('provideGlobal / sideEffectModule / moduleToken / moduleKey', () => {
 
     const app = await VelaFactory.create(AppModule);
     expect(app).toBeDefined();
-  });
-
-  it('moduleToken mints an InjectionToken; moduleKey is stableHash', () => {
-    const t = moduleToken<number>('pkg:area:thing');
-    expect(t).toBeInstanceOf(InjectionToken);
-    expect(moduleKey({ a: 1 })).toBe(stableHash({ a: 1 }));
   });
 });

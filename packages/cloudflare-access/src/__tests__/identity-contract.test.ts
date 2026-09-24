@@ -126,7 +126,7 @@ describe('createAccessResolver + identity contract', () => {
     const identity = await resolve(requestWithHeader(preset.header, token));
 
     expect(identity).not.toBeNull();
-    expect(identity?.userId).toBe('user-42');
+    expect(identity?.subject).toBe('user-42');
     // Undeclared `role` survives on the forwarded claim set.
     expect(identity?.claims.role).toBe('admin');
   });

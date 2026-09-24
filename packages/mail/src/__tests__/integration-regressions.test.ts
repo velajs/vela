@@ -227,8 +227,9 @@ describe('application isolation and queue routing', () => {
     await expect(
       appWith([
         QueueModule.forRoot(),
-        ...[1, 2].map(() =>
+        ...['first', 'second'].map((key) =>
           MailModule.forRoot({
+            key,
             from: 'sender@example.com',
             queue: {},
             transport: createMailCatcher(),
@@ -241,8 +242,18 @@ describe('application isolation and queue routing', () => {
   it('rejects conflicting queues before application lifecycle hooks can send', async () => {
     const catcher = createMailCatcher();
     let started = false;
-    const first = MailModule.forRoot({ from: 'sender@example.com', queue: {}, transport: catcher });
-    const second = MailModule.forRoot({ from: 'other@example.com', queue: {}, transport: catcher });
+    const first = MailModule.forRoot({
+      key: 'first',
+      from: 'sender@example.com',
+      queue: {},
+      transport: catcher,
+    });
+    const second = MailModule.forRoot({
+      key: 'second',
+      from: 'other@example.com',
+      queue: {},
+      transport: catcher,
+    });
     @Injectable()
     class Startup {
       constructor(@Inject(MailService) readonly mailer: MailService) {}
@@ -267,13 +278,14 @@ describe('application isolation and queue routing', () => {
     await expect(
       appWith([
         MailModule.forRootAsync({
+          // @ts-expect-error A factory never returns a structural option; untyped callers fail at bootstrap.
           useFactory: () => ({
             from: 'sender@example.com',
             queue: { name: 'hidden' },
           }),
         }),
       ]),
-    ).rejects.toThrow('must be structural options');
+    ).rejects.toThrow("the factory returned the structural option 'queue'");
   });
 });
 

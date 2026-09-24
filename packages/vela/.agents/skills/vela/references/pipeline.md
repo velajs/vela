@@ -65,8 +65,8 @@ app.useGlobalGuards(new RolesGuard(app.get(Reflector)))
    .useGlobalInterceptors(new SerializerInterceptor())
    .useGlobalFilters(new AllExceptionsFilter());
 
-// 3. From a custom module via provideGlobal()
-providers: [AuthGuard, ...provideGlobal('guard', AuthGuard)]
+// 3. From a defineModule setup via the `global:` slot, or a provider
+setup: () => ({ global: { guards: [AuthGuard] } })   // or providers: [{ provide: APP_GUARD, useClass: AuthGuard }]
 ```
 
 `APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `APP_MIDDLEWARE` are `InjectionToken`s. Multiple providers for one token all execute.

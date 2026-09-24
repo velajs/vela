@@ -4,4 +4,5 @@ export type {
   ModuleImport,
   ModuleMetadata,
   ModuleOptions,
+  ModuleRecord,
 } from '../registry/types';

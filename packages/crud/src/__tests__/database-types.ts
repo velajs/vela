@@ -1,7 +1,6 @@
 /** Compile-time registry, native handle, resource model and async provider inference. */
 import { expectTypeOf } from 'vitest';
-import { defineProvider } from '@velajs/vela';
-import { moduleToken } from '@velajs/vela/module-kit';
+import { defineProvider, InjectionToken } from '@velajs/vela';
 import { z } from 'zod';
 import { defineModel } from '../model/define-model';
 import { defineCrudDatabase, createCrudDatabaseRegistry, databaseResource } from '../databases';
@@ -50,8 +49,8 @@ function negatives() {
   return wrong;
 }
 void negatives;
-const environment = moduleToken<{ database: typeof native }>('database-env');
-const registryToken = moduleToken<typeof databases>('typed-databases');
+const environment = new InjectionToken<{ database: typeof native }>('database-env');
+const registryToken = new InjectionToken<typeof databases>('typed-databases');
 defineProvider(registryToken, {
   inject: [environment],
   useFactory: async (env) => {
@@ -59,7 +58,7 @@ defineProvider(registryToken, {
     return databases;
   },
 });
-defineProvider(moduleToken<typeof native>('native-database'), {
+defineProvider(new InjectionToken<typeof native>('native-database'), {
   inject: [registryToken],
   useFactory: async (registry) => registry.get('primary').handle,
 });

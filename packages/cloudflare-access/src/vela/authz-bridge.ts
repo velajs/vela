@@ -14,7 +14,6 @@ export const identityFromAccess = (identity: ResolvedIdentity): Identity => {
     issuer: identity.issuer,
     subject: identity.subject,
     principalType: identity.principalType,
-    userId: identity.userId,
     roles: identity.roles ?? [],
     claims: identity.claims,
     expiresAtMs: identity.expiresAtMs,

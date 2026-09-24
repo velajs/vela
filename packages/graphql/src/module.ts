@@ -1,11 +1,12 @@
 import {
   All,
+  defineModule,
   Controller,
   defineProvider,
   Inject,
   InjectionToken,
   Req,
-  type DynamicModule,
+  type Type,
   type ModuleImport,
   type VelaContext,
 } from '@velajs/vela';
@@ -66,53 +67,89 @@ class GraphqlService {
 }
 
 export interface GraphqlModuleOptions extends GraphqlOptions {
+  /** Modules the endpoint's field guards, pipes and interceptors resolve from. Structural. */
   readonly imports?: ModuleImport[];
 }
 
-export class GraphqlModule {
-  static forRoot(options: GraphqlModuleOptions): DynamicModule {
-    const path = options.path ?? '/graphql';
-    // Independent linear scans avoid backtracking between segments and optional separators.
-    if (
-      !path.startsWith('/') ||
-      (path.length > 1 && path.endsWith('/')) ||
-      path.includes('//') ||
-      /[^A-Za-z0-9_/-]/.test(path)
-    ) {
-      throw new TypeError(
-        'GraphQL path must be an absolute literal route without a trailing slash',
-      );
+/** The options `forRootAsync` takes alongside its factory: they shape the module graph. */
+export type GraphqlStructuralOption = 'path' | 'imports';
+
+const DEFAULT_GRAPHQL_PATH = '/graphql';
+
+function graphqlPath(path: string | undefined): string {
+  const resolved = path ?? DEFAULT_GRAPHQL_PATH;
+  // Independent linear scans avoid backtracking between segments and optional separators.
+  if (
+    !resolved.startsWith('/') ||
+    (resolved.length > 1 && resolved.endsWith('/')) ||
+    resolved.includes('//') ||
+    /[^A-Za-z0-9_/-]/.test(resolved)
+  ) {
+    throw new TypeError('GraphQL path must be an absolute literal route without a trailing slash');
+  }
+  return resolved;
+}
+
+interface Endpoint {
+  readonly service: InjectionToken<GraphqlService>;
+  readonly controller: Type;
+}
+
+// One service token and controller class per mounted path, so a repeated
+// registration of a path shares them rather than declaring new classes.
+const endpoints = new Map<string, Endpoint>();
+
+function endpointFor(path: string): Endpoint {
+  const existing = endpoints.get(path);
+  if (existing) return existing;
+  const service = new InjectionToken<GraphqlService>(`GraphqlService:${path}`);
+  class GraphqlController {
+    readonly #service: GraphqlService;
+    constructor(value: GraphqlService) {
+      this.#service = value;
     }
-    const service = new InjectionToken<GraphqlService>('GraphqlService');
-    class GraphqlController {
-      readonly #service: GraphqlService;
-      constructor(value: GraphqlService) {
-        this.#service = value;
-      }
-      handle(context: VelaContext): Promise<Response> {
-        return this.#service.handle(context);
-      }
+    handle(context: VelaContext): Promise<Response> {
+      return this.#service.handle(context);
     }
-    // Explicit tokens keep the package independent of decorator compiler metadata.
-    Controller(path)(GraphqlController);
-    Inject(service)(GraphqlController, undefined, 0);
-    All()(
-      GraphqlController.prototype,
-      'handle',
-      Object.getOwnPropertyDescriptor(GraphqlController.prototype, 'handle')!,
-    );
-    Req()(GraphqlController.prototype, 'handle', 0);
-    class Registration {}
+  }
+  // Explicit tokens keep the package independent of decorator compiler metadata.
+  Controller(path)(GraphqlController);
+  Inject(service)(GraphqlController, undefined, 0);
+  All()(
+    GraphqlController.prototype,
+    'handle',
+    Object.getOwnPropertyDescriptor(GraphqlController.prototype, 'handle')!,
+  );
+  Req()(GraphqlController.prototype, 'handle', 0);
+  const endpoint = { service, controller: GraphqlController };
+  endpoints.set(path, endpoint);
+  return endpoint;
+}
+
+const { ConfigurableModuleClass } = defineModule<GraphqlModuleOptions, GraphqlStructuralOption>({
+  name: 'Graphql',
+  structural: ['path', 'imports'],
+  defaults: { path: DEFAULT_GRAPHQL_PATH },
+  // One endpoint per path: another configuration of a path fails bootstrap.
+  key: (options) => graphqlPath(options.path),
+  setup: ({ OPTIONS, options }) => {
+    const { service, controller } = endpointFor(graphqlPath(options.path));
     return {
-      module: Registration,
       imports: options.imports ?? [],
-      controllers: [GraphqlController],
+      controllers: [controller],
       providers: [
         defineProvider(service, {
-          inject: [DiscoveryService],
-          useFactory: (discovery) => new GraphqlService(options, discovery),
+          inject: [DiscoveryService, OPTIONS],
+          useFactory: (discovery, resolved) => new GraphqlService(resolved, discovery),
         }),
       ],
     };
-  }
-}
+  },
+});
+
+/**
+ * Mounts a GraphQL endpoint (default `/graphql`) served by the configured
+ * driver. `path` and `imports` are structural: `forRootAsync` takes them
+ * alongside its factory, which returns the schema, driver and field pipeline.
+ */
+export class GraphqlModule extends ConfigurableModuleClass {}
