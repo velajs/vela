@@ -138,7 +138,9 @@ export class TestingModuleBuilder {
    * Supply the dependencies no provider satisfies. `mocker(token)` runs once
    * per missing token, before anything is constructed, and its value is
    * registered in each module that injects the token; optional parameters and
-   * provided or overridden tokens never reach it.
+   * provided or overridden tokens never reach it. A falsy result supplies
+   * nothing: the token stays unresolved and `compile()` rejects with
+   * `UnresolvedDependencyError`, as in Nest.
    */
   useMocker(mocker: MockFactory): this {
     this.#mocker = mocker;

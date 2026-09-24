@@ -9,6 +9,7 @@ import {
   defineProvider,
   type Token,
 } from '@velajs/vela';
+import { UnresolvedDependencyError } from '@velajs/vela/module-kit';
 import { Test } from '../test.js';
 
 const STORE = new InjectionToken<{ read(): string }>('store');
@@ -124,6 +125,23 @@ describe('useMocker()', () => {
     } finally {
       await moduleRef.close();
     }
+  });
+
+  it('leaves a dependency unresolved when the mocker returns nothing for it, as in Nest', async () => {
+    const requested: Token[] = [];
+    const compiling = Test.createTestingModule({ providers: [SignupService] })
+      .useMocker((token) => {
+        requested.push(token);
+        return token === Mailer ? { send: (to: string) => `mocked ${to}` } : undefined;
+      })
+      .compile();
+    const error = await compiling.then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(UnresolvedDependencyError);
+    expect(error).toMatchObject({ className: 'SignupService', token: CLOCK });
+    expect(requested).toEqual([Mailer, CLOCK]);
   });
 
   it('leaves provided and overridden tokens to their providers', async () => {

@@ -113,8 +113,10 @@ const worker = await createTestingWorker(AppModule, {
 - `useMocker(factory)` supplies the dependencies nothing provides, as in Nest:
   `factory(token)` runs once for each token a constructor or factory injects that
   no visible provider satisfies, before anything is constructed, and its value is
-  registered in each module that needs it. Optional parameters, `ModuleRef`,
-  `InjectionToken` defaults and provided or overridden tokens never reach it.
+  registered in each module that needs it. A falsy result (such as `undefined`)
+  supplies nothing, so the dependency stays unresolved and compiling fails with
+  `UnresolvedDependencyError`. Optional parameters, `ModuleRef`, `InjectionToken`
+  defaults and provided or overridden tokens never reach it.
 
 Overrides apply after the graph loads and before construction, so replaced
 providers are never built and effective request scopes are recomputed.

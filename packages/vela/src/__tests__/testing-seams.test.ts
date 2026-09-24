@@ -12,6 +12,7 @@ import {
 } from '../index';
 import { bootstrap } from '../factory/bootstrap';
 import { finalizeApplication } from '../factory/finalize';
+import { UnresolvedDependencyError } from '../container/types';
 
 // The two bootstrap seams @velajs/testing builds overrideModule() and
 // useMocker() on: module substitution while the graph loads, and supplying the
@@ -161,6 +162,30 @@ describe('supplying missing dependencies', () => {
     } finally {
       await app.dispose();
     }
+  });
+
+  it('registers nothing for a token the supplier returns no value for', async () => {
+    @Injectable()
+    class Billing {
+      constructor(readonly mailer: Mailer) {}
+    }
+    @Module({ providers: [Signup, Billing] })
+    class App {}
+
+    const prepared = await bootstrap(App);
+    const requested: unknown[] = [];
+    prepared.container.supplyMissingDependencies((token) => {
+      requested.push(token);
+      return token === CLOCK ? { now: () => 1 } : undefined;
+    });
+    // Once per token, though Signup and Billing both need Mailer.
+    expect(requested).toEqual([Mailer, CLOCK]);
+    const failure = await finalizeApplication(prepared).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(UnresolvedDependencyError);
+    expect(failure).toMatchObject({ token: Mailer });
   });
 
   it('supplies nothing when every dependency is provided', async () => {

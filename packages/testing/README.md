@@ -112,7 +112,9 @@ override of a module wins.
 Nest: after the overrides and before anything is constructed, `factory(token)`
 runs once for each token some constructor or factory needs and nothing visible
 provides, and its value is registered in each module that injects the token.
-`@Optional()` parameters, `ModuleRef`, `InjectionToken` defaults and provided or
+A falsy result (such as `undefined`) supplies nothing: the dependency stays
+unresolved and `compile()` rejects with `UnresolvedDependencyError`, so a
+missing import is not hidden behind a partial mocker. `@Optional()` parameters, `ModuleRef`, `InjectionToken` defaults and provided or
 overridden tokens never reach it; `moduleRef.get(token)` returns the supplied
 value.
 

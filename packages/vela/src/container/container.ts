@@ -798,6 +798,8 @@ export class Container {
    * Optional parameters, `ModuleRef` and InjectionToken defaults resolve on
    * their own and are never supplied; an ambiguous token keeps its error.
    * `supply` runs once per token, and every module missing it shares the value.
+   * A falsy result supplies nothing, so the token stays unresolved and its
+   * dependents fail with `UnresolvedDependencyError`, as Nest's mocker does.
    */
   supplyMissingDependencies(supply: (token: Token) => unknown): void {
     const supplied = new Map<Token, unknown>();
@@ -812,7 +814,8 @@ export class Container {
         for (const token of required) {
           if (isErasedTypeToken(token) || !this.isUnresolvable(token, moduleId)) continue;
           if (!supplied.has(token)) supplied.set(token, supply(token));
-          this.registerOptions({ provide: token, useValue: supplied.get(token) }, moduleId);
+          const value = supplied.get(token);
+          if (value) this.registerOptions({ provide: token, useValue: value }, moduleId);
         }
       }
     }
