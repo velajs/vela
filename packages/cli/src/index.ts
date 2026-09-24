@@ -14,6 +14,7 @@ import { ClientGenerateCommand } from './commands/client.command.js';
 import { NewCommand } from './commands/new.command.js';
 import { DoctorCommand } from './commands/doctor.command.js';
 import { DeployCheckCommand } from './commands/deploy-check.command.js';
+import { CloudflareSyncCommand } from './commands/cf-sync.command.js';
 
 const cli = new Cli({
   binaryName: 'vela',
@@ -34,6 +35,7 @@ cli.register(StudioCommand);
 cli.register(ClientGenerateCommand);
 cli.register(DoctorCommand);
 cli.register(DeployCheckCommand);
+cli.register(CloudflareSyncCommand);
 
 void cli.runExit(process.argv.slice(2));
 
@@ -50,6 +52,9 @@ export { StudioCommand } from './commands/studio.command.js';
 export { ClientGenerateCommand } from './commands/client.command.js';
 export { DoctorCommand } from './commands/doctor.command.js';
 export { DeployCheckCommand } from './commands/deploy-check.command.js';
+export { CloudflareSyncCommand } from './commands/cf-sync.command.js';
+export { applyCloudflareSync, planCloudflareSync } from './cf-sync.js';
+export type { CloudflareFacts, SyncChange, SyncPlan } from './cf-sync.js';
 export { generateClientContract } from './client-contract.js';
 export type { GeneratedClientContract } from './client-contract.js';
 export {
@@ -61,5 +66,11 @@ export {
 export type { RouteRow, EntrypointRow } from './introspect.js';
 export { renderTable } from './format.js';
 export { loadConfig, defineVelaConfig, resolveConfig } from './config.js';
-export type { VelaConfig, ConfigResolution, LoadedVelaConfig } from './config.js';
+export type {
+  VelaConfig,
+  ConfigResolution,
+  LoadConfigOptions,
+  LoadedVelaConfig,
+  WorkerBindings,
+} from './config.js';
 export { formatSeedResults } from './format.js';
