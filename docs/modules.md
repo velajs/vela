@@ -67,9 +67,9 @@ The second type argument lists the options that shape the module graph, and
 - A module without structural fields (`S` defaults to `never`) has a factory
   that returns the complete options.
 - `defaults` gives structural options their values when a call site leaves
-  them out: `defaults: { globalGuard: true }` makes `forRoot({})` and
-  `forRoot({ globalGuard: true })` one configuration with one key, and
-  `setup` receives `globalGuard: true` for both. The options token still
+  them out: `defaults: { guard: 'global' }` makes `forRoot({})` and
+  `forRoot({ guard: 'global' })` one configuration with one key, and
+  `setup` receives `guard: 'global'` for both. The options token still
   receives the options as given. Only options in `structural` may have a
   default; any other throws when `defineModule` runs.
 
@@ -77,9 +77,9 @@ The second type argument lists the options that shape the module graph, and
 registration controls: they never reach the options token and never change the
 key. `isGlobal: true` makes the instance's exports visible to every module;
 it means nothing else on any first-party module. Modules that register an
-application-wide component name that option after it (`globalGuard`,
-`globalInterceptor`, or `guard: 'global' | 'none'` on the authentication,
-tenant and authorization integrations).
+application-wide component name that option after it: `CacheModule`'s
+`globalInterceptor`, and `guard: 'global' | 'none'` on the authentication,
+tenant, authorization and feature-flag integrations.
 
 A factory with parameters declares `inject`; a factory without parameters may
 omit it. `setup` may also return Nest provider literals such as
@@ -160,7 +160,12 @@ definition (export a const of the `DynamicModule`), or give each
 configuration its own `key`. A helper that builds its configuration from plain
 values only deduplicates, because those values compare structurally.
 
-A bare class import configures nothing. A configured import under the same
+A bare class import configures nothing, so it names a module only when the
+class declares one with `@Module()`. A generated class without its own
+`@Module()` (`class CedarModule extends ConfigurableModuleClass {}`, even with
+`@Global()`) fails the bootstrap when imported bare, with a message naming its
+`forRoot(...)`/`forRootAsync(...)` methods, whatever definitions of it loaded
+before. A configured import under the same
 key, such as `HttpModule.forRoot({ key: 'default', baseURL })` next to
 `imports: [HttpModule]`, fails the bootstrap in either order instead of
 leaving one of them on the class's own defaults. A definition under the bare

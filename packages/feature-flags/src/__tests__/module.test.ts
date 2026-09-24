@@ -94,10 +94,10 @@ describe('FeatureFlagsModule', () => {
 
   it('registers one instance, and one app-wide guard, for registrations that spell out defaults', async () => {
     const manifest = { beta: false };
-    // `globalGuard` defaults to true and the module is lazy by default.
+    // `guard` defaults to 'global' and the module is lazy by default.
     const registrations = [
       FeatureFlagsModule.forRoot({ manifest }),
-      FeatureFlagsModule.forRoot({ manifest, globalGuard: true }),
+      FeatureFlagsModule.forRoot({ manifest, guard: 'global' }),
       FeatureFlagsModule.forRoot({ manifest, lazy: true }),
     ];
     expect(new Set(registrations.map((registration) => registration.key)).size).toBe(1);

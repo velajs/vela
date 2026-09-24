@@ -21,10 +21,12 @@ The base `HttpException(response, statusCode, options?)` takes the **response fi
 
 Every HTTP failure — controller handlers, Vela middleware, raw Hono middleware (the last-resort `onError`), unmatched routes, request limits, RPC and GraphQL — renders through `renderHttpError(error, { catalog?, redactServerBodies? })` from `@velajs/vela`, after exception filters and the application's `ExceptionHandler.render` hook:
 
-1. An exception-owned `toResponse()` returning `{ status, body }` (400–599). `HttpException` built with an object returns it verbatim (a health check's 503); `@velajs/crud`'s `CrudException` returns its `{ success: false, error }` envelope. Override `toResponse()` to own a wire shape. Raw Hono middleware and RPC redact an owned 5xx body to its status title.
+1. An exception-owned `toResponse()` returning `{ status, body }` (400–599). `HttpException` built with an object returns it verbatim (a health check's 503); `@velajs/crud`'s `CrudException` returns its `{ success: false, error }` envelope. Extend `HttpException` and override `toResponse()` to own a wire shape: only exceptions its constructor built own a response, and any other thrown object with a `toResponse()` is an unknown error (reported, redacted 500). Raw Hono middleware and RPC redact an owned 5xx body to its status title.
 2. A string `HttpException` becomes `{ error: { code, message, details? } }`, with `code` taken from the status (`not_found`, `not_acceptable`, …; an unmapped 4xx is `bad_request`). A 5xx is a server fault: the client gets only the status title (for example `{ error: { code: 'internal', message: 'Internal Server Error' } }`), never your text or details.
 3. A Hono `HTTPException` below 500 renders its message in that body; one built with its own `res` (an auth challenge) keeps that response.
 4. Branded `VelaError`s render their code, message and data as `details`; anything else is a redacted 500.
+
+Error edges answer only 400–599: as in Nest, `new HttpException(body, 302)` constructs and `getStatus()` returns 302, but it is reported and renders as a redacted 500. Redirect with `@Redirect()` or a returned `Response`.
 
 Validation failures (`ValidationPipe`, `@Body(schema)`) render `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`. An unmatched route answers `{ error: { code: 'not_found', message: 'Not Found' } }` with 404; an oversized body answers 413 `payload_too_large`. These framework rejections are not reported; as in Nest, global exception filters receive them (`NotFoundException`, `PayloadTooLargeException`, `BadRequestException`), and a filter's plain result keeps their status.
 

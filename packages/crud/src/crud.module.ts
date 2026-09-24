@@ -11,9 +11,9 @@
  *   `crudResourceToken(name)` (options-derived providers, queue-style).
  */
 
-import { defineModule, defineProvider } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
-import type { DynamicModule } from '@velajs/vela';
+import { Inject, Injectable, defineModule, defineProvider } from '@velajs/vela';
+import { Container, DiscoveryService, MetadataRegistry } from '@velajs/vela/module-kit';
+import type { DynamicModule, Type } from '@velajs/vela';
 import type { CrudAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import type { CrudDatabaseRegistry } from './databases';
@@ -82,6 +82,59 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModul
   }),
 });
 
+// The definition each synthesized controller mounts, by controller class.
+interface MountedFeature {
+  readonly definition: CrudFeatureResource;
+  readonly database: string | undefined;
+  readonly path: string;
+  readonly label: string;
+}
+const mountedFeatures = new WeakMap<Type, MountedFeature>();
+
+// The routes a controller path mounts, however it is spelled: routes join the
+// path without its trailing slash, and a parameter segment matches whatever
+// it is named. Two paths with one canonical form mount the same routes.
+function canonicalPath(path: string): string {
+  const joined = (path.endsWith('/') ? path.slice(0, -1) : path) || '/';
+  return joined.replace(/(^|\/):[^/]*/g, '$1:param');
+}
+
+/**
+ * One definition per CRUD path in an application. Two `forFeature()`
+ * registrations that mount one path with different definitions (other
+ * decorators, hooks or policies) would both mount, and import order would
+ * decide which one serves; the identical `defineCrudFeature()` value, imported
+ * by several modules, is one policy. Paths compare in canonical form, so
+ * spellings that mount the same routes (a trailing slash, other parameter
+ * names) are one path.
+ */
+class CrudFeaturePaths {
+  readonly #discovery: DiscoveryService;
+  constructor(discovery: DiscoveryService) {
+    this.#discovery = discovery;
+  }
+  onModuleInit(): void {
+    const byPath = new Map<string, MountedFeature>();
+    const registrations = this.#discovery.getRegistrations({ metadataOnly: true, deferLazy: true });
+    for (const { metatype } of registrations) {
+      const mounted = mountedFeatures.get(metatype);
+      if (!mounted) continue;
+      const known = byPath.get(mounted.path);
+      if (!known) {
+        byPath.set(mounted.path, mounted);
+      } else if (known.definition !== mounted.definition || known.database !== mounted.database) {
+        throw new ConfigurationException(
+          `CRUD path '${mounted.path}' is mounted by two different CrudModule.forFeature() ` +
+            `features: ${known.label} and ${mounted.label}. Mount each path once, or import ` +
+            'one shared defineCrudFeature(...) definition wherever it is registered.',
+        );
+      }
+    }
+  }
+}
+Injectable()(CrudFeaturePaths);
+Inject(DiscoveryService)(CrudFeaturePaths, undefined, 0);
+
 export class CrudModule extends ConfigurableModuleClass {
   /**
    * Mounts headless resources. Controllers are synthesized (and their routes
@@ -94,7 +147,8 @@ export class CrudModule extends ConfigurableModuleClass {
     options: { database?: string } = {},
   ): DynamicModule {
     const resources = features.map((feature) => ({
-      ...feature,
+      definition: feature,
+      path: feature.path,
       config: { ...feature.config, database: feature.config.database ?? options.database },
     }));
     const identities = new Set<string>();
@@ -105,7 +159,22 @@ export class CrudModule extends ConfigurableModuleClass {
         throw new ConfigurationException(`Duplicate CRUD resource '${name}'`);
       identities.add(key);
     }
-    const controllers = resources.map((feature) => synthesizeController(feature));
+    const controllers = resources.map((feature) => {
+      const controller = synthesizeController(feature);
+      const database = feature.config.database;
+      const mounted = MetadataRegistry.getControllerPath(controller) || '/';
+      const path = canonicalPath(mounted);
+      mountedFeatures.set(controller, {
+        definition: feature.definition,
+        database,
+        path,
+        label:
+          `'${resourceNames(feature.config).singular}' (${controller.name}` +
+          `${database === undefined ? '' : `, database '${database}'`}` +
+          `${mounted === path ? '' : `, as '${mounted}'`})`,
+      });
+      return controller;
+    });
     const providers = resources.map((feature) => {
       const config = feature.config;
       const names = resourceNames(config);
@@ -125,7 +194,7 @@ export class CrudModule extends ConfigurableModuleClass {
       module: CrudModule,
       key: `feature:${resources.map((r) => JSON.stringify([r.config.database, r.path])).join(',')}`,
       controllers,
-      providers,
+      providers: [...providers, CrudFeaturePaths],
       exports: resources.map((feature) =>
         crudResourceToken(resourceNames(feature.config).singular, feature.config.database),
       ),

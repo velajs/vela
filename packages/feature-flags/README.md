@@ -58,7 +58,7 @@ class CheckoutController {
 
 `FeatureFlagsModule` registers `FeatureFlagGuard` app-wide by default, so every
 `@FeatureFlag()` route is gated without `@UseGuards`: a flagged route is never
-reachable ungated. To gate per route instead, pass `globalGuard: false` and add
+reachable ungated. To gate per route instead, pass `guard: 'none'` and add
 `@UseGuards(FeatureFlagGuard)` to each gated controller or handler (not both, or
 the flag is evaluated twice per request). `isGlobal: true` separately makes the
 service visible to every module.

@@ -2,7 +2,7 @@ import { CORE_CATALOG, isVelaError, type Catalog, type ErrorBodyResult } from '@
 import { HTTPException } from 'hono/http-exception';
 import { Scope } from '../constants';
 import type { Container } from '../container/container';
-import { HttpException } from '../errors/http-exception';
+import { isOwnedHttpError } from '../errors/http-exception';
 import { APP_EXCEPTION_HANDLER, ERROR_CATALOG } from '../pipeline/tokens';
 import { APP_LOGGER } from '../logging/logging.tokens';
 import { logDeliveryForScope } from '../logging/scoped-logger';
@@ -116,7 +116,7 @@ const resolveHandler = (container: Container): ExceptionHandler | undefined => {
 /**
  * The HTTP status of a client-fault (4xx) error, read across the three shapes a
  * caught error can take: a branded {@link VelaError} (`.status`), vela's own
- * {@link HttpException} (`getStatus()`), or hono's {@link HTTPException}
+ * `HttpException` (`getStatus()`), or hono's {@link HTTPException}
  * (`.status`). `undefined` for anything else — including raw/unbranded errors,
  * which must always be logged. Only the DEFAULT console reporter uses this to
  * mute client faults; a custom `handler.report` still receives everything.
@@ -124,7 +124,7 @@ const resolveHandler = (container: Container): ExceptionHandler | undefined => {
 const clientFaultStatus = (error: unknown): number | undefined => {
   try {
     if (isVelaError(error)) return error.status;
-    if (error instanceof HttpException) return error.getStatus();
+    if (isOwnedHttpError(error)) return error.getStatus();
     if (error instanceof HTTPException) return error.status;
   } catch {
     // An uninspectable error remains reportable rather than hiding the failure.
