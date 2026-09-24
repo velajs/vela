@@ -115,7 +115,6 @@ import {
   HealthIndicatorService,
   HttpHealthIndicator,
 } from '../health/index.js';
-import { CorsModule } from '../security/index.js';
 import type {
   OnModuleInit,
   OnApplicationBootstrap,
@@ -3922,10 +3921,10 @@ describe('forRootAsync() dynamic module pattern', () => {
 });
 
 // =============================================================================
-// CorsModule
+// app.enableCors() / NestFactory.create(root, { cors })
 // =============================================================================
 
-describe('CorsModule', () => {
+describe('enableCors', () => {
   it('adds Access-Control-Allow-Origin header for allowed origins', async () => {
     @Controller('/data')
     class DataController {
@@ -3934,13 +3933,11 @@ describe('CorsModule', () => {
       }
     }
 
-    @Module({
-      imports: [CorsModule.forRoot({ origin: 'https://example.com' })],
-      controllers: [DataController],
-    })
+    @Module({ controllers: [DataController] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
+    app.enableCors({ origin: 'https://example.com' });
     const res = await app.getHonoApp().request('/data', {
       headers: { Origin: 'https://example.com' },
     });
@@ -3956,13 +3953,10 @@ describe('CorsModule', () => {
       }
     }
 
-    @Module({
-      imports: [CorsModule.forRoot()],
-      controllers: [OpenController],
-    })
+    @Module({ controllers: [OpenController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule, { cors: true });
     const res = await app.getHonoApp().request('/open', {
       headers: { Origin: 'https://any.com' },
     });
@@ -3978,19 +3972,16 @@ describe('CorsModule', () => {
       }
     }
 
-    @Module({
-      imports: [
-        CorsModule.forRoot({
-          origin: 'https://app.test',
-          allowMethods: ['GET', 'POST'],
-          allowHeaders: ['Content-Type', 'Authorization'],
-        }),
-      ],
-      controllers: [ApiController],
-    })
+    @Module({ controllers: [ApiController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule, {
+      cors: {
+        origin: 'https://app.test',
+        allowMethods: ['GET', 'POST'],
+        allowHeaders: ['Content-Type', 'Authorization'],
+      },
+    });
     const res = await app.getHonoApp().request('/api', {
       method: 'OPTIONS',
       headers: {

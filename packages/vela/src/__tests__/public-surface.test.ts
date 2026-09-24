@@ -130,7 +130,7 @@ const FEATURES: Record<string, string[]> = {
   './schedule': ['ScheduleModule', 'ScheduleRegistry', 'Cron', 'Interval', 'parseCron'],
   './events': ['EventEmitterModule', 'EventEmitter', 'OnEvent', 'defineEvent', 'EventDispatcher'],
   './health': ['HealthModule', 'HealthCheckService', 'HealthIndicatorService'],
-  './security': ['SecurityModule', 'Secret', 'CorsModule', 'signUrl', 'NONCE_STORE'],
+  './security': ['SecurityModule', 'Secret', 'signUrl', 'NONCE_STORE'],
   './logging': ['LoggingModule', 'ApplicationLogger', 'APP_LOGGER', 'loggerForScope'],
   './openapi': ['createOpenApiDocument', 'Endpoint', 'defineEndpoint', 'ApiDoc', 'ApiResponse'],
   './dispatch': ['InternalDispatcher', 'SignedInvocation', 'INVOCATION_SIGNING_SECRET'],

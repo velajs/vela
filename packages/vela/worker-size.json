@@ -8,7 +8,6 @@
   "excludedModules": [
     "dist/cache/",
     "dist/config/",
-    "dist/cors/",
     "dist/crypto/",
     "dist/dispatch/abort-deadline.js",
     "dist/dispatch/internal-dispatcher.js",

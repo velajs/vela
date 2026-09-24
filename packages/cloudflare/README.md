@@ -127,6 +127,14 @@ export default createCloudflareWorker(AppModule, {
 });
 ```
 
+Enable CORS as in Nest, with the `cors` option or `app.enableCors()` inside
+`configure`; Hono's `cors` middleware then answers preflights ahead of every
+route and guard:
+
+```ts
+export default createCloudflareWorker(AppModule, { cors: { origin: ['https://app.example.com'] } });
+```
+
 For explicit construction inside a platform event:
 
 ```ts

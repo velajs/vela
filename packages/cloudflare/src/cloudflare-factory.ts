@@ -1,6 +1,6 @@
 import type { ExecutionContext } from 'hono';
 import { VelaFactory } from '@velajs/vela';
-import type { VelaApplication, VelaEnv, VelaSecurityOptions } from '@velajs/vela';
+import type { CorsOptions, VelaApplication, VelaEnv, VelaSecurityOptions } from '@velajs/vela';
 import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { CloudflareApplication } from './cloudflare-application';
 import { assertCloudflareEnvironment } from './environment';
@@ -15,6 +15,8 @@ import type { CloudflareRoot } from './root-module';
 export interface CloudflareAppOptions {
   globalPrefix?: string;
   security?: VelaSecurityOptions;
+  /** Enable CORS for every route: `true` or `CorsOptions`, as `app.enableCors()` takes. */
+  cors?: CorsOptions | boolean;
   /** Further runtime adapters, composed after the Cloudflare adapter for each application. */
   adapters?: RuntimeAdapter[];
 }
@@ -121,6 +123,7 @@ export async function createCloudflareApp(
   const velaApp = await VelaFactory.create(rootModule, {
     globalPrefix: options.globalPrefix,
     security: options.security,
+    cors: options.cors,
     adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
   });
   return new CloudflareApplication(velaApp, options.env);

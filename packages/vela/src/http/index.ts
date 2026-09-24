@@ -13,6 +13,7 @@ export type {
   VelaBodyLimitOverride,
   VelaQuerySecurityOptions,
 } from './security-options';
+export type { CorsOptions } from './cors';
 export { MiddlewareBuilder } from '../module/middleware';
 export type {
   MiddlewareConsumer,

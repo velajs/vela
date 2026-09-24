@@ -27,7 +27,6 @@
     "dist/websocket/ws-attachment.js",
     "@velajs/vela/dist/cache/",
     "@velajs/vela/dist/config/",
-    "@velajs/vela/dist/cors/",
     "@velajs/vela/dist/crypto/",
     "@velajs/vela/dist/dispatch/abort-deadline.js",
     "@velajs/vela/dist/dispatch/internal-dispatcher.js",

@@ -14,6 +14,7 @@ import { HttpException } from './errors/http-exception';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import { LazyModuleManager } from './module/lazy-modules';
+import type { CorsOptions } from './http/cors';
 import type { RouteDescription, RouteManager } from './http/route.manager';
 import {
   hasBeforeApplicationShutdown,
@@ -158,6 +159,18 @@ export class VelaApplication {
   /** The global route prefix in effect ('' when none). */
   getGlobalPrefix(): string {
     return this.routeManager.getGlobalPrefix();
+  }
+
+  /**
+   * Enable CORS for every route, as Nest's `app.enableCors(options)`: Hono's
+   * `cors` middleware answers preflights and stamps its headers before body
+   * limits, routing and guards. Takes effect on the next request; a later call
+   * replaces the options. `VelaFactory.create(root, { cors })` does the same
+   * at construction.
+   */
+  enableCors(options: CorsOptions = {}): this {
+    this.routeManager.enableCors(options);
+    return this;
   }
 
   // Pipeline components — applied at request time, no rebuild needed

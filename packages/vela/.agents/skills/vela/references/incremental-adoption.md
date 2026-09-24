@@ -19,13 +19,13 @@ Vela mirrors NestJS's authoring surface, so most decorators and interfaces port 
 | `ConfigurableModuleBuilder` for dynamic modules | **`defineModule`** (the engine; `ConfigurableModuleBuilder` adapts it) | see `references/modules-and-di.md` + `docs/modules.md` |
 | `app.setGlobalPrefix('/api')` | `globalPrefix` create-option; read back via `app.getGlobalPrefix()` | there is **no** `setGlobalPrefix` method on the app |
 | `app.enableVersioning({...})` | decorator-driven `@Controller({ version })` / `@Version(2)` | no `enableVersioning`/`VersioningType` |
-| `app.enableCors()` | `middleware: [cors()]` create-option, or `CorsModule.forRoot({})` | no `enableCors` method |
+| `app.enableCors()` / `NestFactory.create(m, { cors })` | `app.enableCors(options?)` or the `cors` create-option (`true` or `CorsOptions`); Cloudflare: `createCloudflareWorker(AppModule, { cors })` | served by Hono's `cors` before routes and guards; there is no `CorsModule` |
 | `logger` bootstrap option / `NestFactory.create(m, { logger })` | inject the `Logger`/`LoggerService` provider | no create-time `logger` option |
 | `app.listen(port)` | export the `fetch` handler (`export default app`) or `serve({ fetch: app.fetch })` on Node | Vela is a fetch handler, not a server |
 | `nest build` / `tsc` with `emitDecoratorMetadata` | **Vite 8** + `@cloudflare/vite-plugin` on Workers; Oxc emits legacy decorators + `design:paramtypes` | pass `oxc: { decorator: { legacy: true, emitDecoratorMetadata: true } }` explicitly in the Vite **and** Vitest configs — see "Build and test" below |
 | Jest + `@nestjs/testing` | Vitest + `@cloudflare/vitest-plugin` (workerd), `@velajs/testing` | see `references/testing.md` |
 
-`VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`. `VelaCreateOptions` in full: `globalPrefix`, `middleware`, `getClientIp`, `adapters`, `ambientContainer`, `diagnostics` — nothing else. Authoring configurable modules uses `defineModule`, not hand-wired `forRoot`; see the module reference.
+`VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`. `VelaCreateOptions` in full: `globalPrefix`, `middleware`, `cors`, `getClientIp`, `adapters`, `env`, `configureContainer`, `ambientContainer`, `bodyLimit`, `security`, `diagnostics` — nothing else. Authoring configurable modules uses `defineModule`, not hand-wired `forRoot`; see the module reference.
 
 ## Build and test
 

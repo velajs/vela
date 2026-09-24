@@ -1,4 +1,4 @@
-// @velajs/vela/security — browser and HTTP hardening (SecurityModule, CORS),
+// @velajs/vela/security — browser and HTTP hardening (SecurityModule),
 // secrets, HMAC signed URLs and the single-use nonce store.
 import '../metadata';
 
@@ -12,10 +12,6 @@ export type {
   OriginProtectionOptions,
   SecurityHeadersOptions,
 } from './security.types';
-
-// CORS-only module (SecurityModule's `cors` option covers the same ground)
-export { CorsModule, CORS_OPTIONS } from '../cors/index';
-export type { CorsOptions } from '../cors/index';
 
 // Edge-safe HMAC signed-URL primitives
 export { signUrl, verifySignedUrl, HTTP_SIGNED_URL_PURPOSE } from '../crypto/signed-url';

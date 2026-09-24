@@ -1,5 +1,5 @@
 import type { ExecutionContext } from 'hono';
-import type { VelaApplication, ExceptionFilter, VelaEnv } from '@velajs/vela';
+import type { CorsOptions, VelaApplication, ExceptionFilter, VelaEnv } from '@velajs/vela';
 import {
   PipelineRunner,
   buildEntrypointExecutionContext,
@@ -176,6 +176,12 @@ export class CloudflareApplication {
    * // GET /scalar       -> Scalar UI HTML
    * ```
    */
+  /** Enable CORS for every route, as `VelaApplication.enableCors()`; no rebuild needed. */
+  enableCors(options?: CorsOptions): this {
+    this.#app.enableCors(options);
+    return this;
+  }
+
   mountOpenApi(options: MountOpenApiOptions): this {
     this.#app.mountOpenApi(options);
     return this;

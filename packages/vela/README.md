@@ -99,7 +99,7 @@ Each name has exactly one import path.
 | `@velajs/vela/module-kit` | Seams for module, integration and adapter authors: `Container`, `MetadataRegistry`, `DiscoveryService`, entrypoint kinds and execution scopes, `PipelineRunner`, route contributors, `invokeScheduledJob`, module-authoring helpers |
 | `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/logging`, `/http-client` | Optional feature modules |
 | `@velajs/vela/openapi` | `OpenApiModule`, `@Endpoint`/`defineEndpoint`, `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`/`@ApiExclude` |
-| `@velajs/vela/security` | `SecurityModule`, `CorsModule`, `Secret`, signed-URL primitives, the nonce store |
+| `@velajs/vela/security` | `SecurityModule`, `Secret`, signed-URL primitives, the nonce store |
 | `@velajs/vela/dispatch` | Signed internal dispatch (`InternalDispatcher`, `@SignedInvocation`) |
 | `@velajs/vela/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/storage`, `/streaming`, `/observability` | Validation and the other feature subsystems |
 | `@velajs/vela/schedule-node`, `/websocket-node` | Node/Bun adapters |

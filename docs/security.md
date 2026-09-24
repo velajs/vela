@@ -207,8 +207,14 @@ middleware off the path the target named.
 
 ## Browser security
 
-Import `SecurityModule` for exact-origin CORS, credentialed unsafe-method Origin
-checks, and restrictive response headers:
+For plain CORS, enable it as in Nest: `app.enableCors(options?)`, or the `cors`
+create option (`VelaFactory.create(AppModule, { cors: { origin: ['https://app.example.com'] } })`,
+`createCloudflareWorker(AppModule, { cors })`). Hono's `cors` middleware answers
+preflights and stamps its headers ahead of body limits, routing and guards; a
+credentialed `'*'` origin is rejected.
+
+Import `SecurityModule` for exact-origin CORS combined with credentialed
+unsafe-method Origin checks and restrictive response headers:
 
 ```ts
 @Module({

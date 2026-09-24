@@ -26,6 +26,7 @@ import type { ProviderSnapshot, Token, TypedToken, Type } from '../container/typ
 import type { MiddlewareRouteDefinition, RouteInfo } from '../module/middleware';
 import { joinPaths } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
+import { corsMiddleware, type CorsOptions } from './cors';
 import { getRouteContributors } from './route-contributor';
 import {
   matchTarget,
@@ -120,6 +121,11 @@ export interface RouteManagerOptions {
   bodyLimit?: number | false;
   /** Unified request parsing limits. Prefer this over the legacy `bodyLimit`. */
   security?: VelaSecurityOptions;
+  /**
+   * Enable CORS, as Nest's `NestFactory.create(root, { cors })`: `true` for
+   * the defaults or {@link CorsOptions}. Equivalent to `app.enableCors(options)`.
+   */
+  cors?: CorsOptions | boolean;
 }
 
 /** Secure default request-body ceiling for every runtime (1 MiB). */
@@ -275,12 +281,16 @@ export class RouteManager {
   private readonly queryMaxDepth: number | false;
   private readonly queryMaxBytes: number | false;
   private readonly clientIpResolver: (c: Context) => string | null;
+  private corsHandler: MiddlewareHandler | undefined;
 
   constructor(
     private container: Container,
     options: RouteManagerOptions = {},
   ) {
     this.ambientContainer = options.ambientContainer ?? false;
+    if (options.cors !== undefined && options.cors !== false) {
+      this.enableCors(options.cors === true ? {} : options.cors);
+    }
     if (options.bodyLimit !== undefined && options.security?.body?.maxBytes !== undefined) {
       throw new Error('Configure either bodyLimit or security.body.maxBytes, not both');
     }
@@ -416,6 +426,12 @@ export class RouteManager {
 
   registerConsumerMiddleware(definitions: MiddlewareRouteDefinition[]): this {
     this.consumerMiddlewareDefinitions.push(...definitions);
+    return this;
+  }
+
+  /** Serve CORS ahead of every route; the latest call replaces earlier options. */
+  enableCors(options: CorsOptions = {}): this {
+    this.corsHandler = corsMiddleware(options);
     return this;
   }
 
@@ -769,6 +785,10 @@ export class RouteManager {
         }
       }
     });
+
+    // CORS answers preflights and stamps its headers ahead of body limits,
+    // routing and guards. Read per request, so app.enableCors() needs no rebuild.
+    app.use('*', (c, next) => (this.corsHandler ? this.corsHandler(c, next) : next()));
 
     // Security boundary: reject oversized input before any user middleware,
     // argument extraction, validation pipe, guard, or signed-body capture can
