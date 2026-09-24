@@ -39,7 +39,8 @@ including routes in modules that do not import `TenantModule`, which admit throu
 installing module, and whether or not it is registered with `isGlobal`. Mark tenant-free
 routes with `@TenantIgnored()` or `@TenantOptional()`. An integration package's own
 controller (the Better Auth handler, a storage controller) opts out with
-`SkipGuardPhases(['tenant'])` from `@velajs/vela/module-kit`. Pass `guard: 'none'`
+`SkipGuardPhases(['tenant'])` from `@velajs/vela/module-kit`, which skips the
+`TenantGuard` because it declares `static readonly skippable = true`. Pass `guard: 'none'`
 (beside the factory for `forRootAsync`) to apply `@UseGuards(TenantGuard)` after a
 route-level authentication guard instead; a route-level `TenantGuard` in a module that
 cannot see `TenantModule` answers 403. Required is the guard's default;

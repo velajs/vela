@@ -59,7 +59,7 @@ BetterAuthModule.forRoot({
 
 Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `guard: 'none'` is intended only for applications that install an equivalent global authentication guard themselves.
 
-Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity. The mounted auth handler is `@Public(true)` and marked `SkipGuardPhases(['tenant', 'authorize'])`, so application-wide tenant admission and authorization never block sign-in; throttling still applies.
+Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity. The mounted auth handler is `@Public(true)` and marked `SkipGuardPhases(['tenant', 'authorize'])`, so the tenant admission and authorization guards integrations install globally never block sign-in; throttling and the application's own global guards still apply.
 
 ## Three composition patterns
 

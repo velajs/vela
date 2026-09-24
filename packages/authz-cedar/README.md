@@ -95,7 +95,10 @@ every application route, including routes in modules that do not import
 `CedarModule` (they use the installing module's policy) and whether or not it
 is registered with `isGlobal`. An integration package's own controller opts out
 with `SkipGuardPhases(['authorize'])` from `@velajs/vela/module-kit`, as the
-Better Auth handler, the storage controllers and the GraphQL endpoint do. A
+Better Auth handler, the storage controllers and the GraphQL endpoint do;
+`CedarGuard` declares `static readonly skippable = true` for this. Generated
+CRUD controllers declare their policy through the resource's `decorators` and
+`endpointDecorators` (`[RequireResource({ ... })]`, `[CedarPublic()]`). A
 route-level `CedarGuard` in a module that cannot see `CedarModule` denies.
 `auditCedarRoutes([Module])` (or `auditModules`) rejects undeclared routes in
 selected modules at startup. Queue/socket adapters must supply verified

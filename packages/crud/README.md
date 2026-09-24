@@ -59,6 +59,27 @@ const itemConfig = {
 export class ItemsModule {}
 ```
 
+A feature's controller is generated, so declare its route metadata in the config:
+`decorators` apply to the controller class and `endpointDecorators` to each
+endpoint's handler, as if written above them in order. Endpoint metadata
+overrides the class's, and an `@Override`'d endpoint keeps it. Declare
+authorization policy this way, such as Cedar's default deny:
+
+```ts
+defineCrudFeature({
+  path: '/notes',
+  model: noteModel,
+  decorators: [RequireResource({ action: 'note:write', resourceType: 'Note' })],
+  endpointDecorators: {
+    list: [CedarPublic()],
+    read: [RequireResource({ action: 'note:read', resourceType: 'Note', idParam: 'id' })],
+  },
+});
+```
+
+These decorators declare metadata; one that returns a replacement class or
+descriptor is rejected, so supply a custom handler with `@Override()` instead.
+
 `CrudConfig<Shape>` and `ResourceConfig<Shape>` take the Zod object's **schema
 shape**, such as `typeof itemSchema.shape`. Inline hooks in `@Crud()`,
 `defineCrudFeature()`, and `defineResource()` infer their field types from the

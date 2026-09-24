@@ -353,10 +353,15 @@ with its marker: `@Public(true)`, `@TenantIgnored()` or `@CedarPublic()`.
 
 An integration package's own controller, which applications cannot annotate, declares the
 phases it enforces itself with `SkipGuardPhases([...])` from `@velajs/vela/module-kit`:
-global guards in those phases (`tenant`, `authorize`) do not run for its routes, while
-authentication, feature and route guards still do. The Better Auth handler and the storage
-controllers skip both phases; the GraphQL endpoint skips `authorize`, because resolvers
-authorize each field. A custom global guard provided by a factory runs in the phase its
+the global guards integrations install in those phases (`tenant`, `authorize`) do not run
+for its routes. Only a guard that declares `static readonly skippable = true` is skipped,
+as `TenantGuard`, `PermissionGuard`, `RolesGuard` and `CedarGuard` do, so the application's
+own global guards run in every phase on these routes, as do authentication, feature and
+route guards. The Better Auth handler and the storage controllers skip both phases; the
+GraphQL endpoint skips `authorize`, because resolvers authorize each field. Generated CRUD
+controllers are application routes: declare their Cedar policy with the resource's
+`decorators` and `endpointDecorators`. The RPC `authorize` policy runs in the `authorize`
+phase, after global authentication and tenant admission. A custom global guard provided by a factory runs in the phase its
 built instance declares. Tenant
 admission preserves `CurrentUser`, `CurrentSession`, and `CurrentAccessIdentity` payloads.
 The core identity remains an immutable snapshot; use it (or `CurrentTenant`) for the admitted

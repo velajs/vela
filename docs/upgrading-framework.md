@@ -120,7 +120,8 @@ new `getHandlerName()` returns its name. Custom execution contexts implement bot
 Pass `context.getHandler()` and `context.getClass()` to the `Reflector`, or keep
 passing the context; keep the context where several controllers decorate one
 inherited method, since that function cannot name its controller and reading
-through it throws. Code that used the handler name, such as a throttling key,
+through it throws. In `[context.getHandler(), context.getClass()]`, a handler's
+metadata counts only for the class that declared it and its subclasses. Code that used the handler name, such as a throttling key,
 calls `getHandlerName()`.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
@@ -132,9 +133,13 @@ Better Auth's `isGlobal` with `guard` and Cedar's `globalGuard: false` with
 cover every application route, including modules that do not import
 `TenantModule` or `CedarModule`. Cedar denies routes without
 `@RequireResource()` or `@CedarPublic()`; set `undeclared: 'allow'` to keep
-the previous behavior. Integration packages mark their own controllers with
-`SkipGuardPhases` from `@velajs/vela/module-kit` so those phases skip them. Import order no longer
-decides whether authentication runs before throttling.
+the previous behavior. Declare the policy of generated CRUD controllers with the
+resource's `decorators` and `endpointDecorators`. Integration packages mark their own
+controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`, which skips only the
+guards integrations install (`static readonly skippable = true`); the application's own
+global guards still run there. Import order no longer decides whether authentication
+runs before throttling. The RPC `authorize` policy runs after global authentication and
+tenant guards, so it can read the trusted identity.
 
 `ThrottlerGuard` publishes its decision under the `RATE_LIMIT` request-context
 key instead of the `rateLimit` Hono variable.
