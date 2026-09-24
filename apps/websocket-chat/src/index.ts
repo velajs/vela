@@ -1,8 +1,9 @@
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 import { Module, Controller, Get, Injectable } from '@velajs/vela';
-import { createCloudflareWorker, CloudflareWebSocketModule } from '@velajs/cloudflare';
+import { createCloudflareWorker } from '@velajs/cloudflare';
 import {
   WebSocketGateway,
+  WebSocketModule,
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
@@ -120,14 +121,15 @@ export class PageController {
 // ---- App module + Worker entry ----
 
 @Module({
-  imports: [CloudflareWebSocketModule.forRoot()],
+  imports: [WebSocketModule.forRoot()],
   controllers: [PageController],
   providers: [ChatGateway],
 })
 export class AppModule {}
 
-// The gateway resolves its CHAT_ROOM binding by name from the framework ENV,
-// which the Worker and the Durable Object each seed from their native environment.
+// The Cloudflare adapter serves the gateway's upgrade route in the Worker and
+// forwards it to the CHAT_ROOM Durable Object for the room, read by name from
+// ENV; inside that object the same module broadcasts to the room's sockets.
 export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
 
 export default createCloudflareWorker(AppModule);
