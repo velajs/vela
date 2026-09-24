@@ -20,6 +20,8 @@ import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { CLOUDFLARE_SCHEDULED_EVENT, cloudflareAdapter } from '@velajs/cloudflare';
 import type { CloudflareScheduledEvent } from '@velajs/cloudflare';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
+import { WebSocketModule } from '@velajs/vela/websocket';
+import { LIVE_PLATFORM, LiveModule, localLive, type LivePlatform } from '@velajs/vela/live';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
 import { BetterAuthService } from '@velajs/better-auth';
 import { betterAuth } from 'better-auth';
@@ -989,6 +991,82 @@ describe('live / presence ops (@velajs/studio/live)', () => {
     expect(ok(await rpc(app, 'live.subscriptions'))).toEqual(snapshot.subscriptions);
     expect(ok(await rpc(app, 'presence.rooms'))).toEqual(snapshot.rooms);
     await app.close();
+  });
+
+  it("inspects the named rooms where LiveModule's platform keeps their subscriptions", async () => {
+    const inspected: string[] = [];
+    const platform: LivePlatform = {
+      liveDriver: () => localLive(),
+      async inspect(room) {
+        inspected.push(room);
+        return {
+          subscriptions: [
+            {
+              id: `${room}-sub`,
+              query: 'todos.list',
+              room,
+              clientId: `${room}-client`,
+              tags: ['todos'],
+              connectedAt: 100,
+            },
+          ],
+          rooms: [{ room, count: 1, members: [`${room}-client`] }],
+        };
+      },
+    };
+    const livePlatform: RuntimeAdapter = {
+      name: 'test-live-platform',
+      configureContainer(container) {
+        container.register(defineProvider(LIVE_PLATFORM, { useValue: platform }));
+        container.markGlobalToken(LIVE_PLATFORM);
+      },
+    };
+    const app = await makeApp(
+      { plugins: [livePanel({ rooms: ['default', 'org-1'] })] },
+      [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      [],
+      [livePlatform],
+    );
+    try {
+      const caps = ok(await rpc(app, 'studio.capabilities'));
+      expect(caps.features.live).toBe(true);
+      expect(inspected).toEqual([]);
+      expect(ok(await rpc(app, 'live.subscriptions'))).toEqual([
+        {
+          id: 'default-sub',
+          room: 'default',
+          tags: ['todos'],
+          connectedAt: 100,
+          clientId: 'default-client',
+        },
+        {
+          id: 'org-1-sub',
+          room: 'org-1',
+          tags: ['todos'],
+          connectedAt: 100,
+          clientId: 'org-1-client',
+        },
+      ]);
+      expect(ok(await rpc(app, 'presence.rooms'))).toEqual([
+        { room: 'default', count: 1, members: ['default-client'] },
+        { room: 'org-1', count: 1, members: ['org-1-client'] },
+      ]);
+      expect(inspected).toEqual(['default', 'org-1', 'default', 'org-1']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('requires LiveModule to inspect named rooms, and one source of rows', async () => {
+    await expect(makeApp({ plugins: [livePanel({ rooms: ['default'] })] })).rejects.toThrow(
+      /livePanel\(\{ rooms \}\).*LiveModule\.forRoot\(\)/,
+    );
+    expect(() =>
+      livePanel({
+        rooms: ['default'],
+        source: { inspect: async () => ({ subscriptions: [], rooms: [] }) },
+      }),
+    ).toThrow(/either rooms or source/);
   });
 
   it('does not advertise live + presence handlers without introspection support', async () => {

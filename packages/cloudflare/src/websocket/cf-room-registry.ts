@@ -78,7 +78,10 @@ export class CfRoomRegistry implements RoomRegistry {
     const seen = new Set<string>();
     const selected: Array<{ ws: WsLike; client: WsClient }> = [];
     for (const ws of targets) {
-      const att = this.reconcileFrameLimit(ws, this.attachmentOf(ws));
+      const stored = this.attachmentOf(ws);
+      // A gateway-scoped push never touches another gateway's sockets.
+      if (cmd.gatewayPath !== undefined && stored.path !== cmd.gatewayPath) continue;
+      const att = this.reconcileFrameLimit(ws, stored);
       // A socket still in its connection hook is not admitted yet: it receives no
       // room frames, and its own accept() settles it. Rejecting it here would
       // close every client whose handleConnection broadcasts to the room. Other

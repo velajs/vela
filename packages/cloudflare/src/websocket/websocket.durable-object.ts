@@ -168,7 +168,7 @@ export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
       await this.host.onError(ws, error);
     }
 
-    /** DO RPC — server-initiated broadcast forwarded from a Worker (see `broadcastToRoom`). */
+    /** DO RPC — a `Gateways` push forwarded from the Worker or another room's object. */
     async broadcast(cmd: BroadcastCommand): Promise<void> {
       await this.ready;
       await this.host.broadcast(cmd);

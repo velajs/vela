@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 /** Portable schema imported by both the server resolver and browser client. */
 export const todoListDefinition = defineLiveQuery({
+  name: 'todos.list',
   args: z.object({}),
   result: z.array(z.object({
     id: z.string(),

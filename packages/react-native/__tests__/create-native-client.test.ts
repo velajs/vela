@@ -35,7 +35,7 @@ describe('createNativeClient', () => {
     const sockets = makeSocketFactory();
     const { fetch, calls } = makeFetch();
     const client = createNativeClient({
-      queries: { 'todos.list': todoSchema },
+      queries: [todoSchema],
       url: 'http://api.test',
       storage,
       WebSocket: sockets.factory,
@@ -64,7 +64,7 @@ describe('createNativeClient', () => {
   it('threads the bearer token onto the HTTP mutation (authToken passthrough)', async () => {
     const { fetch, calls } = makeFetch();
     const client = createNativeClient({
-      queries: { 'todos.list': todoSchema },
+      queries: [todoSchema],
       url: 'http://api.test',
       authToken: () => 'tok123',
       fetch,
@@ -80,7 +80,7 @@ describe('createNativeClient', () => {
   it('uses a short-lived socket ticket instead of the HTTP bearer token', async () => {
     const sockets = makeSocketFactory();
     const client = createNativeClient({
-      queries: { 'todos.list': todoSchema },
+      queries: [todoSchema],
       url: 'http://api.test',
       authToken: () => 'tok123',
       socketTicket: () => 'ticket123',
@@ -100,7 +100,7 @@ describe('createNativeClient', () => {
     const explicit = createMemoryMutationStore();
     const sockets = makeSocketFactory();
     const client = createNativeClient({
-      queries: { 'todos.list': todoSchema },
+      queries: [todoSchema],
       url: 'http://api.test',
       storage,
       mutationStore: explicit,
@@ -127,7 +127,7 @@ describe('createNativeClient', () => {
     const sockets = makeSocketFactory();
     const { fetch, calls } = makeFetch();
     const client = createNativeClient({
-      queries: { 'todos.list': todoSchema },
+      queries: [todoSchema],
       url: 'http://api.test',
       storage,
       offline: false,
@@ -150,7 +150,7 @@ describe('createNativeClient', () => {
 
     const storage: AsyncStorageLike = makeAsyncStorage();
     const options: CreateNativeClientOptions<AppLive> = {
-      queries: { 'todos.list': todoSchema },
+      queries: [todoSchema],
       url: 'http://api.test',
       storage,
       identity: () => 'userA',

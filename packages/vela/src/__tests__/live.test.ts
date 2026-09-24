@@ -37,8 +37,10 @@ import {
 } from '../live/index.js';
 import type { LiveDriver, LiveQueryContext, ServerLiveFrame } from '../live/index.js';
 
-const numberQuery = defineLiveQuery({ args: z.unknown(), result: z.number() });
+const numberQuery = <Name extends string>(name: Name) =>
+  defineLiveQuery({ name, args: z.unknown(), result: z.number() });
 const strictNumberQuery = defineLiveQuery({
+  name: 'strict.q',
   args: {
     parse(value: unknown): { n: number } {
       if (
@@ -55,10 +57,12 @@ const strictNumberQuery = defineLiveQuery({
   result: z.number(),
 });
 const todoListQuery = defineLiveQuery({
+  name: 'todos.list',
   args: z.object({ listId: z.string() }),
   result: z.array(z.object({ id: z.string(), text: z.string(), done: z.boolean().optional() })),
 });
 const todoCountQuery = defineLiveQuery({
+  name: 'todos.count',
   args: z.unknown(),
   result: z.object({ count: z.number() }),
 });
@@ -127,12 +131,12 @@ describe('LiveModule (tag-based live queries)', () => {
 
     @LiveResolver()
     class TodoLive {
-      @LiveQuery('todos.list', todoListQuery, { tags: (args) => [`todos:${args.listId}`] })
+      @LiveQuery(todoListQuery, { tags: (args) => [`todos:${args.listId}`] })
       list(args: { listId: string }, _ctx: LiveQueryContext) {
         return todos;
       }
 
-      @LiveQuery('todos.count', todoCountQuery, { tags: ['todos:l1'] })
+      @LiveQuery(todoCountQuery, { tags: ['todos:l1'] })
       count() {
         return { count: todos.length };
       }
@@ -203,7 +207,7 @@ describe('LiveModule (tag-based live queries)', () => {
     snapshot.subscriptions[0]!.tags.push('outside');
     expect(engine.inspect().subscriptions[0]!.tags).toEqual(['todos:l1']);
     const presence = app.get(PresenceService);
-    presence.beat('l1', client.id, { secret: 'private metadata' });
+    presence.beat('/rooms/:id/ws', 'l1', client.id, { secret: 'private metadata' });
     expect(engine.inspect().rooms).toEqual([{ room: 'l1', count: 1, members: ['c1'] }]);
     presence.reap(client.id);
     await dispatch(JSON.stringify({ event: '$live', data: { t: 'unsub', sub: 's1' } }));
@@ -373,12 +377,48 @@ describe('LiveModule (tag-based live queries)', () => {
       ['unknown_query', true],
       ['unsupported_protocol', true],
     ]);
+    expect(client.live()[1]).toMatchObject({ message: "no live query named 'nope' is registered" });
+  });
+
+  it('names both declarations when two live query definitions share a name', async () => {
+    const duplicate = defineLiveQuery({
+      name: 'todos.list',
+      args: z.unknown(),
+      result: z.number(),
+    });
+    @LiveResolver()
+    class FirstLive {
+      @LiveQuery(todoListQuery, { tags: ['todos'] })
+      list() {
+        return [];
+      }
+    }
+    @LiveResolver()
+    class SecondLive {
+      @LiveQuery(duplicate, { tags: ['todos'] })
+      count() {
+        return 0;
+      }
+    }
+    @WebSocketGateway({ path: '/ws' })
+    class Gw {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [Gw, FirstLive, SecondLive],
+    })
+    class AppModule {}
+
+    const created = VelaFactory.create(AppModule);
+    await expect(created).rejects.toThrow(
+      /two live query definitions are named 'todos\.list' \(FirstLive\.list and SecondLive\.count/,
+    );
+    await expect(created).rejects.not.toThrow(/@LiveQuery\('/);
   });
 
   it('validates args at subscribe through the shared definition', async () => {
     @LiveResolver()
     class Strict {
-      @LiveQuery('strict.q', strictNumberQuery, { tags: ['t'] })
+      @LiveQuery(strictNumberQuery, { tags: ['t'] })
       q(args: { n: number }) {
         return args.n;
       }
@@ -410,7 +450,7 @@ describe('LiveModule (tag-based live queries)', () => {
     @LiveResolver()
     class Secret {
       @UseGuards(DenyGuard)
-      @LiveQuery('secret.q', numberQuery, { tags: ['secret'] })
+      @LiveQuery(numberQuery('secret.q'), { tags: ['secret'] })
       q() {
         return 42;
       }
@@ -439,7 +479,7 @@ describe('LiveModule (tag-based live queries)', () => {
   it('caps active subscriptions per socket', async () => {
     @LiveResolver()
     class Limited {
-      @LiveQuery('limited.q', numberQuery, { tags: ['limited'] })
+      @LiveQuery(numberQuery('limited.q'), { tags: ['limited'] })
       q() {
         return 1;
       }
@@ -470,7 +510,7 @@ describe('LiveModule (tag-based live queries)', () => {
     let authorized = true;
     @LiveResolver()
     class Revocable {
-      @LiveQuery('revocable.q', numberQuery, { tags: ['revocable'] })
+      @LiveQuery(numberQuery('revocable.q'), { tags: ['revocable'] })
       q() {
         return 1;
       }
@@ -514,7 +554,7 @@ describe('LiveModule (tag-based live queries)', () => {
     @LiveResolver()
     class Guarded {
       @UseGuards(MutableGuard)
-      @LiveQuery('guarded.q', numberQuery, { tags: ['guarded'] })
+      @LiveQuery(numberQuery('guarded.q'), { tags: ['guarded'] })
       q() {
         return 1;
       }
@@ -709,7 +749,7 @@ describe('LiveModule (tag-based live queries)', () => {
       }),
     );
 
-    expect(app.get(PresenceService).roster('lobby')).toEqual([]);
+    expect(app.get(PresenceService).roster('/rooms/:id/ws', 'lobby')).toEqual([]);
   });
 
   it('rejects presence heartbeats and roster reads outside joined rooms', async () => {
@@ -723,7 +763,7 @@ describe('LiveModule (tag-based live queries)', () => {
     );
 
     expect(client.closed).toEqual({ code: 1008, reason: 'presence room not joined' });
-    expect(app.get(PresenceService).roster('foreign')).toEqual([]);
+    expect(app.get(PresenceService).roster('/rooms/:id/ws', 'foreign')).toEqual([]);
 
     const watcher = new FakeClient('foreign-watcher');
     watcher.rooms.add('lobby');
@@ -736,6 +776,149 @@ describe('LiveModule (tag-based live queries)', () => {
     expect(watcher.live()).toContainEqual(
       expect.objectContaining({ t: 'error', sub: 'p-foreign', fatal: true }),
     );
+  });
+
+  it('keeps presence rosters per gateway when gateways share a room id', async () => {
+    @WebSocketGateway({ path: '/admin' })
+    class AdminGateway {}
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [AdminGateway, ChatGateway],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const dispatcher = app.get(WsDispatcher);
+      const engine = app.get(LiveEngine);
+      const presence = app.get(PresenceService);
+      const beat = (name: string) =>
+        JSON.stringify({ event: '$live', data: { t: 'presence', room: 'org-1', meta: { name } } });
+      const admin = new FakeClient('admin');
+      const chat = new FakeClient('chat');
+      admin.rooms.add('org-1');
+      chat.rooms.add('org-1');
+      await dispatcher.handleOpen('/admin', admin);
+      await dispatcher.handleOpen('/chat', chat);
+      await dispatcher.dispatchMessage(
+        '/chat',
+        chat,
+        subFrame('roster', PRESENCE_ROSTER_QUERY, { room: 'org-1' }),
+      );
+      expect(chat.live()[1]).toMatchObject({ t: 'data', snapshot: [] });
+      chat.clear();
+
+      // Another gateway's heartbeat in a room with the same id is not this roster's concern.
+      await dispatcher.dispatchMessage('/admin', admin, beat('admin'));
+      await engine.whenIdle();
+      expect(chat.live()).toEqual([]);
+      expect(presence.roster('/chat', 'org-1')).toEqual([]);
+      expect(presence.roster('/admin', 'org-1')).toEqual([
+        expect.objectContaining({ id: 'admin', meta: { name: 'admin' } }),
+      ]);
+
+      await dispatcher.dispatchMessage('/chat', chat, beat('chat'));
+      await engine.whenIdle();
+      expect(chat.live()).toEqual([
+        expect.objectContaining({ t: 'data', snapshot: [expect.objectContaining({ id: 'chat' })] }),
+      ]);
+      expect(engine.inspect().rooms).toEqual([
+        { room: 'org-1', count: 2, members: ['admin', 'chat'] },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('serves the presence of a 512-byte room on a long gateway path', async () => {
+    const path = '/workspaces/:workspace/realtime/ws';
+    @WebSocketGateway({ path, roomParam: 'workspace' })
+    class WorkspaceGateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [WorkspaceGateway],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const dispatcher = app.get(WsDispatcher);
+      const engine = app.get(LiveEngine);
+      const room = 'w'.repeat(512);
+      const member = new FakeClient('member');
+      const watcher = new FakeClient('watcher');
+      member.rooms.add(room);
+      watcher.rooms.add(room);
+      await dispatcher.handleOpen(path, member);
+      await dispatcher.handleOpen(path, watcher);
+      await dispatcher.dispatchMessage(
+        path,
+        watcher,
+        subFrame('roster', PRESENCE_ROSTER_QUERY, { room }),
+      );
+      expect(watcher.live()).toEqual([
+        { t: 'ack', sub: 'roster' },
+        expect.objectContaining({ t: 'data', sub: 'roster', snapshot: [] }),
+      ]);
+      watcher.clear();
+
+      await dispatcher.dispatchMessage(
+        path,
+        member,
+        JSON.stringify({ event: '$live', data: { t: 'presence', room, meta: { name: 'm' } } }),
+      );
+      await engine.whenIdle();
+      expect(watcher.live()).toEqual([
+        expect.objectContaining({
+          t: 'data',
+          snapshot: [expect.objectContaining({ id: 'member', meta: { name: 'm' } })],
+        }),
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reports a presence invalidation the driver rejects', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('invalidation log unavailable');
+    const driver: LiveDriver = {
+      kind: 'failing',
+      bind() {},
+      dispatch: () => Promise.reject(failure),
+    };
+    @WebSocketGateway({ path: '/ws' })
+    class Gateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot({ driver: () => driver })],
+      providers: [Gateway],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const client = new FakeClient();
+      client.rooms.add('lobby');
+      await app.get(WsDispatcher).handleOpen('/ws', client);
+      await app
+        .get(WsDispatcher)
+        .dispatchMessage(
+          '/ws',
+          client,
+          JSON.stringify({ event: '$live', data: { t: 'presence', room: 'lobby' } }),
+        );
+      await vi.waitFor(() =>
+        expect(errorSpy.mock.calls.some((call) => call.includes(failure))).toBe(true),
+      );
+      expect(app.get(PresenceService).roster('/ws', 'lobby')).toEqual([
+        expect.objectContaining({ id: 'c1' }),
+      ]);
+    } finally {
+      errorSpy.mockRestore();
+      await app.close();
+    }
   });
 
   it('drops live subscriptions when the socket closes', async () => {
@@ -789,7 +972,7 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
   async function subscribeThrowing(makeError: () => unknown): Promise<FakeClient> {
     @LiveResolver()
     class Boom {
-      @LiveQuery('boom.q', numberQuery, { tags: ['boom'] })
+      @LiveQuery(numberQuery('boom.q'), { tags: ['boom'] })
       q() {
         throw makeError();
       }
@@ -850,7 +1033,7 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
   it('leaves the subscribe-arg parse path untouched (validation message still echoed)', async () => {
     @LiveResolver()
     class Strict {
-      @LiveQuery('strict.q', strictNumberQuery, { tags: ['t'] })
+      @LiveQuery(strictNumberQuery, { tags: ['t'] })
       q(args: { n: number }) {
         return args.n;
       }

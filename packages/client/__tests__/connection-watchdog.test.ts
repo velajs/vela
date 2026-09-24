@@ -8,7 +8,7 @@ const PONG = '{"event":"$pong"}';
 const startClient = async (heartbeatIntervalMs: number) => {
   const sockets = makeSocketFactory();
   const client = new LiveClient({
-    queries: {},
+    queries: [],
     url: 'http://api.test',
     WebSocket: sockets.factory,
     heartbeatIntervalMs,

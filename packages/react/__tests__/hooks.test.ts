@@ -66,9 +66,13 @@ function makeFakeClient() {
     connectionStatus: () => status,
   };
   const client = new LiveClient({
-    queries: {
-      'todos.list': { args: { parse: (v: unknown) => v }, result: { parse: (v: unknown) => v } },
-    },
+    queries: [
+      {
+        name: 'todos.list',
+        args: { parse: (v: unknown) => v },
+        result: { parse: (v: unknown) => v },
+      },
+    ],
     url: 'https://api.test',
   });
   vi.spyOn(client, 'subscribe').mockImplementation(behavior.subscribe);
@@ -177,9 +181,13 @@ describe('useConnectionStatus', () => {
 describe('useClientQuery', () => {
   it('returns [value, setter] with no undefined flash, re-renders on set, shared across consumers', () => {
     const client = new LiveClient({
-      queries: {
-        'todos.list': { args: { parse: (v: unknown) => v }, result: { parse: (v: unknown) => v } },
-      },
+      queries: [
+        {
+          name: 'todos.list',
+          args: { parse: (v: unknown) => v },
+          result: { parse: (v: unknown) => v },
+        },
+      ],
       url: 'http://api.test',
     });
     const filter = createClientQuery('ui.filter', 'all');
@@ -246,9 +254,13 @@ describe('usePresence', () => {
 describe('contract-bound hooks', () => {
   it('parses mutation results through the live client and records parser failures', async () => {
     const client = new LiveClient({
-      queries: {
-        'todos.list': { args: { parse: (v: unknown) => v }, result: { parse: (v: unknown) => v } },
-      },
+      queries: [
+        {
+          name: 'todos.list',
+          args: { parse: (v: unknown) => v },
+          result: { parse: (v: unknown) => v },
+        },
+      ],
       url: 'https://api.test',
       fetch: async () => Response.json({ id: 'u1' }),
     });
@@ -289,9 +301,13 @@ describe('contract-bound hooks', () => {
   it('does not read another hook family provider', () => {
     const other = createLiveHooks();
     const client = new LiveClient({
-      queries: {
-        'todos.list': { args: { parse: (v: unknown) => v }, result: { parse: (v: unknown) => v } },
-      },
+      queries: [
+        {
+          name: 'todos.list',
+          args: { parse: (v: unknown) => v },
+          result: { parse: (v: unknown) => v },
+        },
+      ],
       url: 'https://api.test',
     });
     expect(() => renderHook(() => other.useLiveClient(), { wrapper: wrapperFor(client) })).toThrow(

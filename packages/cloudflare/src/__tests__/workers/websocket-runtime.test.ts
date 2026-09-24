@@ -136,6 +136,35 @@ describe('Cloudflare WebSocket security under workerd', () => {
     otherRoom.socket.close(1000, 'done');
   });
 
+  it("pushes from the Worker to a gateway room's Durable Object through Gateways", async () => {
+    const target = await socketFor('push-target');
+    const other = await socketFor('push-other');
+
+    const response = await SELF.fetch('https://worker.test/push/push-target', { method: 'POST' });
+    expect(await response.json()).toEqual({ pushed: 'push-target' });
+    expect(await target.next()).toEqual({ event: 'pushed', data: { room: 'push-target' } });
+    expect(await receivesMessageWithin(other.socket, 200)).toBe(false);
+
+    target.socket.close(1000, 'done');
+    other.socket.close(1000, 'done');
+  });
+
+  it("pushes from a room's Durable Object to its own room and forwards another", async () => {
+    const sender = await socketFor('relay-a');
+    const receiver = await socketFor('relay-b');
+
+    sender.socket.send(JSON.stringify({ event: 'relay', data: { room: 'relay-a' } }));
+    expect(await sender.next()).toEqual({ event: 'relayed', data: { room: 'relay-a' } });
+    expect(await receivesMessageWithin(receiver.socket, 200)).toBe(false);
+
+    sender.socket.send(JSON.stringify({ event: 'relay', data: { room: 'relay-b' } }));
+    expect(await receiver.next()).toEqual({ event: 'relayed', data: { room: 'relay-b' } });
+    expect(await receivesMessageWithin(sender.socket, 200)).toBe(false);
+
+    sender.socket.close(1000, 'done');
+    receiver.socket.close(1000, 'done');
+  });
+
   it('admits connections whose hook broadcasts to the room they join', async () => {
     const first = await socketFor('announce');
     const second = await socketFor('announce');

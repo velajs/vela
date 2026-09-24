@@ -1,6 +1,7 @@
 import { setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { describe, it, expect } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   Inject,
   InjectEnv,
   Injectable,
@@ -11,12 +12,15 @@ import {
   type MiddlewareConsumer,
   type NestMiddleware,
   type NestModule,
+  type ErrorReportContext,
+  type ExceptionHandler,
   type VelaContext,
   type VelaEnv,
 } from '@velajs/vela';
 import { MemoryNonceStore } from '@velajs/vela/security';
 import type { RequestContext } from '@velajs/vela';
 import {
+  Gateways,
   WebSocketGateway,
   WebSocketModule,
   SubscribeMessage,
@@ -42,7 +46,6 @@ import { DoWebSocketHost } from '../websocket/do-websocket-host';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
 import { VelaWebSocketDurableObject } from '../websocket/websocket.durable-object';
 import { roomTag, connTag, durableObjectRoomName, roomToDurableId } from '../websocket/room-id';
-import { broadcastToRoom } from '../websocket/broadcast';
 import type { DoStateLike, WsLike } from '../websocket/do-state';
 
 // ---- fakes for the Durable Object runtime ----
@@ -308,6 +311,25 @@ describe('CfRoomRegistry.deliverLocal', () => {
     reg.deliverLocal({ rooms: ['r1'], exceptRooms: ['muted'], frame: frame('y', 1) });
     expect(a.sent).toHaveLength(2);
     expect(b.sent).toHaveLength(2); // b excluded via 'muted'
+  });
+
+  it("delivers a gateway-scoped push only to that gateway's sockets", () => {
+    const ctx = new FakeDoState();
+    const chat = socket({ connId: 'a', state: 'active', rooms: ['r1'] }, [roomTag('r1')], ctx);
+    const admin = socket(
+      { connId: 'b', state: 'active', path: '/admin', rooms: ['r1'] },
+      [roomTag('r1')],
+      ctx,
+    );
+    const registry = new CfRoomRegistry(ctx);
+
+    registry.deliverLocal({ rooms: ['r1'], gatewayPath: '/admin', frame: frame('audit', 1) });
+    expect(chat.sent).toEqual([]);
+    expect(admin.sent).toHaveLength(1);
+
+    registry.deliverLocal({ rooms: ['r1'], gatewayPath: '/chat', frame: frame('x', 1) });
+    expect(chat.sent).toHaveLength(1);
+    expect(admin.sent).toHaveLength(1);
   });
 
   it('closes expired or rejected sockets instead of delivering a push', () => {
@@ -714,35 +736,51 @@ describe('DO runtime integration', () => {
   });
 });
 
-describe('broadcastToRoom synchronization boundary', () => {
-  it('does not resolve or call a Durable Object stub for an oversized command', async () => {
+describe('Gateways push boundary (Worker -> Durable Object)', () => {
+  it("does not resolve or call a Durable Object stub for a push over the gateway's frame limit", async () => {
     let gets = 0;
     let broadcasts = 0;
-    const ns = {
+    const namespace = {
       idFromName: (name: string) => ({ toString: () => name }),
       get: () => {
         gets += 1;
         return {
-          async broadcast() {
+          async broadcast(): Promise<void> {
             broadcasts += 1;
           },
         };
       },
-    } as unknown as DurableObjectNamespace;
+    };
+    @WebSocketGateway({ path: '/chat', binding: 'CHAT' })
+    class ChatGateway {}
+    @WebSocketGateway({ path: '/large', binding: 'CHAT', maxFrameBytes: 96 * 1024 })
+    class LargeGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [ChatGateway, LargeGateway] })
+    class AppModule {}
 
-    await expect(
-      broadcastToRoom(ns, '/chat', 'r1', 'large', 'x'.repeat(70 * 1024)),
-    ).rejects.toThrow(/exceeds 65536/);
-    expect(gets).toBe(0);
-    expect(broadcasts).toBe(0);
+    const app = await createCloudflareApp(AppModule, { env: { CHAT: namespace } });
+    try {
+      const gateways = app.get(Gateways);
+      await expect(
+        gateways
+          .of(ChatGateway)
+          .to('r1')
+          .emit('large', 'x'.repeat(70 * 1024)),
+      ).rejects.toThrow(/exceeds 65536/);
+      expect(gets).toBe(0);
+      expect(broadcasts).toBe(0);
 
-    await expect(
-      broadcastToRoom(ns, '/chat', 'r1', 'large', 'x'.repeat(70 * 1024), {
-        maxFrameBytes: 96 * 1024,
-      }),
-    ).resolves.toBeUndefined();
-    expect(gets).toBe(1);
-    expect(broadcasts).toBe(1);
+      await expect(
+        gateways
+          .of(LargeGateway)
+          .to('r1')
+          .emit('large', 'x'.repeat(70 * 1024)),
+      ).resolves.toBeUndefined();
+      expect(gets).toBe(1);
+      expect(broadcasts).toBe(1);
+    } finally {
+      await app.close();
+    }
   });
 });
 
@@ -968,6 +1006,49 @@ describe('gateway upgrade routes (Worker → DO)', () => {
 
     expect(res.status).toBe(400);
     expect(calls).toEqual([]);
+  });
+
+  it('fails an upgrade whose Durable Object binding is missing or of another kind, naming its Wrangler key', async () => {
+    @WebSocketGateway({
+      path: '/rooms/:id/ws',
+      roomParam: 'id',
+      binding: 'ROOM',
+      authenticator: TestUpgradeAuthenticator,
+    })
+    class RoomGateway {}
+    const reports: Array<{ error: unknown; context: ErrorReportContext }> = [];
+    const handler: ExceptionHandler = {
+      report(error, context) {
+        reports.push({ error, context });
+      },
+    };
+    @Module({
+      imports: [WebSocketModule.forRoot()],
+      providers: [RoomGateway, defineProvider(APP_EXCEPTION_HANDLER, { useValue: handler })],
+    })
+    class AppModule {}
+
+    const env: Record<string, unknown> = {};
+    const app = await createCloudflareApp(AppModule, { env });
+    const upgrade = () =>
+      app.getHonoApp().request('/rooms/general/ws', { headers: { upgrade: 'websocket' } }, env);
+    try {
+      const missing = await upgrade();
+      // Answered by the application's error handler with the redacted body.
+      expect(missing.status).toBe(500);
+      expect(await missing.text()).not.toContain('ROOM');
+      env.ROOM = { get: () => ({}) };
+      const wrongKind = await upgrade();
+      expect(wrongKind.status).toBe(500);
+      expect(reports.map(({ error }) => String(error))).toEqual([
+        "Error: ENV.ROOM is not set: declare the Durable Object namespace binding 'ROOM' under " +
+          'durable_objects.bindings in the runtime configuration.',
+        "TypeError: ENV.ROOM is not a binding of type Durable Object namespace: declare 'ROOM' " +
+          'under durable_objects.bindings in the runtime configuration.',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects cross-origin browsers and authorization failures before DO allocation', async () => {

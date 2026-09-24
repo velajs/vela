@@ -6,6 +6,10 @@ export const todoSchema = z.object({
   title: z.string().min(1).max(200),
   done: z.boolean().default(false),
 });
-export const todoList = defineLiveQuery({ args: z.object({}), result: todoSchema.array() });
-export const queries = { "todos.list": todoList };
+export const todoList = defineLiveQuery({
+  name: "todos.list",
+  args: z.object({}),
+  result: todoSchema.array(),
+});
+export const queries = [todoList];
 export type Todo = z.infer<typeof todoSchema>;

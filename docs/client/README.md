@@ -14,10 +14,11 @@ import { z } from 'zod';
 
 export const todo = z.object({ id: z.string(), text: z.string() });
 export const todoList = defineLiveQuery({
+  name: 'todos.list',
   args: z.object({ listId: z.string() }),
   result: z.array(todo),
 });
-export const queries = { 'todos.list': todoList };
+export const queries = [todoList];
 ```
 
 ```ts
@@ -28,7 +29,7 @@ const client = createLiveClient({ url: 'https://api.example.com', queries });
 const stop = client.subscribe('todos.list', { listId: 'l1' }, (todos) => render(todos));
 ```
 
-Query names, arguments, and result types are inferred from the parser map. On the server, use `@LiveQuery('todos.list', todoList, { tags: ['todos'] })` with the same descriptor. The client validates arguments before subscription and validates snapshots, merged deltas, SSR hydration, and cross-tab results before committing them. Invalid data emits `LIVE_SCHEMA_INVALID` and preserves the last valid value and cursor. Parser-produced snapshots retain stable identities between updates for React. `subscribeRaw` and `peekRaw` expose dynamic queries as `unknown` for tooling.
+Query names, arguments, and result types are inferred from the definitions, each of which declares its name once; two definitions with the same name are rejected with `LIVE_SCHEMA_DUPLICATE`. On the server, use `@LiveQuery(todoList, { tags: ['todos'] })` with the same definition. `new LiveClient<Contract>({ queries })` takes an explicit contract instead; `LiveQueryDefinitions<Contract>` types its list. The client validates arguments before subscription and validates snapshots, merged deltas, SSR hydration, and cross-tab results before committing them. Invalid data emits `LIVE_SCHEMA_INVALID` and preserves the last valid value and cursor. Parser-produced snapshots retain stable identities between updates for React. `subscribeRaw` and `peekRaw` expose dynamic queries as `unknown` for tooling.
 
 Mutations return `unknown` unless a parser supplies their result type:
 

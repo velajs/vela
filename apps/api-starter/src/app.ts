@@ -23,16 +23,13 @@ import {
   type BetterAuthUpgradeTenantResolver,
   type User,
 } from '@velajs/better-auth';
-import { Crud, CrudModule, defineModel } from '@velajs/crud';
+import { Crud, CrudModule, crudLiveTag, defineModel } from '@velajs/crud';
 import { drizzleAdapter } from '@velajs/crud-drizzle';
-import { durableObjectRoomName } from '@velajs/cloudflare';
 import { StudioModule } from '@velajs/studio';
 import { crudPanel } from '@velajs/studio/crud';
 import { livePanel } from '@velajs/studio/live';
 import { schema as authSchema } from './auth-schema';
 import { todoSchema, todoList } from './contracts';
-
-const GATEWAY = '/rooms/:room/ws';
 
 const todos = sqliteTable('todos', {
   id: text().primaryKey(),
@@ -84,18 +81,18 @@ class HealthController {
   }
 }
 
+// The engine validates each result against todoList, so the query returns its rows as read.
 @LiveResolver()
 class TodoQueries {
   constructor(@InjectEnv() private readonly native: VelaEnv) {}
-  @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
+  @LiveQuery(todoList, { tags: [crudLiveTag('todos')] })
   async list() {
-    const rows = await drizzle(this.native.DB).select().from(todos).orderBy(todos.id);
-    return todoList.result.parse(rows);
+    return await drizzle(this.native.DB).select().from(todos).orderBy(todos.id);
   }
 }
 
 @WebSocketGateway({
-  path: GATEWAY,
+  path: '/rooms/:room/ws',
   roomParam: 'room',
   binding: 'LIVE_ROOM',
   allowedOrigins: (env) => [env.APP_ORIGIN],
@@ -105,9 +102,10 @@ class TodoGateway {}
 
 /**
  * The whole application, declared once. Each native environment builds its own
- * auth instance, CRUD adapter and Studio source in the factories below; secrets
- * never live in process-wide globals. The Cloudflare adapter wires WebSockets
- * and live queries to the LIVE_ROOM Durable Object that TodoGateway names.
+ * auth instance and CRUD adapter in the factories below; secrets never live in
+ * process-wide globals. The Cloudflare adapter wires WebSockets, live queries
+ * and Studio's live inspection to the LIVE_ROOM Durable Object that
+ * TodoGateway names.
  */
 @Module({
   imports: [
@@ -153,15 +151,8 @@ class TodoGateway {}
       editable: { ops: true },
       plugins: [
         crudPanel({ managedModels: { include: ['todo'] } }),
-        // Each application inspects the room Durable Object of its own ENV.
-        livePanel({
-          source: (env) => ({
-            inspect: () =>
-              env.LIVE_ROOM.get(
-                env.LIVE_ROOM.idFromName(durableObjectRoomName(GATEWAY, 'default')),
-              ).inspectLive(),
-          }),
-        }),
+        // Studio inspects the shared board's room in its Durable Object.
+        livePanel({ rooms: ['default'] }),
       ],
     }),
   ],

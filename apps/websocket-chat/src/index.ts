@@ -1,7 +1,17 @@
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
-import { Module, Controller, Get, Injectable } from '@velajs/vela';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Injectable,
+  Module,
+  Param,
+  Post,
+} from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import {
+  Gateways,
   WebSocketGateway,
   WebSocketModule,
   SubscribeMessage,
@@ -44,6 +54,12 @@ export class AnonymousDemoAuthenticator implements UpgradeAuthenticator {
 }
 
 // ---- Gateway: one Durable Object per room; broadcast to everyone in it ----
+
+/** The events the chat's rooms receive: each event name and its payload. */
+export interface ChatEvents {
+  chat: { from: string; text: string };
+  system: { text: string };
+}
 
 @WebSocketGateway({
   path: '/rooms/:id/ws',
@@ -118,18 +134,51 @@ export class PageController {
   }
 }
 
+// ---- Server push: the Worker announces to a room through Gateways ----
+
+/** Validates an announcement body before any of it reaches a room: 1 to 500 characters of text. */
+const Announcement = {
+  parse(value: unknown): { text: string } {
+    const text: unknown =
+      typeof value === 'object' && value !== null ? Reflect.get(value, 'text') : undefined;
+    if (typeof text !== 'string' || text.length === 0 || text.length > 500) {
+      throw new BadRequestException('An announcement needs text of 1 to 500 characters');
+    }
+    return { text };
+  },
+};
+
+/**
+ * The Worker holds no sockets; `Gateways` sends the push to the room's
+ * `ChatRoom` Durable Object over its broadcast RPC. DEMO ONLY: anyone who can
+ * reach this route can push into any room it names. A real application guards
+ * it with its own authorization, for example `@UseGuards(StaffGuard)`.
+ */
+@Controller('/rooms')
+export class AnnouncementController {
+  constructor(private readonly gateways: Gateways) {}
+
+  @Post('/:id/announce')
+  async announce(@Param('id') room: string, @Body(Announcement) body: { text: string }) {
+    const text = `announcement: ${body.text}`;
+    await this.gateways.of<ChatEvents>(ChatGateway).to(room).emit('system', { text });
+    return { announced: room };
+  }
+}
+
 // ---- App module + Worker entry ----
 
 @Module({
   imports: [WebSocketModule.forRoot()],
-  controllers: [PageController],
+  controllers: [PageController, AnnouncementController],
   providers: [ChatGateway],
 })
 export class AppModule {}
 
 // The Cloudflare adapter serves the gateway's upgrade route in the Worker and
 // forwards it to the CHAT_ROOM Durable Object for the room, read by name from
-// ENV; inside that object the same module broadcasts to the room's sockets.
+// ENV; inside that object the same module broadcasts to the room's sockets, and
+// Gateways pushes from the Worker reach it over its broadcast RPC.
 export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
 
 export default createCloudflareWorker(AppModule);

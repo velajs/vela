@@ -17,7 +17,7 @@ StudioModule.forRoot({
   plugins: [
     crudPanel({ managedModels: { include: ['todo'] } }),
     queuesPanel(),
-    livePanel({ source: (env) => roomInspection(env) }),
+    livePanel({ rooms: ['default'] }),
     logsPanel({ timings: true }),
   ],
 });
@@ -32,7 +32,7 @@ StudioModule.forRoot({
 | `flagsPanel()` | `./flags` | `flags` |
 | `queuesPanel()` | `./queue` | `queue` |
 | `schedulePanel()` | `./schedule` | `schedule` |
-| `livePanel({ source? })` | `./live` | `live`, `presence` |
+| `livePanel({ rooms?, source? })` | `./live` | `live`, `presence` |
 | `logsPanel({ timings? })` | `./logging` | `logs` capture |
 
 Each plugin's providers register in StudioModule's own scope, so they reach its
@@ -57,10 +57,15 @@ takes effect without extra wiring. `readStudioEnv(env)` parses these values and
 The protocol exposes the usable operation catalog through `studio.capabilities`.
 Only configured Studio handlers enable their features. Queue depth/DLQ/replay
 remain unavailable until their handlers are implemented. Live and presence
-inspection are enabled by `livePanel({ source })`, where
-`source.inspect()` returns the application's explicitly scoped subscription and
-room snapshots. With no source they remain disabled. For Cloudflare, call
-`inspectLive()` on known room Durable Object stubs; there is no global room list.
+inspection are enabled by `livePanel({ rooms: ['default'] })`, which reads each
+named room through `LiveModule`'s `LiveInspector`: on Cloudflare the room's
+Durable Object, through the gateway binding the live driver delivers to;
+elsewhere the application's own engine. There is no global room list, so name
+each room; the sockets of a gateway without `roomParam` join its path, so name
+that path for them. `livePanel({ source })` takes a custom source whose
+`inspect()` returns explicitly scoped subscription and room snapshots instead,
+or a function that builds it from the application's `ENV`. With neither, the
+features remain disabled.
 CRUD reads and single writes use the adapter's request scope. Bulk mutations require
 transaction support, exposed as `supports.bulkWrites` in model descriptors.
 
