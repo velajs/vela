@@ -47,6 +47,9 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
   // Plugins decide the providers, so forRootAsync takes them next to its factory.
   structural: ['plugins'],
   defaults: { plugins: [] },
+  // One admin surface per application, whatever its panels: a second
+  // configuration fails bootstrap instead of mounting another surface.
+  key: () => 'application',
   setup: ({ OPTIONS, options }) => {
     const plugins = collectStudioPlugins(options.plugins);
     const providers: Array<Type | ProviderDefinition> = [

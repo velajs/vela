@@ -91,6 +91,18 @@ describe('StudioModule plugins', () => {
     expect(() => defineStudioPlugin({ name: '' })).toThrow('non-empty name');
   });
 
+  it('keeps one Studio per application whatever its panels', async () => {
+    @Module({ imports: [StudioModule.forRoot({ token: TOKEN, plugins: [queuesPanel()] })] })
+    class Feature {}
+    @Module({
+      imports: [Feature, StudioModule.forRoot({ token: TOKEN, plugins: [schedulePanel()] })],
+    })
+    class App {}
+    await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
+      /StudioModule#application was imported again with different options/,
+    );
+  });
+
   it('keeps plugins structural: forRootAsync takes them next to its factory', async () => {
     @Module({
       imports: [
