@@ -60,7 +60,11 @@ export interface RouteResponseOptions {
   response?: ValidationSchema | null;
   /** Success status. Defaults to 201 for POST, 204 for `response: null`, 200 otherwise. */
   status?: SuccessStatusCode;
-  /** How the result is sent; `json` by default. */
+  /**
+   * How the result is sent: `json` by default with a `response` schema.
+   * Without one, strings are sent as text and other values as JSON, as on a
+   * route without options.
+   */
   format?: RouteResponseFormat;
   /** Media type of a `binary`, `stream` or `response` body; `application/octet-stream` by default. */
   contentType?: string;
@@ -83,7 +87,10 @@ export type RouteSchemaResult<S extends ValidationSchema> = S extends {
     ? SchemaInput<S>
     : SchemaOutput<S>;
 
-/** What a handler with these route options or contract returns. */
+/**
+ * What a handler with these route options or contract returns. A ready
+ * `Response` is always accepted and sent as is.
+ */
 export type RouteHandlerResult<Options> = Options extends { readonly format: 'response' }
   ? Response
   : Options extends { readonly format: 'stream' }
@@ -91,13 +98,13 @@ export type RouteHandlerResult<Options> = Options extends { readonly format: 're
     : Options extends { readonly format: 'binary' }
       ? RouteBinaryBody | Response
       : Options extends { readonly response: null }
-        ? undefined | null | void
+        ? undefined | null | void | Response
         : Options extends { readonly response: infer S extends ValidationSchema }
           ? Options extends { readonly format: 'text' }
-            ? Extract<RouteSchemaResult<S>, string>
-            : RouteSchemaResult<S>
+            ? Extract<RouteSchemaResult<S>, string> | Response
+            : RouteSchemaResult<S> | Response
           : Options extends { readonly format: 'text' }
-            ? string
+            ? string | Response
             : unknown;
 
 /** A route body with every limit resolved. */
@@ -120,7 +127,11 @@ export interface RouteContractMetadata {
   /** The success body schema; `null` declares an empty body (204 by default). */
   readonly response?: ValidationSchema | null;
   readonly status?: SuccessStatusCode;
-  readonly format: RouteResponseFormat;
+  /**
+   * The declared format, `json` when only `response` is declared. Undefined
+   * sends strings as text and other values as JSON, as a route without options.
+   */
+  readonly format?: RouteResponseFormat;
   /** Media type of a native body. */
   readonly contentType?: string;
   /** Parse the handler's result through `response` before sending it. */
@@ -132,6 +143,11 @@ export interface RouteContractMetadata {
   readonly bodySchema?: ValidationSchema;
   /** The served path a `defineRoute` contract declares. */
   readonly path?: string;
+  /**
+   * Declared by a `defineRoute` contract, whose client types fix the status:
+   * the route takes no `@HttpCode`.
+   */
+  readonly shared?: boolean;
 }
 
 const MiB = 1024 * 1024;
@@ -202,6 +218,7 @@ export function resolveRouteContract(
     query: pick('query'),
     bodySchema: pick('body'),
     path: contract ? (given.path as string | undefined) : undefined,
+    shared: contract || undefined,
   };
   if (!native && format !== 'json' && format !== 'text') fail(`format ${format} is unknown`);
   if (native && response != null)
@@ -219,7 +236,7 @@ export function resolveRouteContract(
   if (Object.values(declared).every((value) => value === undefined)) return undefined;
   return Object.freeze({
     ...declared,
-    format,
+    format: given.format ?? (response == null ? undefined : 'json'),
     contentType: contentType?.toLowerCase(),
     validate: validate !== false,
   });

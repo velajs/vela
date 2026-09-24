@@ -5,7 +5,7 @@ import type { Container } from '../container/container';
 import type { ArgumentMetadata, PipeTransform } from '../pipeline/types';
 import { instantiateAsync } from './instantiate';
 import { readJsonBody } from './json-body';
-import type { ParamMetadata } from './types';
+import type { ParamMetadata, ParamReader } from './types';
 
 type ParamExtractor = (c: Context, param: ParamMetadata) => unknown | Promise<unknown>;
 
@@ -44,7 +44,7 @@ export class ArgumentResolver {
     paramTypes?: unknown[],
     moduleId?: string,
     /** Route-built readers, by position in `paramMetadata`; they replace the default extraction. */
-    extractors: ReadonlyArray<((c: Context) => unknown) | undefined> = [],
+    extractors: ReadonlyArray<ParamReader | undefined> = [],
   ): Promise<unknown[]> {
     if (paramMetadata.length === 0) {
       return [c];
@@ -62,6 +62,7 @@ export class ArgumentResolver {
         data: param.name,
         metatype: param.metatype ?? paramTypes?.[param.index],
       };
+      if (extract?.validatesMetatype) metadata.validated = true;
 
       for (const pipe of pipes) {
         value = await (pipe.transformAsync

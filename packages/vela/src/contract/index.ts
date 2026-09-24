@@ -3,8 +3,8 @@
 // installs no Reflect polyfill, so a browser bundle can share contracts with
 // the server that serves them.
 
-export { defineRoute } from './route-contract';
-export type { RouteContract, RouteContractMethod } from './route-contract';
+export { contractFormEncodings, defineRoute } from './route-contract';
+export type { ContractFormEncoding, RouteContract, RouteContractMethod } from './route-contract';
 export type {
   ContractApp,
   ContractBody,

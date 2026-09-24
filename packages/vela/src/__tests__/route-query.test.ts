@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { Controller, Get, Module, Query, VelaFactory, type VelaApplication } from '../index';
 import { createOpenApiDocument } from '../openapi/index';
-import type { SchemaOutput } from '../validation/index';
+import { ValidationPipe, type SchemaOutput } from '../validation/index';
 
 const Search = z.object({
   q: z.string(),
   tag: z.array(z.string()).optional(),
   page: z.coerce.number().int().min(1).optional(),
 });
+
+// A query class carrying its schema, validated by a global ValidationPipe.
+class SearchDto {
+  static schema = z.object({ q: z.string(), tag: z.array(z.string()).optional() });
+  declare q: string;
+  declare tag?: string[];
+}
 
 @Controller('/search')
 class SearchController {
@@ -30,6 +37,21 @@ class SearchController {
   @Get('/schema')
   schema(@Query(Search) query: SchemaOutput<typeof Search>) {
     return query;
+  }
+
+  @Get('/dto')
+  dto(@Query() query: SearchDto) {
+    return query;
+  }
+
+  @Get('/role')
+  role(@Query('role') role: string) {
+    return { role: role ?? null, admin: role === 'admin' };
+  }
+
+  @Get('/tags')
+  tags(@Query('tags') tags: string[]) {
+    return { tags: tags ?? null };
   }
 }
 
@@ -74,6 +96,43 @@ describe('array-aware @Query', () => {
     }
   });
 
+  it('reads array keys from a query class schema a global pipe validates', async () => {
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new ValidationPipe());
+    try {
+      const one = await get(app, '/dto?q=x&tag=one');
+      expect(one.status).toBe(200);
+      expect(await one.json()).toEqual({ q: 'x', tag: ['one'] });
+      expect(await (await get(app, '/dto?q=x&tag=one&tag=two')).json()).toEqual({
+        q: 'x',
+        tag: ['one', 'two'],
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('gives an unvalidated named parameter the shape its declared type names', async () => {
+    const app = await VelaFactory.create(App);
+    try {
+      // A string parameter reads the first value, as its type says.
+      expect(await (await get(app, '/role?role=user&role=admin')).json()).toEqual({
+        role: 'user',
+        admin: false,
+      });
+      expect(await (await get(app, '/role?role=admin')).json()).toEqual({
+        role: 'admin',
+        admin: true,
+      });
+      // An array parameter is an array even when sent once.
+      expect(await (await get(app, '/tags?tags=a')).json()).toEqual({ tags: ['a'] });
+      expect(await (await get(app, '/tags?tags=a&tags=b')).json()).toEqual({ tags: ['a', 'b'] });
+      expect(await (await get(app, '/tags')).json()).toEqual({ tags: null });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('rejects a repeated scalar instead of choosing one value', async () => {
     const app = await VelaFactory.create(App);
     try {
@@ -110,5 +169,18 @@ describe('array-aware @Query', () => {
       required: true,
       schema: { type: 'string' },
     });
+    expect(document.paths['/search/tags']!.get!.parameters).toEqual([
+      {
+        name: 'tags',
+        in: 'query',
+        required: false,
+        schema: { type: 'array', items: { type: 'string' } },
+        style: 'form',
+        explode: true,
+      },
+    ]);
+    expect(document.paths['/search/role']!.get!.parameters).toEqual([
+      { name: 'role', in: 'query', required: false, schema: { type: 'string' } },
+    ]);
   });
 });

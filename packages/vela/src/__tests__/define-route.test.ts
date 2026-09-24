@@ -5,6 +5,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Module,
   Param,
   Patch,
@@ -14,6 +15,7 @@ import {
   type VelaApplication,
 } from '../index';
 import {
+  contractFormEncodings,
   defineRoute,
   type ContractBody,
   type ContractParams,
@@ -227,6 +229,26 @@ describe('defineRoute contracts', () => {
     }
   });
 
+  it('lists the form encodings of contracts for a client transport', () => {
+    const signup = defineRoute({
+      method: 'POST',
+      path: '/api/signups',
+      body: z.object({ email: z.string() }),
+      form: {},
+    });
+    expect(contractFormEncodings({ ...routes, signup })).toEqual([
+      { path: '/api/todos/:id/files', method: 'POST', contentType: 'multipart/form-data' },
+      { path: '/api/signups', method: 'POST', contentType: 'application/x-www-form-urlencoded' },
+    ]);
+    expect(contractFormEncodings([routes.create, signup])).toEqual([
+      { path: '/api/signups', method: 'POST', contentType: 'application/x-www-form-urlencoded' },
+    ]);
+    // A form contract without a path cannot be matched by a client.
+    expect(() =>
+      contractFormEncodings([defineRoute({ method: 'POST', body: z.object({}), form: {} })]),
+    ).toThrow(/needs its path/);
+  });
+
   it('rejects a contract served by another method or at another path', async () => {
     // @ts-expect-error a GET contract cannot be served by @Post
     expect(() => Post('/', routes.list)).toThrow(/GET cannot be served by @POST/);
@@ -238,6 +260,16 @@ describe('defineRoute contracts', () => {
       }
     }
     await expect(start(Elsewhere)).rejects.toThrow(/not its contract path \/api\/todos/);
+    // The contract's status is what its clients are typed to expect.
+    @Controller('/todos')
+    class Recoded {
+      @Post(routes.create)
+      @HttpCode(200)
+      create() {
+        return { id: 'x', title: 'x', done: false };
+      }
+    }
+    await expect(start(Recoded)).rejects.toThrow(/declare status in the defineRoute contract/);
     expect(() => defineRoute({ method: 'GET', path: 'todos' })).toThrow(/start with \//);
     expect(() => defineRoute({ method: 'GET', body: CreateTodo })).toThrow(/no request body/);
     expect(() => defineRoute({ method: 'POST', body: Attach, form: {}, multipart: {} })).toThrow(

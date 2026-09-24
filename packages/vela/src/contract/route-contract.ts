@@ -72,3 +72,39 @@ export function defineRoute<const Contract extends RouteContract>(contract: Cont
   resolveRouteContract(contract.method, contract);
   return Object.freeze({ ...contract });
 }
+
+/** How a client sends one form route's body; the shape `withFormEncoding` reads. */
+export interface ContractFormEncoding {
+  readonly path: string;
+  readonly method: string;
+  readonly contentType: 'multipart/form-data' | 'application/x-www-form-urlencoded';
+}
+
+/**
+ * The form encodings of route contracts, for `withFormEncoding` from
+ * `@velajs/client/http`: `hc` sends every `form` input as multipart, and a
+ * `form:` contract accepts only a URL-encoded body.
+ *
+ * @example
+ * ```ts
+ * const client = hc<ContractApp<typeof routes>>(origin, {
+ *   fetch: withFormEncoding(contractFormEncodings(routes)),
+ * });
+ * ```
+ */
+export function contractFormEncodings(
+  routes: readonly RouteContract[] | Readonly<Record<string, RouteContract>>,
+): ContractFormEncoding[] {
+  const encodings: ContractFormEncoding[] = [];
+  for (const route of Object.values(routes)) {
+    if (!route.form && !route.multipart) continue;
+    if (route.path === undefined)
+      throw new TypeError(`A ${route.method} form contract needs its path for a client`);
+    encodings.push({
+      path: route.path,
+      method: route.method,
+      contentType: route.multipart ? 'multipart/form-data' : 'application/x-www-form-urlencoded',
+    });
+  }
+  return encodings;
+}

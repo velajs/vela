@@ -19,6 +19,7 @@ export type {
   MountOpenApiOptions,
   OpenApiUi,
   OpenApiDocument,
+  OpenApiInfo,
   OpenApiOperation,
   OpenApiParameter,
   OpenApiPathItem,

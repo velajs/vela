@@ -4,7 +4,11 @@ import {
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from '../errors/http-exception';
-import { parseSchemaAsync, type ValidationSchema } from '../validation/parse-schema';
+import {
+  isValidationSchema,
+  parseSchemaAsync,
+  type ValidationSchema,
+} from '../validation/parse-schema';
 import {
   SchemaValidationError,
   standardJsonSchema,
@@ -231,7 +235,12 @@ export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => 
     return async (c) =>
       pick(await once(c, key, async () => validate(group, await raw(c))), param.name);
   }
-  if (auto) return async (c) => pick(await validate(auto, await raw(c)), param.name);
+  // The class describes the value the parameter receives: the whole body, or
+  // the member a named parameter reads.
+  if (auto)
+    return Object.assign(async (c: Context) => validate(auto, pick(await raw(c), param.name)), {
+      validatesMetatype: true,
+    });
   return async (c) => pick(await raw(c), param.name);
 };
 
@@ -266,12 +275,18 @@ function wireQuery(c: Context, arrays: Set<string>): Record<string, string | str
 
 /**
  * `@Query()`: repeated keys (`?tag=a&tag=b`) and keys the schema declares as
- * arrays arrive as arrays; every other key stays a string.
+ * arrays arrive as arrays; every other key stays a string. The schema is the
+ * route's, the parameter's own, or its class's (validated by a global pipe).
+ * Without a schema, a named parameter declared as a string, number or boolean
+ * receives the first value, and one declared as an array with no pipe (such as
+ * `ParseArrayPipe`, which splits one value) always receives an array.
  */
-export const readQueryParam: ParamExtractorFactory = (route, param) => {
+export const readQueryParam: ParamExtractorFactory = (route, param, metatype) => {
   const contract = route.contract;
   const group = contract?.query;
-  const arrays = arrayKeys(group ?? parameterSchema(param), group ? undefined : param.name);
+  const schema =
+    group ?? parameterSchema(param) ?? (isValidationSchema(metatype) ? metatype : undefined);
+  const arrays = arrayKeys(schema, group ? undefined : param.name);
   const keys = arrays === true ? new Set<string>() : arrays;
   if (contract && group) {
     const key = groupKey(contract, 'query');
@@ -280,9 +295,11 @@ export const readQueryParam: ParamExtractorFactory = (route, param) => {
   }
   const name = param.name;
   if (name === undefined) return (c) => wireQuery(c, keys);
+  const always = arrays === true || (!schema && metatype === Array && !param.pipes?.length);
+  const first = !schema && (metatype === String || metatype === Number || metatype === Boolean);
   return (c) => {
     const values = c.req.queries(name);
-    return values && (arrays === true || values.length !== 1) ? values : values?.[0];
+    return values && (always || (!first && values.length !== 1)) ? values : values?.[0];
   };
 };
 

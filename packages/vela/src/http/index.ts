@@ -91,5 +91,6 @@ export type {
   ParamMetadata,
   ParamExtractionRoute,
   ParamExtractorFactory,
+  ParamReader,
   ControllerRegistration,
 } from './types';

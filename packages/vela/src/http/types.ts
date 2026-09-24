@@ -25,6 +25,13 @@ export interface ParamExtractionRoute {
 }
 
 /**
+ * A parameter's request reader, built once per route. `validatesMetatype`
+ * marks a reader that validates the value against the parameter class's own
+ * schema, so pipes receive it as `ArgumentMetadata.validated`.
+ */
+export type ParamReader = ((c: Context) => unknown) & { readonly validatesMetatype?: boolean };
+
+/**
  * Builds a parameter's request reader for one route. Built-in `@Body`,
  * `@Query` and `@Param` supply one; it runs after guards, before pipes.
  */
@@ -32,7 +39,7 @@ export type ParamExtractorFactory = (
   route: ParamExtractionRoute,
   param: ParamMetadata,
   metatype: unknown,
-) => (c: Context) => unknown;
+) => ParamReader;
 
 export interface ControllerOptions {
   path?: string;

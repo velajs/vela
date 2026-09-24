@@ -112,14 +112,18 @@ export interface RouteOptions extends RouteResponseOptions {
   body?: RouteBodyOptions;
 }
 
-/** A method decorator that checks the decorated handler returns `Result`. */
-export type RouteMethodDecorator<Result> = <
-  Handler extends (...args: never[]) => Result | Promise<Result>,
->(
-  target: object,
-  propertyKey: string | symbol,
-  descriptor: TypedPropertyDescriptor<Handler>,
-) => void;
+/**
+ * A method decorator that checks the decorated handler returns `Result`. A
+ * route without `response` or `format` accepts any result, and its decorator
+ * is an ordinary `MethodDecorator`.
+ */
+export type RouteMethodDecorator<Result> = unknown extends Result
+  ? (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => void
+  : <Handler extends (...args: never[]) => Result | Promise<Result>>(
+      target: object,
+      propertyKey: string | symbol,
+      descriptor: TypedPropertyDescriptor<Handler>,
+    ) => void;
 
 /**
  * The HTTP method decorators: an optional path (relative to the controller;

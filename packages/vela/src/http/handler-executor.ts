@@ -37,7 +37,7 @@ import {
   mapResponse,
   resolveSuccessStatus,
 } from './response-mapper';
-import { sendRouteResult } from './route-response';
+import { enterRoute, sendRouteResult, type ExecutingRoute } from './route-response';
 import type { ParamMetadata, RouteMetadata } from './types';
 
 // The global guard phases an integration's route leaves to the integration
@@ -146,15 +146,18 @@ export class HandlerExecutor {
         `${source}: route response options cannot be combined with @Redirect or @Sse; the route declares how it responds`,
       );
     }
-    if (
-      contract?.status !== undefined &&
-      getHttpCode(controller, route.handlerName) !== undefined
-    ) {
-      throw new Error(
-        `${source}: declare the success status once, with @HttpCode or the route's status`,
-      );
+    if (getHttpCode(controller, route.handlerName) !== undefined) {
+      if (contract?.shared)
+        throw new Error(
+          `${source}: declare status in the defineRoute contract; its clients are typed with that status, not @HttpCode`,
+        );
+      if (contract?.status !== undefined)
+        throw new Error(
+          `${source}: declare the success status once, with @HttpCode or the route's status`,
+        );
     }
-    const successStatus = resolveSuccessStatus(controller, route.handlerName, route.method);
+    const successStatus = resolveSuccessStatus(controller, route);
+    const executing: ExecutingRoute = { status: successStatus, contract, source };
     const skippedPhases = skippedGuardPhases(controller, route.handlerName);
     // Each parameter's reader is built once for this route; configuration
     // errors (a form schema with non-text fields, …) surface at startup.
@@ -168,6 +171,7 @@ export class HandlerExecutor {
       const requestContainer = this.#getRequestContainer(c);
       const globals = this.#getGlobals();
 
+      enterRoute(c, executing);
       const executionContext: ExecutionContext = buildExecutionContext(
         c,
         controller,

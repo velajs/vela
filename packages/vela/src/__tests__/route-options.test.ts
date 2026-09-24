@@ -18,6 +18,7 @@ import {
   type NestInterceptor,
   type VelaApplication,
 } from '../index';
+import { createOpenApiDocument } from '../openapi/index';
 import { defineDto, type SchemaOutput } from '../validation/index';
 
 const Todo = z.object({ id: z.string(), title: z.string(), done: z.boolean() });
@@ -121,6 +122,35 @@ describe('route success status', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe('route success status per route', () => {
+  it('answers each route of one handler with the status its own options declare', async () => {
+    @Controller('/p')
+    class Profiles {
+      @Get('/a', { response: Todo })
+      @Get('/b', { status: 202 })
+      two() {
+        return { id: 'a', title: 'A', done: false };
+      }
+    }
+    const app = await serve(Profiles);
+    try {
+      const a = await call(app, 'GET', '/p/a');
+      expect(a.status).toBe(200);
+      expect(await a.json()).toEqual({ id: 'a', title: 'A', done: false });
+      const b = await call(app, 'GET', '/p/b');
+      expect(b.status).toBe(202);
+      expect(await b.json()).toEqual({ id: 'a', title: 'A', done: false });
+    } finally {
+      await app.close();
+    }
+    @Module({ controllers: [Profiles] })
+    class App {}
+    const document = createOpenApiDocument(App);
+    expect(Object.keys(document.paths['/p/a']!.get!.responses)).toEqual(['200']);
+    expect(Object.keys(document.paths['/p/b']!.get!.responses)).toEqual(['202']);
   });
 });
 
@@ -297,6 +327,46 @@ describe('route response formats', () => {
       expect(raw.status).toBe(202);
       expect(raw.headers.get('x-native')).toBe('1');
       expect(await raw.json()).toEqual({ native: true });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('sends strings as text and empty results empty when the route declares no response or format', async () => {
+    @Controller('/plain')
+    class Plain {
+      @Get('/status', { status: 200 })
+      status() {
+        return 'hello';
+      }
+      @Post('/bounded', { body: { json: { maxBytes: 4096 } } })
+      bounded() {
+        return 'stored';
+      }
+      @Get('/empty', { name: 'plain.empty' })
+      empty() {
+        return null;
+      }
+      @Get('/json', { format: 'json' })
+      json() {
+        return 'quoted';
+      }
+    }
+    const app = await serve(Plain);
+    try {
+      const status = await call(app, 'GET', '/plain/status');
+      expect(status.headers.get('content-type')).toContain('text/plain');
+      expect(await status.text()).toBe('hello');
+      const bounded = await call(app, 'POST', '/plain/bounded', { any: 1 });
+      expect(bounded.status).toBe(201);
+      expect(bounded.headers.get('content-type')).toContain('text/plain');
+      expect(await bounded.text()).toBe('stored');
+      const empty = await call(app, 'GET', '/plain/empty');
+      expect(empty.status).toBe(200);
+      expect(await empty.text()).toBe('');
+      const json = await call(app, 'GET', '/plain/json');
+      expect(json.headers.get('content-type')).toContain('application/json');
+      expect(await json.json()).toBe('quoted');
     } finally {
       await app.close();
     }

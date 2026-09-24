@@ -92,6 +92,12 @@ export interface ArgumentMetadata {
   /** Reflected runtime metadata or an explicit schema descriptor; consumers must narrow it. */
   metatype?: unknown;
   data?: string;
+  /**
+   * The route's request reader already validated the value against
+   * `metatype`'s own schema (`@Body()` of a class carrying a static Standard
+   * Schema); `ValidationPipe` leaves such a value as is.
+   */
+  validated?: boolean;
 }
 
 export interface PipeTransform<T = unknown, R = unknown> {

@@ -25,7 +25,7 @@ import {
   type ContractResponse,
   type ContractStatus,
 } from '../contract/index';
-import type { SchemaOutput } from '../validation/index';
+import type { SchemaInput, SchemaOutput } from '../validation/index';
 
 const Todo = z.object({ id: z.string(), title: z.string(), done: z.boolean(), at: z.date() });
 const CreateTodo = z.object({ title: z.string(), priority: z.number().optional() });
@@ -89,7 +89,9 @@ describe('route contract types', () => {
     expectTypeOf<ContractParams<typeof read>>().toEqualTypeOf<{ id: string }>();
     expectTypeOf<ContractParams<typeof upload>>().toEqualTypeOf<{ id: string }>();
     expectTypeOf<ContractResponse<typeof create>>().toEqualTypeOf<SchemaOutput<typeof Todo>>();
-    expectTypeOf<RouteHandlerResult<typeof remove>>().toEqualTypeOf<undefined | null | void>();
+    expectTypeOf<RouteHandlerResult<typeof remove>>().toEqualTypeOf<
+      undefined | null | void | Response
+    >();
     expectTypeOf<RouteHandlerResult<{ format: 'stream' }>>().toEqualTypeOf<
       ReadableStream<Uint8Array> | Response
     >();
@@ -172,6 +174,35 @@ describe('route contract types', () => {
       }
     }
     expect([DecoratorStyle, ContractStyle, Serialized]).toHaveLength(3);
+  });
+
+  it('keeps untyped method decorators plain MethodDecorators', () => {
+    const wrapped = (path: string): MethodDecorator => Get(path);
+    const post: MethodDecorator = Post('/z');
+    const named: MethodDecorator = Get({ name: 'named', status: 200 });
+    const bounded: MethodDecorator = Post('/b', { body: { json: { maxBytes: 1024 } } });
+    // A route with `response` or `format` checks its handler's result instead.
+    // @ts-expect-error a typed route is a RouteMethodDecorator<Result>
+    const typed: MethodDecorator = Get({ response: Todo });
+    expect([wrapped('/w'), post, named, bounded, typed]).toHaveLength(5);
+  });
+
+  it('lets any handler return a ready Response', () => {
+    class Escapes {
+      @Get('/:id', { response: Todo })
+      read(): SchemaInput<typeof Todo> | Response {
+        return new Response(null, { status: 304 });
+      }
+      @Get('/note', { format: 'text' })
+      note(): Promise<string | Response> {
+        return Promise.resolve('a note');
+      }
+      @Delete('/:id', { response: null })
+      remove(): Response {
+        return Response.redirect('https://example.test/', 303);
+      }
+    }
+    expect(Escapes).toBeTypeOf('function');
   });
 
   it('calls a contract-served application through hc with types from the contracts alone', async () => {

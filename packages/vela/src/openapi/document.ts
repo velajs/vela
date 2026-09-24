@@ -163,7 +163,7 @@ function successResponse(
 ): OpenApiResponse {
   const response: OpenApiResponse = { description: 'OK' };
   if (!contract || contract.response === null || [204, 205, 304].includes(status)) return response;
-  if (NATIVE_FORMATS.has(contract.format)) {
+  if (contract.format !== undefined && NATIVE_FORMATS.has(contract.format)) {
     const format = contract.format as 'binary' | 'stream' | 'response';
     response['x-vela-response-format'] = format;
     response.content = {
@@ -288,10 +288,16 @@ function buildOperation(
       if (!contract?.params) pathParameter(param.name, getParamSchema(param, paramtypes, registry));
     } else if (param.type === ParamType.QUERY && param.name) {
       if (contract?.query) continue;
+      // Without a schema or pipe, a parameter declared as an array reads
+      // repeated keys.
+      const wire: JsonSchema =
+        (param.metatype ?? paramtypes?.[param.index]) === Array && !param.pipes?.length
+          ? { type: 'array', items: { type: 'string' } }
+          : { type: 'string' };
       parameters.push(
         queryParameter(
           param.name,
-          getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
+          getParamSchema(param, paramtypes, registry) ?? wire,
           !isParamOptional(param, paramtypes),
           registry,
         ),
@@ -360,7 +366,7 @@ function buildOperation(
 
   // Document the status and body the runtime sends (see resolveSuccessStatus);
   // `@ApiResponse` adds other statuses, or describes the success one.
-  const status = resolveSuccessStatus(controller, handlerName, route.method);
+  const status = resolveSuccessStatus(controller, route);
   const success = successResponse(contract, status, registry);
   const responses: Record<string, OpenApiResponse> = { [String(status)]: success };
   for (const entry of getApiResponses(controller, handlerName) ?? []) {

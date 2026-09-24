@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { Body, Controller, Module, Post, VelaFactory, type VelaApplication } from '../index';
+import { MetadataRegistry, ParamType } from '../module-kit';
 import { createOpenApiDocument } from '../openapi/index';
 import { ValidationPipe, type StandardSchemaV1 } from '../validation/index';
 
@@ -40,6 +41,17 @@ class Plain {
   declare anything: unknown;
 }
 
+// A named `@Body('item')` parameter whose class describes only that member.
+class Item {
+  static schema = z.object({ sku: z.string().regex(/^[A-Z]{3}$/) });
+  declare sku: string;
+}
+
+class LooseItem {
+  static schema = z.looseObject({ sku: z.string().regex(/^[A-Z]{3}$/) });
+  declare sku: string;
+}
+
 @Controller('/todos')
 class Todos {
   @Post()
@@ -55,6 +67,16 @@ class Todos {
   @Post('/plain')
   plain(@Body() body: Plain) {
     return body;
+  }
+
+  @Post('/named')
+  named(@Body('item') item: Item) {
+    return { item: item ?? null };
+  }
+
+  @Post('/loose')
+  loose(@Body('item') item: LooseItem) {
+    return { item: item ?? null };
   }
 }
 
@@ -101,6 +123,74 @@ describe('@Body() with a schema-carrying parameter class', () => {
       const created = await post(app, '', { title: ' Once ' });
       expect(await created.json()).toEqual({ title: 'Once' });
       expect(transforms).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    ['without a global pipe', false],
+    ['beside a global ValidationPipe', true],
+  ])('validates a named parameter against its member %s', async (_label, globalPipe) => {
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    if (globalPipe) app.useGlobalPipes(new ValidationPipe());
+    try {
+      const valid = await post(app, '/named', { item: { sku: 'ABC' } });
+      expect(valid.status).toBe(201);
+      expect(await valid.json()).toEqual({ item: { sku: 'ABC' } });
+      // The member is validated, not the body that carries it.
+      expect((await post(app, '/named', { sku: 'ABC', item: { sku: 'bad' } })).status).toBe(400);
+      const loose = await post(app, '/loose', {
+        sku: 'ABC',
+        item: { sku: 'not-valid', evil: true },
+      });
+      expect(loose.status).toBe(400);
+      expect((await loose.json()).error.details.issues[0].path).toEqual(['sku']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('leaves a body parameter no route reader validated to the global ValidationPipe', async () => {
+    // A programmatic route registers its body parameter without a reader.
+    class CreateItem {
+      static schema = z.object({ name: z.string().min(1), qty: z.number().int().positive() });
+    }
+    @Controller('/items')
+    class Items {
+      create(body: unknown) {
+        return { body };
+      }
+    }
+    Post()(Items.prototype, 'create', Object.getOwnPropertyDescriptor(Items.prototype, 'create')!);
+    MetadataRegistry.addParameter(Items, 'create', {
+      index: 0,
+      type: ParamType.BODY,
+      metatype: CreateItem,
+    });
+    @Module({ controllers: [Items] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new ValidationPipe());
+    try {
+      const rejected = await app.fetch(
+        new Request('https://example.test/items', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: '', qty: -5, admin: true }),
+        }),
+      );
+      expect(rejected.status).toBe(400);
+      const accepted = await app.fetch(
+        new Request('https://example.test/items', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'Bolt', qty: 2, admin: true }),
+        }),
+      );
+      expect(await accepted.json()).toEqual({ body: { name: 'Bolt', qty: 2 } });
     } finally {
       await app.close();
     }

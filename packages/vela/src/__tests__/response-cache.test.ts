@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { z } from 'zod';
 import {
   Controller,
+  defineSerializer,
   Get,
   Post,
   Res,
@@ -407,6 +409,75 @@ describe('response cache pipeline', () => {
     }
     expect(calls).toBe(13);
     await app.close();
+  });
+
+  it("caches the value the route's response schema sends, not the handler's domain value", async () => {
+    let calls = 0;
+    class Account {
+      readonly #id: string;
+      constructor(id: string) {
+        this.#id = id;
+      }
+      publicDetails() {
+        return { id: this.#id };
+      }
+    }
+    const accountSerializer = defineSerializer({
+      input: z.instanceof(Account),
+      output: z.object({ id: z.string() }),
+      project: (account) => account.publicDetails(),
+    });
+    const PublicUser = z.object({ id: z.string(), displayName: z.string() });
+    @Controller('/profile')
+    class Profiles {
+      @Get('/me', { response: PublicUser })
+      @CacheResponse()
+      me() {
+        calls++;
+        return { id: 'u1', displayName: 'Ada', email: 'ada@example.test', internalRiskScore: 7 };
+      }
+      @Get('/secret', { response: PublicUser })
+      @CacheResponse()
+      secret() {
+        calls++;
+        return { id: 'u2', displayName: 'Grace', passwordHash: 'stored-hash' };
+      }
+      @Get('/account', { response: accountSerializer })
+      @CacheResponse()
+      account() {
+        calls++;
+        return new Account('a1');
+      }
+    }
+    const store = new AsyncStore();
+    @Module({
+      imports: [
+        ResponseCacheModule.forRoot({ namespace: 'profiles', store, scope: () => publicScope }),
+      ],
+      controllers: [Profiles],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      const expected = {
+        me: { id: 'u1', displayName: 'Ada' },
+        secret: { id: 'u2', displayName: 'Grace' },
+        account: { id: 'a1' },
+      };
+      for (const [path, body] of Object.entries(expected))
+        for (let i = 0; i < 2; i++) {
+          const response = await app.getHonoApp().request(`/profile/${path}`);
+          expect(response.status).toBe(200);
+          expect(await response.json()).toEqual(body);
+        }
+      // One handler call per route: hits reuse the stored wire value.
+      expect(calls).toBe(3);
+      const stored = JSON.stringify([...store.values.values()]);
+      for (const field of ['ada@example.test', 'internalRiskScore', 'stored-hash'])
+        expect(stored).not.toContain(field);
+    } finally {
+      await app.close();
+    }
   });
 
   it('bypasses failed scopes and unsafe HTTP output', async () => {

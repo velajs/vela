@@ -1,25 +1,26 @@
 import type { Context } from 'hono';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
-import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
 import { getHttpCode } from './decorators';
-import { defaultRouteStatus } from './route-contract';
+import { defaultRouteStatus, type RouteContractMetadata } from './route-contract';
 
 /**
  * The success status a route sends: `@HttpCode`, else its declared `status`,
  * else 204 for `response: null`, 201 for POST and 200 for every other method —
- * whatever the handler returns. Responses, OpenAPI and the response cache all
- * read the status from here.
+ * whatever the handler returns. Responses and OpenAPI read each route's status
+ * from here; the response cache reads the executing route's.
  */
 export function resolveSuccessStatus(
   controller: Constructor,
-  handler: string | symbol,
-  method: string,
+  route: {
+    readonly handlerName: string | symbol;
+    readonly method: string;
+    readonly contract?: RouteContractMetadata;
+  },
 ): StatusCode {
-  const route = MetadataRegistry.getRoutes(controller).find(
-    (candidate) => candidate.handlerName === handler && candidate.method === method,
+  return (
+    getHttpCode(controller, route.handlerName) ?? defaultRouteStatus(route.method, route.contract)
   );
-  return getHttpCode(controller, handler) ?? defaultRouteStatus(method, route?.contract);
 }
 
 interface RedirectOverride {

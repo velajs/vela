@@ -3,7 +3,7 @@ import { Reflector, SetMetadata } from '../pipeline/reflector';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '../pipeline/types';
 import { sha256Base64Url } from '../crypto/hmac';
 import { getRedirect, getResponseHeaders } from '../http/decorators';
-import { resolveSuccessStatus } from '../http/response-mapper';
+import { executingRoute, markParsed, parseRouteResponse } from '../http/route-response';
 import { getTrustedRequestIdentity } from '../http/trusted-request-identity';
 import { CACHEABLE_METADATA, RESPONSE_CACHE_METADATA } from './cache.tokens';
 import { ResponseCacheService } from './response-cache.service';
@@ -37,13 +37,21 @@ export class ResponseCacheInterceptor implements NestInterceptor {
     if (!config || request.method !== 'GET') return next.handle();
     const target = context.getClass();
     const handler = context.getHandlerName();
-    const status = resolveSuccessStatus(target, handler, 'GET');
+    const response = context.switchToHttp().getResponse();
+    // The route's `response` schema parses the result here, so the cache holds
+    // the value the route sends, never fields the schema strips, and
+    // interceptors around the cache see that value whether or not it is served
+    // from the cache.
+    const handle = async () => parseRouteResponse(response, await next.handle());
+    // The status of the route this request executes; outside the HTTP route
+    // pipeline, nothing is cached.
+    const status = executingRoute(response)?.status;
     const privateHeaders = getResponseHeaders(target, handler).some(
       ([name, value]) =>
         name.toLowerCase() === 'set-cookie' ||
         (name.toLowerCase() === 'cache-control' && /(?:^|,)\s*(?:private|no-store)\b/i.test(value)),
     );
-    if (status !== 200 || getRedirect(target, handler) || privateHeaders) return next.handle();
+    if (status !== 200 || getRedirect(target, handler) || privateHeaders) return handle();
     if (this.reflector.getAllAndOverride<boolean>(CACHEABLE_METADATA, context))
       throw new TypeError('Use only @CacheResponse on async response-cache routes.');
     if (config.tags?.length && !this.cache.options.invalidation)
@@ -51,11 +59,11 @@ export class ResponseCacheInterceptor implements NestInterceptor {
     let scope: ResponseCacheScope | undefined;
     try {
       scope = await this.cache.options.scope(context);
-      if (scope === undefined) return next.handle();
+      if (scope === undefined) return handle();
       validateScope(scope);
     } catch (error) {
       this.cache.report('scope', error);
-      return next.handle();
+      return handle();
     }
     if (
       scope.visibility === 'public' &&
@@ -63,13 +71,12 @@ export class ResponseCacheInterceptor implements NestInterceptor {
         request.headers.has('cookie') ||
         getTrustedRequestIdentity(request) !== undefined)
     )
-      return next.handle();
-    const response = context.switchToHttp().getResponse();
+      return handle();
     const unsafe = () =>
       response.res.headers.has('set-cookie') ||
       /(?:^|,)\s*(?:no-store|private)\b/i.test(response.res.headers.get('cache-control') ?? '') ||
       response.res.status !== 200;
-    if (unsafe()) return next.handle();
+    if (unsafe()) return handle();
     const url = new URL(request.url);
     const query = new URLSearchParams(url.search);
     query.sort();
@@ -85,12 +92,12 @@ export class ResponseCacheInterceptor implements NestInterceptor {
     const value = await scoped.remember(
       key,
       async () => {
-        result = await next.handle();
+        result = await handle();
         bypass = unsafe() || result instanceof Response;
         return bypass ? undefined : result;
       },
       config,
     );
-    return bypass ? result : value;
+    return bypass ? result : markParsed(response, value);
   }
 }

@@ -8,7 +8,7 @@ import {
   type ValidationSchema,
 } from './parse-schema';
 import { isPromiseLike } from './promise-like';
-import { SchemaValidationError, staticStandardSchema } from './standard-schema';
+import { SchemaValidationError } from './standard-schema';
 
 export type { ValidationSchema } from './parse-schema';
 
@@ -41,8 +41,9 @@ export class ValidationPipe implements PipeTransform {
       metatype.validationOwner === 'handler'
     )
       return undefined;
-    // `@Body()` validates a class carrying a static Standard Schema itself.
-    if (metadata.type === 'body' && staticStandardSchema(metatype)) return undefined;
+    // The route's `@Body()` reader already validated the value against the
+    // class's own schema.
+    if (metadata.validated) return undefined;
     return resolveValidationSchema(metatype);
   }
 

@@ -2,8 +2,23 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { Controller, Get, Post, Module, HttpCode, VelaFactory } from '../index.js';
 import { defineDto } from '../validation/index.js';
-import { createOpenApiDocument, ApiResponse } from '../openapi/index.js';
+import {
+  createOpenApiDocument,
+  ApiResponse,
+  type CreateOpenApiDocumentOptions,
+  type OpenApiInfo,
+} from '../openapi/index.js';
 import type { Type } from '../index.js';
+
+describe('OpenAPI document info', () => {
+  it('types the info option with the exported OpenApiInfo', () => {
+    const info: Partial<OpenApiInfo> = { title: 'Catalog', version: '2.0.0' };
+    const options: CreateOpenApiDocumentOptions = { info };
+    @Module({})
+    class AppModule {}
+    expect(createOpenApiDocument(AppModule, options).info).toMatchObject(info);
+  });
+});
 
 describe('@ApiResponse', () => {
   it('registers a response with description and a Zod DTO schema (via $ref)', () => {
