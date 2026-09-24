@@ -14,6 +14,7 @@
     "dist/rate-limit/",
     "dist/services/",
     "dist/storage/",
+    "dist/testing.js",
     "dist/websocket/broadcast.js",
     "dist/websocket/cf-room-registry.js",
     "dist/websocket/cf-ws-client.js",

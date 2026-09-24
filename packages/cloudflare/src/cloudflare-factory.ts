@@ -3,6 +3,7 @@ import { getConnInfo } from 'hono/cloudflare-workers';
 import { VelaFactory } from '@velajs/vela';
 import type {
   VelaApplication,
+  VelaCreateOptions,
   VelaEnv,
   VelaMiddlewareHandler,
   VelaSecurityOptions,
@@ -93,6 +94,30 @@ export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
 }
 
 /**
+ * The `VelaFactory.create()` options an application for `options.env` is built
+ * with: the Cloudflare adapter bound to that environment, then any further adapters.
+ */
+export function cloudflareCreateOptions(options: CreateCloudflareAppOptions): VelaCreateOptions {
+  return {
+    globalPrefix: options.globalPrefix,
+    security: options.security,
+    middleware: options.middleware?.(options.env),
+    adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
+  };
+}
+
+/** Wrap a built application as the Workers entry serves it: platform handlers and WebSocket upgrades. */
+export function toCloudflareApplication(
+  velaApp: VelaApplication,
+  env: VelaEnv,
+): CloudflareApplication {
+  const app = new CloudflareApplication(velaApp, env);
+  app.scanInstances(velaApp.getInstances());
+  registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes(), velaApp.getContainer());
+  return app;
+}
+
+/**
  * Build an application for one native Workers environment. Call inside a platform event.
  * The root is static: a module class or a `DynamicModule` declared at module scope.
  * Read bindings in providers (`@InjectEnv()`) and module factories
@@ -102,16 +127,39 @@ export async function createCloudflareApp(
   rootModule: CloudflareRoot,
   options: CreateCloudflareAppOptions,
 ): Promise<CloudflareApplication> {
-  const velaApp = await VelaFactory.create(rootModule, {
-    globalPrefix: options.globalPrefix,
-    security: options.security,
-    middleware: options.middleware?.(options.env),
-    adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
-  });
-  const app = new CloudflareApplication(velaApp, options.env);
-  app.scanInstances(velaApp.getInstances());
-  registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes(), velaApp.getContainer());
-  return app;
+  const velaApp = await VelaFactory.create(rootModule, cloudflareCreateOptions(options));
+  return toCloudflareApplication(velaApp, options.env);
+}
+
+/**
+ * The well-known key under which a `createCloudflareWorker()` entry carries
+ * its {@link CloudflareWorkerDescriptor}: `Symbol.for('vela.cloudflare.worker')`.
+ */
+export const CLOUDFLARE_WORKER: unique symbol = Symbol.for('vela.cloudflare.worker');
+
+/** What a Worker entry is built from, for tools that load it outside a platform event. */
+export interface CloudflareWorkerDescriptor {
+  readonly rootModule: CloudflareRoot;
+  readonly options: CloudflareWorkerOptions;
+  /** The `VelaFactory.create()` options the Worker builds its application with for `env`. */
+  createOptions(env: VelaEnv): VelaCreateOptions;
+}
+
+/** The exported handlers of a `createCloudflareWorker()` entry. */
+export interface CloudflareWorker {
+  fetch(request: Request, env: VelaEnv, ctx: ExecutionContext): Promise<Response>;
+  scheduled(
+    event: ScheduledEvent,
+    env: VelaEnv,
+    ctx?: { waitUntil: (promise: Promise<unknown>) => void },
+  ): Promise<void>;
+  queue(
+    batch: { queue: string; messages: readonly unknown[] },
+    env: VelaEnv,
+    ctx: { waitUntil: (promise: Promise<unknown>) => void },
+  ): Promise<void>;
+  /** Not enumerable: the platform reads only the handlers. */
+  readonly [CLOUDFLARE_WORKER]: CloudflareWorkerDescriptor;
 }
 
 /**
@@ -122,7 +170,7 @@ export async function createCloudflareApp(
 export function createCloudflareWorker(
   rootModule: CloudflareRoot,
   options: CloudflareWorkerOptions = {},
-) {
+): CloudflareWorker {
   const applications = new WeakMap<VelaEnv, Promise<CloudflareApplication>>();
   const application = (env: VelaEnv): Promise<CloudflareApplication> => {
     const existing = applications.get(env);
@@ -134,7 +182,12 @@ export function createCloudflareWorker(
     });
     return pending;
   };
-  return {
+  const descriptor: CloudflareWorkerDescriptor = {
+    rootModule,
+    options,
+    createOptions: (env) => cloudflareCreateOptions({ ...options, env }),
+  };
+  const worker: CloudflareWorker = {
     async fetch(request: Request, env: VelaEnv, ctx: ExecutionContext): Promise<Response> {
       return (await application(env)).fetch(request, env, ctx);
     },
@@ -152,5 +205,7 @@ export function createCloudflareWorker(
     ): Promise<void> {
       return (await application(env)).queue(batch, env, ctx);
     },
+    [CLOUDFLARE_WORKER]: descriptor,
   };
+  return Object.defineProperty(worker, CLOUDFLARE_WORKER, { enumerable: false });
 }

@@ -20,7 +20,8 @@
     "src/__tests__/signed-dispatch.test.ts",
     "src/__tests__/root-module.test.ts",
     "src/__tests__/platform-wiring.test.ts",
-    "src/__tests__/env.test.ts"
+    "src/__tests__/env.test.ts",
+    "src/__tests__/worker-descriptor.test.ts"
   ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/__tests__"]

@@ -3,11 +3,17 @@ import './vela-env';
 export type { CloudflareRoot } from './root-module';
 export { durableObjectRoomName } from './websocket/room-id';
 export {
+  CLOUDFLARE_WORKER,
   cloudflareAdapter,
   createCloudflareApp,
   createCloudflareWorker,
 } from './cloudflare-factory';
-export type { CreateCloudflareAppOptions, CloudflareWorkerOptions } from './cloudflare-factory';
+export type {
+  CreateCloudflareAppOptions,
+  CloudflareWorker,
+  CloudflareWorkerDescriptor,
+  CloudflareWorkerOptions,
+} from './cloudflare-factory';
 export { CloudflareApplication } from './cloudflare-application';
 export type { MountOpenApiOptions } from './cloudflare-application';
 
