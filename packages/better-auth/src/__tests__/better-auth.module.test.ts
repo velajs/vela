@@ -148,6 +148,25 @@ describe('BetterAuthModule', () => {
     expect(() => createBetterAuthCatchallController('/api/../private')).toThrow(/basePath/);
   });
 
+  it('builds one catch-all controller class per base path', () => {
+    expect(createBetterAuthCatchallController('/api/auth')).toBe(
+      createBetterAuthCatchallController(),
+    );
+    expect(createBetterAuthCatchallController('/internal-auth')).not.toBe(
+      createBetterAuthCatchallController(),
+    );
+  });
+
+  it('mounts the catch-all once for an identical registration imported twice', async () => {
+    const auth = makeMockAuth();
+    @Module({ imports: [BetterAuthModule.forRoot({ auth }), BetterAuthModule.forRoot({ auth })] })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    const routes = app.describeRoutes().filter((route) => route.path.startsWith('/api/auth'));
+    expect(routes).toHaveLength(1);
+    await app.close();
+  });
+
   it('forRootAsync defers the auth builder its factory returns until first auth access', async () => {
     const auth = makeMockAuth();
     let factoryCalls = 0;
