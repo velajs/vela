@@ -28,8 +28,9 @@ export interface WsClient<TData = Record<string, unknown>> {
   readonly id: string;
   /**
    * The route path of the gateway this socket connected through. A `Gateways`
-   * push reaches only its gateway's sockets, so a socket without a path
-   * receives none.
+   * push and a gateway's `@WebSocketServer()` broadcast reach only that
+   * gateway's sockets, so a socket without a path receives neither: a custom
+   * transport's client must set it.
    */
   readonly path?: string;
   readonly rooms: ReadonlySet<string>;

@@ -178,18 +178,21 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   }
 
   /**
-   * The server a gateway pushes through: the module server's view of the
-   * gateway, whose pushes reach only the sockets connected through its path.
-   * The gateway's `@WebSocketServer()` is connected to it.
+   * The server a gateway pushes through: the gateway's view of the
+   * `WS_SERVER` its declaring module sees (a test double declared next to
+   * the gateway, say), else of this module's server. Its pushes reach only
+   * the sockets connected through the gateway's path. The gateway's
+   * `@WebSocketServer()` is connected to it.
    */
   private gatewayServer(
     gatewayClass: Type,
     options: WebSocketGatewayOptions,
+    moduleId: string | undefined,
   ): WsServer | undefined {
-    const server = this.#server;
-    if (!server) return undefined;
     let scoped = this.#gatewayServers.get(gatewayClass);
     if (!scoped) {
+      const server = this.moduleServer(moduleId) ?? this.#server;
+      if (!server) return undefined;
       scoped =
         server.forGateway?.(
           options.path ?? '',
@@ -204,12 +207,30 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     return scoped;
   }
 
+  /**
+   * The `WS_SERVER` a gateway's declaring module sees, when it sees exactly
+   * one. A module that imports several `WebSocketModule` instances keeps the
+   * server of the first dispatcher that connects the gateway.
+   */
+  private moduleServer(moduleId: string | undefined): WsServer | undefined {
+    if (
+      moduleId === undefined ||
+      this.#container.getVisibleProviderSnapshots(WS_SERVER, moduleId).length !== 1
+    ) {
+      return undefined;
+    }
+    return this.#container.resolve(WS_SERVER, moduleId);
+  }
+
   private connectGatewayServers(): void {
-    for (const { metatype, meta } of this.#discovery.providersWithMeta<WebSocketGatewayOptions>(
-      WS_GATEWAY_METADATA,
-      { metadataOnly: true },
-    )) {
-      this.gatewayServer(metatype, meta);
+    for (const {
+      metatype,
+      meta,
+      moduleIds,
+    } of this.#discovery.providersWithMeta<WebSocketGatewayOptions>(WS_GATEWAY_METADATA, {
+      metadataOnly: true,
+    })) {
+      this.gatewayServer(metatype, meta, moduleIds[0]);
     }
   }
 
@@ -774,7 +795,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       path: options.path ?? '',
       options: { ...options },
       maxFrameBytes,
-      server: this.gatewayServer(gatewayClass, options),
+      server: this.gatewayServer(gatewayClass, options, moduleId),
       instance,
       gatewayClass,
       moduleId,

@@ -37,6 +37,7 @@ class ChatGateway implements OnGatewayConnection {
 - `@SubscribeMessage(event)` — handler for an inbound message event (stackable).
 - `@MessageBody()` injects an unknown wire payload; validate it with a pipe or schema before use; `@ConnectedSocket()` injects the `WsClient`. With no param decorators a handler receives `(client, data)` positionally.
 - `@WebSocketServer()` (or `@Inject(WS_SERVER)` in a gateway's constructor, declared or inherited) injects the gateway's own `WsServer`: its broadcasts carry the gateway path and reach only this gateway's sockets in the current isolate, even when another gateway uses the same room id; `afterInit(server)` receives the same server. `WS_SERVER` injected outside a gateway addresses every gateway's sockets. To push from anywhere else (HTTP handlers, queue consumers, crons, another gateway), inject `Gateways`.
+- Test a gateway's pushes against a double by providing `WS_SERVER` in the gateway's module next to `WebSocketModule.forRoot()` or by overriding `WS_SERVER` in the testing module; without `WebSocketModule` the gateway's server refuses each push.
 - Returning a `WsResponse` (`{ event, data }`) frames a reply to the sender.
 
 Gateway lifecycle interfaces: `OnGatewayInit` (`afterInit(server)`), `OnGatewayConnection` (`handleConnection(client)`), `OnGatewayDisconnect` (`handleDisconnect(client)`).
@@ -45,7 +46,7 @@ Gateway lifecycle interfaces: `OnGatewayInit` (`afterInit(server)`), `OnGatewayC
 
 `WsServer` (from `@WebSocketServer()`): `emit(event, data?)` broadcasts to every socket of the gateway; `to(room)` / `in(room)` / `except(room)` return a chainable `BroadcastOperator` whose terminal `emit(event, data?)` targets rooms.
 
-`WsClient`: `readonly path?` (the gateway route it connected through), `readonly rooms`, `join(room)` / `leave(room)`, `send(event, data?, id?)`, `close(code?, reason?)`, `commit()` (persist data/room changes — required for Cloudflare hibernation), `readonly raw`.
+`WsClient`: `readonly path?` (the gateway route it connected through; a custom transport's client must set it, or the socket receives no `Gateways` push and no gateway `@WebSocketServer()` broadcast), `readonly rooms`, `join(room)` / `leave(room)`, `send(event, data?, id?)`, `close(code?, reason?)`, `commit()` (persist data/room changes — required for Cloudflare hibernation), `readonly raw`.
 
 Throw `WsException(errorOrObject)` to send an `{ event: 'exception', data }` frame instead of crashing the socket.
 

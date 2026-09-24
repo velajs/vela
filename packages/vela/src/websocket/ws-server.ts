@@ -154,7 +154,9 @@ export class GatewayServerHandle implements WsServer {
     throw new Error(
       `${this.gatewayName}'s @WebSocketServer() is not connected: WebSocketModule connects ` +
         'the server of each gateway it discovers while the application starts. Import ' +
-        "WebSocketModule.forRoot() in the gateway's application.",
+        "WebSocketModule.forRoot() in the gateway's application. To substitute a test " +
+        "double, provide WS_SERVER in the gateway's module next to that import, or " +
+        'override WS_SERVER in the testing module.',
     );
   }
 }

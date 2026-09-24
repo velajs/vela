@@ -182,6 +182,13 @@ gateway has a room with the same id. `afterInit(server)` receives the same
 server. `WS_SERVER` injected outside a gateway addresses every gateway's
 sockets; push to one gateway's rooms with `Gateways` instead.
 
+`WebSocketModule` connects each gateway's server while the application starts,
+from the `WS_SERVER` the gateway's module sees. To test a gateway against a
+double, provide `WS_SERVER` in the gateway's module next to
+`WebSocketModule.forRoot()`, or override `WS_SERVER` in the testing module.
+Without `WebSocketModule`, a gateway's server refuses each push with that
+guidance.
+
 ---
 
 ## Server push from anywhere: `Gateways`
@@ -241,7 +248,9 @@ omit it). Without a type argument, any event and payload are accepted.
   `RoomRegistry` passed to `WebSocketModule.forRoot({ registry })` must apply
   the same filter in `deliverLocal`: one that ignores `cmd.gatewayPath`
   delivers every gateway-scoped push and broadcast to all gateways' sockets in
-  the named rooms.
+  the named rooms. A custom transport's `WsClient` must set `path` to its
+  gateway's route: a socket without one receives no `Gateways` push and no
+  broadcast from a gateway's `@WebSocketServer()`.
 - Each push is bounded by that gateway's `maxFrameBytes` (default 64 KiB)
   before anything is resolved or sent.
 - `emit()` without a room and `except()` throw with guidance: sockets live

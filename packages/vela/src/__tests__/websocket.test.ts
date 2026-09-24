@@ -38,9 +38,10 @@ import { WsException } from '../websocket/ws-exception.js';
 import { WebSocketServer } from '../websocket/websocket.decorators.js';
 import { InMemoryRoomRegistry, local } from '../websocket/ws-sync.js';
 import { WsServerImpl } from '../websocket/ws-server.js';
-import { WS_ROOM_REGISTRY } from '../websocket/websocket.tokens.js';
+import { WS_ROOM_REGISTRY, WS_SERVER } from '../websocket/websocket.tokens.js';
 import type {
   BroadcastCommand,
+  BroadcastOperator,
   WsClient,
   WsServer,
   OnGatewayInit,
@@ -712,6 +713,71 @@ describe('rooms + Server handle', () => {
     expect(listener.received).toEqual([{ event: 'shout', data: 'hey' }]);
     expect(elsewhere.received).toEqual([]);
     expect(initServers).toHaveLength(1);
+  });
+
+  it("connects a gateway's server to the WS_SERVER its own module provides", async () => {
+    const pushes: Array<{ rooms: string[]; event: string; data: unknown }> = [];
+    const operator = (rooms: string[]): BroadcastOperator => ({
+      to: (room) => operator([...rooms, room]),
+      in: (room) => operator([...rooms, room]),
+      except: () => operator(rooms),
+      emit(event, data) {
+        pushes.push({ rooms, event, data });
+      },
+    });
+    const double: WsServer = {
+      emit(event, data) {
+        pushes.push({ rooms: [], event, data });
+      },
+      to: (room) => operator([room]),
+      in: (room) => operator([room]),
+      except: () => operator([]),
+    };
+
+    @WebSocketGateway({ path: '/rooms' })
+    class RoomGateway {
+      constructor(@WebSocketServer() readonly server: WsServer) {}
+    }
+
+    @Module({
+      imports: [WebSocketModule.forRoot()],
+      providers: [RoomGateway, defineProvider(WS_SERVER, { useValue: double })],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const { server } = app.get(RoomGateway);
+      server.emit('everyone', 1);
+      server.to('r1').emit('room', 2);
+      expect(pushes).toEqual([
+        { rooms: [], event: 'everyone', data: 1 },
+        { rooms: ['r1'], event: 'room', data: 2 },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses a gateway's pushes without WebSocketModule, naming how to serve or substitute it", async () => {
+    @WebSocketGateway({ path: '/rooms' })
+    class RoomGateway {
+      constructor(@WebSocketServer() readonly server: WsServer) {}
+    }
+
+    @Module({ providers: [RoomGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const { server } = app.get(RoomGateway);
+      const guidance =
+        /RoomGateway's @WebSocketServer\(\) is not connected[\s\S]*WebSocketModule\.forRoot\(\)[\s\S]*WS_SERVER/;
+      expect(() => server.emit('everyone')).toThrow(guidance);
+      expect(() => server.to('r1')).toThrow(guidance);
+    } finally {
+      await app.close();
+    }
   });
 });
 
