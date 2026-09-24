@@ -1,7 +1,9 @@
 ---
-'@velajs/vela': patch
+'@velajs/vela': minor
 '@velajs/authz': patch
 '@velajs/authz-cedar': patch
 ---
 
 `Reflector` reads through an execution context (`reflector.get(key, context)`, `getHandler`, `getAll`, `getAllAndOverride` and `getAllAndMerge` with `context`) now apply method metadata an ancestor class declares on a method the controller inherits without overriding, as the `[context.getHandler(), context.getClass()]` and handler-function forms already did. The nearest declaration wins: the controller's own, else the nearest ancestor's; a method the controller overrides reads only its own declarations, and metadata one controller declares on a shared method still never applies to a sibling. Guards that read the context form, such as `RolesGuard`, `PermissionGuard`, `TenantGuard`, `CedarGuard`, `FeatureFlagGuard` and `ThrottlerGuard`, previously ignored those inherited requirements and let such routes through; inherited markers such as `@Public()`, `@CedarPublic()` and `@SkipThrottle()` now apply the same way. `authorizationAudit()` and `auditCedarRoutes()` read declarations as the guards do.
+
+**Behavior change:** method metadata an ancestor declares on a method the controller inherits unchanged now applies to guards and interceptors that read the execution context. Requirements such as `@Roles()`, `@RequirePermission()` or `@RequireResource()` there are enforced, where the route previously ran without them. Opening markers there apply too, so an inherited `@Public()`, `@TenantIgnored()`, `@CedarPublic()` or `@SkipThrottle()` now opens a route that previously required authentication, tenant admission, Cedar authorization or throttling. Override the method in the controller where it must not inherit its ancestor's declarations.
