@@ -3,7 +3,7 @@ import type { Names } from './names.js';
 /**
  * The source each schematic writes. Generated code uses the application kit
  * from `@velajs/vela`, feature subpaths (`/queue`, `/schedule`), `ENV` for
- * bindings, and plain decorator routes with schema arguments.
+ * bindings, and decorator routes with route options and schema arguments.
  */
 
 /** How relative imports end in this project: `.js`, `.ts` or nothing. */
@@ -165,7 +165,8 @@ export function parseUpdate${Entity}(body: unknown): Update${Entity} {
 }
 `;
   const typeImport = zod
-    ? `import { Create${Entity}, Update${Entity}, type ${Entity} } from './${types}${ext}';`
+    ? `import { z } from 'zod';
+import { Create${Entity}, ${Entity}, Update${Entity} } from './${types}${ext}';`
     : `import {
   parseCreate${Entity},
   parseUpdate${Entity},
@@ -177,6 +178,10 @@ export function parseUpdate${Entity}(body: unknown): Update${Entity} {
   const updateParam = zod
     ? `@Body(Update${Entity}) body: Update${Entity}`
     : '@Body() body: unknown';
+  // With schemas, route options shape and document each result.
+  const listOptions = zod ? `{ response: z.array(${Entity}) }` : '';
+  const itemOptions = zod ? `, { response: ${Entity} }` : '';
+  const createOptions = zod ? `{ response: ${Entity} }` : '';
   const createInput = zod ? 'body' : `parseCreate${Entity}(body)`;
   const updateInput = zod ? 'body' : `parseUpdate${Entity}(body)`;
   const service = `${name.pascal}Service`;
@@ -223,7 +228,6 @@ export class ${service} {
   Controller,
   Delete,
   Get,
-  HttpCode,
   NotFoundException,
   Param,
   Patch,
@@ -240,32 +244,33 @@ export class ${name.pascal}Controller {
     this.#service = service;
   }
 
-  @Get()
+  @Get(${listOptions})
   findAll(): ${Entity}[] {
     return this.#service.findAll();
   }
 
-  @Get('/:id')
+  @Get('/:id'${itemOptions})
   findOne(@Param('id') id: string): ${Entity} {
     const item = this.#service.findOne(id);
     if (!item) throw new NotFoundException(\`${Entity} \${id} not found\`);
     return item;
   }
 
-  @Post()
+  // POST answers 201.
+  @Post(${createOptions})
   create(${createParam}): ${Entity} {
     return this.#service.create(${createInput});
   }
 
-  @Patch('/:id')
+  @Patch('/:id'${itemOptions})
   update(@Param('id') id: string, ${updateParam}): ${Entity} {
     const item = this.#service.update(id, ${updateInput});
     if (!item) throw new NotFoundException(\`${Entity} \${id} not found\`);
     return item;
   }
 
-  @Delete('/:id')
-  @HttpCode(204)
+  // \`response: null\` answers 204 with no body.
+  @Delete('/:id', { response: null })
   remove(@Param('id') id: string): void {
     if (!this.#service.remove(id)) throw new NotFoundException(\`${Entity} \${id} not found\`);
   }
