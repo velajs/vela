@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   starterArchiveOverrides,
-  starterManifest,
+  starterManifests,
   starterPinMismatches,
+  starterTemplates,
   syncStarterPins,
 } from '../../scripts/starter-pins.mjs';
 
@@ -57,38 +58,53 @@ test('install the pinned framework and its unpublished dependencies from release
   assert.deepEqual(starterArchiveOverrides(starter, {}), {}, 'after publication: npm only');
 });
 
-test('the committed starter pins the current workspace framework versions', async () => {
-  const manifest = JSON.parse(await readFile(starterManifest, 'utf8'));
-  // The CLI is a dev dependency so `pnpm vela ...` runs the version that scaffolded the project.
-  assert.ok(manifest.devDependencies['@velajs/cli'], 'The starter pins @velajs/cli');
+test('every vela new template has a manifest', async () => {
+  assert.deepEqual(starterTemplates, ['minimal', 'api']);
+  const manifests = await Promise.all(
+    starterManifests.map(async (url) => JSON.parse(await readFile(url, 'utf8'))),
+  );
+  for (const manifest of manifests) assert.equal(manifest.name, '__PROJECT_NAME__');
+});
+
+test('the committed starters pin the current workspace framework versions', async () => {
   const versions = new Map();
-  for (const name of ['vela', 'cloudflare', 'cli']) {
+  for (const name of ['vela', 'cloudflare', 'cli', 'testing']) {
     const path = new URL(`../../packages/${name}/package.json`, import.meta.url);
     const pkg = JSON.parse(await readFile(path, 'utf8'));
     versions.set(pkg.name, pkg.version);
   }
-  assert.deepEqual(starterPinMismatches(manifest, versions), []);
+  for (const url of starterManifests) {
+    const manifest = JSON.parse(await readFile(url, 'utf8'));
+    // The CLI is a dev dependency so `vela ...` runs the version that scaffolded the project,
+    // and the template specs build the app with @velajs/cloudflare/testing.
+    assert.ok(manifest.devDependencies['@velajs/cli'], `${url} pins @velajs/cli`);
+    assert.ok(manifest.devDependencies['@velajs/testing'], `${url} pins @velajs/testing`);
+    assert.deepEqual(starterPinMismatches(manifest, versions), [], String(url));
+  }
 });
 
-test('the starter pins the workspace catalog toolchain', async () => {
-  const manifest = JSON.parse(await readFile(starterManifest, 'utf8'));
+test('the starters pin the workspace catalog toolchain', async () => {
   const workspace = await readFile(new URL('../../pnpm-workspace.yaml', import.meta.url), 'utf8');
   const block = workspace.match(/^catalog:\n((?: {2}.+\n)+)/m)?.[1] ?? '';
   const catalog = new Map(
     [...block.matchAll(/^ {2}"?([^":]+)"?: (\S+)$/gm)].map(([, name, version]) => [name, version]),
   );
-  // @cloudflare/vite-plugin releases pair with a Wrangler release; keep both on the catalog.
-  for (const name of [
-    '@cloudflare/vite-plugin',
-    '@cloudflare/vitest-plugin',
-    '@cloudflare/workers-types',
-    'hono',
-    'typescript',
-    'vite',
-    'vitest',
-    'wrangler',
-  ]) {
-    const pin = manifest.dependencies[name] ?? manifest.devDependencies[name];
-    assert.equal(pin, catalog.get(name), `${name} follows the workspace catalog`);
+  for (const url of starterManifests) {
+    const manifest = JSON.parse(await readFile(url, 'utf8'));
+    const pins = { ...manifest.dependencies, ...manifest.devDependencies };
+    // @cloudflare/vite-plugin releases pair with a Wrangler release; keep both on the catalog.
+    for (const name of [
+      '@cloudflare/vite-plugin',
+      '@cloudflare/vitest-plugin',
+      '@cloudflare/workers-types',
+      'hono',
+      'typescript',
+      'vite',
+      'vitest',
+      'wrangler',
+    ]) {
+      assert.equal(pins[name], catalog.get(name), `${url}: ${name} follows the workspace catalog`);
+    }
+    if (pins.zod !== undefined) assert.equal(pins.zod, catalog.get('zod'), `${url}: zod`);
   }
 });

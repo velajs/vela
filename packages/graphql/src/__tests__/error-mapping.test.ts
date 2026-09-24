@@ -1,4 +1,10 @@
-import { NotFoundException, TooManyRequestsException, VelaError } from '@velajs/vela';
+import {
+  HttpException,
+  NotFoundException,
+  TooManyRequestsException,
+  VelaError,
+  type HttpErrorResponse,
+} from '@velajs/vela';
 import { GraphQLError } from 'graphql';
 import { describe, expect, it } from 'vitest';
 import { mapGraphqlError } from '../errors';
@@ -22,14 +28,28 @@ describe('GraphQL error mapping', () => {
   });
 
   it('uses an exception-owned response status without its body', () => {
-    class LockedRow extends Error {
-      toResponse() {
+    class LockedRow extends HttpException {
+      constructor() {
+        super('internal id 7', 409);
+      }
+      override toResponse(): HttpErrorResponse {
         return { status: 404, body: { row: 'internal id 7' } };
       }
     }
-    const mapped = field(new LockedRow('internal id 7'));
+    const mapped = field(new LockedRow());
     expect(mapped.message).toBe('Not found');
     expect(mapped.extensions).toEqual({ code: 'NOT_FOUND' });
+  });
+
+  it('masks a foreign error that defines its own toResponse()', () => {
+    class ForeignRow extends Error {
+      toResponse(): HttpErrorResponse {
+        return { status: 404, body: { row: 'internal id 7' } };
+      }
+    }
+    const mapped = field(new ForeignRow('internal id 7'));
+    expect(mapped.message).toBe('Unexpected error');
+    expect(mapped.extensions).toEqual({ code: 'INTERNAL_SERVER_ERROR' });
   });
 
   it('keeps unknown errors masked', () => {

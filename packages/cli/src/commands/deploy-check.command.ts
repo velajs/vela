@@ -1,33 +1,18 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { open, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { Command, Option } from 'clipanion';
+import { loadConfig } from '../config.js';
+import { collectEntrypoints } from '../introspect.js';
+import { readInput } from '../project/files.js';
+import { findWranglerConfig } from '../project/wrangler.js';
+import { withApp } from '../with-app.js';
 import { parseDeploymentConfig } from './deploy-check.config.js';
 import { checkDeployment, type DeploymentIssue } from './deploy-check.plan.js';
 
 const exec = promisify(execFile);
-const MAX_INPUT_BYTES = 1024 * 1024;
-
-async function readInput(path: string): Promise<string> {
-  const file = await open(path, 'r');
-  try {
-    if (!(await file.stat()).isFile()) throw new Error('Input must be a regular file.');
-    const buffer = Buffer.alloc(MAX_INPUT_BYTES + 1);
-    let length = 0;
-    while (length < buffer.length) {
-      // eslint-disable-next-line no-await-in-loop -- Each offset depends on the preceding partial read.
-      const { bytesRead } = await file.read(buffer, length, buffer.length - length, length);
-      if (bytesRead === 0) break;
-      length += bytesRead;
-    }
-    if (length > MAX_INPUT_BYTES) throw new Error('Deployment inputs must not exceed 1 MiB.');
-    return buffer.subarray(0, length).toString('utf8');
-  } finally {
-    await file.close();
-  }
-}
 
 async function gitProvenance(cwd: string) {
   try {
@@ -56,6 +41,18 @@ async function gitProvenance(cwd: string) {
 }
 
 const digest = (text: string): string => createHash('sha256').update(text).digest('hex');
+
+/** The explicit Wrangler file, or the one in the working directory. */
+async function wranglerFile(explicit: string | undefined): Promise<string> {
+  if (explicit !== undefined) return resolve(explicit);
+  const found = await findWranglerConfig(process.cwd());
+  if (found.path === undefined) {
+    throw new Error(
+      `No Wrangler configuration found (checked ${found.candidates.join(', ')}). Pass --config <file>.`,
+    );
+  }
+  return found.path;
+}
 
 const quote = (arg: string): string => `'${arg.replaceAll("'", "'\\''")}'`;
 
@@ -88,93 +85,96 @@ async function buildsWithVite(directory: string): Promise<boolean> {
   return configs.includes(true);
 }
 
-/** Static application deployment preflight; never invokes Wrangler or application code. */
+/** Deployment preflight: compares a Wrangler target with the application's entrypoints. */
 export class DeployCheckCommand extends Command {
   static override paths = [['deploy', 'check']];
   static override usage = Command.Usage({
     category: 'Deployment',
-    description: 'Check an explicit Wrangler target against a saved entrypoint snapshot.',
+    description: 'Check a Wrangler target against the application entrypoints.',
     details:
-      'Read-only: no app bootstrap, custom build, credential loading or upload. Compares cron triggers, queue producers and consumers, and WebSocket Durable Object bindings, and rejects directly dispatched cron jobs that declare guards. Wrangler remains the deployment tool. The suggested next step runs in the Wrangler file directory. For a project the Cloudflare Vite plugin builds (a vite.config.* beside the Wrangler file that references @cloudflare/vite-plugin, or the .wrangler/deploy/config.json redirect a Vite build writes), it builds the environment with Vite and dry-runs that build with the same --env, since `wrangler deploy --config` would bundle the source with esbuild, which emits no decorator metadata.',
+      'Compares cron triggers, queue producers and consumers, and WebSocket Durable Object bindings of the Wrangler file in the working directory (or --config), at the top level or in the --env environment, and rejects directly dispatched cron jobs that declare guards. Without --entrypoints, the CLI builds the application from vela.config or the Worker entry with the Wrangler `vars` only (no bindings or secrets) and reads its entrypoints; with a saved `vela entrypoint list --json` snapshot, no application code is imported. Never runs a custom build, loads credentials or uploads. Wrangler remains the deployment tool. The suggested next step runs in the Wrangler file directory. For a project the Cloudflare Vite plugin builds (a vite.config.* beside the Wrangler file that references @cloudflare/vite-plugin, or the .wrangler/deploy/config.json redirect a Vite build writes), it builds the environment with Vite and dry-runs that build with the same --env, since `wrangler deploy --config` would bundle the source with esbuild, which emits no decorator metadata.',
     examples: [
+      ['Check the top-level Worker', 'vela deploy check'],
       [
-        'Check staging',
+        'Check staging against a saved snapshot',
         'vela deploy check --config wrangler.jsonc --env staging --entrypoints entrypoints.json',
       ],
     ],
   });
 
   config = Option.String('--config', {
-    required: true,
-    description: 'Explicit Wrangler .json/.jsonc/.toml file.',
+    description: 'Wrangler .json/.jsonc/.toml file (default: the one in the working directory).',
   });
   environment = Option.String('--env', {
-    required: true,
-    description: 'Exact named environment in the Wrangler file.',
+    description: 'Named Wrangler environment (default: the top-level configuration).',
   });
   entrypoints = Option.String('--entrypoints', {
-    required: true,
-    description: 'Saved vela entrypoint list --json array.',
+    description: 'Saved `vela entrypoint list --json` array (default: computed from the app).',
   });
   json = Option.Boolean('--json', false, { description: 'Emit the redacted report as JSON.' });
 
   async execute(): Promise<number> {
     try {
-      if (!this.config.trim() || !this.entrypoints.trim())
-        throw new Error('Explicit configuration and snapshot paths are required.');
-      const configPath = resolve(this.config);
-      const snapshotPath = resolve(this.entrypoints);
-      const [config, snapshot] = await Promise.all([
-        readInput(configPath),
-        readInput(snapshotPath),
-      ]);
+      if (this.config?.trim() === '' || this.entrypoints?.trim() === '')
+        throw new Error('--config and --entrypoints must name files.');
+      const configPath = await wranglerFile(this.config);
+      const cwd = dirname(configPath);
+      const config = await readInput(configPath);
+      const raw = parseDeploymentConfig(config, configPath);
+      let snapshot: string;
+      let snapshotPath: string | null = null;
+      if (this.entrypoints === undefined) {
+        const rows = await withApp(
+          () => loadConfig(cwd, undefined, { environment: this.environment, wrangler: configPath }),
+          collectEntrypoints,
+          (message) => this.context.stderr.write(`${message}\n`),
+          this.context.stderr,
+        );
+        snapshot = JSON.stringify(rows);
+      } else {
+        snapshotPath = resolve(this.entrypoints);
+        snapshot = await readInput(snapshotPath);
+      }
       let rows: unknown;
       try {
         rows = JSON.parse(snapshot);
       } catch {
         throw new Error('Invalid entrypoint snapshot JSON.');
       }
-      const plan = checkDeployment(
-        parseDeploymentConfig(config, configPath),
-        this.environment,
-        rows,
-      );
+      const plan = checkDeployment(raw, this.environment, rows);
       const provenance = {
-        ...(await gitProvenance(dirname(configPath))),
+        ...(await gitProvenance(cwd)),
         checkedAt: new Date().toISOString(),
         config: { path: configPath, sha256: digest(config) },
-        entrypoints: { path: snapshotPath, sha256: digest(snapshot) },
+        entrypoints: {
+          path: snapshotPath,
+          ...(snapshotPath === null ? { computed: true } : {}),
+          sha256: digest(snapshot),
+        },
       };
       // A Vite project builds one environment into the output that plain
       // `wrangler deploy` follows; `--config` would bypass that build, and
       // Wrangler checks `--env` against the environment the build targeted.
       // `pnpm` resolves the project's own scripts and Wrangler from `cwd`.
-      const cwd = dirname(configPath);
       const vite = await buildsWithVite(cwd);
+      const envArgs = this.environment === undefined ? [] : ['--env', this.environment];
       const wrangler = vite
         ? {
             build: {
               command: 'pnpm',
               args: ['build'],
-              env: { CLOUDFLARE_ENV: this.environment },
+              ...(this.environment === undefined
+                ? {}
+                : { env: { CLOUDFLARE_ENV: this.environment } }),
               cwd,
             },
             command: 'pnpm',
-            args: ['exec', 'wrangler', 'deploy', '--env', this.environment, '--dry-run'],
+            args: ['exec', 'wrangler', 'deploy', ...envArgs, '--dry-run'],
             cwd,
           }
         : {
             command: 'pnpm',
-            args: [
-              'exec',
-              'wrangler',
-              'deploy',
-              '--config',
-              configPath,
-              '--env',
-              this.environment,
-              '--dry-run',
-            ],
+            args: ['exec', 'wrangler', 'deploy', '--config', configPath, ...envArgs, '--dry-run'],
             cwd,
           };
       const file = basename(configPath);
@@ -188,7 +188,7 @@ export class DeployCheckCommand extends Command {
       if (this.json) this.context.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       else {
         this.context.stdout.write(
-          `Deployment check: ${plan.status}\nWorker: ${plan.target.worker}\nEnvironment: ${plan.target.environment}\nConfig: ${configPath}\nCommit: ${provenance.commit ?? 'unavailable'} (${provenance.dirty === null ? 'cleanliness unknown' : provenance.dirty ? 'dirty' : 'clean'})\nConfig SHA-256: ${provenance.config.sha256}\nSnapshot SHA-256: ${provenance.entrypoints.sha256}\nBindings: ${plan.target.bindings.map((binding) => `${binding.name} (${binding.kind})`).join(', ') || '(none)'}\n`,
+          `Deployment check: ${plan.status}\nWorker: ${plan.target.worker}\nEnvironment: ${plan.target.environment ?? '(top level)'}\nConfig: ${configPath}\nCommit: ${provenance.commit ?? 'unavailable'} (${provenance.dirty === null ? 'cleanliness unknown' : provenance.dirty ? 'dirty' : 'clean'})\nConfig SHA-256: ${provenance.config.sha256}\nSnapshot SHA-256: ${provenance.entrypoints.sha256}${snapshotPath === null ? ' (computed from the application)' : ''}\nBindings: ${plan.target.bindings.map((binding) => `${binding.name} (${binding.kind})`).join(', ') || '(none)'}\n`,
         );
         for (const issue of plan.errors)
           this.context.stdout.write(`Error [${issue.code}]: ${issue.message}\n`);
@@ -196,7 +196,9 @@ export class DeployCheckCommand extends Command {
           this.context.stdout.write(`Warning [${issue.code}]: ${issue.message}\n`);
         // The environment name is validated to letters, digits, `_` and `-`.
         const next = vite
-          ? `CLOUDFLARE_ENV=${this.environment} pnpm build && pnpm exec wrangler deploy --env ${this.environment} --dry-run`
+          ? this.environment === undefined
+            ? 'pnpm build && pnpm exec wrangler deploy --dry-run'
+            : `CLOUDFLARE_ENV=${this.environment} pnpm build && pnpm exec wrangler deploy --env ${this.environment} --dry-run`
           : [wrangler.command, ...wrangler.args].map(quote).join(' ');
         this.context.stdout.write(`Next step (not executed): cd ${quote(cwd)} && ${next}\n`);
       }

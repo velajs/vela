@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "__PROJECT_NAME__",
+  "main": "src/worker.ts",
+  // Dates from 2026-08-04 enable Node.js compatibility by default, including the
+  // node:async_hooks module that the @velajs/vela root entry imports (through
+  // hono/context-storage) whether or not ambient access is enabled. An older
+  // date needs "compatibility_flags": ["nodejs_als"].
+  "compatibility_date": "2026-09-20",
+  // Todos live in Workers KV. Without an "id", Wrangler creates the namespace
+  // on the first deploy; local development and tests use a local namespace.
+  "kv_namespaces": [{ "binding": "TODOS" }],
+  // TodosService adds a job when a todo is created; TodoEventsProcessor
+  // consumes it. Create the queue before the first deploy:
+  // wrangler queues create __PROJECT_NAME__-todo-events
+  "queues": {
+    "producers": [{ "binding": "TODO_EVENTS", "queue": "__PROJECT_NAME__-todo-events" }],
+    "consumers": [{ "queue": "__PROJECT_NAME__-todo-events" }],
+  },
+  // TodosCleanup purges completed todos every night at 03:00 UTC.
+  "triggers": { "crons": ["0 3 * * *"] },
+}

@@ -107,7 +107,10 @@ POST answers 201, `response: null` answers 204 with no body, and every other
 method answers 200, whatever the handler returns; `status` or `@HttpCode`
 declares another success status (not both). Each route uses its own options,
 also when one handler serves several routes. Responses, OpenAPI and the
-response cache read the status the same way.
+response cache read the status the same way. A controller that routes a method
+it inherits unchanged (`Get()(Sub.prototype, 'list', descriptor)`) without
+options of its own serves it with those of the nearest ancestor's route for the
+same verb; an override uses only its own.
 
 `@Body()` without a schema validates a parameter class that carries a static
 Standard Schema (`class CreateUser { static schema = CreateUserSchema }`, or a

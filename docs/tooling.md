@@ -74,17 +74,96 @@ Keep these rules when you configure a project yourself:
   `src/` with esbuild, which emits no decorator metadata. See
   [deployment](deployment.md#build-with-vite).
 
-`vela.config.ts` is loaded by `@velajs/cli` through a Vite module runner that
-stays open for the whole command, with the same Oxc options, when the project
-installs Vite 8 (an optional peer of the CLI), so the config can import decorated
-`src/` files directly. Without Vite, the CLI
-imports the config with Node, which does not transform decorators.
+`@velajs/cli` loads application code through a Vite module runner that stays
+open for the whole command, with the same Oxc options, when the project installs
+Vite 8 (an optional peer of the CLI), so it imports decorated `src/` files
+directly; see [the CLI loop](#the-cli-loop). Without Vite, the CLI imports files
+with Node, which does not transform decorators.
 
 If Oxc cannot build a project, use SWC inside Vite with
 [`unplugin-swc`](https://github.com/unplugin/unplugin-swc) as a fallback: set
 `oxc: false` and add
 `swc.vite({ tsconfigFile: false, swcrc: false, jsc: { parser: { syntax: 'typescript', decorators: true }, transform: { legacyDecorator: true, decoratorMetadata: true }, keepClassNames: true } })`
 before `cloudflare()` (or `cloudflareTest()` in the Vitest config).
+
+## The CLI loop
+
+`@velajs/cli` covers a Workers project from creation to deployment without a
+configuration file:
+
+```sh
+vela new my-api --template api --pm pnpm --install --git
+vela generate resource notes            # alias: vela g
+vela add kv CACHE
+vela cf sync --write
+vela deploy check
+```
+
+- **Loading the application.** Without a `vela.config`, the CLI reads `main`
+  from `wrangler.json`, `wrangler.jsonc` or `wrangler.toml` (`--env` selects a
+  named environment) and imports that entry through the Vite module runner.
+  `createCloudflareWorker(AppModule, options)` attaches a descriptor under
+  `Symbol.for('vela.cloudflare.worker')`, from which the CLI builds the same
+  application the Worker builds. `cloudflare:*` modules resolve to inert Node
+  stand-ins through a Node module hook, so the entry may export Durable Object
+  and Workflow classes. Listing commands (`route list`, `module graph`,
+  `entrypoint list`, `openapi dump`, `client generate`, `doctor --app`,
+  `deploy check`, `cf sync`) seed `ENV` with the Wrangler `vars` only; `db seed`
+  uses Wrangler's `getPlatformProxy()` local bindings. A `vela.config` in the
+  working directory takes precedence. While a command loads and runs the
+  application, its console output (module-scope code of the config or Worker
+  entry and `Logger` lines included) goes to stderr, so `--json` output and
+  the `mcp serve` channel on stdout stay machine-readable.
+- **Generators.** `vela generate module|controller|service|resource|queue|cron|durable-object <name>`
+  writes current-API code (the root application kit, `@velajs/vela/queue`,
+  `@velajs/vela/schedule`, `ENV`, plain decorator routes) and registers it:
+  module files are parsed with `oxc-parser` and edited with `magic-string`, so
+  only the changed spans move. The root module is the class the Worker entry
+  names, followed through `export { … } from` re-exports and `export *`
+  barrels to the file declaring it (exported by name, as
+  `export default AppModule` or in an `export { … as default }` list, else
+  that file's only `@Module()` class); in other module files the edited class
+  is the one the file exports. Metadata with a computed argument, or with a
+  spread or computed key that may set the list being extended, is refused with
+  nothing written: an entry added there would replace the spread list or be
+  replaced by it. `queue` adds
+  `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module only
+  when no source file configures the driver yet. `--skip-import` prints the
+  registration instead.
+  TypeScript 7 has no stable compiler API, which is why the CLI uses Oxc here.
+- **Resources.** `vela add d1|kv|r2|queue <BINDING>` wraps
+  `wrangler <resource> create --binding --update-config` (queues:
+  `wrangler queues create`, then the producer and consumer are written to the
+  Wrangler file), runs the project's `types` script and registers the binding.
+  `--config` is passed on to Wrangler; with a Wrangler file other than the
+  default one, the `types` script (which reads the default file) is left for
+  you to run against it. Every module edit is computed on the current sources
+  before anything is created and written once Wrangler succeeds, so a root
+  module the CLI cannot edit (computed `@Module()` metadata, a spread or
+  computed key that may set `imports`, a re-export of a file that does not
+  exist) or a `bindings.module.ts` that does not parse fails
+  with nothing created or written; a failed `wrangler types` only warns.
+  `--skip-import` needs no editable root.
+- **Wrangler sync.** `vela cf sync` derives cron triggers, queue producers and
+  consumers, Durable Object bindings and migrations, and Workflows from the
+  application and the Worker entry's exports; it exits 1 on differences, and
+  `--write` edits JSON/JSONC through `jsonc-parser`, one element at a time
+  (a cron trigger is appended or removed on its own), keeping comments. An
+  added element follows its array's or object's layout: on the line of the
+  last one when that one shares a line (a one-line Wrangler file stays on one
+  line), else on its own line after the comma and comment trailing the last
+  one.
+- **Deployment check.** `vela deploy check` defaults to the Wrangler file in the
+  working directory and its top-level configuration, and computes the
+  entrypoint snapshot from the application unless `--entrypoints` names a saved
+  one. See [deployment](deployment.md).
+
+`scripts/cli-consumer.mjs` verifies the packed CLI end to end: it scaffolds
+both templates, installs them from the release archives, runs every generator,
+`cf sync --write`, the type check, the workerd specs, `deploy check`, the Vite
+build and the dev server. The templates pin the workspace versions
+(`scripts/starter-pins.mjs`), which `pnpm check:workspace` enforces and
+`pnpm version-packages` updates.
 
 ## Commands
 
@@ -98,6 +177,12 @@ pnpm verify
 
 Use `pnpm --filter <package> <command>` for focused work. The root `pnpm verify`
 command also runs cross-package conformance and native Workers tests.
+`pnpm check:skill` typechecks every `ts` code block of the package READMEs and
+the bundled agent skill against the built packages (after `pnpm build`). Each
+block compiles as its own module, retried as class members or a function body
+when it is a fragment; names a fragment leaves undeclared are tolerated, while
+missing packages, subpaths or exports and mismatched signatures fail. Mark a
+block that shows invalid code on purpose with ```` ```ts nocheck ````.
 
 ## API documentation
 

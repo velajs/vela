@@ -277,7 +277,14 @@ returned value or Promise, or the thrown error, and never reruns the factory.
 Primitives, `undefined`, objects and promises retain their real semantics.
 
 ```ts
-import { Injectable, REQUEST_CONTEXT, RequestContextKey, UseGuards } from '@velajs/vela';
+import {
+  Controller,
+  Get,
+  Injectable,
+  REQUEST_CONTEXT,
+  RequestContextKey,
+  UseGuards,
+} from '@velajs/vela';
 import { createLazyParamDecorator } from '@velajs/vela/module-kit';
 import type { CanActivate, ExecutionContext } from '@velajs/vela';
 
@@ -298,11 +305,14 @@ const DeferredProfile = createLazyParamDecorator(
     context.getContainer()?.resolve(REQUEST_CONTEXT).get(USER),
 );
 
-@UseGuards(AuthGuard)
-@Get('/me')
-me(@DeferredProfile() loadProfile: () => { id: string; name: string } | undefined) {
-  const profile = loadProfile();
-  return { id: profile?.id };
+@Controller('/profile')
+class ProfileController {
+  @UseGuards(AuthGuard)
+  @Get('/me')
+  me(@DeferredProfile() loadProfile: () => { id: string; name: string } | undefined) {
+    const profile = loadProfile();
+    return { id: profile?.id };
+  }
 }
 ```
 

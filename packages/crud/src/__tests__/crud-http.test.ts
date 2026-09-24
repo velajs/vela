@@ -1,4 +1,4 @@
-import { defineCrudFeature } from '../synthesize-controller';
+import { defineCrudFeature, type CrudFeatureResource } from '../synthesize-controller';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -784,6 +784,81 @@ describe('CrudModule', () => {
     expect(resource.name).toBe('thing');
     const direct = await resource.execute('list', { query: {} });
     expect(direct.status).toBe(200);
+  });
+
+  it('rejects one path that two different features register, in either import order', async () => {
+    const store = new Map<string, Row>();
+    const open = defineCrudFeature({ path: '/notes', model: makeModel({ name: 'note' }) });
+    const guarded = defineCrudFeature({
+      path: '/notes',
+      model: makeModel({ name: 'note' }),
+      endpointDecorators: { list: [UseGuards(DenyGuard)] },
+    });
+    const memos = defineCrudFeature({ path: '/notes', model: makeModel({ name: 'memo' }) });
+    const things = defineCrudFeature({ path: '/things', model: makeModel({ name: 'thing' }) });
+    const boot = (...features: CrudFeatureResource[][]) => {
+      const imports = features.map((list) => {
+        @Module({ imports: [CrudModule.forFeature(list)] })
+        class Feature {}
+        return Feature;
+      });
+      @Module({
+        imports: [CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }), ...imports],
+      })
+      class AppModule {}
+      return VelaFactory.create(AppModule);
+    };
+    const conflict =
+      "CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: " +
+      "'note' (CrudNotesController) and 'note' (CrudNotesController)";
+    await expect(boot([open], [guarded])).rejects.toThrow(conflict);
+    await expect(boot([guarded], [open])).rejects.toThrow(conflict);
+    // Batched with another resource, so the two registrations are different instances.
+    await expect(boot([things, open], [guarded])).rejects.toThrow(conflict);
+    // Two resources of one registration on one path.
+    await expect(boot([open, memos])).rejects.toThrow(
+      "CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: " +
+        "'note' (CrudNotesController) and 'memo' (CrudMemosController)",
+    );
+
+    // Spellings that mount the same routes are one path: a trailing slash, or
+    // other parameter names.
+    const slashed = defineCrudFeature({
+      path: '/notes/',
+      model: makeModel({ name: 'note' }),
+      endpointDecorators: { list: [UseGuards(DenyGuard)] },
+    });
+    await expect(boot([open], [slashed])).rejects.toThrow(
+      "CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: " +
+        "'note' (CrudNotesController) and 'note' (CrudNotesController, as '/notes/')",
+    );
+    await expect(boot([slashed], [open])).rejects.toThrow(
+      "CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: " +
+        "'note' (CrudNotesController, as '/notes/') and 'note' (CrudNotesController)",
+    );
+    const byOrg = defineCrudFeature({
+      path: '/orgs/:org/notes',
+      model: makeModel({ name: 'note' }),
+    });
+    const byTenant = defineCrudFeature({
+      path: '/orgs/:tenant/notes',
+      model: makeModel({ name: 'note' }),
+      endpointDecorators: { list: [UseGuards(DenyGuard)] },
+    });
+    await expect(boot([byOrg], [byTenant])).rejects.toThrow(
+      "CRUD path '/orgs/:param/notes' is mounted by two different CrudModule.forFeature() " +
+        "features: 'note' (CrudNotesController, as '/orgs/:org/notes') and 'note' " +
+        "(CrudNotesController, as '/orgs/:tenant/notes')",
+    );
+
+    // The identical definition, imported by two features, is one policy.
+    const app = await boot([open], [things, open]);
+    try {
+      expect((await app.getHonoApp().request('/notes')).status).toBe(200);
+      expect((await app.getHonoApp().request('/things')).status).toBe(200);
+    } finally {
+      await app.close();
+    }
   });
 
   it('per-resource adapter overrides the default', async () => {

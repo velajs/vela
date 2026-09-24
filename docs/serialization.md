@@ -35,7 +35,10 @@ documentation and types but sends the result unparsed.
 A handler that returns a `Response` sends it as is, whatever the route
 declares. `format: 'text'` sends a string; `binary`, `stream` and `response` send native bodies and take no
 response schema. `response: null` declares an empty body, sent as 204 unless
-the route's `status` says otherwise. See [HTTP contracts](client/HTTP.md).
+the route's `status` says otherwise. A controller that routes a method it
+inherits unchanged, without route options of its own, uses those of the nearest
+ancestor's route for the same verb and method, `response` included; an override
+uses only its own. See [HTTP contracts](client/HTTP.md).
 
 ## Project domain objects explicitly
 

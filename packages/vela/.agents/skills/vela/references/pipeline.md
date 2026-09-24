@@ -23,6 +23,8 @@ HTTP resolves request controllers only when the pipeline invokes the handler, af
 Decorators work on a controller class or a method, and accept **classes** (DI-resolved) or **instances**:
 
 ```ts
+import { Body, Controller, Post, UseFilters, UseGuards, UseInterceptors } from '@velajs/vela';
+
 @Controller('/orders')
 @UseGuards(AuthGuard)                 // class → registered in this module, resolved from DI
 @UseInterceptors(new LoggingInterceptor())  // instance → used as-is
@@ -40,6 +42,8 @@ class OrdersController {
 Guard, pipe, interceptor and filter classes referenced by `@UseGuards`/`@UsePipes`/`@UseInterceptors`/`@UseFilters` or a parameter decorator (`@Param('id', ParseIntPipe)`) need no `providers` entry, as in Nest. The loader scans each module's class, class providers and controllers (so gateways, `@Processor`s and live resolvers too) and registers every referenced class in the declaring module unless one is already visible there (for example exported by an imported module). They resolve from that module like its providers: dependencies injected, singletons built once rather than per request, request-scoped ones (declared or bubbled) per request, lazy modules' ones with their group. A class without a class decorator is built with `new`, once per scope. Classes given to `app.useGlobalGuards()` and the other `useGlobal*` methods are not registered.
 
 On a `@Module` class they apply to the controllers that module declares (after each controller's class-level entries, before method-level ones), not to its providers or imported modules. They are resolved per application, so bootstrapping the same modules again never runs them twice.
+
+A class inherits its ancestors' enhancers, as in Nest: an ancestor's class-level entries run before its own (the root class's first), and on a method it inherits unchanged (for example routed with `Get()(Sub.prototype, 'list', descriptor)`) each ancestor's method-level entries run before its own. A method it overrides runs only its own, and a controller's entries on a shared method never reach a sibling. The loader registers inherited enhancer classes like its own.
 
 ## Global (app-wide) components
 
@@ -122,6 +126,9 @@ For authorization use the shared guards in `@velajs/authz/vela`; raw request hea
 Attach metadata with `@SetMetadata(key, value)` (or `Reflector.createDecorator()`), read it in a guard/interceptor. Readers take Nest's targets — `get(key, context.getHandler())`, `get(key, context.getClass())`, `getAllAndOverride(key, [context.getHandler(), context.getClass()])` — or the `ExecutionContext` itself (handler first, then class):
 
 ```ts
+import { Injectable, Reflector, type CanActivate, type ExecutionContext } from '@velajs/vela';
+import { getTrustedRequestIdentity } from '@velajs/vela/module-kit';
+
 const RequireScope = Reflector.createDecorator<string>();
 const Audience = Reflector.createDecorator<string, ReadonlySet<string>>({
   transform: (value) => new Set(value.split(',')),   // stored value readers receive
@@ -139,6 +146,8 @@ class ScopeGuard implements CanActivate {
 ```
 
 `Reflector` methods: `get`, `getHandler`, `getClass`, `getAll` (each target, or `[handler, class]` for a context), `getAllAndOverride` (first defined), `getAllAndMerge` (concat/assign).
+
+Class metadata is inherited in every form: the controller's own, else the nearest ancestor's, so `@Roles(['admin'])` on an abstract base controller applies to each controller extending it. A method the controller inherits unchanged reads its nearest declaration (its own, else the nearest ancestor's); an override reads only its own. Inherited opening markers (`@Public()`, `@TenantIgnored()`, `@CedarPublic()`, `@SkipThrottle()`) apply the same way.
 
 A handler function reads the metadata of the method it is: the method a decorator declared, or the method a route calls, even after an outer decorator wrapped it. In the list form, a listed class reads the method it routes through the function: a method one controller decorates never lends its metadata to a sibling controller inheriting the same method. Alone (`get(key, context.getHandler())`, `[context.getHandler()]`), a function several controllers route with different metadata for the key cannot say which one it serves and the read throws, so list the class with it or pass the `ExecutionContext`. A function one controller routes as several methods with different metadata (one wrapper replacing them) throws in the list form too; pass the `ExecutionContext`. Plain arrays and plain objects with equal own properties (an array's non-index properties included) count as the same metadata; other values compare by identity. A custom execution context records its handler with `MetadataRegistry.addHandlerMethod(handler, type, name)`.
 

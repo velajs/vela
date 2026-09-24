@@ -18,8 +18,8 @@ const engine = createCedarEngine({ vocabulary, binding: cloudflareCedar(), store
 const scope = { application: 'files', environment: 'production', tenantId: tenant.requireTenantId() };
 const decision = await engine.check({
   scope, principal: { type: 'User', id: userId }, action: 'read',
-  resource: { type: 'Document', id: document.id }, context: {},
-  entities: [entity(vocabulary, 'Document', document.id, { attrs: { owner: document.owner } })],
+  resource: { type: 'Document', id: file.id }, context: {},
+  entities: [entity(vocabulary, 'Document', file.id, { attrs: { owner: file.owner } })],
 });
 if (!decision.allowed) throw new Error('Forbidden');
 ```
@@ -106,6 +106,14 @@ selected modules at startup. Queue/socket adapters must supply verified
 identities explicitly. To order a fully route-level pipeline yourself, pass
 `guard: 'none'` and apply `@UseGuards(AuthenticationGuard, TenantGuard, CedarGuard)`
 in that order: global guards run before route guards.
+
+Each `guard: 'global'` registration installs its own global `CedarGuard`,
+including each keyed instance (`forRoot({ key, ... })`), and every installed
+guard runs on every application route. The installed guard authorizes through
+the `CedarModule` the route's module sees, so one global installation serves
+every module: when several modules register their own authorizer, give each
+registration its own `key`, keep `guard: 'global'` on one and pass
+`guard: 'none'` on the others.
 
 The package includes NestM BSD-licensed adaptations and unmodified Apache-licensed
 Cedar WASM; see `THIRD_PARTY_LICENSES`.

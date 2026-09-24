@@ -41,6 +41,8 @@ import { ApiDoc, ApiTags, ApiResponse } from '@velajs/vela/openapi';
 @Controller({ path: '/catalog', version: 1 })
 @ApiTags('catalog')
 class CatalogController {
+  constructor(private readonly products: ProductsService) {}
+
   @Get('/items', { name: 'catalog.list', response: z.array(PublicProduct) })
   @ApiDoc({ summary: 'List products', operationId: 'listProducts' })
   @ApiResponse({ status: 404, description: 'Catalog closed', schema: Problem })

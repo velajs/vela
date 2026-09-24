@@ -65,6 +65,7 @@ import type {
   NestMiddleware,
   PipeTransform,
 } from '../pipeline/types';
+import { inheritedRoutes } from '../registry/inherited-metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type {
   Constructor,
@@ -662,7 +663,7 @@ export class RouteManager {
   registerController(controller: Type, moduleId?: string): this {
     const prefix = MetadataRegistry.getControllerPath(controller);
     const options = MetadataRegistry.getControllerOptions(controller);
-    const routes = MetadataRegistry.getRoutes(controller);
+    const routes = inheritedRoutes(controller);
 
     // The ModuleLoader registers controllers in their owning module's bucket;
     // fall back to a `__root__` registration only for controllers that arrive

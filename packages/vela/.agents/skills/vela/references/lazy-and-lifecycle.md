@@ -63,7 +63,7 @@ In-core lazy modules: `EventEmitterModule`, `ScheduleModule`, `SeederModule`, `I
 
 Modules that dispatch non-HTTP work (WebSocket frames, queue batches, cron ticks) declare an **entrypoint kind**; transports query `app.entrypoints` instead of module internals. The per-app registry is built at the end of bootstrap (available even on slim, route-less paths like a Cloudflare Durable Object).
 
-```ts
+```ts nocheck
 // Declarative: kernel discovers annotated providers per kind
 registerEntrypointKind({ kind: 'queue', metaKey: PROCESSOR_METADATA, level: 'class' });
 

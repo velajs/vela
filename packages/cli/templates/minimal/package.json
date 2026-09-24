@@ -4,15 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "pnpm run types",
-    "dev": "vite dev",
+    "dev": "wrangler types --include-runtime=false && vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "test": "vitest run",
     "types": "wrangler types --include-runtime=false",
-    "pretypecheck": "pnpm run types",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "wrangler types --include-runtime=false && tsc --noEmit"
   },
   "dependencies": {
     "@velajs/cloudflare": "1.30.0",
@@ -24,6 +22,7 @@
     "@cloudflare/vitest-plugin": "1.1.13",
     "@cloudflare/workers-types": "5.20260920.1",
     "@velajs/cli": "1.30.0",
+    "@velajs/testing": "1.30.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",
     "vitest": "4.1.11",

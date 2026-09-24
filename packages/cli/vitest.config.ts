@@ -6,6 +6,15 @@ export default defineConfig({
   test: {
     globals: false,
     include: ['src/**/*.test.ts'],
+    globalSetup: ['src/build-cli.global-setup.ts'],
+    server: {
+      deps: {
+        // Load the workspace packages as Node does, so the tests and the
+        // applications the CLI loads through its module runner share one
+        // instance of each (their DI tokens are compared by identity).
+        external: [/\/packages\/[^/]+\/dist\//],
+      },
+    },
   },
   plugins: [
     // Fixture apps in tests use vela's legacy decorators (+ design:paramtypes

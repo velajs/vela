@@ -1,9 +1,13 @@
 # Database seeding
 
-Seeders are application providers. Import `SeederModule`, register `@Seeder()`
-classes in their owning feature modules, and point `vela.config.ts` at the
-application source. The CLI loads the config and the decorated files it imports
-through Vite, so no build runs first:
+Seeders are application providers. Import `SeederModule` and register
+`@Seeder()` classes in their owning feature modules. In a Workers project
+`vela db seed` needs no configuration: the CLI loads the Worker entry Wrangler's
+`main` names through Vite, so no build runs first, and builds the application
+with the local bindings Wrangler's `getPlatformProxy()` provides, persisted in
+`.wrangler/state` like `vite dev` (`--env` selects a named environment). Point a
+`vela.config.ts` at the application source to build it another way; the CLI
+loads the config and the decorated files it imports the same way:
 
 ```ts
 // vela.config.ts

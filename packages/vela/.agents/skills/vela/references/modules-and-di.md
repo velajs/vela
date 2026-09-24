@@ -40,12 +40,17 @@ class ProductService {
 Provider kinds, as Nest literals in `@Module({ providers })` or through `defineProvider`:
 
 ```ts
-{ provide: TOKEN, useValue: instance }
-{ provide: TOKEN, useClass: Impl }
-{ provide: ALIAS, useExisting: TOKEN }          // same instance under a second token
-{ provide: TOKEN, useFactory: () => build() }   // a literal factory takes no parameters
-defineProvider(TOKEN, { useFactory: (dep) => build(dep), inject: [DEP_TOKEN] })
-ProductService // class-provider shorthand
+@Module({
+  providers: [
+    { provide: TOKEN, useValue: instance },
+    { provide: TOKEN, useClass: Impl },
+    { provide: ALIAS, useExisting: TOKEN }, // same instance under a second token
+    { provide: TOKEN, useFactory: () => build() }, // a literal factory takes no parameters
+    defineProvider(TOKEN, { useFactory: (dep) => build(dep), inject: [DEP_TOKEN] }),
+    ProductService, // class-provider shorthand
+  ],
+})
+class CatalogModule {}
 ```
 
 `@Module` checks each literal against its token: `{ provide: COUNT, useValue: 'one' }` does not compile for an `InjectionToken<number>`. A factory with dependencies uses `defineProvider` (import it from `@velajs/vela`), which infers its parameters from `inject`; do not spread a definition to modify its registration. `inject` may be omitted only when the factory takes no parameters (`defineProvider`, `lazyProvider` from `@velajs/vela/module-kit`, literals, `forRootAsync`); a factory with parameters and no `inject` throws, naming the token. `DynamicModule.providers` and `defineModule` `setup` contributions accept loosely typed literals that the loader checks when the module loads (an entry that is not a provider fails, naming the entry and its token).
@@ -139,7 +144,7 @@ Every first-party configurable module exposes `forRoot(options)` (sync) and `for
 class AppModule {}
 ```
 
-The instance key comes from the structural options only, so most modules have one instance per class: the same configuration imported twice deduplicates, while a second configuration under the same key fails bootstrap in every diagnostics mode, even when its `isGlobal` differs too. A repeat with the same options and only another `isGlobal` is reported (`'log'` warns, `'throw'` fails bootstrap) and the first is kept. An extra at its default, a structural option at the module's default (`globalGuard: true`) or an option passed as `undefined` (at any depth) counts as not given. A bare class import configures nothing: a configured import under its key (`HttpModule.forRoot({ key: 'default', baseURL })` next to `HttpModule`) fails bootstrap in either order. Give a second instance its own `key` (`MailModule.forRoot({ ..., key: 'marketing' })`). `key`, `lazy` and `isGlobal` never change the key or reach the options token. `isGlobal` only makes exports visible everywhere; options that register app-wide components are named for them (`CacheModule`'s `globalInterceptor`, `FeatureFlagsModule`'s `globalGuard`, and `guard: 'global' | 'none'` on `BetterAuthModule`, `CloudflareAccessModule`, `TenantModule`, `AuthzModule` and `CedarModule`).
+The instance key comes from the structural options only, so most modules have one instance per class: the same configuration imported twice deduplicates, while a second configuration under the same key fails bootstrap in every diagnostics mode, even when its `isGlobal` differs too. A repeat with the same options and only another `isGlobal` is reported (`'log'` warns, `'throw'` fails bootstrap) and the first is kept. An extra at its default, a structural option at the module's default (`guard: 'global'`) or an option passed as `undefined` (at any depth) counts as not given. A bare class import configures nothing, so it names a module only when the class has its own `@Module()`: a generated class without one (even with `@Global()`) fails bootstrap when imported bare, naming its `forRoot(...)`/`forRootAsync(...)` (or `register(...)`) methods. A configured import under its key (`HttpModule.forRoot({ key: 'default', baseURL })` next to `HttpModule`) fails bootstrap in either order. Give a second instance its own `key` (`MailModule.forRoot({ ..., key: 'marketing' })`). `key`, `lazy` and `isGlobal` never change the key or reach the options token. `isGlobal` only makes exports visible everywhere; options that register app-wide components are named for them (`CacheModule`'s `globalInterceptor`, and `guard: 'global' | 'none'` on `BetterAuthModule`, `CloudflareAccessModule`, `TenantModule`, `AuthzModule`, `CedarModule` and `FeatureFlagsModule`).
 
 ## Authoring a configurable module — `defineModule`
 

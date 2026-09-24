@@ -30,7 +30,7 @@ class ProductsController {
 
 Method decorators take a path, then options (`response`, `status`, `format`, `contentType`, `validate`, `body`, `name`); without a path, options come first (`@Post({ response })`; a trailing `/` in a path is significant). A handler whose return type does not match `response` fails to compile. The route parses the final result, after interceptors, through `response` (a stripping schema removes undeclared fields); a rejected result answers 500, never 400; `@CacheResponse` stores the parsed value. `validate: false` documents and types without parsing. With `response`, JSON is the default format, even for strings and null; `format: 'text'` sends a string; without `response` or `format`, strings are text and other values JSON, as on a route without options. A handler may always return a ready `Response`. A decorator with `response` or `format` is a `RouteMethodDecorator<Result>` that checks the handler (not a plain `MethodDecorator`); one without them is a plain `MethodDecorator`.
 
-Status: POST 201, `response: null` 204 (no body), every other method 200, whatever the handler returns (a `null`/`undefined` result is an empty body at that status). `status` or `@HttpCode` sets another status; declaring both fails at startup, and a route serving a `defineRoute` contract takes its `status` only (no `@HttpCode`). Each route of a handler uses its own options. Responses, OpenAPI and the response cache share this rule.
+Status: POST 201, `response: null` 204 (no body), every other method 200, whatever the handler returns (a `null`/`undefined` result is an empty body at that status). `status` or `@HttpCode` sets another status; declaring both fails at startup, and a route serving a `defineRoute` contract takes its `status` only (no `@HttpCode`). Each route of a handler uses its own options. Responses, OpenAPI and the response cache share this rule. A route without options serving a method its controller inherits unchanged takes those of the nearest ancestor's route for the same verb; an override uses only its own.
 
 Request values: `@Body`, `@Query`, `@Param`, `@Headers` and `@Cookie` accept a schema (whole value or a named field). Invalid input answers 400 after guards. `@Body()` with no schema validates a parameter class carrying a static Standard Schema (`class CreateProduct { static schema = CreateProductSchema }` or a class that is itself a Standard Schema) without any global pipe — the whole body, or the member a named `@Body('item') item: Item` reads; a global `ValidationPipe` leaves a value the route validated (`ArgumentMetadata.validated`) as is while earlier pipes pass it on unchanged (a value an earlier pipe changed is validated again) and still validates programmatic body parameters. `@Query()` returns repeated keys (`?tag=a&tag=b`) and arrays declared by the route's, the parameter's or its class's schema as arrays (even when sent once); other keys stay strings, so a repeated scalar fails its schema. Without a schema, `@Query('role') role: string` (or number/boolean) reads the first value, `@Query('tags') tags: string[]` (no pipe) always reads an array, and an `unknown`/union parameter reads an array for a repeated key; `string | undefined` and `string | null` are unions, so write `role?: string` for the first value. JSON bodies require `application/json` or a `+json` media type (else 415).
 
@@ -45,12 +45,27 @@ export const createProduct = defineRoute({
   body: CreateProduct,
   response: Product,
 });
+```
 
+```ts
 // server
-@Post(createProduct)
-create(@Body() body: ContractBody<typeof createProduct>) { … }
+import { Body, Controller, Post } from '@velajs/vela';
+import type { ContractBody } from '@velajs/vela/contract';
 
+@Controller('/products')
+class ProductsController {
+  @Post(createProduct)
+  create(@Body() body: ContractBody<typeof createProduct>) {
+    return { id: crypto.randomUUID(), name: body.name };
+  }
+}
+```
+
+```ts
 // browser, no codegen
+import { hc } from '@velajs/client/http';
+import type { ContractApp } from '@velajs/vela/contract';
+
 const client = hc<ContractApp<[typeof createProduct]>>(origin);
 ```
 
@@ -67,12 +82,19 @@ Routes are JSON-only unless they opt in: `body: { multipart: { maxFiles, maxFile
 ## Named descriptors
 
 ```ts
-import { defineDto } from '@velajs/vela/validation';
+import { Body, Controller, Post } from '@velajs/vela';
+import { defineDto, type SchemaOutput } from '@velajs/vela/validation';
+import { z } from 'zod';
 
 const CreateProduct = defineDto(z.object({ name: z.string().min(1) }), { name: 'CreateProduct' });
 
-@Post({ response: Product })
-create(@Body(CreateProduct) body: SchemaOutput<typeof CreateProduct>) { … }
+@Controller('/products')
+class ProductsController {
+  @Post()
+  create(@Body(CreateProduct) body: SchemaOutput<typeof CreateProduct>) {
+    return body;
+  }
+}
 ```
 
 `defineDto` returns a frozen descriptor (`name`, `schema`, `parse`, `parseAsync`, `toJSONSchema`), not a constructor; OpenAPI references it as a named component. Use `jsonSchema` or `schemaConverter(direction)` when a library cannot export its wire shape.

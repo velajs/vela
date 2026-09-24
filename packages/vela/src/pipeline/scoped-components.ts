@@ -1,6 +1,10 @@
 import type { Container } from '../container/container';
 import type { Type, TypedToken } from '../container/types';
 import { instantiateMany, instantiateManyAsync } from '../http/instantiate';
+import {
+  inheritedClassComponents,
+  inheritedHandlerComponents,
+} from '../registry/inherited-metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { ComponentType, ComponentTypeMap, Constructor } from '../registry/types';
 import type {
@@ -45,6 +49,11 @@ export function resolvePipelineComponents<T extends ComponentType>(
  * entries are read from the application's module graph in `container`, so
  * bootstrapping the same classes again never accumulates entries. Without
  * `moduleId`, the class's owning module is used when it has exactly one.
+ *
+ * As in Nest, a class inherits its ancestors' declarations: their class-level
+ * components run first, then its own, and a method it inherits unchanged runs
+ * the components each ancestor declares on it, then its own. A method the
+ * class overrides runs only its own.
  */
 export function getScopedComponents<T extends ComponentType>(
   type: T,
@@ -54,9 +63,9 @@ export function getScopedComponents<T extends ComponentType>(
   moduleId?: string,
 ): ComponentTypeMap[T][] {
   return [
-    ...MetadataRegistry.getController(type, targetClass),
+    ...inheritedClassComponents(type, targetClass),
     ...getModuleComponents(type, targetClass, container, moduleId),
-    ...MetadataRegistry.getHandler(type, targetClass, methodName),
+    ...inheritedHandlerComponents(type, targetClass, methodName),
   ];
 }
 

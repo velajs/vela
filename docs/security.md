@@ -243,9 +243,15 @@ reported before they are rendered, and redaction holds on every edge:
   Only a 4xx echoes its message and `details`; a 5xx sends only the status title.
 - An exception may own its response through `toResponse()`. `HttpException`
   built with an object returns it verbatim (a health check's deliberate 503),
-  and `@velajs/crud` returns its envelope. Errors thrown by raw Hono middleware
-  reach only `onError`, which redacts a 5xx owned body to its status title; RPC
-  frames do the same.
+  and `@velajs/crud` returns its envelope. Only exceptions the `HttpException`
+  constructor built (including subclasses) own a response; any other thrown
+  object with a `toResponse()`, such as a third-party error, is an unknown
+  error: reported, and answered with a redacted 500. Errors thrown by raw Hono
+  middleware reach only `onError`, which redacts a 5xx owned body to its status
+  title; RPC frames do the same.
+- Error edges answer only 400–599. An `HttpException` constructed with another
+  status (Nest accepts `new HttpException(body, 302)`) is reported and answered
+  with a redacted 500, never sent as a success or redirect.
 - Branded `VelaError`s render their code, message and data unless the code is
   internal; any other error is a redacted 500.
 - A Hono `HTTPException` below 500 renders its message in that body; one built

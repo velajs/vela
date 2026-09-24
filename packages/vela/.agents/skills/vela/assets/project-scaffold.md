@@ -1,47 +1,68 @@
 # New Vela API scaffold
 
-Use the workspace's aligned Vela/Hono versions. For Workers, start with `apps/live-todo` when live queries or Durable Objects are required; the small HTTP-only shape below needs no binding wrapper modules.
+Start new Workers projects with the CLI; it writes exactly the setup below with
+pinned, released versions:
+
+```sh
+pnpm dlx @velajs/cli@latest new my-api                                # minimal: one controller and service
+pnpm dlx @velajs/cli@latest new my-api --template api --install --git # KV resource, queue, cron, specs
+```
+
+`--pm npm|yarn|bun` switches the package manager (pnpm by default, or the one
+running the command). For live queries or WebSocket Durable Objects, start from
+`apps/live-todo` instead.
 
 ## Build configuration
 
-Install `@velajs/vela`, `@velajs/cloudflare`, `hono`, and an application schema library such as Zod 4.4+. Add TypeScript, Wrangler, Vite 8, `@cloudflare/vite-plugin`, Vitest, `@cloudflare/vitest-plugin`, `@cloudflare/workers-types` and `@velajs/cli` as development tools. `vela new` generates exactly this setup. Preserve generated native Worker environment types from `wrangler types`.
-
-Decorator metadata requires a compiler that emits it. Vite 8 compiles with Oxc; state its decorator options once and share them with Vitest:
+Dependencies: `@velajs/vela`, `@velajs/cloudflare`, `hono` (plus an application
+schema library such as Zod 4.4+ for validated bodies). Development tools:
+TypeScript, Wrangler, Vite 8, `@cloudflare/vite-plugin`, Vitest,
+`@cloudflare/vitest-plugin`, `@cloudflare/workers-types`, `@velajs/cli` and
+`@velajs/testing`. The scripts regenerate the binding types without
+package-manager pre-scripts:
 
 ```json
 {
   "type": "module",
   "scripts": {
-    "predev": "pnpm run types",
-    "dev": "vite dev",
+    "dev": "wrangler types --include-runtime=false && vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "test": "vitest run",
     "types": "wrangler types --include-runtime=false",
-    "pretypecheck": "pnpm run types",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "wrangler types --include-runtime=false && tsc --noEmit"
   }
 }
 ```
 
+Decorator metadata requires a compiler that emits it. Vite 8 compiles with Oxc;
+state its decorator options once and share them with Vitest:
+
 ```ts
 // oxc.config.ts
 import type { UserConfig } from 'vite';
+
 export const oxc = {
   decorator: { legacy: true, emitDecoratorMetadata: true },
 } satisfies UserConfig['oxc'];
+```
 
+```ts
 // vite.config.ts
 import { cloudflare } from '@cloudflare/vite-plugin';
 import { defineConfig } from 'vite';
 import { oxc } from './oxc.config.ts';
-export default defineConfig({ oxc, plugins: [cloudflare()] });
 
+export default defineConfig({ oxc, plugins: [cloudflare()] });
+```
+
+```ts
 // vitest.config.ts: no cloudflare() here; the test pool replaces it.
 import { cloudflareTest } from '@cloudflare/vitest-plugin';
 import { defineConfig } from 'vitest/config';
 import { oxc } from './oxc.config.ts';
+
 export default defineConfig({
   oxc,
   plugins: [cloudflareTest({ wrangler: { configPath: './wrangler.jsonc' } })],
@@ -70,71 +91,120 @@ export default defineConfig({
 }
 ```
 
-Point Wrangler at the TypeScript entry; Vite builds it, so there is no `build` block. From compatibility date 2026-08-04 Node.js compatibility (and the `node:async_hooks` the root entry imports) is on by default; older dates need `"compatibility_flags": ["nodejs_als"]`:
+Point Wrangler at the TypeScript entry; Vite builds it, so there is no `build`
+block. From compatibility date 2026-08-04 Node.js compatibility (and the
+`node:async_hooks` the root entry imports) is on by default; older dates need
+`"compatibility_flags": ["nodejs_als"]`:
 
 ```jsonc
 {
-  "name": "my-vela-api",
-  "main": "src/main.ts",
+  "name": "my-api",
+  "main": "src/worker.ts",
   "compatibility_date": "2026-09-20",
 }
 ```
 
-Add native bindings to the Wrangler configuration, then run `pnpm types`: `wrangler types --include-runtime=false` writes `worker-configuration.d.ts`, whose `Cloudflare.Env` `@velajs/cloudflare` merges into `VelaEnv`. Commit it. Vela includes its metadata polyfill; no separate `reflect-metadata` dependency is needed. Deploy with `pnpm run deploy` (never `wrangler deploy --config wrangler.jsonc`, which bundles `src/` with esbuild and drops decorator metadata).
+Add native bindings to the Wrangler configuration (or let `vela add` do it),
+then run the `types` script: `wrangler types --include-runtime=false` writes
+`worker-configuration.d.ts`, whose `Cloudflare.Env` `@velajs/cloudflare` merges
+into `VelaEnv`. Commit it. Vela includes its metadata polyfill; no separate
+`reflect-metadata` dependency is needed. Deploy with the `deploy` script (never
+`wrangler deploy --config wrangler.jsonc`, which bundles `src/` with esbuild and
+drops decorator metadata).
 
-A workerd test calls the Worker's `fetch` handler and drains the body before waiting:
-
-```ts
-// test/main.spec.ts
-import { env } from 'cloudflare:workers';
-import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
-import { expect, it } from 'vitest';
-import worker from '../src/main.js';
-
-it('serves /api/app', async () => {
-  const ctx = createExecutionContext();
-  const response = await worker.fetch(new Request('http://localhost/api/app'), env, ctx);
-  const body = await response.json();
-  await waitOnExecutionContext(ctx);
-  expect(body).toEqual({ message: 'Hello from Workers' });
-});
-```
-
-## `src/app.module.ts`
+## Source
 
 ```ts
-import { Controller, Get, Module } from '@velajs/vela';
-import { z } from 'zod';
+// src/app.module.ts
+import { Controller, Get, Injectable, Module } from '@velajs/vela';
 
-const Hello = z.object({ message: z.string() });
-
-@Controller('/app')
-class AppController {
-  @Get({ response: Hello })
-  hello() {
-    return { message: 'Hello from Workers' };
+@Injectable()
+export class AppService {
+  getHello(): string {
+    return 'Hello from Vela!';
   }
 }
 
-@Module({ controllers: [AppController] })
+@Controller('/')
+export class AppController {
+  readonly #appService: AppService;
+
+  constructor(appService: AppService) {
+    this.#appService = appService;
+  }
+
+  @Get()
+  getHello() {
+    return { message: this.#appService.getHello() };
+  }
+}
+
+@Module({ controllers: [AppController], providers: [AppService] })
 export class AppModule {}
 ```
 
-## `src/main.ts`
-
 ```ts
+// src/worker.ts: exports only.
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import { AppModule } from './app.module.js';
 
-export default createCloudflareWorker(AppModule, { globalPrefix: '/api' });
+export default createCloudflareWorker(AppModule);
 ```
 
-The framework owns the environment token: inject bindings with `@InjectEnv()` typed as `VelaEnv`, or `ENV` in factories: `defineProvider(TOKEN, { inject: [ENV], useFactory: env => ... })`; a factory without parameters may omit `inject`.
+The framework owns the environment token: inject bindings with `@InjectEnv()`
+typed as `VelaEnv`, or `ENV` in factories:
+`defineProvider(TOKEN, { inject: [ENV], useFactory: env => ... })`; a factory
+without parameters may omit `inject`.
 
-For a platform-neutral application use `await VelaFactory.create(AppModule)` and export its fetch handler. Node uses `serve({ fetch: app.fetch })` from `@hono/node-server`; keep that runtime-specific server entry separate from the Worker entry.
+A workerd spec builds the module as the Worker does and drives its handlers:
 
-## Introspection and RPC
+```ts
+// test/worker.spec.ts
+import { env } from 'cloudflare:workers';
+import { createTestingWorker } from '@velajs/cloudflare/testing';
+import { expect, it } from 'vitest';
+import { AppModule, AppService } from '../src/app.module.js';
 
-Install `@velajs/cli` as a dev dependency when introspection/codegen is needed and run it as `pnpm vela ...`. Its `vela.config.ts` uses `defineVelaConfig({ rootModule: AppModule, createApp })` from `@velajs/cli/config` and imports `./src/app.module.js` directly: with Vite 8 installed, the CLI loads it through a Vite module runner that stays open for the whole command, with the same Oxc decorator options, so nothing is built first. Make `createApp` construct the application with the appropriate test/tooling environment (`VelaFactory.create(AppModule, { env, adapters })`); never invent platform bindings with a type assertion.
+it('serves / with a replaced service', async () => {
+  const worker = await createTestingWorker(AppModule, {
+    env,
+    overrides: (module) =>
+      module.overrideProvider(AppService).useValue({ getHello: () => 'Hello from a test!' }),
+  });
+  try {
+    const response = await worker.fetch('/');
+    expect(await response.json()).toEqual({ message: 'Hello from a test!' });
+  } finally {
+    await worker.close();
+  }
+});
+```
 
-Run `vela route list` and `vela openapi dump` to inspect the contract, then `vela client generate --out src/api.generated.ts --strict`. The frontend imports only the generated `AppType` and Hono `hc` from `@velajs/client/http`. See `references/openapi.md`, `references/cloudflare.md`, and `references/live-queries.md` for the complete wiring.
+For a platform-neutral application use `await VelaFactory.create(AppModule)`
+and export its fetch handler. Node uses `serve({ fetch: app.fetch })` from
+`@hono/node-server`; keep that runtime-specific server entry separate from the
+Worker entry.
+
+## Growing the application
+
+The CLI reads Wrangler's `main`, loads the `createCloudflareWorker()` entry
+through Vite (decorators and metadata included, `cloudflare:*` stubbed) and
+needs no configuration file:
+
+```sh
+pnpm exec vela generate resource notes     # module + controller + service, imported into AppModule
+pnpm exec vela g queue emails              # @Processor + QueueModule.registerQueue(), driver once
+pnpm exec vela g cron digest --schedule "0 6 * * *"
+pnpm exec vela g durable-object counter    # exported from the Worker entry
+pnpm exec vela add d1 DB                   # wrangler d1 create --binding DB --update-config, types, provider
+pnpm exec vela cf sync --write             # triggers, queues, DO bindings + migrations, workflows
+pnpm exec vela deploy check                # top-level target; the entrypoint snapshot is computed
+```
+
+Run `vela route list` and `vela openapi dump` to inspect the contract, then
+`vela client generate --out src/api.generated.ts --strict`. The frontend imports
+only the generated `AppType` and Hono `hc` from `@velajs/client/http`. Add a
+`vela.config.ts` only when the tools need an application built differently (for
+example with Wrangler's local bindings); see `references/cli-and-introspection.md`,
+`references/openapi.md`, `references/cloudflare.md`, and
+`references/live-queries.md`.

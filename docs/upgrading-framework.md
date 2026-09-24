@@ -158,7 +158,8 @@ Every HTTP failure renders through `renderHttpError`. Clients see these changes:
 
 - Validation failures from `ValidationPipe` and `@Body(schema)` answer
   `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`
-  instead of `{ statusCode, message, errors }`.
+  instead of `{ statusCode, message, errors }`; `@Endpoint` input failures answer the
+  same body with the message `'Endpoint input validation failed'`.
 - Unmatched routes answer a JSON 404, `{ error: { code: 'not_found', message: 'Not Found' } }`,
   and oversized bodies a JSON 413 (`payload_too_large`), instead of Hono's plain text.
   Global exception filters receive these rejections, as in Nest, so a catch-all filter that
@@ -172,8 +173,13 @@ Every HTTP failure renders through `renderHttpError`. Clients see these changes:
 
 `HttpException.getRawResponse()` is removed. Exceptions own their wire shape
 through `toResponse()`: an object response still renders verbatim, and a custom
-exception overrides `toResponse()` to return `{ status, body }`. Pass structured
-client data on a 4xx with `new BadRequestException(message, { details })`.
+exception extends `HttpException` and overrides `toResponse()` to return
+`{ status, body }`. Only exceptions the `HttpException` constructor built own a
+response; another thrown object with a `toResponse()` renders as an unknown
+error (a reported, redacted 500). Error edges answer only 400–599: an
+`HttpException` constructed with another status, such as 302, is reported and
+renders as a redacted 500. Pass structured client data on a 4xx with
+`new BadRequestException(message, { details })`.
 Integrations that map errors to another transport call `renderHttpError(error)`.
 
 `@Req()` injects the platform `Request`; inject the Hono context with the new
@@ -193,9 +199,25 @@ several methods of a controller with different metadata, the list form throws
 too, so pass the context. Code that used the handler name, such as a throttling
 key, calls `getHandlerName()`.
 
+Declarations on an ancestor class apply to the controllers that extend it, as in
+Nest. Class metadata reads the controller's own, else the nearest ancestor's, in
+every `Reflector` form, so `@Roles(['admin'])` on an abstract base controller
+guards each controller that extends it. Class-level `@UseGuards`,
+`@UseInterceptors`, `@UsePipes`, `@UseFilters` and `@UseMiddleware` on an
+ancestor run for the subclass, ancestors first. On a method the controller
+inherits unchanged, the ancestors' method metadata, method-level enhancers and
+`SkipGuardPhases` apply, and a route that declares no options of its own takes
+those of the nearest ancestor's route for the same verb and method (its
+`response`, `status` or `defineRoute` contract); an override reads only its own. Opening
+markers are inherited too: `@Public()`, `@TenantIgnored()`, `@CedarPublic()` or
+`@SkipThrottle()` on a base controller now opens its subclasses' routes. Remove a
+declaration from the base class, or override the method, where a subclass must
+not inherit it.
+
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
-Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule` and `CedarModule`
-install their guard globally by default; `guard: 'none'` opts out. Replace
+Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule`, `CedarModule` and
+`FeatureFlagsModule` install their guard globally by default; `guard: 'none'`
+opts out. Replace
 Better Auth's `isGlobal` with `guard` and Cedar's `globalGuard: false` with
 `guard: 'none'`. Remove `@UseGuards` for guards the modules now install, or pass
 `guard: 'none'` and keep a fully route-level pipeline. The installed guards
