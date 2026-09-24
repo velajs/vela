@@ -178,10 +178,10 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
       cause: lastError,
     });
   }
+  const service = join(project, 'src/app.service.ts');
+  const source = await readFile(service, 'utf8');
   try {
     await expectMessage('Hello from Vela!');
-    const service = join(project, 'src/app.service.ts');
-    const source = await readFile(service, 'utf8');
     // Only edit the injected service: proves metadata, DI and the dev reload.
     // Each edit writes new content after the watcher settles; rewriting the
     // original text right after a reload can be coalesced and never reported.
@@ -211,6 +211,8 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
       clearTimeout(force);
     }
   }
+  // The generated project's own spec expects the original greeting again.
+  await writeFile(service, source);
   await verifyGenerators(project, vela, run);
   const api = await verifyApiTemplate(consumer, runCli, archives);
   console.log(
