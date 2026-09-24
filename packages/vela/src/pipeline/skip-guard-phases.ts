@@ -20,9 +20,9 @@ import {
  * in every phase, as do authentication and feature guards (throttling, flags)
  * and the route's own `@UseGuards` guards. `skippable` belongs to the class,
  * whoever registers it: an application guard that extends an integration
- * guard inherits it, and declares `static readonly skippable = false` to run
- * on these routes too. Applications mark their own routes with each phase's
- * marker instead (`@TenantIgnored()`, `@CedarPublic()`).
+ * guard inherits it, and declares `static override readonly skippable = false`
+ * to run on these routes too. Applications mark their own routes with each
+ * phase's marker instead (`@TenantIgnored()`, `@CedarPublic()`).
  */
 export const SkipGuardPhases = Reflector.createDecorator<
   readonly SkippableGuardPhase[],

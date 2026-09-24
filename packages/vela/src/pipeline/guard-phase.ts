@@ -9,7 +9,7 @@
  * also declares `static readonly skippable = true`, so the routes of another
  * integration that enforces the phase itself (`SkipGuardPhases`) skip it.
  * Guards without it run on every route; a subclass inherits it, and declares
- * `static readonly skippable = false` to opt out.
+ * `static override readonly skippable = false` to opt out.
  */
 export type GuardPhase = 'authenticate' | 'tenant' | 'authorize' | 'feature';
 
