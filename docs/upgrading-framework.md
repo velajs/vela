@@ -133,6 +133,19 @@ several methods of a controller with different metadata, the list form throws
 too, so pass the context. Code that used the handler name, such as a throttling
 key, calls `getHandlerName()`.
 
+Declarations on an ancestor class apply to the controllers that extend it, as in
+Nest. Class metadata reads the controller's own, else the nearest ancestor's, in
+every `Reflector` form, so `@Roles(['admin'])` on an abstract base controller
+guards each controller that extends it. Class-level `@UseGuards`,
+`@UseInterceptors`, `@UsePipes`, `@UseFilters` and `@UseMiddleware` on an
+ancestor run for the subclass, ancestors first. On a method the controller
+inherits unchanged, the ancestors' method metadata, method-level enhancers,
+`@Serialize` and `SkipGuardPhases` apply; an override reads only its own. Opening
+markers are inherited too: `@Public()`, `@TenantIgnored()`, `@CedarPublic()` or
+`@SkipThrottle()` on a base controller now opens its subclasses' routes. Remove a
+declaration from the base class, or override the method, where a subclass must
+not inherit it.
+
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
 Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule`, `CedarModule` and
 `FeatureFlagsModule` install their guard globally by default; `guard: 'none'`

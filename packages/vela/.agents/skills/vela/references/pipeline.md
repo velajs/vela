@@ -41,6 +41,8 @@ Guard, pipe, interceptor and filter classes referenced by `@UseGuards`/`@UsePipe
 
 On a `@Module` class they apply to the controllers that module declares (after each controller's class-level entries, before method-level ones), not to its providers or imported modules. They are resolved per application, so bootstrapping the same modules again never runs them twice.
 
+A class inherits its ancestors' enhancers, as in Nest: an ancestor's class-level entries run before its own (the root class's first), and on a method it inherits unchanged (for example routed with `Get()(Sub.prototype, 'list', descriptor)`) each ancestor's method-level entries run before its own. A method it overrides runs only its own, and a controller's entries on a shared method never reach a sibling. The loader registers inherited enhancer classes like its own.
+
 ## Global (app-wide) components
 
 Three ways to register globals:
@@ -139,6 +141,8 @@ class ScopeGuard implements CanActivate {
 ```
 
 `Reflector` methods: `get`, `getHandler`, `getClass`, `getAll` (each target, or `[handler, class]` for a context), `getAllAndOverride` (first defined), `getAllAndMerge` (concat/assign).
+
+Class metadata is inherited in every form: the controller's own, else the nearest ancestor's, so `@Roles(['admin'])` on an abstract base controller applies to each controller extending it. A method the controller inherits unchanged reads its nearest declaration (its own, else the nearest ancestor's); an override reads only its own. Inherited opening markers (`@Public()`, `@TenantIgnored()`, `@CedarPublic()`, `@SkipThrottle()`) apply the same way.
 
 A handler function reads the metadata of the method it is: the method a decorator declared, or the method a route calls, even after an outer decorator wrapped it. In the list form, a listed class reads the method it routes through the function: a method one controller decorates never lends its metadata to a sibling controller inheriting the same method. Alone (`get(key, context.getHandler())`, `[context.getHandler()]`), a function several controllers route with different metadata for the key cannot say which one it serves and the read throws, so list the class with it or pass the `ExecutionContext`. A function one controller routes as several methods with different metadata (one wrapper replacing them) throws in the list form too; pass the `ExecutionContext`. Plain arrays and plain objects with equal own properties (an array's non-index properties included) count as the same metadata; other values compare by identity. A custom execution context records its handler with `MetadataRegistry.addHandlerMethod(handler, type, name)`.
 

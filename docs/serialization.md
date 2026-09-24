@@ -34,7 +34,9 @@ directly so async transforms do not run twice; other Standard Schema validators
 use the standard protocol, and legacy schemas prefer `parseAsync` when present.
 A missing `@Serialize`
 leaves the result unchanged; malformed serialization metadata fails instead of
-silently returning the unfiltered result. Output validation failures use the
+silently returning the unfiltered result. A controller that routes a method it
+inherits unchanged serializes with the `@Serialize` an ancestor declares on it;
+an override uses only its own. Output validation failures use the
 existing server-error pipeline, not input-validation 400 responses.
 
 ## Preserve array and response behavior

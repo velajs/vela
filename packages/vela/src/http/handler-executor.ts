@@ -18,7 +18,7 @@ import type {
   NestInterceptor,
   PipeTransform,
 } from '../pipeline/types';
-import { MetadataRegistry } from '../registry/metadata.registry';
+import { inheritedClassMeta, inheritedHandlerMeta } from '../registry/inherited-metadata';
 import type {
   FilterType,
   GuardType,
@@ -46,9 +46,10 @@ function skippedGuardPhases(
   controller: Type,
   handlerName: string | symbol,
 ): ReadonlySet<GuardPhase> | undefined {
+  // Read as the Reflector reads it: inherited method, then class, declarations.
   const declared: unknown =
-    MetadataRegistry.getCustomHandlerMeta(controller, handlerName, SKIP_GUARD_PHASES_KEY) ??
-    MetadataRegistry.getCustomClassMeta(controller, SKIP_GUARD_PHASES_KEY);
+    inheritedHandlerMeta(controller, handlerName, SKIP_GUARD_PHASES_KEY) ??
+    inheritedClassMeta(controller, SKIP_GUARD_PHASES_KEY);
   if (!Array.isArray(declared)) return undefined;
   const phases = new Set<GuardPhase>();
   for (const phase of declared) if (isSkippableGuardPhase(phase)) phases.add(phase);

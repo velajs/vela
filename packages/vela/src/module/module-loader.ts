@@ -20,6 +20,7 @@ import {
   APP_PIPE,
 } from '../pipeline/tokens';
 import { getScope, isDecoratedClass, planConstructor } from '../container/decorators';
+import { ancestorComponents } from '../registry/inherited-metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { getOrCreateArray } from '../registry/util';
 import type { ComponentInstance, DynamicModule, ModuleImport } from '../registry/types';
@@ -483,7 +484,8 @@ export class ModuleLoader {
 
   /**
    * Register every guard, pipe, interceptor and filter class a module's
-   * classes reference in `@Use*` or parameter decorators, in that module's
+   * classes reference in `@Use*` or parameter decorators, their own or
+   * inherited from an ancestor class, in that module's
    * bucket, unless one is already visible there. Each then resolves through
    * the container from its declaring module, like a provider: once per scope,
    * with its dependencies, in its module's lazy group.
@@ -492,8 +494,9 @@ export class ModuleLoader {
     for (const [moduleId, hosts] of this.#enhancerHosts) {
       const tokens = this.#moduleTokens.get(moduleId) ?? [];
       for (const host of hosts) {
+        // Its own declarations, and those it inherits from an ancestor class.
         const references: ComponentInstance[] = ENHANCER_TYPES.flatMap((type) =>
-          MetadataRegistry.getDeclaredComponents(type, host),
+          MetadataRegistry.getDeclaredComponents(type, host).concat(ancestorComponents(type, host)),
         );
         for (const params of MetadataRegistry.getParameters(host).values()) {
           for (const { pipes = [] } of params) references.push(...pipes);
