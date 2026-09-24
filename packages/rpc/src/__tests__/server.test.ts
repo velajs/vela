@@ -250,9 +250,22 @@ describe('Vela RPC adapter', () => {
       output: z.string(),
     });
     const owned = defineProcedure({ name: 'error.owned', input: z.null(), output: z.string() });
+    const coded = defineProcedure({ name: 'error.coded', input: z.null(), output: z.string() });
     class LockedError extends Error {
       toResponse() {
         return { status: 409, body: { locked: 'internal lock owner' } };
+      }
+    }
+    // An owned body with an `error: { code, message }` member, as CRUD's envelope has.
+    class CodedLockError extends Error {
+      toResponse() {
+        return {
+          status: 409,
+          body: {
+            success: false,
+            error: { code: 'locked', message: 'Record locked', owner: 'internal lock owner' },
+          },
+        };
       }
     }
     const filter: ExceptionFilter = {
@@ -267,6 +280,9 @@ describe('Vela RPC adapter', () => {
       }
       @Rpc(owned) locked(_: null): string {
         throw new LockedError('hidden');
+      }
+      @Rpc(coded) coded(_: null): string {
+        throw new CodedLockError('hidden');
       }
     }
     @Module({ providers: [Handler] })
@@ -288,6 +304,15 @@ describe('Vela RPC adapter', () => {
         error: { code: 'conflict', message: 'RPC request failed', status: 409 },
       });
       expect(JSON.stringify(body)).not.toContain('internal lock owner');
+      // Such a body keeps its code and message, and nothing else.
+      const codedResponse = await app.fetch(request(coded.name, null));
+      expect(codedResponse.status).toBe(409);
+      const codedBody = await codedResponse.json();
+      expect(codedBody).toMatchObject({
+        ok: false,
+        error: { code: 'locked', message: 'Record locked', status: 409 },
+      });
+      expect(JSON.stringify(codedBody)).not.toContain('internal lock owner');
     } finally {
       await app.dispose();
     }
