@@ -167,6 +167,38 @@ describe('StudioModule plugins', () => {
     }
   });
 
+  it("rejects the data browser's settings on StudioModule, pointing to crudPanel()", async () => {
+    const moved =
+      /StudioModule no longer takes managedModels.*crudPanel\(\{ managedModels, runAsIdentity \}\)/;
+    // An async factory's result is not checked for extra keys by the compiler.
+    @Module({
+      imports: [
+        StudioModule.forRootAsync({
+          useFactory: () => ({
+            token: TOKEN,
+            managedModels: { include: ['public_only'] },
+            runAsIdentity: { userId: 'limited' },
+          }),
+        }),
+      ],
+    })
+    class AsyncApp {}
+    await expect(VelaFactory.create(AsyncApp)).rejects.toThrow(moved);
+    // Options built elsewhere, or passed from JavaScript, fail the same way,
+    // whether or not Studio is open.
+    for (const legacy of [
+      { token: TOKEN, runAsIdentity: { userId: 'limited' } },
+      { runAsIdentity: { userId: 'limited' } },
+    ]) {
+      @Module({ imports: [StudioModule.forRoot(legacy)] })
+      class App {}
+      await expect(VelaFactory.create(App)).rejects.toThrow(
+        /StudioModule no longer takes runAsIdentity/,
+      );
+      expect(() => resolveStudioConfig({}, legacy)).toThrow(/no longer takes runAsIdentity/);
+    }
+  });
+
   it('keeps one Studio per application whatever its panels', async () => {
     @Module({ imports: [StudioModule.forRoot({ token: TOKEN, plugins: [queuesPanel()] })] })
     class Feature {}
