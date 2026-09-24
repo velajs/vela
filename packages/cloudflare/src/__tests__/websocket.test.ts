@@ -17,6 +17,7 @@ import {
 import { MemoryNonceStore } from '@velajs/vela/security';
 import type { RequestContext } from '@velajs/vela';
 import {
+  Gateways,
   WebSocketGateway,
   WebSocketModule,
   SubscribeMessage,
@@ -42,7 +43,6 @@ import { DoWebSocketHost } from '../websocket/do-websocket-host';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
 import { VelaWebSocketDurableObject } from '../websocket/websocket.durable-object';
 import { roomTag, connTag, durableObjectRoomName, roomToDurableId } from '../websocket/room-id';
-import { broadcastToRoom } from '../websocket/broadcast';
 import type { DoStateLike, WsLike } from '../websocket/do-state';
 
 // ---- fakes for the Durable Object runtime ----
@@ -714,35 +714,51 @@ describe('DO runtime integration', () => {
   });
 });
 
-describe('broadcastToRoom synchronization boundary', () => {
-  it('does not resolve or call a Durable Object stub for an oversized command', async () => {
+describe('Gateways push boundary (Worker -> Durable Object)', () => {
+  it("does not resolve or call a Durable Object stub for a push over the gateway's frame limit", async () => {
     let gets = 0;
     let broadcasts = 0;
-    const ns = {
+    const namespace = {
       idFromName: (name: string) => ({ toString: () => name }),
       get: () => {
         gets += 1;
         return {
-          async broadcast() {
+          async broadcast(): Promise<void> {
             broadcasts += 1;
           },
         };
       },
-    } as unknown as DurableObjectNamespace;
+    };
+    @WebSocketGateway({ path: '/chat', binding: 'CHAT' })
+    class ChatGateway {}
+    @WebSocketGateway({ path: '/large', binding: 'CHAT', maxFrameBytes: 96 * 1024 })
+    class LargeGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [ChatGateway, LargeGateway] })
+    class AppModule {}
 
-    await expect(
-      broadcastToRoom(ns, '/chat', 'r1', 'large', 'x'.repeat(70 * 1024)),
-    ).rejects.toThrow(/exceeds 65536/);
-    expect(gets).toBe(0);
-    expect(broadcasts).toBe(0);
+    const app = await createCloudflareApp(AppModule, { env: { CHAT: namespace } });
+    try {
+      const gateways = app.get(Gateways);
+      await expect(
+        gateways
+          .of(ChatGateway)
+          .to('r1')
+          .emit('large', 'x'.repeat(70 * 1024)),
+      ).rejects.toThrow(/exceeds 65536/);
+      expect(gets).toBe(0);
+      expect(broadcasts).toBe(0);
 
-    await expect(
-      broadcastToRoom(ns, '/chat', 'r1', 'large', 'x'.repeat(70 * 1024), {
-        maxFrameBytes: 96 * 1024,
-      }),
-    ).resolves.toBeUndefined();
-    expect(gets).toBe(1);
-    expect(broadcasts).toBe(1);
+      await expect(
+        gateways
+          .of(LargeGateway)
+          .to('r1')
+          .emit('large', 'x'.repeat(70 * 1024)),
+      ).resolves.toBeUndefined();
+      expect(gets).toBe(1);
+      expect(broadcasts).toBe(1);
+    } finally {
+      await app.close();
+    }
   });
 });
 

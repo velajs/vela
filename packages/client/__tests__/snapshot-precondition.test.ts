@@ -1,6 +1,6 @@
-import { emptyListSchema, emptyArgs, doneRows } from './schema-fixtures';
+import { emptyArgs, doneRows } from './schema-fixtures';
 import { describe, expect, it, vi } from 'vitest';
-import { createSnapshotPrecondition, LiveClient } from '../src/index';
+import { createSnapshotPrecondition, defineLiveQuery, LiveClient } from '../src/index';
 import { makeSocketFactory, tick } from './harness';
 
 type Live = {
@@ -10,7 +10,13 @@ type Live = {
 function unseeded() {
   const sockets = makeSocketFactory();
   const client = new LiveClient<Live>({
-    queries: { 'todos.list': { args: { parse: emptyArgs }, result: { parse: doneRows } } },
+    queries: [
+      defineLiveQuery({
+        name: 'todos.list',
+        args: { parse: emptyArgs },
+        result: { parse: doneRows },
+      }),
+    ],
     url: 'http://api.test',
     WebSocket: sockets.factory,
     reconnect: { baseMs: 1, capMs: 2 },

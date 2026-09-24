@@ -1,10 +1,21 @@
 import { VelaWebSocketDurableObject } from '../../durable-objects';
-import { Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
+import {
+  Controller,
+  Inject,
+  InjectEnv,
+  Injectable,
+  Module,
+  Param,
+  Post,
+  Scope,
+  type VelaEnv,
+} from '@velajs/vela';
 import { Cron } from '@velajs/vela/schedule';
 import { LiveModule } from '@velajs/vela/live';
 import { countRegisteredClasses } from '@velajs/vela/internal';
 import {
   ConnectedSocket,
+  Gateways,
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
@@ -68,7 +79,16 @@ class TestGateway implements OnGatewayConnection {
   constructor(
     @WebSocketServer() private readonly server: WsServer,
     @InjectEnv() private readonly env: VelaEnv,
+    @Inject(Gateways) private readonly gateways: Gateways,
   ) {}
+
+  /** Pushes through Gateways from inside this room's Durable Object. */
+  @SubscribeMessage('relay')
+  async relay(@MessageBody() body: unknown): Promise<void> {
+    const room = typeof body === 'object' && body !== null ? Reflect.get(body, 'room') : undefined;
+    if (typeof room !== 'string') throw new Error('relay needs a room');
+    await this.gateways.of<GatewayEvents>(TestGateway).to(room).emit('relayed', { room });
+  }
 
   /** Reports what the Durable Object's ENV carries (see env-runtime.test.ts). */
   @SubscribeMessage('env')
@@ -123,7 +143,29 @@ class TestGateway implements OnGatewayConnection {
   }
 }
 
-@Module({ imports: [WebSocketModule.forRoot()], providers: [TestGateway] })
+/** The events TestGateway's rooms receive from server pushes. */
+interface GatewayEvents {
+  pushed: { room: string };
+  relayed: { room: string };
+}
+
+/** Pushes to a gateway room from the Worker isolate. */
+@Controller('/push')
+class PushController {
+  constructor(@Inject(Gateways) private readonly gateways: Gateways) {}
+
+  @Post('/:room')
+  async push(@Param('room') room: string): Promise<{ pushed: string }> {
+    await this.gateways.of<GatewayEvents>(TestGateway).to(room).emit('pushed', { room });
+    return { pushed: room };
+  }
+}
+
+@Module({
+  imports: [WebSocketModule.forRoot()],
+  controllers: [PushController],
+  providers: [TestGateway],
+})
 class TestModule {}
 
 export class TestRoom extends VelaWebSocketDurableObject(TestModule) {}

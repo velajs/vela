@@ -75,4 +75,39 @@ describe('websocket-chat compiled by Oxc under workerd', () => {
     expect(chat.data).toMatchObject({ text: 'hello room' });
     socket.close(1000, 'done');
   });
+
+  it("pushes a Worker announcement to the room's sockets through Gateways", async () => {
+    const upgradeCtx = createExecutionContext();
+    const response = await worker.fetch(
+      new Request(`${origin}/rooms/lobby/ws`, { headers: { origin, upgrade: 'websocket' } }),
+      env,
+      upgradeCtx,
+    );
+    await waitOnExecutionContext(upgradeCtx);
+    expect(response.status).toBe(101);
+    const socket = response.webSocket;
+    if (!socket) throw new Error('the upgrade returned no WebSocket');
+    const reader = frames(socket);
+    socket.accept();
+    await reader.until((frame) => frame.event === 'system');
+
+    const ctx = createExecutionContext();
+    const announced = await worker.fetch(
+      new Request(`${origin}/rooms/lobby/announce`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'maintenance at noon' }),
+      }),
+      env,
+      ctx,
+    );
+    const body: unknown = await announced.json();
+    await waitOnExecutionContext(ctx);
+    expect(body).toEqual({ announced: 'lobby' });
+    const announcement = await reader.until(
+      (frame) => frame.event === 'system' && JSON.stringify(frame.data).includes('announcement'),
+    );
+    expect(announcement.data).toEqual({ text: 'announcement: maintenance at noon' });
+    socket.close(1000, 'done');
+  });
 });

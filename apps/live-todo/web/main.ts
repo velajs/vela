@@ -66,7 +66,7 @@ function observedSocket(url: string): WebSocketLike {
 const client = createLiveClient({
   url: location.origin,
   WebSocket: observedSocket,
-  queries: { 'todos.list': todoListDefinition },
+  queries: [todoListDefinition],
 });
 
 // ---- connection status ----

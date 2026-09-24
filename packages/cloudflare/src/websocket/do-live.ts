@@ -179,8 +179,8 @@ export function initDoLive(
 
 /**
  * Invalidate live tags in a room from a Worker (controller / cron / queue
- * consumer) — the live sibling of `broadcastToRoom`. Returns the room log
- * scope's commit stamp for `Vela-Commit-Cursor` stamping.
+ * consumer) through an explicit namespace. Returns the room log scope's
+ * commit stamp for `Vela-Commit-Cursor` stamping.
  */
 export async function liveInvalidateToRoom(
   ns: LiveNamespace,

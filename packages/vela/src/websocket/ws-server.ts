@@ -82,3 +82,28 @@ export class WsServerImpl implements WsServer {
     return new BroadcastOperatorImpl(this.driver, () => this.maxFrameBytes).except(room);
   }
 }
+
+const REMOTE_SOCKETS =
+  "This isolate holds none of the gateways' sockets: the platform keeps each room's " +
+  'sockets elsewhere. Push with Gateways from @velajs/vela/websocket: ' +
+  'gateways.of(Gateway).to(room).emit(event, data).';
+
+/**
+ * The server gateways inject where a platform transport keeps every socket in
+ * another isolate: each push fails with guidance to `Gateways`, which
+ * addresses a gateway room, instead of reaching no one.
+ */
+export class RemoteSocketsWsServer implements WsServer {
+  emit(): never {
+    throw new Error(REMOTE_SOCKETS);
+  }
+  to(): never {
+    throw new Error(REMOTE_SOCKETS);
+  }
+  in(): never {
+    throw new Error(REMOTE_SOCKETS);
+  }
+  except(): never {
+    throw new Error(REMOTE_SOCKETS);
+  }
+}

@@ -1,4 +1,4 @@
-import type { LiveQueryDefinition } from '@velajs/live-protocol';
+import { defineLiveQuery, type LiveQueryDefinition } from '@velajs/live-protocol';
 import { createDiscoverableDecorator } from '../discovery/discoverable.decorator';
 import { LIVE_RESOLVER_METADATA } from './live.tokens';
 import type {
@@ -15,41 +15,47 @@ const declarations = new WeakMap<object, LiveQueryMetadata[]>();
  * Marks a provider class as a live-query resolver:
  *
  * ```ts
+ * const todoList = defineLiveQuery({ name: 'todos.list', args: ListArgs, result: Todo.array() });
+ *
  * @LiveResolver()
  * class TodoLive {
  *   constructor(private readonly todos: TodoService) {}
  *
- *   @LiveQuery('todos.list', todoListDefinition, { tags: (args) => [`todos:${args.listId}`] })
+ *   @LiveQuery(todoList, { tags: (args) => [`todos:${args.listId}`] })
  *   list(args: { listId: string }, ctx: LiveQueryContext) {
  *     return this.todos.byList(args.listId, ctx.identity?.userId);
  *   }
  * }
  * ```
  *
- * Clients subscribe by query name over the `$live` reserved event; the engine
- * re-runs a handler whenever one of its tags is invalidated and pushes the
- * result (as a keyed delta when possible). Like any Vela class decorator it
- * implies `@Injectable()`; stack `@Injectable({ scope })` only to set a scope.
+ * Clients subscribe by the definition's name over the `$live` reserved event;
+ * the engine re-runs a handler whenever one of its tags is invalidated and
+ * pushes the result (as a keyed delta when possible). Like any Vela class
+ * decorator it implies `@Injectable()`; stack `@Injectable({ scope })` only to
+ * set a scope.
  */
 export function LiveResolver(): ClassDecorator {
   return LiveResolverMeta({});
 }
 
 /**
- * Declares a live query on a resolver method. The handler receives
- * `(args, ctx: LiveQueryContext)` positionally. The portable definition parses
- * args once at subscribe/restore and validates the final result after all
- * interceptors. Bound closures preserve the parsed type across erased metadata.
+ * Declares a live query on a resolver method from its shared definition, which
+ * carries the name clients subscribe with. The handler receives
+ * `(args, ctx: LiveQueryContext)` positionally. The engine parses args once at
+ * subscribe/restore with the definition's `args` schema and validates the
+ * final result, after all interceptors, with its `result` schema, so a
+ * handler returns its rows without parsing them. Bound closures preserve the
+ * parsed type across erased metadata.
  */
-export function LiveQuery<Args, Result>(
-  name: string,
-  definition: LiveQueryDefinition<Args, Result>,
+export function LiveQuery<Name extends string, Args, Result>(
+  definition: LiveQueryDefinition<Name, Args, Result>,
   options: LiveQueryOptions<NoInfer<Args>>,
 ): <Handler extends (args: Args, context: LiveQueryContext) => Result | Promise<Result>>(
   target: object,
   propertyKey: string | symbol,
   descriptor: TypedPropertyDescriptor<Handler>,
 ) => void {
+  const { name } = defineLiveQuery(definition);
   return (target, propertyKey, descriptor) => {
     const handler = descriptor.value;
     if (!handler) throw new TypeError('@LiveQuery can only decorate a method.');

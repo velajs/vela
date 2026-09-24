@@ -16,9 +16,6 @@ export type {
   DoPitrNamespace,
 } from './do-pitr';
 
-// Server-initiated emit helper
-export { broadcastToRoom } from './broadcast';
-
 // Live queries: durable cursor log + DO-routed invalidation driver
 export { DoCursorLog, initDoLive, liveInvalidateToRoom } from './do-live';
 export { CfLiveDriver, durableObjectLive } from './live-driver';
@@ -34,5 +31,3 @@ export { FORWARDED_UPGRADE_HEADERS, workerWebSocketTransport } from './worker-tr
 export { roomTag, connTag, durableObjectRoomName, roomToDurableId } from './room-id';
 export { MAX_WS_ATTACHMENT_BYTES } from './do-state';
 export type { DoStateLike, SqlStorageLike, WsLike, WsAttachment } from './do-state';
-
-export type { BroadcastNamespace } from './broadcast';

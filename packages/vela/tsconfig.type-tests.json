@@ -52,6 +52,9 @@
     "src/__tests__/root-module.test.ts",
     "src/__tests__/nest-provider-authoring.test.ts",
     "src/__tests__/enhancer-registration.test.ts",
+    "src/__tests__/websocket-gateways.test.ts",
+    "src/__tests__/live-invalidates.test.ts",
+    "src/__tests__/live-inspector.test.ts",
     "src/__tests__/workers/reflector-decorator.test.ts"
   ],
   "exclude": ["node_modules", "dist"]

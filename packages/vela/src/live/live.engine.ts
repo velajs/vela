@@ -47,6 +47,7 @@ import type {
   LiveDriver,
   LiveEntrypointMeta,
   LiveIdentity,
+  LiveInspection,
   LiveInvalidationSink,
   LiveModuleOptions,
   LiveQueryContext,
@@ -81,20 +82,6 @@ interface ConnectionEntry {
   path: string;
   connectedAt: number;
   subs: Map<string, SubscriptionRecord>;
-}
-
-/** Read-only operational metadata; excludes query arguments, results and identity claims. */
-export interface LiveInspection {
-  subscriptions: Array<{
-    id: string;
-    query: string;
-    room: string;
-    clientId: string;
-    tags: string[];
-    /** When this engine attached the connection, including after hibernation. */
-    connectedAt: number;
-  }>;
-  rooms: Array<{ room: string; count: number; members: string[] }>;
 }
 
 interface QueryExecution {

@@ -179,6 +179,7 @@ describe('durableObjectLive driver', () => {
 describe('live queries inside the Durable Object', () => {
   const PATH = '/rooms/:id/ws';
   const todoList = defineLiveQuery({
+    name: 'todos.list',
     args: z.object({}),
     result: z.array(z.object({ id: z.string(), text: z.string() })),
   });
@@ -186,7 +187,7 @@ describe('live queries inside the Durable Object', () => {
   function makeModule(todos: Array<{ id: string; text: string }>) {
     @LiveResolver()
     class TodoLive {
-      @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
+      @LiveQuery(todoList, { tags: ['crud:todos'] })
       list() {
         return todos;
       }

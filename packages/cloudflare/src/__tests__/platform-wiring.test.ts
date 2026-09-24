@@ -2,12 +2,14 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Global, Injectable, Module, defineProvider } from '@velajs/vela';
 import {
+  Gateways,
   WS_SERVER,
   WS_TRANSPORT,
   WebSocketGateway,
   WebSocketModule,
   WebSocketServer,
   WsServerImpl,
+  type BroadcastCommand,
   type UpgradeAuthenticator,
   type WebSocketTransport,
   type WebSocketUpgradeIdentity,
@@ -20,12 +22,15 @@ import {
   LiveInvalidation,
   LiveModule,
   localLive,
+  LiveInspector,
   type CommitStamp,
   type InvalidationCommand,
+  type LiveInspection,
 } from '@velajs/vela/live';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
 import { DoCursorLog } from '../websocket/do-live';
+import { durableObjectRoomName } from '../websocket/room-id';
 import { durableObjectLive, type LiveNamespace } from '../websocket/live-driver';
 import type { DoStateLike, SqlStorageLike, WsLike } from '../websocket/do-state';
 
@@ -83,9 +88,14 @@ class RecordingWs implements WsLike {
 }
 
 class DoState implements DoStateLike {
-  readonly id = { toString: () => 'do-1', name: 'room-1' };
+  readonly id: { toString(): string; name: string };
   readonly sockets: Array<{ ws: WsLike; tags: string[] }> = [];
-  constructor(readonly storage?: { sql?: SqlStorageLike }) {}
+  constructor(
+    readonly storage?: { sql?: SqlStorageLike },
+    name = 'room-1',
+  ) {
+    this.id = { toString: () => name, name };
+  }
   acceptWebSocket(ws: WsLike, tags: string[] = []): void {
     this.sockets.push({ ws, tags });
   }
@@ -125,9 +135,46 @@ function liveNamespace(
   };
   return namespace;
 }
+/** A namespace whose room stubs record broadcasts and answer inspections. */
+function roomNamespace(calls: Array<{ id: string; cmd: BroadcastCommand }>) {
+  return {
+    idFromName(name: string) {
+      return {
+        name,
+        toString: () => name,
+        equals: (other: { toString(): string }) => other.toString() === name,
+      };
+    },
+    get(id: { toString(): string }) {
+      const name = id.toString();
+      return {
+        broadcast: async (cmd: BroadcastCommand): Promise<void> => {
+          calls.push({ id: name, cmd });
+        },
+        inspectLive: async (): Promise<LiveInspection> => ({
+          subscriptions: [
+            {
+              id: `${name}#s1`,
+              query: 'todos.list',
+              room: decodeURIComponent(name.split(':').at(-1) ?? ''),
+              clientId: 'c1',
+              tags: ['todos'],
+              connectedAt: 1,
+            },
+          ],
+          rooms: [],
+        }),
+      };
+    },
+  };
+}
+
+function envelope(event: string, data?: unknown): string {
+  return JSON.stringify({ event, data });
+}
 
 describe('Cloudflare WebSocket platform wiring', () => {
-  it("gives Worker gateways a server that points pushes at the room's Durable Object", async () => {
+  it('gives Worker gateways a server that points pushes at Gateways', async () => {
     @WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'ROOMS' })
     class RoomsGateway {
       constructor(@WebSocketServer() readonly server: WsServer) {}
@@ -139,12 +186,98 @@ describe('Cloudflare WebSocket platform wiring', () => {
     try {
       const server = app.get(RoomsGateway).server;
       expect(server).toBe(app.get(WS_SERVER));
-      expect(() => server.to('general')).toThrow(
-        /only available inside the WebSocket Durable Object/,
-      );
-      expect(() => server.emit('ping')).toThrow(/broadcastToRoom/);
+      // Sockets live in each room's Durable Object: pushes point at Gateways.
+      const guidance = /gateways\.of\(Gateway\)\.to\(room\)\.emit\(event, data\)/;
+      expect(() => server.to('general')).toThrow(guidance);
+      expect(() => server.emit('ping')).toThrow(guidance);
     } finally {
       await app.close();
+    }
+  });
+
+  it("pushes Worker Gateways to the gateway room's Durable Object over its broadcast RPC", async () => {
+    const calls: Array<{ id: string; cmd: BroadcastCommand }> = [];
+    @WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'ROOMS' })
+    class RoomsGateway {}
+    @WebSocketGateway({ path: '/local' })
+    class LocalGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomsGateway, LocalGateway] })
+    class App {}
+
+    const env: Record<string, unknown> = {};
+    const app = await createCloudflareApp(App, { env });
+    try {
+      const gateways = app.get(Gateways);
+      // The namespace is read from ENV when a push needs it.
+      await expect(gateways.of(RoomsGateway).to('general').emit('hello', 1)).rejects.toThrow(
+        /binding 'ROOMS'/,
+      );
+      env.ROOMS = roomNamespace(calls);
+      await gateways.of(RoomsGateway).to('general').to('random').emit('hello', 1);
+      expect(calls).toEqual([
+        {
+          id: durableObjectRoomName('/rooms/:id/ws', 'general'),
+          cmd: { rooms: ['general', 'random'], frame: envelope('hello', 1) },
+        },
+        {
+          id: durableObjectRoomName('/rooms/:id/ws', 'random'),
+          cmd: { rooms: ['general', 'random'], frame: envelope('hello', 1) },
+        },
+      ]);
+      await expect(gateways.of(LocalGateway).to('/local').emit('hello')).rejects.toThrow(
+        /LocalGateway names no binding|'\/local' names no binding/,
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('delivers Gateways pushes for its own room locally and forwards other rooms', async () => {
+    const calls: Array<{ id: string; cmd: BroadcastCommand }> = [];
+    @WebSocketGateway({
+      path: '/rooms/:id/ws',
+      roomParam: 'id',
+      binding: 'ROOMS',
+      authenticator: TestAuthenticator,
+    })
+    class RoomsGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomsGateway] })
+    class App {}
+
+    const own = durableObjectRoomName('/rooms/:id/ws', 'room-1');
+    const ctx = new DoState(undefined, own);
+    const runtime = await buildDoRuntime(App, ctx, { env: { ROOMS: roomNamespace(calls) } });
+    try {
+      const ws = new RecordingWs();
+      ws.serializeAttachment({
+        connId: 'c1',
+        state: 'active',
+        path: '/rooms/:id/ws',
+        rooms: ['room-1'],
+        expiresAtMs: Date.now() + 60_000,
+        data: {
+          principal: { issuer: 'https://issuer.test', subject: 'user-1', principalType: 'user' },
+          tenantId: 'tenant-1',
+          expiresAtMs: Date.now() + 60_000,
+        },
+      });
+      ctx.acceptWebSocket(ws, ['room:room-1']);
+      const gateways = runtime.container.resolve(Gateways);
+
+      await gateways.of(RoomsGateway).to('room-1').emit('local', 1);
+      expect(ws.sent.map((sent) => JSON.parse(sent))).toEqual([{ event: 'local', data: 1 }]);
+      expect(calls).toEqual([]);
+
+      await gateways.of(RoomsGateway).to('room-2').emit('remote', 2);
+      expect(ws.sent).toHaveLength(1);
+      expect(calls).toEqual([
+        {
+          id: durableObjectRoomName('/rooms/:id/ws', 'room-2'),
+          cmd: { rooms: ['room-2'], frame: envelope('remote', 2) },
+        },
+      ]);
+    } finally {
+      await runtime.close();
     }
   });
 
@@ -287,6 +420,28 @@ describe('Cloudflare live platform wiring', () => {
           id: 'vela:ws:v2:%2Frooms%2F%3Aid%2Fws:org-1',
           cmd: { tags: ['todos'], room: 'org-1' },
         },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('inspects each named room in its Durable Object, through the gateway binding', async () => {
+    @WebSocketGateway({ path: PATH, roomParam: 'id', binding: 'ROOMS' })
+    class RoomsGateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [RoomsGateway],
+    })
+    class App {}
+
+    const env: Record<string, unknown> = { ROOMS: roomNamespace([]) };
+    const app = await createCloudflareApp(App, { env });
+    try {
+      const snapshot = await app.get(LiveInspector).inspect(['default', 'org-1']);
+      expect(snapshot.subscriptions.map(({ id, room }) => ({ id, room }))).toEqual([
+        { id: `${durableObjectRoomName(PATH, 'default')}#s1`, room: 'default' },
+        { id: `${durableObjectRoomName(PATH, 'org-1')}#s1`, room: 'org-1' },
       ]);
     } finally {
       await app.close();

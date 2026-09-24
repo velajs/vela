@@ -1,9 +1,10 @@
 import { defineProvider } from '../container/types';
 import { defineModule } from '../module/define-module';
 import type { DynamicModule } from '../registry/types';
+import { Gateways } from './gateways';
 import { WebSocketPlatform, WebSocketRoutesModule } from './upgrade-routes';
 import { WsDispatcher } from './ws-dispatcher';
-import { WsServerImpl } from './ws-server';
+import { RemoteSocketsWsServer, WsServerImpl } from './ws-server';
 import { InMemoryRoomRegistry, local, type RoomRegistry, type SyncDriver } from './ws-sync';
 import { WS_MODULE_OPTIONS, WS_ROOM_REGISTRY, WS_SERVER, WS_SYNC_DRIVER } from './websocket.tokens';
 
@@ -25,12 +26,14 @@ export interface WebSocketModuleOptions {
 /**
  * Registers the WebSocket gateway machinery: the message dispatcher (discovers
  * `@WebSocketGateway` classes via DiscoveryService at bootstrap), the room
- * registry, the sync driver, and the `@WebSocketServer()`-injected server
- * handle.
+ * registry, the sync driver, the `@WebSocketServer()`-injected server handle,
+ * and `Gateways`, which pushes to a gateway's rooms from anywhere in the
+ * application.
  *
  * The platform decides where sockets live. A runtime adapter registers the
  * global `WS_TRANSPORT` (`@velajs/cloudflare` does): its `createServer` builds
- * the server gateways inject, and a forwarding transport receives each
+ * the server gateways inject, its `deliver` carries `Gateways` pushes to the
+ * isolate that holds each room, and a forwarding transport receives each
  * binding-backed gateway's authenticated upgrade from the route this module
  * mounts. Without a transport, a host serves the gateways in this process
  * (`registerWebSocketGateways` on node, Bun and Deno).
@@ -64,13 +67,18 @@ const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
         inject: [OPTIONS, WS_ROOM_REGISTRY],
       }),
       defineProvider(WS_SERVER, {
-        useFactory: (driver: SyncDriver, platform: WebSocketPlatform) =>
-          platform.transport?.createServer?.(driver) ?? new WsServerImpl(driver),
+        useFactory: (driver: SyncDriver, { transport }: WebSocketPlatform) => {
+          if (transport?.createServer) return transport.createServer(driver);
+          // A transport that delivers pushes elsewhere keeps no sockets here.
+          if (transport?.deliver) return new RemoteSocketsWsServer();
+          return new WsServerImpl(driver);
+        },
         inject: [WS_SYNC_DRIVER, WebSocketPlatform],
       }),
       WsDispatcher,
+      Gateways,
     ],
-    exports: [WS_SERVER, WS_SYNC_DRIVER, WS_ROOM_REGISTRY, WsDispatcher],
+    exports: [WS_SERVER, WS_SYNC_DRIVER, WS_ROOM_REGISTRY, WsDispatcher, Gateways],
   }),
 });
 

@@ -37,8 +37,10 @@ import {
 } from '../live/index.js';
 import type { LiveDriver, LiveQueryContext, ServerLiveFrame } from '../live/index.js';
 
-const numberQuery = defineLiveQuery({ args: z.unknown(), result: z.number() });
+const numberQuery = <Name extends string>(name: Name) =>
+  defineLiveQuery({ name, args: z.unknown(), result: z.number() });
 const strictNumberQuery = defineLiveQuery({
+  name: 'strict.q',
   args: {
     parse(value: unknown): { n: number } {
       if (
@@ -55,10 +57,12 @@ const strictNumberQuery = defineLiveQuery({
   result: z.number(),
 });
 const todoListQuery = defineLiveQuery({
+  name: 'todos.list',
   args: z.object({ listId: z.string() }),
   result: z.array(z.object({ id: z.string(), text: z.string(), done: z.boolean().optional() })),
 });
 const todoCountQuery = defineLiveQuery({
+  name: 'todos.count',
   args: z.unknown(),
   result: z.object({ count: z.number() }),
 });
@@ -127,12 +131,12 @@ describe('LiveModule (tag-based live queries)', () => {
 
     @LiveResolver()
     class TodoLive {
-      @LiveQuery('todos.list', todoListQuery, { tags: (args) => [`todos:${args.listId}`] })
+      @LiveQuery(todoListQuery, { tags: (args) => [`todos:${args.listId}`] })
       list(args: { listId: string }, _ctx: LiveQueryContext) {
         return todos;
       }
 
-      @LiveQuery('todos.count', todoCountQuery, { tags: ['todos:l1'] })
+      @LiveQuery(todoCountQuery, { tags: ['todos:l1'] })
       count() {
         return { count: todos.length };
       }
@@ -349,7 +353,7 @@ describe('LiveModule (tag-based live queries)', () => {
   it('validates args at subscribe through the shared definition', async () => {
     @LiveResolver()
     class Strict {
-      @LiveQuery('strict.q', strictNumberQuery, { tags: ['t'] })
+      @LiveQuery(strictNumberQuery, { tags: ['t'] })
       q(args: { n: number }) {
         return args.n;
       }
@@ -381,7 +385,7 @@ describe('LiveModule (tag-based live queries)', () => {
     @LiveResolver()
     class Secret {
       @UseGuards(DenyGuard)
-      @LiveQuery('secret.q', numberQuery, { tags: ['secret'] })
+      @LiveQuery(numberQuery('secret.q'), { tags: ['secret'] })
       q() {
         return 42;
       }
@@ -410,7 +414,7 @@ describe('LiveModule (tag-based live queries)', () => {
   it('caps active subscriptions per socket', async () => {
     @LiveResolver()
     class Limited {
-      @LiveQuery('limited.q', numberQuery, { tags: ['limited'] })
+      @LiveQuery(numberQuery('limited.q'), { tags: ['limited'] })
       q() {
         return 1;
       }
@@ -441,7 +445,7 @@ describe('LiveModule (tag-based live queries)', () => {
     let authorized = true;
     @LiveResolver()
     class Revocable {
-      @LiveQuery('revocable.q', numberQuery, { tags: ['revocable'] })
+      @LiveQuery(numberQuery('revocable.q'), { tags: ['revocable'] })
       q() {
         return 1;
       }
@@ -485,7 +489,7 @@ describe('LiveModule (tag-based live queries)', () => {
     @LiveResolver()
     class Guarded {
       @UseGuards(MutableGuard)
-      @LiveQuery('guarded.q', numberQuery, { tags: ['guarded'] })
+      @LiveQuery(numberQuery('guarded.q'), { tags: ['guarded'] })
       q() {
         return 1;
       }
@@ -760,7 +764,7 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
   async function subscribeThrowing(makeError: () => unknown): Promise<FakeClient> {
     @LiveResolver()
     class Boom {
-      @LiveQuery('boom.q', numberQuery, { tags: ['boom'] })
+      @LiveQuery(numberQuery('boom.q'), { tags: ['boom'] })
       q() {
         throw makeError();
       }
@@ -821,7 +825,7 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
   it('leaves the subscribe-arg parse path untouched (validation message still echoed)', async () => {
     @LiveResolver()
     class Strict {
-      @LiveQuery('strict.q', strictNumberQuery, { tags: ['t'] })
+      @LiveQuery(strictNumberQuery, { tags: ['t'] })
       q(args: { n: number }) {
         return args.n;
       }

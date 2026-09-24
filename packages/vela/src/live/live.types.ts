@@ -48,9 +48,10 @@ export interface LiveQueryOptions<A = unknown> {
 
 /** One `@LiveQuery` declaration on a `@LiveResolver` class. */
 export interface LiveQueryMetadata {
+  /** The definition's name, which clients subscribe with. */
   name: string;
   methodName: string | symbol;
-  definition: LiveQueryDefinition<unknown, unknown>;
+  definition: LiveQueryDefinition;
   key?: string;
   prepare(input: unknown): PreparedLiveQuery;
 }
@@ -128,6 +129,20 @@ export interface LiveDriver {
   stop?(): void | Promise<void>;
 }
 
+/** Read-only operational metadata; excludes query arguments, results and identity claims. */
+export interface LiveInspection {
+  subscriptions: Array<{
+    id: string;
+    query: string;
+    room: string;
+    clientId: string;
+    tags: string[];
+    /** When this engine attached the connection, including after hibernation. */
+    connectedAt: number;
+  }>;
+  rooms: Array<{ room: string; count: number; members: string[] }>;
+}
+
 /**
  * Platform wiring for `LiveModule`: a runtime adapter registers one as the
  * global `LIVE_PLATFORM`. It supplies the defaults the module's options leave
@@ -144,6 +159,11 @@ export interface LivePlatform {
    * a platform driver reads its bindings and delivery mode here.
    */
   bindDriver?(driver: LiveDriver): void;
+  /**
+   * Read one room's live state where its subscriptions live, for
+   * `LiveInspector`. Omitted means this application's engine holds them.
+   */
+  inspect?(room: string): Promise<LiveInspection>;
 }
 
 /** One live subscription as tracked by the engine (and persisted by transports that survive eviction). */

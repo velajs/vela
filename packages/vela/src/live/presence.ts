@@ -24,6 +24,7 @@ export interface PresenceMember {
 }
 
 const presenceRosterDefinition = defineLiveQuery({
+  name: PRESENCE_ROSTER_QUERY,
   args: {
     parse(value: unknown): { room: string } {
       const room =
@@ -168,7 +169,7 @@ export class PresenceService {
 export class PresenceResolver {
   constructor(@Inject(PresenceService) private readonly presence: PresenceService) {}
 
-  @LiveQuery(PRESENCE_ROSTER_QUERY, presenceRosterDefinition, {
+  @LiveQuery(presenceRosterDefinition, {
     tags: (args) => [presenceTag(args.room)],
   })
   roster(args: { room: string }, context: LiveQueryContext): PresenceMember[] {

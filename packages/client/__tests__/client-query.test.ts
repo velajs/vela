@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createClientQuery, LiveClient } from '../src/index';
 
-const clientFor = () => new LiveClient({ queries: {}, url: 'http://api.test' });
+const clientFor = () => new LiveClient({ queries: [], url: 'http://api.test' });
 
 describe('client-query store', () => {
   it('returns the default value until set', () => {

@@ -221,6 +221,29 @@ export interface ForwardedWebSocketUpgrade {
 }
 
 /**
+ * One gateway room a `Gateways` push goes to, built from the gateway's
+ * `@WebSocketGateway` metadata.
+ */
+export interface GatewayDelivery {
+  /** The gateway's route path (`@WebSocketGateway({ path })`). */
+  gatewayPath: string;
+  /** The gateway's `binding`, when it names one. */
+  binding?: string;
+  /**
+   * The gateway room whose sockets receive the push: a `roomParam` value, or
+   * the gateway's path when it declares no `roomParam` (its upgrades all join
+   * that one room).
+   */
+  room: string;
+  /**
+   * The push, already bounded by the gateway's `maxFrameBytes`. Its `rooms`
+   * are every room the push names; deliver it to the sockets of `room` that
+   * belong to any of them.
+   */
+  command: BroadcastCommand;
+}
+
+/**
  * Platform wiring for `WebSocketModule`: a runtime adapter registers one as
  * the global `WS_TRANSPORT`. Without one, sockets live in this process and a
  * host serves them (`registerWebSocketGateways` on node, Bun and Deno).
@@ -229,9 +252,17 @@ export interface WebSocketTransport {
   /**
    * Build the server gateways inject with `@WebSocketServer()`. `driver` is
    * the module's sync driver; a transport that owns socket delivery may ignore
-   * it. Defaults to a server that broadcasts through `driver`.
+   * it. Defaults to a server that broadcasts through `driver`, or, when the
+   * transport `deliver`s pushes, to one that keeps no sockets and refuses each
+   * push with guidance to `Gateways`.
    */
   createServer?(driver: SyncDriver): WsServer;
+  /**
+   * Deliver a `Gateways` push to the isolate that holds one gateway room's
+   * sockets. `Gateways` calls it once per room; without it, pushes go through
+   * the server gateways inject.
+   */
+  deliver?(delivery: GatewayDelivery): Promise<void>;
   /**
    * Deliver an upgrade to the isolate that holds the room's sockets. When the
    * transport forwards, `WebSocketModule` mounts an upgrade route for each
@@ -244,6 +275,58 @@ export interface WebSocketTransport {
    * copies are removed before any application hook sees the upgrade.
    */
   readonly forwardingHeaders?: readonly string[];
+}
+
+/**
+ * The payload arguments of one pushed event: optional when its payload type
+ * admits `undefined`, required otherwise.
+ */
+export type GatewayEventArgs<Events, Event extends keyof Events> = undefined extends Events[Event]
+  ? [data?: Events[Event]]
+  : [data: Events[Event]];
+
+/**
+ * Pushes to the gateway rooms it names, typed by the gateway's event map
+ * (event name → payload type).
+ */
+export interface GatewayBroadcastOperator<Events extends object = Record<string, unknown>> {
+  /** Also push to this room. */
+  to(room: string): GatewayBroadcastOperator<Events>;
+  /** Alias of {@link GatewayBroadcastOperator.to}. */
+  in(room: string): GatewayBroadcastOperator<Events>;
+  /**
+   * Not supported: a push reaches every socket in every room it names.
+   * Filter recipients in the gateway with `authorizeDelivery` instead.
+   */
+  except(room: string): never;
+  /** Frame `{ event, data }` and deliver it to the named rooms' sockets. */
+  emit<Event extends keyof Events & string>(
+    event: Event,
+    ...data: GatewayEventArgs<Events, Event>
+  ): Promise<void>;
+}
+
+/**
+ * The typed push handle of one gateway, from `Gateways.of(Gateway)`. A push
+ * names its rooms first: `to(room).emit(event, data)`.
+ */
+export interface GatewayServer<Events extends object = Record<string, unknown>> {
+  /** The gateway's route path. */
+  readonly path: string;
+  /** Push to this room of the gateway. */
+  to(room: string): GatewayBroadcastOperator<Events>;
+  /** Alias of {@link GatewayServer.to}. */
+  in(room: string): GatewayBroadcastOperator<Events>;
+  /**
+   * Not supported: sockets live in their room's isolate, so a push without a
+   * room would reach no one. Name the rooms with `to(room)`.
+   */
+  emit(...args: never[]): never;
+  /**
+   * Not supported: a push reaches every socket in every room it names.
+   * Filter recipients in the gateway with `authorizeDelivery` instead.
+   */
+  except(room: string): never;
 }
 
 /**

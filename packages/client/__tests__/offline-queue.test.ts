@@ -53,7 +53,7 @@ function makeClient(options: HarnessOptions = {}) {
   }) as typeof fetch;
 
   const liveOptions: LiveClientOptions<Live> = {
-    queries: { 'todos.list': emptyListSchema },
+    queries: [emptyListSchema],
     url: 'http://api.test',
     WebSocket: sockets.factory,
     reconnect: { baseMs: 1, capMs: 2 },
@@ -245,7 +245,7 @@ describe('offline mutation queue — replay guards', () => {
     expect(
       () =>
         new LiveClient<Live>({
-          queries: { 'todos.list': emptyListSchema },
+          queries: [emptyListSchema],
           url: 'http://api.test',
           offline: true,
         }),

@@ -1,4 +1,4 @@
-import { emptyListSchema, emptyArgs, doneRows } from './schema-fixtures';
+import { emptyListSchema, emptyArgs, doneRows, otherListSchema } from './schema-fixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClientLiveFrame } from '@velajs/live-protocol';
 import { CrossTabCoordinator, LiveClient } from '../src/index';
@@ -34,7 +34,7 @@ function makePair() {
     }) as typeof fetch;
 
   const base = (fetchImpl: typeof fetch): LiveClientOptions<Live> => ({
-    queries: { 'todos.list': emptyListSchema, 'other.list': emptyListSchema },
+    queries: [emptyListSchema, otherListSchema],
     url: 'http://api.test',
     WebSocket: sockets.factory,
     fetch: fetchImpl,

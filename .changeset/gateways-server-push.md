@@ -1,0 +1,13 @@
+---
+'@velajs/vela': minor
+'@velajs/cloudflare': minor
+---
+
+Push to a gateway's rooms from anywhere with `Gateways`, injectable from `@velajs/vela/websocket` wherever `WebSocketModule` is imported: `gateways.of<ChatEvents>(ChatGateway).to(room).emit('message', data)`. The explicit event map (event name → payload) types each push; `to(room)` and `in(room)` chain rooms. The target comes from the gateway's `@WebSocketGateway` metadata (`path`, `binding`, `roomParam`), and each push is bounded by that gateway's `maxFrameBytes` before anything is resolved or sent. `emit()` without a room and `except()` throw with guidance, and a class without `@WebSocketGateway` is rejected. The handle types are `GatewayServer<Events>` and `GatewayBroadcastOperator<Events>`.
+
+- Without a platform transport that delivers pushes, a push goes through the server gateways inject: in-process hosts (node, Bun, Deno) broadcast it through the module's sync driver, so `redis()` fans pushes out across instances.
+- A platform transport delivers pushes elsewhere with the new optional `WebSocketTransport.deliver(delivery)`, which receives one `GatewayDelivery` (`{ gatewayPath, binding?, room, command }`) per gateway room; a gateway without `roomParam` has one room, its path. A transport that delivers pushes but builds no server gives gateways a `@WebSocketServer()` that keeps no sockets and refuses each push with guidance to `Gateways`.
+- On Cloudflare, a push from the Worker is a `broadcast` RPC to the gateway + room Durable Object, whose namespace is read by the gateway's `binding` from `ENV` when the push needs it. Inside a Durable Object, a push to its own room goes to its sockets, and a push to another room goes to that room's object instead of reaching no one. Pushing to a gateway without a `binding` fails with guidance.
+- The minimal `createCloudflareWorker()` Worker shrinks to 142,540 bytes raw and 48,112 bytes gzipped (from 142,771 and 48,157): the `Gateways` service and the refusing server live in the core WebSocket entry, and upgrades, pushes and live invalidations share one gateway-room resolver.
+
+**Behavior change:** `broadcastToRoom(namespace, gatewayPath, room, event, data, options?)` and its `BroadcastNamespace` type are removed from `@velajs/cloudflare`. Inject `Gateways` and call `gateways.of(Gateway).to(room).emit(event, data)`; the gateway's metadata supplies the namespace, path and frame limit. The Worker's `@WebSocketServer()` still refuses pushes, now with guidance to `Gateways`. An upgrade to a gateway whose binding is missing from `ENV` now fails through the application's error handling (a 500 with the standard error body) instead of a plain-text 500.
