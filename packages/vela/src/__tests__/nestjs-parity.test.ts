@@ -758,7 +758,7 @@ describe('@Global', () => {
     expect(await res.json()).toEqual({ value: 'from-global' });
   });
 
-  it('should support isGlobal option in @Module decorator', async () => {
+  it('should make a global DynamicModule visible to sibling modules', async () => {
     @Injectable()
     class ConfigService {
       get(key: string) {
@@ -766,7 +766,7 @@ describe('@Global', () => {
       }
     }
 
-    @Module({ providers: [ConfigService], exports: [ConfigService], isGlobal: true })
+    @Module({ providers: [ConfigService], exports: [ConfigService] })
     class ConfigModule {}
 
     @Controller('/config-test')
@@ -778,13 +778,23 @@ describe('@Global', () => {
       }
     }
 
-    @Module({ imports: [ConfigModule], controllers: [ConfigController] })
+    // The consumer lives in a sibling that never imports ConfigModule, so only
+    // the instance's `global: true` makes ConfigService visible to it.
+    @Module({ controllers: [ConfigController] })
+    class FeatureModule {}
+
+    @Module({ imports: [{ module: ConfigModule, global: true }, FeatureModule] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/config-test');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ val: 'value-db' });
+    await app.close();
+
+    @Module({ imports: [ConfigModule, FeatureModule] })
+    class LocalAppModule {}
+    await expect(VelaFactory.create(LocalAppModule)).rejects.toThrow(/ConfigService/);
   });
 
   it('should allow multiple global modules', async () => {
