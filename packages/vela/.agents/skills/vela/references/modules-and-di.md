@@ -139,7 +139,7 @@ Every first-party configurable module exposes `forRoot(options)` (sync) and `for
 class AppModule {}
 ```
 
-The instance key comes from the structural options only, so most modules have one instance per class: the same configuration imported twice deduplicates, while a second configuration under the same key is reported by the loader (`'log'` warns, `'throw'` fails bootstrap) and the first is kept. Give a second instance its own `key` (`MailModule.forRoot({ ..., key: 'marketing' })`). `key`, `lazy` and `isGlobal` never change the key or reach the options token. `isGlobal` only makes exports visible everywhere; options that register app-wide components are named for them (`CacheModule`'s `globalInterceptor`, `BetterAuthModule`'s and `FeatureFlagsModule`'s `globalGuard`).
+The instance key comes from the structural options only, so most modules have one instance per class: the same configuration imported twice deduplicates, while a second configuration under the same key fails bootstrap in every diagnostics mode, even when its `isGlobal` differs too. A repeat with the same options and only another `isGlobal` is reported (`'log'` warns, `'throw'` fails bootstrap) and the first is kept. An extra at its default or an option passed as `undefined` counts as not given. Give a second instance its own `key` (`MailModule.forRoot({ ..., key: 'marketing' })`). `key`, `lazy` and `isGlobal` never change the key or reach the options token. `isGlobal` only makes exports visible everywhere; options that register app-wide components are named for them (`CacheModule`'s `globalInterceptor`, `BetterAuthModule`'s and `FeatureFlagsModule`'s `globalGuard`).
 
 ## Authoring a configurable module — `defineModule`
 
