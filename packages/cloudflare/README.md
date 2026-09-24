@@ -41,8 +41,10 @@ export default createCloudflareWorker(AppModule);
 ```
 
 The worker exposes `fetch`, `queue`, and `scheduled`, and carries a
-non-enumerable descriptor under `CLOUDFLARE_WORKER`
-(`Symbol.for('vela.cloudflare.worker')`): the root module, the options, and
+descriptor under the symbol key `CLOUDFLARE_WORKER`
+(`Symbol.for('vela.cloudflare.worker')`), which the platform ignores and which
+an entry adding handlers keeps (`export default { ...worker, email }`): the
+root module, the options, and
 `createOptions(env)`/`createApplication(env)`, which build the application
 exactly as the Worker does. `@velajs/cli` loads the Worker entry and builds its
 application from it, so a project needs no `vela.config`, and
@@ -446,7 +448,8 @@ it('processes a created todo', async () => {
   carries it, so the Cloudflare adapter accepts the requests.
 - `overrides` receives the `@velajs/testing` builder: `overrideProvider()`,
   `overrideGuard()` and the other enhancer overrides, `overrideModule().useModule()`
-  and `useMocker()`. `worker.module` is the compiled `TestingModule`.
+  and `useMocker()`. `worker.module` is the compiled `TestingModule`; its
+  `fetch()` and `http` client send the same `env` as `c.env`.
 - `fetch(input, init?)` resolves a path against `http://localhost`.
 - `queue(physicalQueue, messages)` delivers one batch built with `cloudflare:test`'s
   `createMessageBatch()` and returns its `getQueueResult()` plus `outcome`

@@ -95,10 +95,12 @@ export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
 
 /**
  * The `VelaFactory.create()` options an application for `options.env` is built
- * with: the Cloudflare adapter bound to that environment, then any further adapters.
+ * with: that environment (seeded as ENV and sent by test clients as `c.env`),
+ * the Cloudflare adapter bound to it, then any further adapters.
  */
 export function cloudflareCreateOptions(options: CreateCloudflareAppOptions): VelaCreateOptions {
   return {
+    env: options.env,
     globalPrefix: options.globalPrefix,
     security: options.security,
     middleware: options.middleware?.(options.env),
@@ -160,7 +162,10 @@ export interface CloudflareWorker {
     env: VelaEnv,
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void>;
-  /** Not enumerable: the platform reads only the handlers. */
+  /**
+   * Symbol-keyed, so the platform, which reads string-keyed handlers, ignores
+   * it; enumerable, so `{ ...worker, email }` keeps it for the CLI.
+   */
   readonly [CLOUDFLARE_WORKER]: CloudflareWorkerDescriptor;
 }
 
@@ -211,5 +216,5 @@ export function createCloudflareWorker(
     },
     [CLOUDFLARE_WORKER]: descriptor,
   };
-  return Object.defineProperty(worker, CLOUDFLARE_WORKER, { enumerable: false });
+  return worker;
 }

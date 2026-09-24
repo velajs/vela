@@ -121,6 +121,19 @@ describe('createTestingWorker under workerd', () => {
     }
   });
 
+  it("sends the Worker's environment with requests from the testing module", async () => {
+    const worker = await createTestingWorker(AppModule);
+    try {
+      const sent = await worker.module.http.get('/todos/3').send();
+      sent.assertOk().assertJson({ id: '3', at: 'real time' });
+      const fetched = await worker.module.fetch(new Request('http://localhost/todos/4'));
+      expect(fetched.status).toBe(200);
+      expect(await fetched.json()).toEqual({ id: '4', at: 'real time' });
+    } finally {
+      await worker.close();
+    }
+  });
+
   it('closes after responses whose bodies a test never read', async () => {
     const worker = await createTestingWorker(AppModule);
     const missing = await worker.fetch('/missing');

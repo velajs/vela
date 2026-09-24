@@ -50,8 +50,18 @@ describe('Worker descriptor', () => {
     expectTypeOf(descriptor).toEqualTypeOf<CloudflareWorkerDescriptor>();
     expect(descriptor.rootModule).toBe(AppModule);
     expect(descriptor.options).toBe(options);
-    // Workers read the handlers only; the descriptor stays out of enumeration.
+    // Workers read the string-keyed handlers only.
     expect(Object.keys(worker).sort()).toEqual(['fetch', 'queue', 'scheduled']);
+  });
+
+  it('keeps the descriptor when the Worker is spread into an entry with more handlers', () => {
+    const worker = createCloudflareWorker(AppModule);
+    const entry = {
+      ...worker,
+      async email() {},
+    };
+    expect(entry[CLOUDFLARE_WORKER]).toBe(worker[CLOUDFLARE_WORKER]);
+    expect(Object.assign({}, worker)[CLOUDFLARE_WORKER]).toBe(worker[CLOUDFLARE_WORKER]);
   });
 
   it('builds the same application for an environment as the Worker does', async () => {
@@ -59,6 +69,7 @@ describe('Worker descriptor', () => {
     const env = { GREETING: 'from the descriptor' };
     const { rootModule, createOptions, createApplication } = worker[CLOUDFLARE_WORKER];
     // createOptions() feeds VelaFactory.create (and @velajs/cloudflare/testing) directly.
+    expect(createOptions(env).env).toBe(env);
     const created = await VelaFactory.create(rootModule, createOptions(env));
     expect(created.get(ENV)).toBe(env);
     expect(created.getGlobalPrefix()).toBe('/api');
