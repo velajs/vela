@@ -11,7 +11,11 @@ export interface GlobalPrefixOptions {
   /**
    * Routes served without the global prefix. Each target uses the middleware
    * route grammar and is matched against the controller path plus the route
-   * path; a `method` limits it to that method.
+   * path; a `method` limits it to that method. Relative middleware targets
+   * (`forRoutes('admin/*')`) resolve under the prefix, so they do not match an
+   * excluded route: startup fails until an absolute target
+   * (`{ path: '/admin/report', absolute: true }`) or the controller covers it,
+   * or an absolute `exclude()` leaves it out.
    */
   exclude?: Array<string | RouteInfo>;
 }

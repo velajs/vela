@@ -70,6 +70,8 @@ const app = await VelaFactory.create(AppModule, {
 });
 ```
 
+Relative middleware targets resolve under the prefix and so miss excluded routes; target those with `{ path: '/health', absolute: true }` or the controller (see `pipeline.md`).
+
 Versioning is decorator-driven (no `enableVersioning`/`VersioningType`). Set a version on the controller and override per method:
 
 ```ts

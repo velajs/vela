@@ -184,7 +184,8 @@ route served that way answers 500 with the error
 other server error. Mount the Vela app under bases whose parameters match one
 path segment.
 
-Some routes are served outside the global prefix: `mountOpenApi()` documents
+Some routes are served outside the global prefix: controller routes that
+`globalPrefixOptions.exclude` leaves unprefixed, `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
 (`/rpc`), Cloudflare WebSocket gateway upgrade paths, Studio mounted with
 `absolute: true`, and routes added to the Hono app directly. Target them with
@@ -206,7 +207,12 @@ whatever its constraint, so `forRoutes('users/:id')` reaches
 request's decision.
 A target that reaches no route under the global prefix but matches a route
 served outside it, such as `forRoutes('rpc')` for the `RpcModule` endpoint,
-fails the build and names the `{ path, absolute: true }` form to use.
+fails the build and names the `{ path, absolute: true }` form to use. So does a
+`forRoutes()` target that reaches prefixed routes while its written path also
+matches a route served outside the prefix, such as `forRoutes('admin/*')` with
+`admin/report` excluded from the prefix, unless the same middleware covers that
+route with an absolute target or its controller, or leaves it out with an
+absolute `exclude()`.
 A `forRoutes()` target that reaches no registered route at all is reported
 through the container's diagnostics policy (`'log'` warns, `'throw'` fails
 bootstrap), since the route may still be added to the Hono app later; target

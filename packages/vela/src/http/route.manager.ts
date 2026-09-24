@@ -1046,19 +1046,22 @@ export class RouteManager {
   }
 
   // Relative path targets resolve under the global prefix, so a target for a
-  // route served outside it (a contributor's RPC endpoint, say) would match
-  // nothing and leave that route without its middleware. Checked once this
-  // build has registered every route: a target that reaches no route under the
-  // prefix but reaches one outside it throws. A forRoutes() target that
-  // reaches no route at all is reported, because the route may still be added
-  // to the Hono app after startup (mountOpenApi(), WebSocket upgrades, raw Hono
-  // routes). A target reaches a route through a concrete path, shaped like
-  // either of them, that the target and Hono's TrieRouter both match, with
-  // each constrained route parameter read as a plain ':name' segment so no
-  // sample has to satisfy its '{regex}'. These samples only drive this check,
-  // never a request's decision.
+  // route served outside it (a contributor's RPC endpoint, or a route
+  // globalPrefixOptions.exclude serves unprefixed) would not match it and
+  // leave that route without its middleware. Checked once this build has
+  // registered every route: a forRoutes() target whose written path also
+  // reaches a route outside the prefix throws unless an absolute target or a
+  // controller target of the same middleware accounts for that route, and any
+  // target that reaches no route under the prefix but reaches one outside it
+  // throws. A forRoutes() target that reaches no route at all is reported,
+  // because the route may still be added to the Hono app after startup
+  // (mountOpenApi(), WebSocket upgrades, raw Hono routes). A target reaches a
+  // route through a concrete path, shaped like either of them, that the target
+  // and Hono's TrieRouter both match, with each constrained route parameter
+  // read as a plain ':name' segment so no sample has to satisfy its '{regex}'.
+  // These samples only drive this check, never a request's decision.
   private checkMiddlewareTargets(
-    registered: ReadonlyArray<{ method: string; path: string }>,
+    registered: ReadonlyArray<{ method: string; path: string; handler: unknown }>,
   ): void {
     if (this.consumerMiddlewareDefinitions.length === 0) return;
     // A contributor's own app.use('*') middleware serves no route of its own.
@@ -1077,12 +1080,12 @@ export class RouteManager {
       );
     }
     const prefix = this.globalPrefix.replace(/\/+$/, '');
-    const served = (target: RouteTarget, method: string, outside?: boolean): boolean => {
+    const reached = (target: RouteTarget, method: string, outside?: boolean) => {
       const shape = `/${[...target.parts, ...(target.tail ? [target.tail === '*' ? '*' : ':_'] : [])].join('/')}`;
       const reaches = (route: { method: string; path: string }) =>
         !(outside && (route.path === prefix || route.path.startsWith(`${prefix}/`))) &&
         (method === HttpMethod.ALL || methodReaches(method, route.method));
-      return routes.some(
+      return routes.filter(
         (route) =>
           reaches(route) &&
           [...samplePaths(shape, route.path), ...samplePaths(route.path, shape)].some(
@@ -1098,15 +1101,41 @@ export class RouteManager {
         ...definition.routes.map((target) => ({ target, forRoutes: true })),
         ...definition.excludes.map((target) => ({ target, forRoutes: false })),
       ];
+      // Whether another target of this middleware (a controller, an absolute
+      // path, or a match-all path) runs it on the route or leaves it out.
+      const accounted = (route: (typeof routes)[number]): boolean =>
+        targets.some(({ target, forRoutes }) => {
+          if (typeof target === 'function') {
+            return forRoutes && findOwner(this.routeOwners, route.handler)?.[0] === target;
+          }
+          const { method, target: resolved } = this.resolveTarget(target, forRoutes);
+          if (!resolved) return method === HttpMethod.ALL || methodReaches(method, route.method);
+          return target.absolute === true && reached(resolved, method).includes(route);
+        });
       for (const { target, forRoutes } of targets) {
         if (typeof target === 'function' || target.absolute) continue;
         const { method, target: resolved } = this.resolveTarget(target, forRoutes);
         // `'*'`, `'/*'` and `'{*splat}'` match every request.
-        if (!resolved || served(resolved, method)) continue;
+        if (!resolved) continue;
         const path = `/${target.path.replace(/^\//, '')}`;
         const pattern = joinPaths(prefix, path);
         const outside = this.resolveTarget({ ...target, absolute: true }, forRoutes).target!;
-        if (prefix && served(outside, method, true)) {
+        if (reached(resolved, method).length > 0) {
+          const missed =
+            prefix && forRoutes
+              ? reached(outside, method, true).find((route) => !accounted(route))
+              : undefined;
+          if (missed) {
+            throw new Error(
+              `Middleware route '${target.path}' resolves to '${pattern}' under the global ` +
+                `prefix '${prefix}', so it does not match ${missed.method} ${missed.path}, which ` +
+                `is served outside the prefix. Add { path: '${missed.path}', absolute: true } to ` +
+                'forRoutes() to cover it, or to exclude() to leave it out.',
+            );
+          }
+          continue;
+        }
+        if (prefix && reached(outside, method, true).length > 0) {
           throw new Error(
             `Middleware route '${target.path}' resolves to '${pattern}' under the global prefix ` +
               `'${prefix}', which serves no route, but '${path}' is served outside the prefix. ` +
