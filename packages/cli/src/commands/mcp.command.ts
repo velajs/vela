@@ -186,7 +186,8 @@ export class McpServeCommand extends Command {
             if (title) info.title = title;
             if (apiVersion) info.version = apiVersion;
             const document = createOpenApiDocument(rootModule, {
-              globalPrefix: globalPrefix ?? app.getGlobalPrefix(),
+              ...app.getRoutePathOptions(),
+              ...(globalPrefix === undefined ? {} : { globalPrefix }),
               ...(Object.keys(info).length > 0 ? { info } : {}),
             });
             return jsonText(document);
@@ -216,7 +217,7 @@ export class McpServeCommand extends Command {
                   uri: OPENAPI_URI,
                   mimeType: 'application/json',
                   text: JSON.stringify(
-                    createOpenApiDocument(rootModule, { globalPrefix: app.getGlobalPrefix() }),
+                    createOpenApiDocument(rootModule, app.getRoutePathOptions()),
                     null,
                     2,
                   ),

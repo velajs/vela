@@ -80,7 +80,7 @@ class ProductsController {
 
 `@Body`, `@Query`, `@Param`, `@Headers` and `@Cookie` turn a schema argument into `new ValidationPipe(schema)`; a Zod schema is detected by its Standard Schema marker, never run as a pipe. Type aliases disappear from reflection. Supply the schema explicitly as above; a global `ValidationPipe` cannot infer it from a body type annotation. Programmatic routes can put the descriptor in parameter `metatype`. `ValidationPipe.parser` exposes the same parser to OpenAPI. The standalone pipe does not check that the method's TypeScript annotation matches its schema; `@Endpoint` supplies that stronger contract.
 
-`ValidationPipe` maps schema issues to a 400 `BadRequestException` whose body carries `message: 'Validation failed'` and the normalized `errors`. It is the only schema pipe; exceptions thrown by a validator itself remain server errors.
+`ValidationPipe` maps schema issues to a 400 `BadRequestException('Validation failed', { details: { issues } })`, rendered as `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }` with the normalized issues (`message`, `path?`, `code?`). It is the only schema pipe; exceptions thrown by a validator itself remain server errors.
 
 ## Output serialization
 

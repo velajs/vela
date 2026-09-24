@@ -1,10 +1,12 @@
 import type { ExecutionContext } from 'hono';
 import { VelaFactory } from '@velajs/vela';
 import type {
+  GlobalPrefixOptions,
   VelaApplication,
   VelaCreateOptions,
   VelaEnv,
   VelaSecurityOptions,
+  VersioningOptions,
 } from '@velajs/vela';
 import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { CloudflareApplication } from './cloudflare-application';
@@ -19,6 +21,10 @@ import type { CloudflareRoot } from './root-module';
 
 export interface CloudflareAppOptions {
   globalPrefix?: string;
+  /** Routes served without the global prefix (`{ exclude }`). */
+  globalPrefixOptions?: GlobalPrefixOptions;
+  /** URI versioning: the version segment prefix (default `'v'`). */
+  versioning?: VersioningOptions;
   security?: VelaSecurityOptions;
   /** Further runtime adapters, composed after the Cloudflare adapter for each application. */
   adapters?: RuntimeAdapter[];
@@ -122,6 +128,8 @@ export function cloudflareCreateOptions(options: CreateCloudflareAppOptions): Ve
   return {
     env: options.env,
     globalPrefix: options.globalPrefix,
+    globalPrefixOptions: options.globalPrefixOptions,
+    versioning: options.versioning,
     security: options.security,
     adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
   };

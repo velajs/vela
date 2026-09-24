@@ -67,7 +67,7 @@ describe('Middleware exception filter coverage', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/m1');
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       caught: true,
       message: 'blocked-in-middleware',
@@ -107,7 +107,7 @@ describe('Middleware exception filter coverage', () => {
     });
 
     const res = await app.getHonoApp().request('/g1');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ caught: 'global', status: 403 });
   });
 
@@ -147,7 +147,7 @@ describe('Middleware exception filter coverage', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/r1');
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ caught: 'per-route' });
   });
 
@@ -190,7 +190,7 @@ describe('Middleware exception filter coverage', () => {
 
     // NotFoundException — caught by typed filter.
     const matched = await app.getHonoApp().request('/typed?which=nf');
-    expect(matched.status).toBe(200);
+    expect(matched.status).toBe(404);
     expect(await matched.json()).toEqual({ caught: 'not-found-only', message: 'mw-nf' });
 
     // ForbiddenException — not in @Catch types, falls through to the canonical
@@ -341,7 +341,7 @@ describe('Middleware exception filter coverage', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/precedence');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ level: 'handler' });
   });
 
@@ -382,7 +382,7 @@ describe('Middleware exception filter coverage', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/post');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ caught: 'post', message: 'post-handler' });
   });
 
@@ -424,7 +424,7 @@ describe('Middleware exception filter coverage', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/sync');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ caught: 'sync', message: 'sync-throw' });
   });
 });

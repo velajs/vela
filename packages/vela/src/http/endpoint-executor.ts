@@ -60,10 +60,9 @@ export async function extractEndpointInput(
     return [await parseSchemaAsync(endpoint.input, input)];
   } catch (error) {
     if (error instanceof SchemaValidationError) {
-      throw new BadRequestException({
-        statusCode: 400,
-        message: 'Endpoint input validation failed',
-        errors: error.issues,
+      throw new BadRequestException('Endpoint input validation failed', {
+        details: { issues: error.issues },
+        cause: error,
       });
     }
     throw error;

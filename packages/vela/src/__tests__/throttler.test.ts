@@ -1,10 +1,19 @@
 import { defineProvider } from '../container/types';
 import { describe, it, expect } from 'vitest';
-import { APP_GUARD, VelaFactory, Controller, Get, Injectable, Module } from '../index.js';
-import { setTrustedRequestIdentity } from '../module-kit.js';
-import { ThrottlerModule, Throttle, SkipThrottle } from '../throttler/index.js';
-import type { CanActivate, ExecutionContext } from '../index.js';
-import type { ThrottlerStore, ThrottlerStorageRecord } from '../throttler/index.js';
+import {
+  APP_GUARD,
+  VelaFactory,
+  Controller,
+  Ctx,
+  Get,
+  Injectable,
+  Module,
+  REQUEST_CONTEXT,
+} from '../index.js';
+import { getRequestContainer, setTrustedRequestIdentity } from '../module-kit.js';
+import { RATE_LIMIT, ThrottlerModule, Throttle, SkipThrottle } from '../throttler/index.js';
+import type { CanActivate, ExecutionContext, VelaContext } from '../index.js';
+import type { RateLimitInfo, ThrottlerStore, ThrottlerStorageRecord } from '../throttler/index.js';
 
 describe('ThrottlerModule', () => {
   it('should allow requests under the limit', async () => {
@@ -453,7 +462,8 @@ describe('ThrottlerModule', () => {
       .request('/context-tracker');
     expect(response.status).toBe(200);
     expect(observed?.getClass()).toBe(TestController);
-    expect(observed?.getHandler()).toBe('getData');
+    expect(observed?.getHandlerName()).toBe('getData');
+    expect(observed?.getHandler()).toBe(TestController.prototype.getData);
   });
 
   it('rejects inherited or oversized trusted identity fields', () => {
@@ -520,13 +530,14 @@ describe('ThrottlerModule', () => {
     expect(blocked.status).toBe(429);
   });
 
-  it('should expose RateLimitInfo on Hono context', async () => {
-    let capturedInfo: unknown = undefined;
+  it('should expose RateLimitInfo on the request context', async () => {
+    let capturedInfo: RateLimitInfo | undefined;
 
     @Controller('/test')
     class TestController {
       @Get('/data')
-      getData() {
+      getData(@Ctx() c: VelaContext) {
+        capturedInfo = getRequestContainer(c).resolve(REQUEST_CONTEXT).get(RATE_LIMIT);
         return { ok: true };
       }
     }
@@ -538,18 +549,7 @@ describe('ThrottlerModule', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    // Register middleware before routes to capture rateLimit info
-    const { Hono } = await import('hono');
-    const wrapper = new Hono();
-    wrapper.use('*', async (c, next) => {
-      await next();
-      capturedInfo = c.get('rateLimit');
-    });
-    wrapper.route('/', hono);
-
-    await wrapper.request('/test/data');
+    await app.getHonoApp().request('/test/data');
 
     expect(capturedInfo).toEqual({
       limit: 5,

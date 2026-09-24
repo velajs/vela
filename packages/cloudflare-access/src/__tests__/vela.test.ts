@@ -6,7 +6,7 @@ import {
   setTrustedRequestTenant,
 } from '@velajs/vela/module-kit';
 import { ThrottlerModule } from '@velajs/vela/throttler';
-import { APP_GUARD, Controller, Get, Module, UseGuards, VelaFactory } from '@velajs/vela';
+import { Controller, Get, Module, UseGuards, VelaFactory } from '@velajs/vela';
 import {
   AuthzModule,
   PermissionGuard,
@@ -545,11 +545,7 @@ describe('shared identity enforcement across Access, authz and core', () => {
   });
 
   it('core throttling partitions verified Access subjects on a shared client IP', async () => {
-    @Module({
-      imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })],
-      providers: [{ provide: APP_GUARD, useClass: CloudflareAccessGuard }],
-    })
-    class GlobalAccess {}
+    expect(CloudflareAccessGuard.phase).toBe('authenticate');
     @Controller('/throttle')
     class LimitedController {
       @Get() read() {
@@ -557,7 +553,11 @@ describe('shared identity enforcement across Access, authz and core', () => {
       }
     }
     @Module({
-      imports: [GlobalAccess, ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 })],
+      // Throttling is imported first; the global Access guard still authenticates before it.
+      imports: [
+        ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 }),
+        CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
+      ],
       controllers: [LimitedController],
     })
     class App {}
@@ -565,10 +565,61 @@ describe('shared identity enforcement across Access, authz and core', () => {
     const first = await tokenWith({ tenantId: 'tenant-a' }, 'user-a');
     const second = await tokenWith({ tenantId: 'tenant-a' }, 'user-b');
     const hono = app.getHonoApp();
+    expect((await hono.request(withHeader('/throttle'))).status).toBe(401);
     expect((await hono.request(withHeader('/throttle', first))).status).toBe(200);
     expect((await hono.request(withHeader('/throttle', first))).status).toBe(429);
     expect((await hono.request(withHeader('/throttle', second))).status).toBe(200);
     await app.dispose();
+  });
+
+  it("leaves routes to @UseGuards with guard: 'none'", async () => {
+    @Controller('/open')
+    class OpenController {
+      @Get() read() {
+        return { ok: true };
+      }
+    }
+    @Module({
+      imports: [
+        CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks, guard: 'none' }),
+      ],
+      controllers: [OpenController],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    expect((await app.getHonoApp().request(withHeader('/open'))).status).toBe(200);
+    await app.dispose();
+  });
+
+  it('takes guard beside a forRootAsync factory, defaulting to one global install', async () => {
+    const options = { preset, aud: AUD, keySet: keys.jwks };
+    // A spelled-out default is the same instance as leaving it out.
+    expect(CloudflareAccessModule.forRoot({ ...options, guard: 'global' }).key).toBe(
+      CloudflareAccessModule.forRoot(options).key,
+    );
+    @Controller('/async')
+    class AsyncController {
+      @Get() read() {
+        return { ok: true };
+      }
+    }
+    const statuses: number[] = [];
+    for (const guard of [undefined, 'global', 'none'] as const) {
+      @Module({
+        imports: [
+          CloudflareAccessModule.forRootAsync({
+            ...(guard ? { guard } : {}),
+            useFactory: () => options,
+          }),
+        ],
+        controllers: [AsyncController],
+      })
+      class App {}
+      const app = await VelaFactory.create(App);
+      statuses.push((await app.getHonoApp().request(withHeader('/async'))).status);
+      await app.dispose();
+    }
+    expect(statuses).toEqual([401, 401, 200]);
   });
 });
 

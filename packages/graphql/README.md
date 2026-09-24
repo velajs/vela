@@ -55,7 +55,7 @@ HTTP middleware and global components run once around the endpoint. `GraphqlModu
 
 Each bound field has a frozen `GraphqlExecutionContext` with `getType() === 'graphql'`, its actual provider/method/module, the original HTTP request/context, and the request child container. `getGraphql()` adds resolver `root`, `info`, operation and cancellation signal. Providers are constructed through DI; constructors and private fields work. Guards run before request-scoped resolver construction. Unbound schema functions receive the operation context but do not acquire the provider pipeline automatically.
 
-Authenticate and admit the tenant in the HTTP pipeline **before** starting GraphQL execution. Bound field guards reuse the trusted request identity through Vela's explicit context bridge. Use permission guards per field. GraphQL arguments do not establish authentication or tenant authority. Replacing/revoking the trusted identity during execution prevents further cache access and result publication.
+Authenticate and admit the tenant in the HTTP pipeline **before** starting GraphQL execution. The endpoint is marked `SkipGuardPhases(['authorize'])`: global authentication and tenant guards run on it, while the authorization guards integrations install globally (such as a deny-by-default `CedarGuard`) leave it to the field guards. The application's own global guards still run on it in every phase. Bound field guards reuse the trusted request identity through Vela's explicit context bridge. Use permission guards per field. GraphQL arguments do not establish authentication or tenant authority. Replacing/revoking the trusted identity during execution prevents further cache access and result publication.
 
 ## Operation resources
 
@@ -84,7 +84,7 @@ The Yoga driver accepts one JSON POST containing one query or mutation. It rejec
 
 Defaults are 65,536 request bytes, 5,000 document tokens, depth 16, and 200 expanded fields. Override these through `maxRequestBytes`, `maxDocumentTokens`, `maxDepth`, and `maxFields`. These bounds do not limit list cardinality, resolver cost, or response size: bound pagination and expensive work in your domain layer.
 
-Unexpected resolver/output errors use `INTERNAL_SERVER_ERROR` and a fixed message. Validation and supported HTTP exceptions map to bounded public codes/messages. Throw `GraphqlClientError` for an intentional public message. Responses include at most ten errors with messages capped at 512 characters; arbitrary extensions and stacks are removed. Resolver errors are sent to Vela's error reporter. Authenticate HTTP requests before execution if you require HTTP 401/403; individual denied fields otherwise follow GraphQL partial-data semantics.
+Unexpected resolver/output errors use `INTERNAL_SERVER_ERROR` and a fixed message. Validation and supported HTTP statuses map to bounded public codes/messages; the status comes from Vela's shared `renderHttpError`, so an `HttpException`, a branded `VelaError` (such as `forbidden` or `not_found`) and an exception-owned `toResponse()` map alike. Throw `GraphqlClientError` for an intentional public message. Responses include at most ten errors with messages capped at 512 characters; arbitrary extensions and stacks are removed. Resolver errors are sent to Vela's error reporter. Authenticate HTTP requests before execution if you require HTTP 401/403; individual denied fields otherwise follow GraphQL partial-data semantics.
 
 ## SDL and compatibility checks
 

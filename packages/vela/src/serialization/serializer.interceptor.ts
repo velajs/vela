@@ -9,7 +9,7 @@ export class SerializerInterceptor implements NestInterceptor {
   async intercept(context: ExecutionContext, next: CallHandler): Promise<unknown> {
     const result = await next.handle();
     const controller = context.getClass();
-    const handler = context.getHandler();
+    const handler = context.getHandlerName();
 
     const dto = MetadataRegistry.getCustomHandlerMeta(controller, handler, SERIALIZE_METADATA);
     if (dto === undefined) return result;

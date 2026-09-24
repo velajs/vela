@@ -7,7 +7,7 @@ import {
   Get,
   Injectable,
   Module,
-  Req,
+  Ctx,
   Scope,
   VelaFactory,
   type ExecutionLifetime,
@@ -49,7 +49,7 @@ describe('HTTP managed execution lifetime', () => {
         @Inject(EXECUTION_LIFETIME) readonly managed: ExecutionLifetime,
       ) {}
       @Get()
-      get(@Req() context: Context) {
+      get(@Ctx() context: Context) {
         lifetime = getExecutionLifetime(getRequestContainer(context));
         expect(this.managed).toBe(lifetime);
         lifetime!.defer(async () => {
@@ -152,7 +152,7 @@ describe('HTTP managed execution lifetime', () => {
       class Routes {
         constructor(readonly resource: Resource) {}
         @Get()
-        get(@Req() context: Context) {
+        get(@Ctx() context: Context) {
           lifetime = getExecutionLifetime(getRequestContainer(context));
           lifetime!.defer(() => {
             events.push('deferred');
@@ -180,7 +180,7 @@ describe('HTTP managed execution lifetime', () => {
     @Controller('/failed')
     class Routes {
       @Get()
-      get(@Req() context: Context) {
+      get(@Ctx() context: Context) {
         getExecutionLifetime(getRequestContainer(context))!.defer(() => {
           throw failure;
         });

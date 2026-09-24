@@ -39,7 +39,7 @@ describe('ErrorReporter', () => {
   it('custom handler.report still receives 4xx errors (skip is default-console-only)', () => {
     const container = new Container();
     const report = vi.fn();
-    container.register(defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report }}));
+    container.register(defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } }));
     resolveErrorReporter(container).report(new NotFoundException('missing thing'), {
       edge: 'http',
     });
@@ -50,7 +50,7 @@ describe('ErrorReporter', () => {
     // Diagnostics has no setter — it is a constructor option (see container.ts).
     const container = new Container({ diagnostics: 'silent' });
     const report = vi.fn();
-    container.register(defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report }}));
+    container.register(defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } }));
     resolveErrorReporter(container).report(new Error('boom'), { edge: 'http' });
     expect(report).toHaveBeenCalledOnce();
   });
@@ -58,10 +58,14 @@ describe('ErrorReporter', () => {
   it('dontReport suppresses by code, class, and predicate', () => {
     const container = new Container();
     const report = vi.fn();
-    container.register(defineProvider(APP_EXCEPTION_HANDLER, {useValue: {
-        report,
-        dontReport: ['not_found', (e: unknown) => (e as Error).message === 'skip'],
-      }}));
+    container.register(
+      defineProvider(APP_EXCEPTION_HANDLER, {
+        useValue: {
+          report,
+          dontReport: ['not_found', (e: unknown) => (e as Error).message === 'skip'],
+        },
+      }),
+    );
     const reporter = resolveErrorReporter(container);
     reporter.report(new VelaError('not_found'), { edge: 'http' });
     reporter.report(new Error('skip'), { edge: 'http' });
@@ -71,11 +75,15 @@ describe('ErrorReporter', () => {
 
   it('a throwing report() is contained and never propagates', () => {
     const container = new Container();
-    container.register(defineProvider(APP_EXCEPTION_HANDLER, {useValue: {
-        report: () => {
-          throw new Error('reporter bug');
+    container.register(
+      defineProvider(APP_EXCEPTION_HANDLER, {
+        useValue: {
+          report: () => {
+            throw new Error('reporter bug');
+          },
         },
-      }}));
+      }),
+    );
     expect(() =>
       resolveErrorReporter(container).report(new Error('x'), { edge: 'http' }),
     ).not.toThrow();
@@ -84,14 +92,18 @@ describe('ErrorReporter', () => {
   it('a throwing dontReport matcher never escapes report() and the error is still reported', () => {
     const container = new Container();
     const report = vi.fn();
-    container.register(defineProvider(APP_EXCEPTION_HANDLER, {useValue: {
-        report,
-        dontReport: [
-          () => {
-            throw new Error('broken matcher');
-          },
-        ],
-      }}));
+    container.register(
+      defineProvider(APP_EXCEPTION_HANDLER, {
+        useValue: {
+          report,
+          dontReport: [
+            () => {
+              throw new Error('broken matcher');
+            },
+          ],
+        },
+      }),
+    );
     const reporter = resolveErrorReporter(container);
     expect(() => reporter.report(new Error('original'), { edge: 'http' })).not.toThrow();
     expect(report).toHaveBeenCalledOnce();
@@ -100,7 +112,7 @@ describe('ErrorReporter', () => {
   it('exposes the composed ERROR_CATALOG when provided', () => {
     const container = new Container();
     const catalog = defineErrorCatalog({ order_expired: { status: 410, title: 'Order expired' } });
-    container.register(defineProvider(ERROR_CATALOG, {useValue: catalog}));
+    container.register(defineProvider(ERROR_CATALOG, { useValue: catalog }));
     expect(resolveErrorReporter(container).catalog.has('order_expired')).toBe(true);
   });
 });

@@ -14,7 +14,7 @@ interface NestMiddleware  { use(c: VelaContext, next: Next): Promise<Response | 
 
 `VelaHonoEnv`, `VelaContext`, and `VelaHono` preserve Hono types with unknown-valued context variables and object bindings. Resolve the request container with `getRequestContainer(context)` or the execution-context accessor; it is private runtime state, not a Hono variable. Inject native bindings through the framework `ENV` (`@InjectEnv()`).
 
-`ExecutionContext`: `getClass()`, `getHandler()`, `getModuleId()`, `getRequest(): Request`, `getContext(): VelaContext`, `getContainer(): Container | undefined`, `getType(): string` (including custom entrypoint kinds), `switchToHttp()`, `switchToWs()`. Transport-inapplicable accessors throw. `CallHandler.handle(): Promise<unknown>`. `ArgumentMetadata`: `{ type, metatype?: unknown, data? }`. WebSocket payloads and custom entrypoint payloads remain unknown until parsed; accessors do not accept result generics.
+`ExecutionContext`: `getClass()`, `getHandler()` (the handler method, as in Nest), `getHandlerName()` (its name, or a framework host's marker symbol), `getModuleId()`, `getRequest(): Request`, `getContext(): VelaContext`, `getContainer(): Container | undefined`, `getType(): string` (including custom entrypoint kinds), `switchToHttp()`, `switchToWs()`. Transport-inapplicable accessors throw. `CallHandler.handle(): Promise<unknown>`. `ArgumentMetadata`: `{ type, metatype?: unknown, data? }`. WebSocket payloads and custom entrypoint payloads remain unknown until parsed; accessors do not accept result generics.
 
 HTTP resolves request controllers only when the pipeline invokes the handler, after guards and argument validation. Scoped components resolve asynchronously against the declaring module; global components use application lookup. Method-scoped middleware applies to its matched HTTP method even when another method shares the path.
 
@@ -71,7 +71,9 @@ app.useGlobalGuards(new RolesGuard(app.get(Reflector)))
 setup: () => ({ global: { guards: [AuthGuard] } })   // or providers: [{ provide: APP_GUARD, useClass: AuthGuard }]
 ```
 
-`APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `APP_MIDDLEWARE` are `InjectionToken`s. Multiple providers for one token all execute.
+`APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `APP_MIDDLEWARE` are `InjectionToken`s. Multiple providers for one token all execute. Inside `defineModule`, contribute them through the `global:` slot (`global: { guards: [AuthGuard] }`).
+
+Global guards run in deterministic phases, whatever order modules register them in: `authenticate` → `tenant` → `authorize` → `feature`. A guard declares its phase with `static readonly phase: GuardPhase = 'authenticate'` (an instance may carry its own `phase`); undeclared guards run in `feature`, and guards keep registration order within a phase. The integrations install their guard globally by default and take `guard: 'global' | 'none'`: Better Auth and Cloudflare Access authenticate, `TenantModule` admits the tenant, `AuthzModule` (`PermissionGuard`, `RolesGuard`) and `CedarModule` authorize, and `ThrottlerGuard`/`FeatureFlagGuard` are feature guards. Each phase keeps its own opt-out marker (`@Public`, `@TenantIgnored`, `@CedarPublic`). An integration's own controller skips the `tenant`/`authorize` guards integrations install (`static readonly skippable = true`) with `SkipGuardPhases` from `@velajs/vela/module-kit`; other global guards still run there. `skippable` belongs to the guard class: an app guard that extends an integration guard is skipped too, unless it declares `static override readonly skippable = false`. Global guards still run before controller and method guards.
 
 Global middleware runs in ascending `priority` (default 0, ties keep registration order). Declare it as `static priority = -10` on the middleware class: route build reads it from the `useClass`/`useExisting` target without constructing it. A request-scoped middleware needs the static field; without it, it sorts at 0 and is reported through the `diagnostics` policy.
 
@@ -109,7 +111,7 @@ Route targets resolve at route build:
 - A string or `{ path, method }` target gets the global prefix and also covers the paths beneath it: `forRoutes('/users')` under `globalPrefix: '/api'` matches `/api/users` and `/api/users/42`. Write it without the prefix; a target that starts with the prefix throws at route build.
 - `exclude()` targets get the global prefix and match exactly: `exclude('/users/me')` does not exclude `/users/me/keys`.
 - `{ path, method?, absolute: true }` matches the path as written, for routes outside the global prefix: the `OpenApiModule` document, `mountOpenApi()` documents, the `RpcModule` endpoint, Cloudflare WebSocket upgrades and raw Hono routes.
-- After route build, relative targets are checked against the registered routes, reading a `{regex}`-constrained route parameter as one segment: one that matches only a route outside the global prefix (e.g. `forRoutes('rpc')`) throws and names `{ path, absolute: true }`; a `forRoutes()` target that matches no route at all is reported through `diagnostics` (routes added to the Hono app after startup need `absolute: true` and the path they are served on; the report suggests the resolved path, prefix included, such as `{ path: '/api/users/:id', absolute: true }`).
+- After route build, relative targets are checked against the registered routes, reading a `{regex}`-constrained route parameter as one segment: one that matches only a route outside the global prefix (e.g. `forRoutes('rpc')`) throws and names `{ path, absolute: true }`; so does a `forRoutes()` target that also matches a route `globalPrefixOptions.exclude` serves unprefixed (`forRoutes('admin/*')` with `admin/report` excluded) until the same middleware covers it with an absolute target or its controller, or leaves it out with an absolute `exclude()`; a `forRoutes()` target that matches no route at all is reported through `diagnostics` (routes added to the Hono app after startup need `absolute: true` and the path they are served on; the report suggests the resolved path, prefix included, such as `{ path: '/api/users/:id', absolute: true }`).
 - Path targets use a small grammar that Vela matches segment by segment, in time linear in the path, without adding routes to the app. Segments are literals, matched exactly and case-sensitively against the decoded path, or `:name` with an identifier name, which matches one segment, decoded line terminators (`%0A`, `%E2%80%A8`) included. Hono's LinearRouter (`hono/quick`) serves `:name` on an empty segment, so in `forRoutes()` `:name` also matches an empty segment (fail closed); in `exclude()` it matches only a non-empty one. The last segment may be `*` or `{*name}` (the parent path and everything beneath it: `cats/*` matches `/cats`, `/cats/` and `/cats/1/toys`) or `*name` (one or more characters beneath the parent, never `/cats` itself). A trailing `(.*)` reads as `{*name}` in `forRoutes()`, as Nest 11 rewrites it (`forRoutes('cats/(.*)')` covers `/cats` too), and as `*name` in `exclude()` (fail closed both ways). A trailing `/` is significant in `exclude()`. `'*'`, `'/*'` and `'{*splat}'` match every request and never get the prefix, as does a lone `'(.*)'` in `forRoutes()`.
 - Everything else throws at route build with its cause: `{regex}` constraints (`:id{[0-9]+}`, `:action{login|register}`), optional `?` (`:id?`), a wildcard before the last segment (`files/*/raw`, `files/*path/download`), `*` or `:` inside a segment (`us*`, `abc:name`), a parameter name that is not an identifier (`:name.pdf`, `:from-to`), other parentheses or braces (`:id(\d+)`, `users{/:id}`) and empty segments (`a//b`). Use `:name`, list the paths, or target the controller.
 - Under a parent app (`parent.route(base, app)`), path targets match the path beneath the base Hono matched, with its `:param` values filled in. When that base does not spell the start of the path (a percent-encoded parameter value, or `/m` under a `/m/` base), or a base parameter's `{regex}` can match a `/` (`/:org{.+}`), the middleware runs and its `exclude()` path targets are ignored for that request. A controller route that a parent serves without the app's `'*'` middleware (Hono's TrieRouter under `/:org{[a-z]+/[a-z]+}`) answers 500: mount under bases whose parameters match one segment.
@@ -119,26 +121,31 @@ For authorization use the shared guards in `@velajs/authz/vela`; raw request hea
 
 ## Reflector — reading metadata
 
-Attach metadata with `@SetMetadata(key, value)` (or `Reflector.createDecorator()`), read it in a guard/interceptor:
+Attach metadata with `@SetMetadata(key, value)` (or `Reflector.createDecorator()`), read it in a guard/interceptor. Readers take Nest's targets — `get(key, context.getHandler())`, `get(key, context.getClass())`, `getAllAndOverride(key, [context.getHandler(), context.getClass()])` — or the `ExecutionContext` itself (handler first, then class):
 
 ```ts
 import { Injectable, Reflector, type CanActivate, type ExecutionContext } from '@velajs/vela';
 import { getTrustedRequestIdentity } from '@velajs/vela/module-kit';
 
 const RequireScope = Reflector.createDecorator<string>();
+const Audience = Reflector.createDecorator<string, ReadonlySet<string>>({
+  transform: (value) => new Set(value.split(',')),   // stored value readers receive
+});
 
 @Injectable()
 class ScopeGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {} // provided by every application
   canActivate(ctx: ExecutionContext): boolean {
-    const required = this.reflector.getAllAndOverride(RequireScope, ctx);
+    const required = this.reflector.getAllAndOverride(RequireScope, [ctx.getHandler(), ctx.getClass()]);
     if (!required) return true;
     return getTrustedRequestIdentity(ctx.getRequest())?.roles?.includes(required) ?? false;
   }
 }
 ```
 
-`Reflector` methods: `get`, `getHandler`, `getClass`, `getAll` (`[handler, class]`), `getAllAndOverride` (handler ?? class), `getAllAndMerge` (concat/assign).
+`Reflector` methods: `get`, `getHandler`, `getClass`, `getAll` (each target, or `[handler, class]` for a context), `getAllAndOverride` (first defined), `getAllAndMerge` (concat/assign).
+
+A handler function reads the metadata of the method it is: the method a decorator declared, or the method a route calls, even after an outer decorator wrapped it. In the list form, a listed class reads the method it routes through the function: a method one controller decorates never lends its metadata to a sibling controller inheriting the same method. Alone (`get(key, context.getHandler())`, `[context.getHandler()]`), a function several controllers route with different metadata for the key cannot say which one it serves and the read throws, so list the class with it or pass the `ExecutionContext`. A function one controller routes as several methods with different metadata (one wrapper replacing them) throws in the list form too; pass the `ExecutionContext`. Plain arrays and plain objects with equal own properties (an array's non-index properties included) count as the same metadata; other values compare by identity. A custom execution context records its handler with `MetadataRegistry.addHandlerMethod(handler, type, name)`.
 
 ## Built-in pipes
 
@@ -169,9 +176,9 @@ params(
 @Catch(BadRequestException, ForbiddenException)
 class ClientErrorFilter implements ExceptionFilter {
   catch(exception: HttpException, _ctx: ExecutionContext): unknown {
-    return { filteredBy: 'client-error', status: exception.getStatus() };
+    return { filteredBy: 'client-error' }; // sent with exception.getStatus()
   }
 }
 ```
 
-The built-in `HttpException` family and health checks are covered in `errors-and-health.md`.
+A plain result takes the exception's status; return `{ status, body }` to choose it, a `Response` to own the response, or `undefined` to leave the error to the default renderer. The built-in `HttpException` family, the shared renderer and health checks are covered in `errors-and-health.md`.

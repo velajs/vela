@@ -15,13 +15,36 @@ throw new BadRequestException({ field: 'email', reason: 'invalid' }); // 400, ob
 
 The full family (status in parens): `BadRequestException`(400), `UnauthorizedException`(401), `ForbiddenException`(403), `NotFoundException`(404), `MethodNotAllowedException`(405), `NotAcceptableException`(406), `RequestTimeoutException`(408), `ConflictException`(409), `GoneException`(410), `PayloadTooLargeException`(413), `UnsupportedMediaTypeException`(415), `UnprocessableEntityException`(422), `TooManyRequestsException`(429), `InternalServerErrorException`(500), `NotImplementedException`(501), `BadGatewayException`(502), `ServiceUnavailableException`(503), `GatewayTimeoutException`(504).
 
-The base `HttpException(response, statusCode)` takes the **response first, status second** (note the order). Methods: `getStatus()` → number, `getResponse()` → normalized object.
+The base `HttpException(response, statusCode, options?)` takes the **response first, status second** (note the order); `options` is `{ details?, cause? }`, and each subclass takes `(message?, options?)`. Methods: `getStatus()` → number, `getResponse()` → normalized object, `getDetails()`, and `toResponse()`.
 
-Unfiltered exceptions render the same way from handlers, middleware, and raw Hono middleware. A string response becomes `{ error: { code, message } }`, with `code` taken from the status (`not_found`, `not_acceptable`, …; an unmapped 4xx is `bad_request`). A 5xx string response is a server fault: the client gets only the status title (for example `{ error: { code: 'internal', message: 'Internal Server Error' } }`), never your text. Object responses ship verbatim from controller handlers and Vela middleware, and from raw Hono middleware below 500; a 5xx object response thrown by raw Hono middleware is redacted to its status title the same way.
+## One HTTP error renderer
+
+Every HTTP failure — controller handlers, Vela middleware, raw Hono middleware (the last-resort `onError`), unmatched routes, request limits, RPC and GraphQL — renders through `renderHttpError(error, { catalog?, redactServerBodies? })` from `@velajs/vela`, after exception filters and the application's `ExceptionHandler.render` hook:
+
+1. An exception-owned `toResponse()` returning `{ status, body }` (400–599). `HttpException` built with an object returns it verbatim (a health check's 503); `@velajs/crud`'s `CrudException` returns its `{ success: false, error }` envelope. Override `toResponse()` to own a wire shape. Raw Hono middleware and RPC redact an owned 5xx body to its status title.
+2. A string `HttpException` becomes `{ error: { code, message, details? } }`, with `code` taken from the status (`not_found`, `not_acceptable`, …; an unmapped 4xx is `bad_request`). A 5xx is a server fault: the client gets only the status title (for example `{ error: { code: 'internal', message: 'Internal Server Error' } }`), never your text or details.
+3. A Hono `HTTPException` below 500 renders its message in that body; one built with its own `res` (an auth challenge) keeps that response.
+4. Branded `VelaError`s render their code, message and data as `details`; anything else is a redacted 500.
+
+Validation failures (`ValidationPipe`, `@Body(schema)`) render `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`. An unmatched route answers `{ error: { code: 'not_found', message: 'Not Found' } }` with 404; an oversized body answers 413 `payload_too_large`. These framework rejections are not reported; as in Nest, global exception filters receive them (`NotFoundException`, `PayloadTooLargeException`, `BadRequestException`), and a filter's plain result keeps their status.
+
+```ts
+class LockedException extends HttpException {
+  constructor(readonly until: Date) { super('Locked', 423); }
+  override toResponse(): HttpErrorResponse {
+    return { status: 423, body: { error: { code: 'locked', until: this.until.toISOString() } } };
+  }
+}
+```
 
 ## Exception filters
 
-`@Catch(...ErrorTypes)` + an `ExceptionFilter` intercepts matching errors. Zero args = catch-all. Apply with `@UseFilters` (controller/method) or globally with a `{ provide: APP_FILTER, useClass: X }` provider:
+`@Catch(...ErrorTypes)` + an `ExceptionFilter` intercepts matching errors. Zero args = catch-all. Apply with `@UseFilters` (controller/method) or globally with a `{ provide: APP_FILTER, useClass: X }` provider. The first matching filter decides:
+
+- a `Response` is sent as is;
+- `{ status, body }` (exactly those keys) sets the status explicitly;
+- any other value is the body, sent with the exception's status (`getErrorStatus(exception)`: `HttpException.getStatus()`, `VelaError.status`, else 500);
+- `undefined` means not handled: the default renderer runs (never an empty 204).
 
 ```ts
 import { Catch, ExceptionFilter, ExecutionContext, HttpException } from '@velajs/vela';
@@ -83,7 +106,7 @@ class ApiController {
 }
 ```
 
-`ThrottlerModuleOptions`: `limit`, `ttl` (**milliseconds**), optional `storage`, `getTracker(request)` (application override), `generateKey`. It sets `X-RateLimit-*` headers and throws `TooManyRequestsException` (429) with `Retry-After` when the limit is exceeded. Custom stores implement `ThrottlerStore` (`increment(key, ttlMs)`, `reset(key)`); the default is in-memory.
+`ThrottlerModuleOptions`: `limit`, `ttl` (**milliseconds**), optional `storage`, `getTracker(request)` (application override), `generateKey`. It sets `X-RateLimit-*` headers, publishes `{ limit, remaining?, reset }` under the `RATE_LIMIT` request-context key (`requestContext.get(RATE_LIMIT)`), and throws `TooManyRequestsException` (429) with `Retry-After` when the limit is exceeded. `ThrottlerGuard` runs in the `feature` guard phase, after authentication, so it partitions by the trusted identity whatever the import order. Custom stores implement `ThrottlerStore` (`increment(key, ttlMs)`, `reset(key)`); the default is in-memory.
 
 ## Caching — `CacheModule`
 

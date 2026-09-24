@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
   type CanActivate,
   type ExecutionContext,
+  type GuardPhase,
 } from '@velajs/vela';
 import { getTrustedContextRequest } from '@velajs/vela/module-kit';
 import { getContextIdentity } from '@velajs/authz/vela';
@@ -18,6 +19,9 @@ import { Public } from '../decorators/public.decorator';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
+  /** Global guards run authentication first, then tenant, authorization and feature phases. */
+  static readonly phase: GuardPhase = 'authenticate';
+
   constructor(
     @Inject(BetterAuthService) private readonly auth: BetterAuthService,
     @Inject(BETTER_AUTH_OPTIONS) private readonly opts: BetterAuthRuntimeOptions,

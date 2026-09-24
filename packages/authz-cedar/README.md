@@ -83,17 +83,29 @@ Low-level AST utilities are available at `/plan`, vocabulary authoring at
 - Root `MemoryPolicyStore`: instance-owned tests and prototypes.
 
 `CedarModule.forRoot({ authorize, auditModules })` from `/vela` installs the
-resource-aware guard. Apply `@RequireResource({ action, resourceType, idParam })`
-or `@CedarPublic()` to handlers/classes. The callback receives verified identity
-and execution context, resolves authoritative resource entities, and calls the
-engine. `auditCedarRoutes([Module])` rejects undeclared routes in selected modules.
-Auditing is opt-in; unaudited modules keep existing authorization behavior.
-Authentication/tenant guards must run before the Cedar guard when its callback
-requires a tenant. Queue/socket adapters must supply verified identities explicitly.
-If authentication or tenant admission uses controller/route guards, set
-`globalGuard: false` and apply `@UseGuards(AuthenticationGuard, TenantGuard, CedarGuard)`
-in that order. Global guards otherwise run before route guards. Keep the default
-global Cedar guard when authentication and tenant admission already run upstream.
+resource-aware `CedarGuard` as a global guard in the `authorize` phase, so it
+runs after global authentication and tenant admission whatever the import order.
+Apply `@RequireResource({ action, resourceType, idParam })` or `@CedarPublic()`
+to handlers/classes. The callback receives verified identity and execution
+context, resolves authoritative resource entities, and calls the engine.
+
+Application routes that carry neither declaration are denied (403) by
+default; `undeclared: 'allow'` lets them through. `undeclared` and `guard` shape
+the module, so `forRootAsync` takes them beside its factory. The global guard covers
+every application route, including routes in modules that do not import
+`CedarModule` (they use the installing module's policy) and whether or not it
+is registered with `isGlobal`. An integration package's own controller opts out
+with `SkipGuardPhases(['authorize'])` from `@velajs/vela/module-kit`, as the
+Better Auth handler, the storage controllers and the GraphQL endpoint do;
+`CedarGuard` declares `static readonly skippable = true` for this. Generated
+CRUD controllers declare their policy through the resource's `decorators` and
+`endpointDecorators` (`[RequireResource({ ... })]`, `[CedarPublic()]`). A
+route-level `CedarGuard` in a module that cannot see `CedarModule` denies.
+`auditCedarRoutes([Module])` (or `auditModules`) rejects undeclared routes in
+selected modules at startup. Queue/socket adapters must supply verified
+identities explicitly. To order a fully route-level pipeline yourself, pass
+`guard: 'none'` and apply `@UseGuards(AuthenticationGuard, TenantGuard, CedarGuard)`
+in that order: global guards run before route guards.
 
 The package includes NestM BSD-licensed adaptations and unmodified Apache-licensed
 Cedar WASM; see `THIRD_PARTY_LICENSES`.

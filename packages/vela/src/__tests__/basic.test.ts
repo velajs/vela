@@ -11,6 +11,7 @@ import {
   Query,
   Headers,
   Req,
+  Ctx,
   Injectable,
   Inject,
   Module,
@@ -29,6 +30,7 @@ import {
 } from '../index.js';
 import type {
   CanActivate,
+  VelaContext,
   ExecutionContext,
   NestInterceptor,
   CallHandler,
@@ -157,12 +159,12 @@ describe('Basic app', () => {
     expect(await res.json()).toEqual({ auth: 'Bearer token123' });
   });
 
-  it('should pass Hono context with @Req()', async () => {
+  it('should pass the Hono context with @Ctx() and the Request with @Req()', async () => {
     @Controller('/raw')
     class RawController {
       @Get()
-      handle(@Req() ctx: any) {
-        return ctx.json({ url: ctx.req.url });
+      handle(@Ctx() ctx: VelaContext, @Req() request: Request) {
+        return ctx.json({ url: request.url, same: ctx.req.raw === request });
       }
     }
 
@@ -176,6 +178,7 @@ describe('Basic app', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.url).toContain('/raw');
+    expect(data.same).toBe(true);
   });
 
   it('should return 204 for null/undefined results', async () => {
@@ -583,7 +586,7 @@ describe('Exception Filters', () => {
     const hono = app.getHonoApp();
 
     const res = await hono.request('/filtered/99');
-    expect(res.status).toBe(200); // filter returns a plain object, not a Response
+    expect(res.status).toBe(404); // a plain object keeps the exception's status
     expect(await res.json()).toEqual({
       statusCode: 404,
       error: 'Custom Not Found',

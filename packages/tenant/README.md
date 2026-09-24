@@ -32,8 +32,18 @@ principal. Construct services and stores per application/environment.
 
 Import `TenantModule`, `TenantGuard`, `TenantRequired`, `TenantOptional`,
 `TenantIgnored`, `CurrentTenant`, and `TENANT_CONTEXT_READER` from `/vela`.
-Register `TenantModule.forRoot({ lookup, authorize })` (or `forRootAsync`) and use
-`@UseGuards(TenantGuard)` after authentication. Required is the guard's default;
+Register `TenantModule.forRoot({ lookup, authorize })` (or `forRootAsync`). It installs
+`TenantGuard` as a global guard in the `tenant` phase: after global authentication and
+before authorization, whatever the import order. It admits a tenant on every application route,
+including routes in modules that do not import `TenantModule`, which admit through the
+installing module, and whether or not it is registered with `isGlobal`. Mark tenant-free
+routes with `@TenantIgnored()` or `@TenantOptional()`. An integration package's own
+controller (the Better Auth handler, a storage controller) opts out with
+`SkipGuardPhases(['tenant'])` from `@velajs/vela/module-kit`, which skips the
+`TenantGuard` because it declares `static readonly skippable = true`. Pass `guard: 'none'`
+(beside the factory for `forRootAsync`) to apply `@UseGuards(TenantGuard)` after a
+route-level authentication guard instead; a route-level `TenantGuard` in a module that
+cannot see `TenantModule` answers 403. Required is the guard's default;
 optional permits absence, but an explicit selector still requires authentication.
 Ignored routes do not admit a tenant. Conflicting authenticated tenant IDs fail.
 The guard publishes the canonical tenant into the trusted identity and CRUD's
@@ -98,4 +108,4 @@ application dependencies, never global framework state.
 
 ## Authentication composition
 
-Run AuthGuard or CloudflareAccessGuard before TenantGuard, then permission guards and throttling. Admission preserves authentication provider payload while publishing a new immutable tenant-bound identity. Clearing, replacement, or expiry invalidates both identity payload and the admitted request reader. For concurrent HTTP-backed resolver fields, admit the tenant once at the outer HTTP boundary and consume the request reader in each field.
+Global guards run AuthGuard or CloudflareAccessGuard (`authenticate`) before TenantGuard (`tenant`), then permission guards (`authorize`) and throttling (`feature`). Admission preserves authentication provider payload while publishing a new immutable tenant-bound identity. Clearing, replacement, or expiry invalidates both identity payload and the admitted request reader. For concurrent HTTP-backed resolver fields, admit the tenant once at the outer HTTP boundary and consume the request reader in each field.

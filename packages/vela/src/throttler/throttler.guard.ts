@@ -3,11 +3,14 @@ import { Reflector } from '../pipeline/reflector';
 import type { CanActivate, ExecutionContext } from '../pipeline/types';
 import { TooManyRequestsException } from '../errors/http-exception';
 import { RouteManager } from '../http/route.manager';
+import type { GuardPhase } from '../pipeline/guard-phase';
 import {
   getTrustedRequestIdentity,
   type TrustedRequestIdentity,
 } from '../http/trusted-request-identity';
+import { REQUEST_CONTEXT } from '../http/request-context';
 import {
+  RATE_LIMIT,
   THROTTLER_OPTIONS,
   THROTTLER_STORAGE,
   THROTTLE_METADATA,
@@ -22,6 +25,9 @@ import type {
 
 @Injectable()
 export class ThrottlerGuard implements CanActivate {
+  /** Throttling runs after authentication, so it partitions by trusted identity. */
+  static readonly phase: GuardPhase = 'feature';
+
   constructor(
     @Inject(THROTTLER_OPTIONS) private options: ThrottlerModuleOptions,
     @Inject(THROTTLER_STORAGE) private storage: ThrottlerStore,
@@ -55,7 +61,7 @@ export class ThrottlerGuard implements CanActivate {
         : 'anonymous';
 
     const className = context.getClass().name;
-    const handlerName = String(context.getHandler());
+    const handlerName = String(context.getHandlerName());
 
     const key = this.options.generateKey
       ? this.options.generateKey(tracker, { className, handlerName })
@@ -90,7 +96,7 @@ export class ThrottlerGuard implements CanActivate {
       reset: resetSeconds,
       ...(remaining !== undefined ? { remaining } : {}),
     };
-    honoContext.set('rateLimit', rateLimitInfo);
+    context.getContainer()?.resolve(REQUEST_CONTEXT).set(RATE_LIMIT, rateLimitInfo);
 
     if (record.allowed === false || count > limit) {
       honoContext.header('Retry-After', String(resetSeconds));

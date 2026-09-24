@@ -808,6 +808,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      '@velajs/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@velajs/vela':
         specifier: workspace:*
         version: link:../vela
@@ -1849,6 +1852,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 'catalog:'
         version: 5.20260920.1
+      '@velajs/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@velajs/vela':
         specifier: workspace:*
         version: link:../vela

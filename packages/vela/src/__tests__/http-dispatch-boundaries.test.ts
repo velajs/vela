@@ -289,7 +289,7 @@ describe('HTTP construction boundary', () => {
       class Routes {
         @Get()
         @UseFilters(new Filter())
-        get(@Req() _context: Context) {
+        get(@Req() _request: Request) {
           throw new Error('unreachable');
         }
       }

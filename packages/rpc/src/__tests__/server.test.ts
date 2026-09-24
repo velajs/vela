@@ -243,6 +243,112 @@ describe('Vela RPC adapter', () => {
     }
   });
 
+  it('keeps an explicit filter status and renders exception-owned responses', async () => {
+    const explicit = defineProcedure({
+      name: 'filter.explicit',
+      input: z.null(),
+      output: z.string(),
+    });
+    const owned = defineProcedure({ name: 'error.owned', input: z.null(), output: z.string() });
+    const coded = defineProcedure({ name: 'error.coded', input: z.null(), output: z.string() });
+    const malformed = defineProcedure({
+      name: 'error.malformed',
+      input: z.null(),
+      output: z.string(),
+    });
+    const internal = defineProcedure({
+      name: 'error.internal',
+      input: z.null(),
+      output: z.string(),
+    });
+    class LockedError extends Error {
+      toResponse() {
+        return { status: 409, body: { locked: 'internal lock owner' } };
+      }
+    }
+    // An owned body with an `error: { code, message }` member, as CRUD's envelope has.
+    class CodedLockError extends Error {
+      readonly wireCode: string;
+
+      constructor(wireCode: string) {
+        super('hidden');
+        this.wireCode = wireCode;
+      }
+
+      toResponse() {
+        return {
+          status: 409,
+          body: {
+            success: false,
+            error: { code: this.wireCode, message: 'Record locked', owner: 'internal lock owner' },
+          },
+        };
+      }
+    }
+    const filter: ExceptionFilter = {
+      catch() {
+        return { status: 422, body: { retry: false } };
+      },
+    };
+    @Injectable()
+    class Handler {
+      @Rpc(explicit) @UseFilters(filter) call(_: null): string {
+        throw new Error('hidden');
+      }
+      @Rpc(owned) locked(_: null): string {
+        throw new LockedError('hidden');
+      }
+      @Rpc(coded) coded(_: null): string {
+        throw new CodedLockError('locked');
+      }
+      @Rpc(malformed) malformed(_: null): string {
+        throw new CodedLockError('not a code');
+      }
+      @Rpc(internal) internal(_: null): string {
+        throw new CodedLockError('internal');
+      }
+    }
+    @Module({ providers: [Handler] })
+    class App {}
+    const app = await VelaFactory.create(App, {
+      adapters: [rpcAdapter({ authorize: 'public' })],
+      diagnostics: 'silent',
+    });
+    try {
+      await expect(client(app).call(explicit, null)).rejects.toMatchObject({
+        name: 'RpcError',
+        status: 422,
+      });
+      const response = await app.fetch(request(owned.name, null));
+      expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        ok: false,
+        error: { code: 'conflict', message: 'RPC request failed', status: 409 },
+      });
+      expect(JSON.stringify(body)).not.toContain('internal lock owner');
+      // Such a body keeps its code and message, and nothing else.
+      const codedResponse = await app.fetch(request(coded.name, null));
+      expect(codedResponse.status).toBe(409);
+      const codedBody = await codedResponse.json();
+      expect(codedBody).toMatchObject({
+        ok: false,
+        error: { code: 'locked', message: 'Record locked', status: 409 },
+      });
+      expect(JSON.stringify(codedBody)).not.toContain('internal lock owner');
+      // A malformed code becomes the status's code; the message stays.
+      expect(await (await app.fetch(request(malformed.name, null))).json()).toMatchObject({
+        error: { code: 'conflict', message: 'Record locked', status: 409 },
+      });
+      // An `internal` code always carries the generic message.
+      expect(await (await app.fetch(request(internal.name, null))).json()).toMatchObject({
+        error: { code: 'internal', message: 'Internal Server Error', status: 409 },
+      });
+    } finally {
+      await app.dispose();
+    }
+  });
+
   it('executes transforms once, preserves #private receivers and request disposal', async () => {
     let inputs = 0;
     let outputs = 0;

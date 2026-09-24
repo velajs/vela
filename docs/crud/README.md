@@ -27,6 +27,11 @@ See [the contributor guide](../../CONTRIBUTING.md) for development checks and
 
 ## Authorization and data safety
 
+Generated routes run the global and class guard pipeline like any controller. Declare
+authorization metadata on a headless resource's generated controller with its
+`decorators` (the class) and `endpointDecorators` (each endpoint), such as
+`[RequireResource({ ... })]` or `[CedarPublic()]` under Cedar's default deny.
+
 `@Crud()` defaults to `create`, `list`, `read`, `update`, and
 `delete`. Every extended verb must appear in `only`. Tenant-scoped models require a
 non-empty server context, and header/path/query/custom tenant selectors require a

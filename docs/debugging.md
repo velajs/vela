@@ -135,6 +135,37 @@ run Vela interceptors contribute these rows. Invocation IDs are present when the
 execution context has a managed lifetime; they are correlation labels, not identity
 or authorization. Error payloads are reported separately by the transport reporter.
 
+## Trace an error response
+
+Every HTTP failure is reported once, then rendered by `renderHttpError` (see
+[security](security.md#error-responses)). A 5xx body carries only the status
+title, so read the original error where it was reported: the default reporter
+logs 5xx and unbranded errors with the failing `Controller.handler` (client 4xx
+faults are not logged), and a custom `ExceptionHandler.report` or Studio's log
+capture receives every error with its `edge` and `source`. Unmatched routes and
+request limits (a JSON 404, 413 and query-limit 400s) are not reported.
+
+The response a client saw comes from the first of these that applies:
+
+1. the first matching exception filter, closest first: handler, controller and
+   module filters, then global filters. Errors from Vela middleware and the
+   framework's own rejections (the unmatched-route 404, request limits) reach
+   only global filters; errors thrown by raw Hono middleware reach none. A
+   filter's `Response` is sent as is, an explicit `{ status, body }` sets the
+   status, and any other value is sent with the exception's status; a filter
+   returning `undefined` falls through;
+2. the application's `ExceptionHandler.render` hook;
+3. a Hono `HTTPException` below 500 built with its own `res`, which keeps that
+   response (an auth challenge with its headers);
+4. the exception's own `toResponse()`;
+5. the canonical `{ error: { code, message, details? } }` body.
+
+Reproduce a body without a request with `renderHttpError(error)`, which returns
+`{ status, body, redacted }`; `redacted: true` means the client never saw the
+error's own text. `getErrorStatus(error)` returns the status a filter result would
+take. In guards and interceptors, `context.getHandler()` is the handler method and
+`context.getHandlerName()` its name, which Studio uses to label invocations.
+
 ## Inspect ownership and dependency scope
 
 Wire `studioRuntimeAdapter` into `VelaFactory.create(AppModule, { adapters: [...] })`

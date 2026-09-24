@@ -126,6 +126,7 @@ export {
   createTrustedRequestIdentityStore,
   bindTrustedRequestContext,
   getTrustedContextRequest,
+  TRUSTED_REQUEST_IDENTITY,
 } from './http/trusted-request-identity';
 export type {
   TrustedRequestIdentity,
@@ -148,6 +149,11 @@ export type {
   PipelineRunOptions,
   ResolvedComponentMap,
 } from './pipeline/index';
+// Global guard phases: order constructed global guards, and mark an
+// integration's own routes that leave tenant admission or authorization to it
+export { orderGuardsByPhase } from './pipeline/guard-phase';
+export type { SkippableGuardPhase } from './pipeline/guard-phase';
+export { SkipGuardPhases } from './pipeline/skip-guard-phases';
 export type {
   Constructor,
   MiddlewareType,
