@@ -41,22 +41,15 @@ export async function verifyPublishedEnvironment(
   }
   void Reader;
 
-  const worker: ExportedHandler<Cloudflare.Env> = createCloudflareWorker(root);
-  void worker;
-  const app = await createCloudflareApp(root, {
-    env,
-    middleware: (native) => {
+  const worker: ExportedHandler<Cloudflare.Env> = createCloudflareWorker(root, {
+    configure(configured, native) {
       const database: D1Database = native.DB;
       void database;
-      return [
-        async (context, next) => {
-          // @ts-expect-error Hono itself cannot infer native bindings from runtime registration.
-          context.env.DB.prepare('select 1');
-          await next();
-        },
-      ];
+      configured.getHonoApp().get('/health', (context) => context.text('ok'));
     },
   });
+  void worker;
+  const app = await createCloudflareApp(root, { env });
   const fromDi = app.get(ENV);
   const kv: KVNamespace = fromDi.CACHE;
   void kv;
@@ -72,8 +65,8 @@ export async function verifyPublishedEnvironment(
     globalPrefixOptions: true,
     versioning: true,
     security: true,
-    middleware: true,
     adapters: true,
+    configure: true,
   };
   void workerOptions;
 

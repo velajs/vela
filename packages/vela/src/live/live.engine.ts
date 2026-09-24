@@ -296,8 +296,7 @@ export class LiveEngine
     if (!this.container.has(WsDispatcher)) {
       throw new Error(
         "[vela] LiveModule serves subscriptions over the '$live' WebSocket event, but no " +
-          'WsDispatcher is registered. Import WebSocketModule.forRoot() (on Cloudflare, ' +
-          'CloudflareWebSocketModule.forRoot()) alongside LiveModule.',
+          'WsDispatcher is registered. Import WebSocketModule.forRoot() alongside LiveModule.',
       );
     }
     for (const found of this.discovery.registrationsWithMeta<LiveResolverMetadata>(

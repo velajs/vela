@@ -128,6 +128,24 @@ export interface LiveDriver {
   stop?(): void | Promise<void>;
 }
 
+/**
+ * Platform wiring for `LiveModule`: a runtime adapter registers one as the
+ * global `LIVE_PLATFORM`. It supplies the defaults the module's options leave
+ * open and binds the application's driver to the platform. Without one, the
+ * module delivers locally (`localLive()`) with an in-memory cursor log.
+ */
+export interface LivePlatform {
+  /** The driver used when `LiveModule` options name none. Return a fresh instance per call. */
+  liveDriver(): LiveDriver;
+  /** The cursor log used when `LiveModule` options name none; omitted means in-memory. */
+  cursorLog?(): CursorLog | undefined;
+  /**
+   * Adopt the application's driver, configured or default, before it serves:
+   * a platform driver reads its bindings and delivery mode here.
+   */
+  bindDriver?(driver: LiveDriver): void;
+}
+
 /** One live subscription as tracked by the engine (and persisted by transports that survive eviction). */
 export interface SubscriptionRecord {
   sub: string;
@@ -156,11 +174,15 @@ export interface LiveModuleOptions {
   /**
    * Construct this application's invalidation driver. Called once per app;
    * always return a fresh instance so sinks and platform bindings cannot leak
-   * between a Worker and its Durable Objects. Defaults to `localLive`.
-   * Resolve dependencies with `LiveModule.forRootAsync` and capture them here.
+   * between a Worker and its Durable Objects. Defaults to the platform's
+   * driver (`LIVE_PLATFORM`), then `localLive()`. Resolve dependencies with
+   * `LiveModule.forRootAsync` and capture them here.
    */
   driver?: () => LiveDriver | Promise<LiveDriver>;
-  /** Construct this application's ordered log. Defaults to a fresh in-memory log. */
+  /**
+   * Construct this application's ordered log. Defaults to the platform's log
+   * (`LIVE_PLATFORM`), then a fresh in-memory log.
+   */
   log?: () => CursorLog | Promise<CursorLog>;
   /**
    * Identity capture at subscribe. Default: a shallow copy of `client.data`

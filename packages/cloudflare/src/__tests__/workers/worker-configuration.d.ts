@@ -10,6 +10,8 @@ declare namespace Cloudflare {
     TEST_ROOM: DurableObjectNamespace<import('./entry').TestRoom>;
     COUNTING_ROOM: DurableObjectNamespace<import('./entry').CountingRoom>;
     CRON_ROOM: DurableObjectNamespace<import('./entry').CronRoom>;
+    SQLITE_LIVE_ROOM: DurableObjectNamespace<import('./entry').SqliteLiveRoom>;
+    KV_LIVE_ROOM: DurableObjectNamespace<import('./entry').KvLiveRoom>;
     CACHE: KVNamespace;
     DB: D1Database;
     FILES: R2Bucket;

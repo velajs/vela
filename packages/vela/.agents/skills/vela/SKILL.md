@@ -12,7 +12,7 @@ Vela (`@velajs/vela`) provides a NestJS-style framework for **edge runtimes**, b
 
 - The **main export** `@velajs/vela` is edge-safe by contract (no `node:*`, `Buffer`, `process`, `setInterval`) — enforced in CI.
 - The root is the **application kit**: `VelaFactory`, modules and DI, controllers and route/param decorators, guards/pipes/interceptors/filters, HTTP exceptions, `ConfigModule`, `Logger` and lifecycle types. Every name has exactly one import path.
-- Feature subpaths: `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/security` (SecurityModule, CORS, signed-URL primitives, nonce store), `/logging`, `/openapi` (`@Endpoint`, OpenAPI documents), `/dispatch` (signed internal dispatch), `/http-client`, `/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/storage`, `/streaming`, `/observability`, `/schedule-node` and `/websocket-node` (Node/Bun only).
+- Feature subpaths: `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/security` (SecurityModule, CORS, signed-URL primitives, nonce store), `/logging`, `/openapi` (`OpenApiModule`, `@Endpoint`, OpenAPI documents), `/dispatch` (signed internal dispatch), `/http-client`, `/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/storage`, `/streaming`, `/observability`, `/schedule-node` and `/websocket-node` (Node/Bun only).
 - `@velajs/vela/module-kit` holds the seams for module, integration and adapter authors (`Container`, `MetadataRegistry`, `DiscoveryService`, entrypoint kinds, execution scopes, `PipelineRunner`, route contributors, `invokeScheduledJob`); `@velajs/vela/internal` holds bootstrap plumbing for first-party tooling.
 - Sibling packages: `@velajs/cloudflare` (Workers adapter: KV/D1/R2/Queues/DO), `@velajs/crud`, `@velajs/better-auth`, `@velajs/authz`, `@velajs/client` / `@velajs/react`, `@velajs/storage`, `@velajs/testing`, `@velajs/cli`, `@velajs/feature-flags`.
 
@@ -66,7 +66,7 @@ export default app;   // { fetch } handler — runs on Workers, Deno, Bun, Node
 - `VelaApplication` methods: `get(token)`, `getHonoApp()` (for `.request()` in tests), `describeRoutes()`, `mountOpenApi(opts)`, `useGlobal*(...)`, `materializeLazyModules()`, `entrypoints`, `close(signal?)`, `dispose()`.
 - Convention: examples export an `async function createXApp()` factory. The `@velajs/cli` reads a `vela.config.ts` with a `createApp()` factory — Vela itself has no `createApp` API.
 
-For Cloudflare export `createCloudflareWorker(AppModule)`; it seeds the native environment as the framework `ENV` before bootstrap and isolates applications by environment. Inject bindings with `@InjectEnv()` or `inject: [ENV]`, typed by `wrangler types` (`worker-configuration.d.ts`); never hand-write an environment `InjectionToken`. Read `references/cloudflare.md`. New projects: read `assets/project-scaffold.md`.
+For Cloudflare export `createCloudflareWorker(AppModule)`; it seeds the native environment as the framework `ENV` before bootstrap and isolates applications by environment. Its adapter also wires the core `WebSocketModule` and `LiveModule` to Durable Objects (`WS_TRANSPORT`/`LIVE_PLATFORM`), so the same `AppModule` runs on Node and Workers. Inject bindings with `@InjectEnv()` or `inject: [ENV]`, typed by `wrangler types` (`worker-configuration.d.ts`); never hand-write an environment `InjectionToken`. Read `references/cloudflare.md`. New projects: read `assets/project-scaffold.md`.
 
 ## Module System
 
@@ -155,7 +155,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/validation.md` | `defineEndpoint`/`@Endpoint` (`@velajs/vela/openapi`), `defineDto`/`ValidationPipe` (`@velajs/vela/validation`), `@Serialize`, `SerializerInterceptor` |
 | `references/serialization.md` | Async output schemas, `defineSerializer`, explicit domain projections and private state |
 | `references/rpc-and-graphql.md` | Optional method RPC and executable-schema GraphQL, wire types, owner-aware providers, and operation resources |
-| `references/openapi.md` | `@velajs/vela/openapi`: `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`, operationId-from-route-name, `app.mountOpenApi` (Swagger/Scalar/ReDoc) |
+| `references/openapi.md` | `@velajs/vela/openapi`: `OpenApiModule.forRoot({ path, info })`, `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`/`@ApiExclude`, operationId-from-route-name, `app.mountOpenApi` (Swagger/Scalar/ReDoc) |
 | `references/config.md` | `ConfigModule.forRoot`/`forFeature`, `registerAs`, `ConfigType`/`ConfigShape`, `ENV`/`VelaEnv`/`InjectEnv`, typed `ConfigService<T>` paths, parser-validated dynamic paths, `forRoot`-only caveat |
 | `references/websocket.md` | Gateways, `@SubscribeMessage`, `WsServer`/rooms, `WebSocketModule`, transports (core / websocket-node / CF DO) |
 | `references/queues.md` | `@velajs/vela/queue`: `QueueModule.forRoot`/`registerQueue`, `@InjectQueue`/`QueueClient` (`add`, `addBulk`), `@Processor`/`@Process`, inline driver, `cloudflareQueues()`, signed dispatch, `dispatchQueueJob` |

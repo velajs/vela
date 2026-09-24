@@ -1,37 +1,48 @@
 import type { ExecutionContext } from 'hono';
-import { getConnInfo } from 'hono/cloudflare-workers';
 import { VelaFactory } from '@velajs/vela';
 import type {
   GlobalPrefixOptions,
   VelaApplication,
   VelaEnv,
-  VelaMiddlewareHandler,
   VelaSecurityOptions,
   VersioningOptions,
 } from '@velajs/vela';
 import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { CloudflareApplication } from './cloudflare-application';
-import { assertCloudflareEnvironment, registerCloudflareEnvironment } from './environment';
+import { assertCloudflareEnvironment } from './environment';
+import { registerCloudflarePlatform } from './platform';
 import { reportCloudflareScheduleDiagnostics } from './schedule-diagnostics';
 import { registerScheduledEventSeed, type ScheduledEvent } from './scheduled-event';
-import { warnWorkerLocalLive } from './websocket/do-live';
-import { registerWebSocketRoutes } from './websocket/websocket-routing';
+import { reportUnservedGateways } from './websocket/binding-gateways';
+import { workerLivePlatform } from './websocket/live-driver';
+import { workerWebSocketTransport } from './websocket/worker-transport';
 import type { CloudflareRoot } from './root-module';
 
-export interface CloudflareWorkerOptions {
+export interface CloudflareAppOptions {
   globalPrefix?: string;
   /** Routes served without the global prefix (`{ exclude }`). */
   globalPrefixOptions?: GlobalPrefixOptions;
   /** URI versioning: the version segment prefix (default `'v'`). */
   versioning?: VersioningOptions;
   security?: VelaSecurityOptions;
-  /** Build request middleware from the same native environment DI receives as ENV. */
-  middleware?: (env: VelaEnv) => VelaMiddlewareHandler[];
   /** Further runtime adapters, composed after the Cloudflare adapter for each application. */
   adapters?: RuntimeAdapter[];
 }
 
-export interface CreateCloudflareAppOptions extends CloudflareWorkerOptions {
+export interface CloudflareWorkerOptions extends CloudflareAppOptions {
+  /**
+   * Finish each application's HTTP surface, such as extra Hono routes, once per
+   * environment. It runs after the application is built and before any event,
+   * including concurrent cold events, reaches it; a throw fails that
+   * construction, and the next event retries. It must be synchronous and do no
+   * I/O (a returned promise fails the construction): read bindings in
+   * providers. Request middleware belongs in modules (`configure(consumer)`),
+   * which can inject `ENV`.
+   */
+  configure?(app: CloudflareApplication, env: VelaEnv): void;
+}
+
+export interface CreateCloudflareAppOptions extends CloudflareAppOptions {
   /** Supply the platform environment inside fetch/queue/scheduled or a DO constructor. */
   env: VelaEnv;
 }
@@ -67,9 +78,13 @@ function assertQueueConsumerOwnership(entrypoints: VelaApplication['entrypoints'
 /**
  * Bind an application to one environment: seeded as the global ENV before
  * provider factories and lifecycle hooks, and asserted on every request. The
- * adapter also supplies the `InternalDispatcher` transport, so signed queue and
- * schedule dispatch re-enter this application's routes, and reports schedule
- * declarations a cron trigger cannot honor through the diagnostics policy.
+ * adapter also registers the Worker's platform wiring: `WebSocketModule`
+ * forwards each authenticated gateway upgrade to the room's Durable Object,
+ * and `LiveModule` sends invalidations there. It supplies the
+ * `InternalDispatcher` transport, so signed queue and schedule dispatch
+ * re-enter this application's routes, and reports, through the diagnostics
+ * policy, schedule declarations a cron trigger cannot honor and binding-backed
+ * gateways without `WebSocketModule`.
  */
 export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
   const { env } = options;
@@ -85,15 +100,20 @@ export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
       ({ app }) =>
       (request) =>
         Promise.resolve(app.fetch(request, env)),
-    getClientIp: (c) => getConnInfo(c).remote.address ?? null,
+    // Cloudflare attests the client address in this header. Read directly:
+    // hono/cloudflare-workers would also load its WebSocket upgrade helper.
+    getClientIp: (c) => c.req.header('cf-connecting-ip') ?? null,
     configureContainer: (container) => {
-      registerCloudflareEnvironment(container, env);
+      registerCloudflarePlatform(container, env, {
+        websocket: workerWebSocketTransport(env),
+        live: workerLivePlatform(env, container),
+      });
       registerScheduledEventSeed(container);
     },
-    onBootstrap: async ({ app, container }) => {
+    onBootstrap: ({ app, container, discovery }) => {
       assertQueueConsumerOwnership(app.entrypoints);
       reportCloudflareScheduleDiagnostics(container, app.entrypoints);
-      await warnWorkerLocalLive(container);
+      reportUnservedGateways(container, discovery);
     },
   };
 }
@@ -113,29 +133,46 @@ export async function createCloudflareApp(
     globalPrefixOptions: options.globalPrefixOptions,
     versioning: options.versioning,
     security: options.security,
-    middleware: options.middleware?.(options.env),
     adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
   });
-  const app = new CloudflareApplication(velaApp, options.env);
-  app.scanInstances(velaApp.getInstances());
-  registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes(), velaApp.getContainer());
-  return app;
+  return new CloudflareApplication(velaApp, options.env);
 }
 
 /**
  * Worker entrypoint with one bootstrap per environment identity. Concurrent cold
- * events share construction; failed construction is evicted so the next event
- * can retry. Weak keys stop this cache from retaining a replaced environment.
+ * events share construction, including `configure`; failed construction is
+ * evicted so the next event can retry. Weak keys stop this cache from
+ * retaining a replaced environment.
  */
 export function createCloudflareWorker(
   rootModule: CloudflareRoot,
   options: CloudflareWorkerOptions = {},
 ) {
+  const { configure, ...appOptions } = options;
   const applications = new WeakMap<VelaEnv, Promise<CloudflareApplication>>();
+  const build = async (env: VelaEnv): Promise<CloudflareApplication> => {
+    const app = await createCloudflareApp(rootModule, { ...appOptions, env });
+    if (!configure) return app;
+    try {
+      const result: unknown = configure(app, env);
+      if (result instanceof Promise) {
+        // Observe the rejected work; the construction fails either way.
+        result.catch(() => {});
+        throw new TypeError(
+          'createCloudflareWorker configure must finish synchronously: it runs before any ' +
+            'event reaches the application, so read bindings and perform I/O in providers.',
+        );
+      }
+    } catch (error) {
+      await app.close().catch(() => {});
+      throw error;
+    }
+    return app;
+  };
   const application = (env: VelaEnv): Promise<CloudflareApplication> => {
     const existing = applications.get(env);
     if (existing) return existing;
-    const pending = createCloudflareApp(rootModule, { ...options, env });
+    const pending = build(env);
     applications.set(env, pending);
     void pending.catch(() => {
       if (applications.get(env) === pending) applications.delete(env);

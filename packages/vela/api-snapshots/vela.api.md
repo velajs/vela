@@ -117,11 +117,10 @@ Type conditions: `types`
 Declaration entry: `./dist/index.d.ts`
 
 ```ts
-import { $ as Provider, G as InjectableOptions, K as InjectionToken, M as InjectEnv, N as VelaEnv, R as DependencyToken, St as VelaMiddlewareHandler, V as ForwardRef, a as ExecutionContext, at as Type, bt as VelaHono, c as HttpExecutionContext, d as PipeTransform, et as ProviderDefinition, ft as defineProvider, i as ExceptionFilter, it as Token, j as ENV, l as NestInterceptor, mt as forwardRef, n as CallHandler, o as HandlerFunction, ot as TypedProviderLiteral, r as CanActivate, s as HttpArgumentsHost, st as TypedToken, t as ArgumentMetadata, tt as ProviderLiteral, u as NestMiddleware, vt as Scope, xt as VelaHonoEnv, yt as VelaContext } from "<internal:types-http-hono.types.d.ts>";
-import { _ as ErrorMatcher, b as matchesAny, i as RequestContextKeyOptions, n as RequestContext, p as VelaApplication, r as RequestContextKey, t as REQUEST_CONTEXT, v as ErrorReportContext, y as ExceptionHandler } from "<internal:request-context.d.ts>";
+import { At as VelaHono, H as InjectEnv, J as DependencyToken, Mt as VelaMiddlewareHandler, Ot as Scope, St as defineProvider, U as VelaEnv, V as ENV, Z as ForwardRef, _t as TypedToken, a as ExecutionContext, c as HttpExecutionContext, d as PipeTransform, dt as ProviderLiteral, gt as TypedProviderLiteral, ht as Type, i as ExceptionFilter, jt as VelaHonoEnv, kt as VelaContext, l as NestInterceptor, lt as Provider, mt as Token, n as CallHandler, nt as InjectionToken, o as HandlerFunction, r as CanActivate, s as HttpArgumentsHost, t as ArgumentMetadata, tt as InjectableOptions, u as NestMiddleware, ut as ProviderDefinition, wt as forwardRef } from "<internal:types-http-hono.types.d.ts>";
+import { F as matchesAny, M as ErrorMatcher, N as ErrorReportContext, P as ExceptionHandler, i as RequestContextKeyOptions, n as RequestContext, p as VelaApplication, r as RequestContextKey, t as REQUEST_CONTEXT } from "<internal:request-context.d.ts>";
 import { _ as VERSION_NEUTRAL, f as ModuleOptions, g as RouteVersion, i as DynamicModule, t as AsyncModuleOptions, u as ModuleImport, v as VersionValue } from "<internal:types-http-version.d.ts>";
-import { i as MiddlewareConsumer, n as RoutePathOptions, o as NestModule, r as VersioningOptions, s as RouteInfo, t as GlobalPrefixOptions } from "<internal:route-paths.d.ts>";
-import { c as VelaBodyLimitOverride, d as VelaSecurityOptions, l as VelaBodySecurityOptions, u as VelaQuerySecurityOptions } from "<internal:route.manager.d.ts>";
+import { S as RouteInfo, _ as RoutePathOptions, c as VelaBodyLimitOverride, d as VelaSecurityOptions, g as GlobalPrefixOptions, l as VelaBodySecurityOptions, u as VelaQuerySecurityOptions, v as VersioningOptions, x as NestModule, y as MiddlewareConsumer } from "<internal:route.manager.d.ts>";
 import { c as RouteParams, l as VelaRouteMap, s as RouteName } from "<internal:types-http-route-map.d.ts>";
 import { $ as UsePipes, A as ParseFloatPipe, At as defineModule, B as APP_PIPE, C as ErrorsModule, Ct as ConfigurableModuleBuilder, D as ParseArrayPipeOptions, Dt as GlobalComponentSlot, E as ParseArrayPipe, Et as DefineModuleSpec, F as APP_EXCEPTION_HANDLER, Ft as ConfigurableModuleExtrasTransform, G as ReflectorContext, Gt as ContextProvider, H as CreateDecoratorOptions, I as APP_FILTER, It as ConfigurableModuleHost, J as Catch, Jt as LoggerLevelName, K as ReflectorTarget, Kt as LogLevel, L as APP_GUARD, Lt as ConfigurableModuleOptionsFactory, M as ParseUUIDPipe, Mt as ConfigurableModuleBuilderOptions, N as ParseUUIDPipeOptions, Nt as ConfigurableModuleClassType, O as ParseBoolPipe, Ot as ModuleContributions, P as RequiredPipe, Pt as ConfigurableModuleExtras, Q as UseMiddleware, R as APP_INTERCEPTOR, T as DefaultValuePipe, U as ReflectableDecorator, Ut as ConfigService, V as ERROR_CATALOG, W as Reflector, Wt as ConfigModule, X as UseGuards, Xt as Writer, Y as UseFilters, Yt as LoggerService, Z as UseInterceptors, _ as RenderHttpErrorOptions, _n as VelaFactory, a as VelaError, b as renderHttpError, c as defineErrorCatalog, cn as SseResult, d as SerializerDefinition, dt as ExecutionLifetime, en as URL_SIGNING_SECRET, f as defineSerializer, fn as mixin, g as Serialize, gn as VelaCreateOptions, h as SerializationDescriptor, hn as Optional, i as ErrorCatalogEntry, j as ParseIntPipe, jt as ConfigurableModuleAsyncOptions, k as ParseEnumPipe, kt as ModuleSetupContext, l as isVelaError, ln as GuardPhase, m as SERIALIZE_METADATA, mn as Injectable, n as Catalog, nn as SignedUrlGuard, o as VelaErrorOptions, on as MessageEvent, p as SerializerInterceptor, pn as Inject, q as SetMetadata, qt as Logger, r as ErrorBodyResult, s as composeCatalogs, sn as Sse, t as CORE_CATALOG, tn as SignedUrl, u as toErrorBody, ut as EXECUTION_LIFETIME, v as RenderedHttpError, w as ErrorsModuleOptions, y as getErrorStatus, z as APP_MIDDLEWARE, zt as ModuleRegistrationOptions } from "<internal:index-factory.d.ts>";
 import { n as ModuleRefContext, r as ModuleRefLookupOptions, t as ModuleRef } from "<internal:index-container-module-ref.d.ts>";
@@ -141,7 +140,7 @@ Declaration entry: `./dist/cache/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { K as InjectionToken, a as ExecutionContext, l as NestInterceptor, n as CallHandler } from "<internal:types-http-hono.types.d.ts>";
+import { a as ExecutionContext, l as NestInterceptor, n as CallHandler, nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { Nt as ConfigurableModuleClassType, W as Reflector } from "<internal:index-factory.d.ts>";
 
 type Awaitable<T> = T | Promise<T>;
@@ -353,7 +352,7 @@ Declaration entry: `./dist/dispatch/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { N as VelaEnv, a as ExecutionContext, r as CanActivate } from "<internal:types-http-hono.types.d.ts>";
+import { U as VelaEnv, a as ExecutionContext, r as CanActivate } from "<internal:types-http-hono.types.d.ts>";
 import { a as NonceStore, i as InvocationTransport, n as InvocationRouteTarget, o as RunInit, r as InvocationTarget, t as InvocationPathTarget } from "<internal:types-http-route-map.d.ts>";
 import { D as applyDecorators } from "<internal:decorators.d.ts>";
 import { t as InternalDispatcher } from "<internal:internal-dispatcher.d.ts>";
@@ -408,7 +407,7 @@ Declaration entry: `./dist/event-emitter/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { P as Container } from "<internal:types-http-hono.types.d.ts>";
+import { W as Container } from "<internal:types-http-hono.types.d.ts>";
 import { o as DiscoveryService } from "<internal:discovery.service.d.ts>";
 import { n as SchemaOutput, r as ValidationSchema, t as SchemaInput } from "<internal:parse-schema.d.ts>";
 import { n as OnApplicationBootstrap } from "<internal:index-lifecycle-index.d.ts>";
@@ -554,7 +553,7 @@ Declaration entry: `./dist/fetch/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { K as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
+import { nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { Nt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
 import "<internal:index-container-module-ref.d.ts>";
 import { n as SchemaOutput, r as ValidationSchema } from "<internal:parse-schema.d.ts>";
@@ -683,7 +682,7 @@ Declaration entry: `./dist/i18n/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { K as InjectionToken, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
+import { nt as InjectionToken, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
 import { n as RequestContext, r as RequestContextKey } from "<internal:request-context.d.ts>";
 import { i as DynamicModule } from "<internal:types-http-version.d.ts>";
 import { Nt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
@@ -792,7 +791,7 @@ Declaration entry: `./dist/internal.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { K as InjectionToken, L as ContainerOptions, P as Container, X as ModuleScope, nt as ProviderSnapshot, rt as ROOT_MODULE_ID, z as Diagnostics } from "<internal:types-http-hono.types.d.ts>";
+import { W as Container, Y as Diagnostics, ft as ProviderSnapshot, nt as InjectionToken, ot as ModuleScope, pt as ROOT_MODULE_ID, q as ContainerOptions } from "<internal:types-http-hono.types.d.ts>";
 import { a as createRequestContext, c as applyRuntimeAdapters, d as bootstrap, f as ModuleLoader, l as BootstrapOptions, p as VelaApplication, s as RuntimeAdapter, u as BootstrapResult } from "<internal:request-context.d.ts>";
 import { i as RouteManagerOptions, r as RouteManager } from "<internal:route.manager.d.ts>";
 import { c as ConfigStore, o as getModuleMetadata, s as isModule, t as ComponentManager } from "<internal:component.manager.d.ts>";
@@ -815,8 +814,8 @@ Type conditions: `types`
 Declaration entry: `./dist/live/index.d.ts`
 
 ```ts
-import { $ as LiveQueryMetadata, A as LiveEngine, B as getLiveQueries, C as LIVE_RESOLVER_METADATA, D as localLive, E as LiveInvalidation, F as PresenceResolver, G as LiveDeliveryAuthorizationContext, H as CommitStamp, I as PresenceService, J as LiveIdentity, K as LiveDriver, L as presenceTag, M as readPersistedLiveSubscriptions, N as PRESENCE_ROSTER_QUERY, O as stampCommitHeaders, P as PresenceMember, Q as LiveQueryContext, R as LiveQuery, S as LIVE_MODULE_OPTIONS, T as InMemoryCursorLog, U as CursorLog, V as LiveModule, W as InvalidationCommand, X as LiveModuleOptions, Y as LiveInvalidationSink, Z as LivePresenceOptions, _ as isClientLiveFrame, a as LIVE_ERROR_CODES, b as LIVE_CURSOR_LOG, c as LiveFrame, d as ServerLiveFrame, et as LiveQueryOptions, f as applyListDelta, g as encodeLiveFrame, h as encodeLiveEnvelope, i as DEFAULT_KEY_FIELD, it as SubscriptionRecord, j as LiveInspection, k as LIVE_SUBS_DATA_KEY, l as LiveQueryDefinition, m as encodeListDelta, n as COMMIT_EPOCH_HEADER, nt as PreparedLiveQuery, o as LIVE_EVENT, p as defineLiveQuery, q as LiveEntrypointMeta, r as ClientLiveFrame, rt as ResumeVerdict, s as LIVE_PROTOCOL, t as COMMIT_CURSOR_HEADER, tt as LiveResolverMetadata, u as RowOp, v as isServerLiveFrame, w as encodeSubscriptionUpdate, x as LIVE_DRIVER, y as readLiveEnvelope, z as LiveResolver } from "<internal:index-live-live.types.d.ts>";
-export { COMMIT_CURSOR_HEADER, COMMIT_EPOCH_HEADER, type ClientLiveFrame, type CommitStamp, type CursorLog, DEFAULT_KEY_FIELD, InMemoryCursorLog, type InvalidationCommand, LIVE_CURSOR_LOG, LIVE_DRIVER, LIVE_ERROR_CODES, LIVE_EVENT, LIVE_MODULE_OPTIONS, LIVE_PROTOCOL, LIVE_RESOLVER_METADATA, LIVE_SUBS_DATA_KEY, type LiveDeliveryAuthorizationContext, type LiveDriver, LiveEngine, type LiveEntrypointMeta, type LiveFrame, type LiveIdentity, type LiveInspection, LiveInvalidation, type LiveInvalidationSink, LiveModule, type LiveModuleOptions, type LivePresenceOptions, LiveQuery, type LiveQueryContext, type LiveQueryDefinition, type LiveQueryMetadata, type LiveQueryOptions, LiveResolver, type LiveResolverMetadata, PRESENCE_ROSTER_QUERY, type PreparedLiveQuery, type PresenceMember, PresenceResolver, PresenceService, type ResumeVerdict, type RowOp, type ServerLiveFrame, type SubscriptionRecord, applyListDelta, defineLiveQuery, encodeListDelta, encodeLiveEnvelope, encodeLiveFrame, encodeSubscriptionUpdate, getLiveQueries, isClientLiveFrame, isServerLiveFrame, localLive, presenceTag, readLiveEnvelope, readPersistedLiveSubscriptions, stampCommitHeaders };
+import { $ as LivePresenceOptions, A as LIVE_SUBS_DATA_KEY, B as LiveResolver, C as LIVE_PLATFORM, D as LiveInvalidation, E as InMemoryCursorLog, F as PresenceMember, G as InvalidationCommand, H as LiveModule, I as PresenceResolver, J as LiveEntrypointMeta, K as LiveDeliveryAuthorizationContext, L as PresenceService, M as LiveInspection, N as readPersistedLiveSubscriptions, O as localLive, P as PRESENCE_ROSTER_QUERY, Q as LivePlatform, R as presenceTag, S as LIVE_MODULE_OPTIONS, T as encodeSubscriptionUpdate, U as CommitStamp, V as getLiveQueries, W as CursorLog, X as LiveInvalidationSink, Y as LiveIdentity, Z as LiveModuleOptions, _ as isClientLiveFrame, a as LIVE_ERROR_CODES, at as ResumeVerdict, b as LIVE_CURSOR_LOG, c as LiveFrame, d as ServerLiveFrame, et as LiveQueryContext, f as applyListDelta, g as encodeLiveFrame, h as encodeLiveEnvelope, i as DEFAULT_KEY_FIELD, it as PreparedLiveQuery, j as LiveEngine, k as stampCommitHeaders, l as LiveQueryDefinition, m as encodeListDelta, n as COMMIT_EPOCH_HEADER, nt as LiveQueryOptions, o as LIVE_EVENT, ot as SubscriptionRecord, p as defineLiveQuery, q as LiveDriver, r as ClientLiveFrame, rt as LiveResolverMetadata, s as LIVE_PROTOCOL, t as COMMIT_CURSOR_HEADER, tt as LiveQueryMetadata, u as RowOp, v as isServerLiveFrame, w as LIVE_RESOLVER_METADATA, x as LIVE_DRIVER, y as readLiveEnvelope, z as LiveQuery } from "<internal:index-live-live.types.d.ts>";
+export { COMMIT_CURSOR_HEADER, COMMIT_EPOCH_HEADER, type ClientLiveFrame, type CommitStamp, type CursorLog, DEFAULT_KEY_FIELD, InMemoryCursorLog, type InvalidationCommand, LIVE_CURSOR_LOG, LIVE_DRIVER, LIVE_ERROR_CODES, LIVE_EVENT, LIVE_MODULE_OPTIONS, LIVE_PLATFORM, LIVE_PROTOCOL, LIVE_RESOLVER_METADATA, LIVE_SUBS_DATA_KEY, type LiveDeliveryAuthorizationContext, type LiveDriver, LiveEngine, type LiveEntrypointMeta, type LiveFrame, type LiveIdentity, type LiveInspection, LiveInvalidation, type LiveInvalidationSink, LiveModule, type LiveModuleOptions, type LivePlatform, type LivePresenceOptions, LiveQuery, type LiveQueryContext, type LiveQueryDefinition, type LiveQueryMetadata, type LiveQueryOptions, LiveResolver, type LiveResolverMetadata, PRESENCE_ROSTER_QUERY, type PreparedLiveQuery, type PresenceMember, PresenceResolver, PresenceService, type ResumeVerdict, type RowOp, type ServerLiveFrame, type SubscriptionRecord, applyListDelta, defineLiveQuery, encodeListDelta, encodeLiveEnvelope, encodeLiveFrame, encodeSubscriptionUpdate, getLiveQueries, isClientLiveFrame, isServerLiveFrame, localLive, presenceTag, readLiveEnvelope, readPersistedLiveSubscriptions, stampCommitHeaders };
 ```
 
 ## `./logging`
@@ -827,7 +826,7 @@ Declaration entry: `./dist/logging/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { K as InjectionToken, P as Container } from "<internal:types-http-hono.types.d.ts>";
+import { W as Container, nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { Jt as LoggerLevelName, Kt as LogLevel, Nt as ConfigurableModuleClassType, Yt as LoggerService } from "<internal:index-factory.d.ts>";
 
 type LogValue = null | boolean | number | string | readonly LogValue[] | {
@@ -945,14 +944,12 @@ Declaration entry: `./dist/module-kit.d.ts`
 
 ```ts
 import { n as getMetadata, t as defineMetadata } from "<internal:metadata.d.ts>";
-import { B as FactoryInject, F as CheckedProviders, H as InferToken, I as Constructor, J as MissingInjectionMetadataReason, K as InjectionToken, P as Container, Q as MultipleProvidersFoundError, U as InferTokens, Y as ModuleDescription, Z as ModuleVisibilityError, _t as ParamType, a as ExecutionContext, at as Type, bt as VelaHono, c as HttpExecutionContext, ct as UnresolvedDependency, dt as assertFactoryInject, gt as METADATA_KEYS, ht as HttpMethod, it as Token, lt as UnresolvedDependencyError, pt as describeToken, q as MissingInjectionMetadataError, r as CanActivate, ut as UnresolvedDependencyReason } from "<internal:types-http-hono.types.d.ts>";
-import { g as registerEntrypointKind, h as getEntrypointKinds, m as EntrypointRegistry, o as AdapterContext, r as RequestContextKey, s as RuntimeAdapter } from "<internal:request-context.d.ts>";
+import { $ as InferTokens, At as VelaHono, Ct as describeToken, Dt as ParamType, Et as METADATA_KEYS, G as CheckedProviders, K as Constructor, Q as InferToken, Tt as HttpMethod, W as Container, X as FactoryInject, a as ExecutionContext, at as ModuleDescription, bt as UnresolvedDependencyReason, c as HttpExecutionContext, ct as MultipleProvidersFoundError, ht as Type, it as MissingInjectionMetadataReason, mt as Token, nt as InjectionToken, r as CanActivate, rt as MissingInjectionMetadataError, st as ModuleVisibilityError, vt as UnresolvedDependency, xt as assertFactoryInject, yt as UnresolvedDependencyError } from "<internal:types-http-hono.types.d.ts>";
+import { A as getEntrypointKinds, T as OpenApiPathItem, j as registerEntrypointKind, k as EntrypointRegistry, o as AdapterContext, r as RequestContextKey, s as RuntimeAdapter } from "<internal:request-context.d.ts>";
 import { a as FilterType, c as InterceptorType, i as DynamicModule, l as MiddlewareType, m as PipeType, o as GuardType } from "<internal:types-http-version.d.ts>";
 import { a as DiscoveryFilter, c as DiscoverableDecorator, i as DiscoveredRegistration, l as createDiscoverableDecorator, n as DiscoveredMethodMeta, o as DiscoveryService, r as DiscoveredRegisteredMethodMeta, s as CreateDiscoverableDecoratorOptions, t as DiscoveredClass } from "<internal:discovery.service.d.ts>";
 import { i as contributesEntrypoints, n as Entrypoint, r as EntrypointKind, t as ContributesEntrypoints } from "<internal:entrypoint.types.d.ts>";
-import { n as RoutePathOptions } from "<internal:route-paths.d.ts>";
-import { a as DEFAULT_QUERY_BYTES_LIMIT, n as RouteDescription, o as DEFAULT_QUERY_DEPTH_LIMIT, r as RouteManager, s as DEFAULT_QUERY_PARAMETER_LIMIT, t as DEFAULT_BODY_LIMIT_BYTES } from "<internal:route.manager.d.ts>";
-import { f as OpenApiPathItem } from "<internal:types-openapi-types.d.ts>";
+import { _ as RoutePathOptions, a as DEFAULT_QUERY_BYTES_LIMIT, n as RouteDescription, o as DEFAULT_QUERY_DEPTH_LIMIT, r as RouteManager, s as DEFAULT_QUERY_PARAMETER_LIMIT, t as DEFAULT_BODY_LIMIT_BYTES } from "<internal:route.manager.d.ts>";
 import { $t as getCurrentRequestContext, Bt as ModuleEntryList, Ht as ROOT_MODULE, Qt as getCurrentContainer, Rt as DefineConfigurableModuleSpec, S as resolveErrorReporter, St as sideEffectModule, Tt as moduleKey, U as ReflectableDecorator, Vt as UndefinedModuleError, Zt as enableAmbientContainer, _t as runInEntrypointScope, an as createLazyParamDecorator, at as resolvePipelineComponents, bt as moduleToken, ct as PipelineRunOptions, dn as orderGuardsByPhase, et as getCatchTypes, ft as ExecutionScope, gt as getExecutionLifetime, ht as finishExecutionScope, in as readJsonBody, it as getScopedComponents, lt as PipelineRunner, mt as createExecutionScope, nt as PipelineComponentEntry, ot as resolveScopedComponents, pt as ExecutionScopeOptions, rn as ReadJsonBodyOptions, rt as ResolvedComponentMap, st as resolveScopedComponentsAsync, tt as shouldFilterCatch, un as SkippableGuardPhase, vt as LazyProviderSpec, wt as defineConfigurableModule, x as ErrorReporter, xt as provideGlobal, yt as lazyProvider } from "<internal:index-factory.d.ts>";
 import "<internal:index-container-module-ref.d.ts>";
 import { a as defineDynamicModule } from "<internal:component.manager.d.ts>";
@@ -1119,7 +1116,7 @@ Type conditions: `types`
 Declaration entry: `./dist/observability/index.d.ts`
 
 ```ts
-import { K as InjectionToken, P as Container } from "<internal:types-http-hono.types.d.ts>";
+import { W as Container, nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { n as RequestContext, s as RuntimeAdapter } from "<internal:request-context.d.ts>";
 import { h as HttpRequestObserver, m as HttpRequestObservation, p as HttpRequestCompletion } from "<internal:route.manager.d.ts>";
 
@@ -1272,13 +1269,28 @@ Declaration entry: `./dist/openapi/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { at as Type } from "<internal:types-http-hono.types.d.ts>";
+import { ht as Type } from "<internal:types-http-hono.types.d.ts>";
+import { C as OpenApiOperation, D as OpenApiResponse, E as OpenApiRequestBody, O as OpenApiUi, S as OpenApiInfo, T as OpenApiPathItem, _ as CreateOpenApiDocumentOptions, b as MountOpenApiOptions, g as ApiResponseOptions, h as ApiResponseEntry, m as ApiDocMetadata, v as HttpVerb, w as OpenApiParameter, x as OpenApiDocument, y as JsonSchema } from "<internal:request-context.d.ts>";
 import { i as DynamicModule } from "<internal:types-http-version.d.ts>";
-import { a as HttpVerb, c as OpenApiDocument, d as OpenApiParameter, f as OpenApiPathItem, h as OpenApiUi, i as CreateOpenApiDocumentOptions, l as OpenApiInfo, m as OpenApiResponse, n as ApiResponseEntry, o as JsonSchema, p as OpenApiRequestBody, r as ApiResponseOptions, s as MountOpenApiOptions, t as ApiDocMetadata, u as OpenApiOperation } from "<internal:types-openapi-types.d.ts>";
+import { Nt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
 import { g as StandardSchemaV1, n as SchemaOutput, r as ValidationSchema, t as SchemaInput } from "<internal:parse-schema.d.ts>";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 
 export declare function createOpenApiDocument(rootModule: Type | DynamicModule, options?: CreateOpenApiDocumentOptions): OpenApiDocument;
+
+interface OpenApiModuleOptions extends Omit<CreateOpenApiDocumentOptions, 'globalPrefix'> {
+
+  path?: string;
+}
+
+declare const ConfigurableModuleClass: ConfigurableModuleClassType<OpenApiModuleOptions, "forRoot", "create", {
+  isGlobal?: boolean;
+}>;
+type OpenApiModuleRegistration = Parameters<(typeof ConfigurableModuleClass)['forRoot']>[0];
+export declare class OpenApiModule extends ConfigurableModuleClass {
+
+  static forRoot(options?: OpenApiModuleRegistration): DynamicModule;
+}
 
 type EndpointResponseFormat = 'binary' | 'stream' | 'response';
 type EndpointBinaryBody = Blob | ArrayBuffer | Uint8Array<ArrayBuffer>;
@@ -1395,6 +1407,10 @@ export declare function Endpoint<Input extends ValidationSchema, Output extends 
   readonly output: Output;
 }): <Handler extends (input: NoInfer<SchemaOutput<Input>>) => NoInfer<EndpointHandlerOutput<Output>> | Promise<NoInfer<EndpointHandlerOutput<Output>>>>(target: object, key: string | symbol, descriptor: TypedPropertyDescriptor<Handler>) => void;
 
+export declare function ApiExclude(): MethodDecorator & ClassDecorator;
+
+export declare function isApiExcluded(target: object, propertyKey?: string | symbol): boolean;
+
 export declare function ApiDoc(metadata: ApiDocMetadata): MethodDecorator & ClassDecorator;
 
 export declare function ApiTags(...tags: string[]): MethodDecorator & ClassDecorator;
@@ -1403,7 +1419,7 @@ export declare function ApiResponse(status: number | string, options: ApiRespons
 
 export declare function zodToJsonSchema(schema: unknown, direction?: 'input' | 'output'): JsonSchema;
 
-export type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions, CreateOpenApiDocumentOptions, EndpointBinaryBody, EndpointBodyContract, EndpointBodyOptions, EndpointDefinition, EndpointFormField, EndpointFormLimits, EndpointHandlerOutput, EndpointRequest, EndpointResponseFormat, EndpointResponseOutput, EndpointSchema, HttpVerb, JsonSchema, MountOpenApiOptions, OpenApiDocument, OpenApiInfo, OpenApiOperation, OpenApiParameter, OpenApiPathItem, OpenApiRequestBody, OpenApiResponse, OpenApiUi };
+export type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions, CreateOpenApiDocumentOptions, EndpointBinaryBody, EndpointBodyContract, EndpointBodyOptions, EndpointDefinition, EndpointFormField, EndpointFormLimits, EndpointHandlerOutput, EndpointRequest, EndpointResponseFormat, EndpointResponseOutput, EndpointSchema, HttpVerb, JsonSchema, MountOpenApiOptions, OpenApiDocument, OpenApiInfo, OpenApiModuleOptions, OpenApiOperation, OpenApiParameter, OpenApiPathItem, OpenApiRequestBody, OpenApiResponse, OpenApiUi };
 ```
 
 ## `./queue`
@@ -1414,8 +1430,8 @@ Declaration entry: `./dist/queue/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { K as InjectionToken, N as VelaEnv, P as Container, it as Token } from "<internal:types-http-hono.types.d.ts>";
-import { m as EntrypointRegistry } from "<internal:request-context.d.ts>";
+import { U as VelaEnv, W as Container, mt as Token, nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
+import { k as EntrypointRegistry } from "<internal:request-context.d.ts>";
 import { i as DynamicModule } from "<internal:types-http-version.d.ts>";
 import { o as DiscoveryService } from "<internal:discovery.service.d.ts>";
 import { r as InvocationTarget } from "<internal:types-http-route-map.d.ts>";
@@ -1754,7 +1770,7 @@ Declaration entry: `./dist/schedule-node/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { P as Container } from "<internal:types-http-hono.types.d.ts>";
+import { W as Container } from "<internal:types-http-hono.types.d.ts>";
 import { i as DynamicModule } from "<internal:types-http-version.d.ts>";
 import "<internal:types-unknown.d.ts>";
 import { i as OnModuleDestroy, n as OnApplicationBootstrap, t as BeforeApplicationShutdown } from "<internal:index-lifecycle-index.d.ts>";
@@ -1784,7 +1800,7 @@ Declaration entry: `./dist/security/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { K as InjectionToken, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
+import { nt as InjectionToken, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
 import { i as DynamicModule } from "<internal:types-http-version.d.ts>";
 import { a as NonceStore } from "<internal:types-http-route-map.d.ts>";
 import { Nt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
@@ -1905,7 +1921,7 @@ Declaration entry: `./dist/seeder/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { P as Container, at as Type } from "<internal:types-http-hono.types.d.ts>";
+import { W as Container, ht as Type } from "<internal:types-http-hono.types.d.ts>";
 import { p as VelaApplication } from "<internal:request-context.d.ts>";
 import { Nt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
 import { n as OnApplicationBootstrap } from "<internal:index-lifecycle-index.d.ts>";
@@ -2034,7 +2050,7 @@ Declaration entry: `./dist/throttler/index.d.ts`
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { K as InjectionToken, a as ExecutionContext, r as CanActivate } from "<internal:types-http-hono.types.d.ts>";
+import { a as ExecutionContext, nt as InjectionToken, r as CanActivate } from "<internal:types-http-hono.types.d.ts>";
 import { r as RequestContextKey } from "<internal:request-context.d.ts>";
 import { r as RouteManager } from "<internal:route.manager.d.ts>";
 import { Nt as ConfigurableModuleClassType, W as Reflector, ln as GuardPhase } from "<internal:index-factory.d.ts>";
@@ -2130,9 +2146,9 @@ Type conditions: `types`
 Declaration entry: `./dist/websocket/index.d.ts`
 
 ```ts
-import { A as WsServer, C as WebSocketPrincipal, D as WsExecutionContext, E as WsClient, O as WsMessage, S as WebSocketGatewayOptions, T as WebSocketUpgradeIdentity, _ as OnGatewayInit, b as SubscribeMessageMetadata, f as WsArgumentsHost, g as OnGatewayDisconnect, h as OnGatewayConnection, k as WsResponse, m as BroadcastOperator, p as BroadcastCommand, v as ReservedWsEventHandler, w as WebSocketUpgradeAuthenticationContext, x as UpgradeAuthenticator, y as ReservedWsEventMetadata } from "<internal:types-http-hono.types.d.ts>";
-import { $ as MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES, A as WebSocketTicketPrincipalType, B as createWebSocketUpgradeGate, C as VerifyWebSocketTicketOptions, D as WebSocketTicketClaim, E as WEBSOCKET_TICKET_PURPOSE, F as DEFAULT_WS_MAX_JOINED_ROOMS, G as resolveMaxFrameBytes, H as normalizeWebSocketUpgradeIdentity, I as DEFAULT_WS_MAX_ROOM_ID_BYTES, J as WsEntrypointMeta, K as webSocketFrameFits, L as WebSocketUpgradeGate, M as verifyAndConsumeWebSocketTicket, N as AuthenticatedWebSocketUpgrade, O as WebSocketTicketNonceStore, P as DEFAULT_WS_MAX_FRAME_BYTES, Q as InMemoryRoomRegistry, R as WebSocketUpgradeGateway, S as IssueWebSocketTicketOptions, T as WEBSOCKET_TICKET_MAX_TTL_MS, U as resolveGatewayRoomId, V as isWebSocketOriginAllowed, W as resolveGatewayRoomParam, X as WebSocketModule, Y as readWsEntrypointMeta, Z as WebSocketModuleOptions, _ as WsException, a as WsMessageQueue, at as webSocketSyncEnvelopeFits, b as BroadcastOperatorImpl, c as WS_GATEWAY_METADATA, ct as ReservedWsEvent, d as WS_ROOM_REGISTRY, dt as WebSocketServer, et as RoomRegistry, f as WS_SERVER, g as resolveWsArgs, h as WsParamType, i as readWebSocketEnvelope, it as local, j as issueWebSocketTicket, k as WebSocketTicketPrincipal, l as WS_MODULE_OPTIONS, lt as SubscribeMessage, m as WS_SYNC_DRIVER, n as WebSocketSendPolicy, nt as assertBroadcastCommandFits, o as trySendWebSocketFrame, ot as ConnectedSocket, p as WS_SUBSCRIBE_METADATA, q as WsDispatcher, r as WebSocketSendResult, rt as broadcastCommandFits, s as RESERVED_WS_EVENT_PREFIX, st as MessageBody, t as WebSocketSendGate, tt as SyncDriver, u as WS_RESERVED_METADATA, ut as WebSocketGateway, v as toErrorFrame, w as WEBSOCKET_TICKET_AUDIENCE, x as WsServerImpl, y as buildWsExecutionContext, z as assertWebSocketRoomId } from "<internal:index-websocket-websocket.decorators.d.ts>";
-export { type AuthenticatedWebSocketUpgrade, type BroadcastCommand, type BroadcastOperator, BroadcastOperatorImpl, ConnectedSocket, DEFAULT_WS_MAX_FRAME_BYTES, DEFAULT_WS_MAX_JOINED_ROOMS, DEFAULT_WS_MAX_ROOM_ID_BYTES, InMemoryRoomRegistry, type IssueWebSocketTicketOptions, MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES, MessageBody, type OnGatewayConnection, type OnGatewayDisconnect, type OnGatewayInit, RESERVED_WS_EVENT_PREFIX, ReservedWsEvent, type ReservedWsEventHandler, type ReservedWsEventMetadata, type RoomRegistry, SubscribeMessage, type SubscribeMessageMetadata, type SyncDriver, type UpgradeAuthenticator, type VerifyWebSocketTicketOptions, WEBSOCKET_TICKET_AUDIENCE, WEBSOCKET_TICKET_MAX_TTL_MS, WEBSOCKET_TICKET_PURPOSE, WS_GATEWAY_METADATA, WS_MODULE_OPTIONS, WS_RESERVED_METADATA, WS_ROOM_REGISTRY, WS_SERVER, WS_SUBSCRIBE_METADATA, WS_SYNC_DRIVER, WebSocketGateway, type WebSocketGatewayOptions, WebSocketModule, type WebSocketModuleOptions, type WebSocketPrincipal, WebSocketSendGate, type WebSocketSendPolicy, type WebSocketSendResult, WebSocketServer, type WebSocketTicketClaim, type WebSocketTicketNonceStore, type WebSocketTicketPrincipal, type WebSocketTicketPrincipalType, type WebSocketUpgradeAuthenticationContext, type WebSocketUpgradeGate, type WebSocketUpgradeGateway, type WebSocketUpgradeIdentity, type WsArgumentsHost, type WsClient, WsDispatcher, type WsEntrypointMeta, WsException, type WsExecutionContext, type WsMessage, WsMessageQueue, WsParamType, type WsResponse, type WsServer, WsServerImpl, assertBroadcastCommandFits, assertWebSocketRoomId, broadcastCommandFits, buildWsExecutionContext, createWebSocketUpgradeGate, isWebSocketOriginAllowed, issueWebSocketTicket, local, normalizeWebSocketUpgradeIdentity, readWebSocketEnvelope, readWsEntrypointMeta, resolveGatewayRoomId, resolveGatewayRoomParam, resolveMaxFrameBytes, resolveWsArgs, toErrorFrame, trySendWebSocketFrame, verifyAndConsumeWebSocketTicket, webSocketFrameFits, webSocketSyncEnvelopeFits };
+import { A as WsMessage, B as webSocketSyncEnvelopeFits, C as WebSocketGatewayOptions, D as WebSocketUpgradeIdentity, E as WebSocketUpgradeAuthenticationContext, F as RoomRegistry, I as SyncDriver, L as assertBroadcastCommandFits, M as WsServer, N as InMemoryRoomRegistry, O as WsClient, P as MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES, R as broadcastCommandFits, S as UpgradeAuthenticator, T as WebSocketTransport, _ as OnGatewayDisconnect, b as ReservedWsEventMetadata, f as WsArgumentsHost, g as OnGatewayConnection, h as ForwardedWebSocketUpgrade, j as WsResponse, k as WsExecutionContext, m as BroadcastOperator, p as BroadcastCommand, v as OnGatewayInit, w as WebSocketPrincipal, x as SubscribeMessageMetadata, y as ReservedWsEventHandler, z as local } from "<internal:types-http-hono.types.d.ts>";
+import { $ as ConnectedSocket, A as WebSocketTicketPrincipal, B as assertWebSocketRoomId, C as IssueWebSocketTicketOptions, D as WEBSOCKET_TICKET_PURPOSE, E as WEBSOCKET_TICKET_MAX_TTL_MS, F as DEFAULT_WS_MAX_FRAME_BYTES, G as resolveGatewayRoomParam, H as isWebSocketOriginAllowed, I as DEFAULT_WS_MAX_JOINED_ROOMS, J as WsDispatcher, K as resolveMaxFrameBytes, L as DEFAULT_WS_MAX_ROOM_ID_BYTES, M as issueWebSocketTicket, N as verifyAndConsumeWebSocketTicket, O as WebSocketTicketClaim, P as AuthenticatedWebSocketUpgrade, Q as WebSocketModuleOptions, R as WebSocketUpgradeGate, S as WsServerImpl, T as WEBSOCKET_TICKET_AUDIENCE, U as normalizeWebSocketUpgradeIdentity, V as createWebSocketUpgradeGate, W as resolveGatewayRoomId, X as readWsEntrypointMeta, Y as WsEntrypointMeta, Z as WebSocketModule, _ as resolveWsArgs, a as WsMessageQueue, b as buildWsExecutionContext, c as WS_GATEWAY_METADATA, d as WS_ROOM_REGISTRY, et as MessageBody, f as WS_SERVER, g as WsParamType, h as WS_TRANSPORT, i as readWebSocketEnvelope, it as WebSocketServer, j as WebSocketTicketPrincipalType, k as WebSocketTicketNonceStore, l as WS_MODULE_OPTIONS, m as WS_SYNC_DRIVER, n as WebSocketSendPolicy, nt as SubscribeMessage, o as trySendWebSocketFrame, p as WS_SUBSCRIBE_METADATA, q as webSocketFrameFits, r as WebSocketSendResult, rt as WebSocketGateway, s as RESERVED_WS_EVENT_PREFIX, t as WebSocketSendGate, tt as ReservedWsEvent, u as WS_RESERVED_METADATA, v as WsException, w as VerifyWebSocketTicketOptions, x as BroadcastOperatorImpl, y as toErrorFrame, z as WebSocketUpgradeGateway } from "<internal:index-websocket-websocket.decorators.d.ts>";
+export { type AuthenticatedWebSocketUpgrade, type BroadcastCommand, type BroadcastOperator, BroadcastOperatorImpl, ConnectedSocket, DEFAULT_WS_MAX_FRAME_BYTES, DEFAULT_WS_MAX_JOINED_ROOMS, DEFAULT_WS_MAX_ROOM_ID_BYTES, type ForwardedWebSocketUpgrade, InMemoryRoomRegistry, type IssueWebSocketTicketOptions, MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES, MessageBody, type OnGatewayConnection, type OnGatewayDisconnect, type OnGatewayInit, RESERVED_WS_EVENT_PREFIX, ReservedWsEvent, type ReservedWsEventHandler, type ReservedWsEventMetadata, type RoomRegistry, SubscribeMessage, type SubscribeMessageMetadata, type SyncDriver, type UpgradeAuthenticator, type VerifyWebSocketTicketOptions, WEBSOCKET_TICKET_AUDIENCE, WEBSOCKET_TICKET_MAX_TTL_MS, WEBSOCKET_TICKET_PURPOSE, WS_GATEWAY_METADATA, WS_MODULE_OPTIONS, WS_RESERVED_METADATA, WS_ROOM_REGISTRY, WS_SERVER, WS_SUBSCRIBE_METADATA, WS_SYNC_DRIVER, WS_TRANSPORT, WebSocketGateway, type WebSocketGatewayOptions, WebSocketModule, type WebSocketModuleOptions, type WebSocketPrincipal, WebSocketSendGate, type WebSocketSendPolicy, type WebSocketSendResult, WebSocketServer, type WebSocketTicketClaim, type WebSocketTicketNonceStore, type WebSocketTicketPrincipal, type WebSocketTicketPrincipalType, type WebSocketTransport, type WebSocketUpgradeAuthenticationContext, type WebSocketUpgradeGate, type WebSocketUpgradeGateway, type WebSocketUpgradeIdentity, type WsArgumentsHost, type WsClient, WsDispatcher, type WsEntrypointMeta, WsException, type WsExecutionContext, type WsMessage, WsMessageQueue, WsParamType, type WsResponse, type WsServer, WsServerImpl, assertBroadcastCommandFits, assertWebSocketRoomId, broadcastCommandFits, buildWsExecutionContext, createWebSocketUpgradeGate, isWebSocketOriginAllowed, issueWebSocketTicket, local, normalizeWebSocketUpgradeIdentity, readWebSocketEnvelope, readWsEntrypointMeta, resolveGatewayRoomId, resolveGatewayRoomParam, resolveMaxFrameBytes, resolveWsArgs, toErrorFrame, trySendWebSocketFrame, verifyAndConsumeWebSocketTicket, webSocketFrameFits, webSocketSyncEnvelopeFits };
 ```
 
 ## `./websocket-node`
@@ -2142,10 +2158,10 @@ Type conditions: `types`
 Declaration entry: `./dist/websocket-node/index.d.ts`
 
 ```ts
-import { E as WsClient } from "<internal:types-http-hono.types.d.ts>";
+import { F as RoomRegistry, I as SyncDriver, O as WsClient } from "<internal:types-http-hono.types.d.ts>";
 import { p as VelaApplication } from "<internal:request-context.d.ts>";
-import { K as LiveDriver } from "<internal:index-live-live.types.d.ts>";
-import { et as RoomRegistry, tt as SyncDriver } from "<internal:index-websocket-websocket.decorators.d.ts>";
+import { q as LiveDriver } from "<internal:index-live-live.types.d.ts>";
+import "<internal:index-websocket-websocket.decorators.d.ts>";
 import { WebSocketSendPolicy, WebSocketSendResult } from "@velajs/live-protocol";
 import { UpgradeWebSocket, WSContext } from "hono/ws";
 
@@ -2209,7 +2225,7 @@ export type { RedisLiveOptions, RedisPubSubClient, RedisSyncOptions };
 ### `<internal:component.manager.d.ts>`
 
 ```ts
-import { $ as Provider, F as CheckedProviders, I as Constructor, K as InjectionToken, N as VelaEnv, P as Container, a as ExecutionContext, at as Type, d as PipeTransform, et as ProviderDefinition, i as ExceptionFilter, it as Token, l as NestInterceptor, r as CanActivate, t as ArgumentMetadata, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
+import { G as CheckedProviders, K as Constructor, U as VelaEnv, W as Container, a as ExecutionContext, d as PipeTransform, ht as Type, i as ExceptionFilter, l as NestInterceptor, lt as Provider, mt as Token, nt as InjectionToken, r as CanActivate, t as ArgumentMetadata, u as NestMiddleware, ut as ProviderDefinition } from "<internal:types-http-hono.types.d.ts>";
 import { a as FilterType, c as InterceptorType, d as ModuleMetadata, f as ModuleOptions, i as DynamicModule, l as MiddlewareType, m as PipeType, n as ComponentType, o as GuardType, r as ComponentTypeMap } from "<internal:types-http-version.d.ts>";
 
 interface ConfigNamespace<TKey extends string = string, TConfig extends object = object> {
@@ -2385,7 +2401,7 @@ export { Res as C, applyDecorators as D, Version as E, createParamDecorator as O
 ### `<internal:discovery.service.d.ts>`
 
 ```ts
-import { P as Container, at as Type, it as Token, vt as Scope } from "<internal:types-http-hono.types.d.ts>";
+import { Ot as Scope, W as Container, ht as Type, mt as Token } from "<internal:types-http-hono.types.d.ts>";
 import "<internal:types-http-version.d.ts>";
 
 interface DiscoverableDecorator<T> {
@@ -2468,7 +2484,7 @@ export { DiscoveryFilter as a, DiscoverableDecorator as c, DiscoveredRegistratio
 ### `<internal:entrypoint.types.d.ts>`
 
 ```ts
-import { it as Token } from "<internal:types-http-hono.types.d.ts>";
+import { mt as Token } from "<internal:types-http-hono.types.d.ts>";
 import { o as DiscoveryService } from "<internal:discovery.service.d.ts>";
 
 interface EntrypointKind {
@@ -2587,7 +2603,7 @@ export { UnsupportedMediaTypeException as S, RequestTimeoutException as _, Forbi
 ### `<internal:index-container-module-ref.d.ts>`
 
 ```ts
-import { H as InferToken, P as Container, a as ExecutionContext, at as Type, it as Token } from "<internal:types-http-hono.types.d.ts>";
+import { Q as InferToken, W as Container, a as ExecutionContext, ht as Type, mt as Token } from "<internal:types-http-hono.types.d.ts>";
 import { Context } from "hono";
 
 interface ModuleRefLookupOptions {
@@ -2615,10 +2631,9 @@ export { ModuleRefContext as n, ModuleRefLookupOptions as r, ModuleRef as t };
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { $ as Provider, B as FactoryInject, G as InjectableOptions, I as Constructor, K as InjectionToken, N as VelaEnv, P as Container, U as InferTokens, V as ForwardRef, a as ExecutionContext, at as Type, d as PipeTransform, et as ProviderDefinition, i as ExceptionFilter, it as Token, l as NestInterceptor, n as CallHandler, o as HandlerFunction, r as CanActivate, st as TypedToken, t as ArgumentMetadata, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
-import { l as BootstrapOptions, n as RequestContext, p as VelaApplication, s as RuntimeAdapter, v as ErrorReportContext, y as ExceptionHandler } from "<internal:request-context.d.ts>";
+import { $ as InferTokens, K as Constructor, U as VelaEnv, W as Container, X as FactoryInject, Z as ForwardRef, _t as TypedToken, a as ExecutionContext, d as PipeTransform, ht as Type, i as ExceptionFilter, l as NestInterceptor, lt as Provider, mt as Token, n as CallHandler, nt as InjectionToken, o as HandlerFunction, r as CanActivate, t as ArgumentMetadata, tt as InjectableOptions, u as NestMiddleware, ut as ProviderDefinition } from "<internal:types-http-hono.types.d.ts>";
+import { N as ErrorReportContext, P as ExceptionHandler, l as BootstrapOptions, n as RequestContext, p as VelaApplication, s as RuntimeAdapter } from "<internal:request-context.d.ts>";
 import { a as FilterType, c as InterceptorType, i as DynamicModule, l as MiddlewareType, m as PipeType, n as ComponentType, o as GuardType, r as ComponentTypeMap, u as ModuleImport } from "<internal:types-http-version.d.ts>";
-import "<internal:route-paths.d.ts>";
 import "<internal:route.manager.d.ts>";
 import "<internal:index-container-module-ref.d.ts>";
 import { d as SchemaParser, n as SchemaOutput, r as ValidationSchema, t as SchemaInput } from "<internal:parse-schema.d.ts>";
@@ -3210,7 +3225,8 @@ export { OnModuleInit as a, OnModuleDestroy as i, OnApplicationBootstrap as n, O
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { D as WsExecutionContext, E as WsClient, K as InjectionToken, O as WsMessage, P as Container, v as ReservedWsEventHandler } from "<internal:types-http-hono.types.d.ts>";
+import { A as WsMessage, O as WsClient, W as Container, k as WsExecutionContext, nt as InjectionToken, y as ReservedWsEventHandler } from "<internal:types-http-hono.types.d.ts>";
+import { i as DynamicModule } from "<internal:types-http-version.d.ts>";
 import { o as DiscoveryService } from "<internal:discovery.service.d.ts>";
 import { n as Entrypoint, t as ContributesEntrypoints } from "<internal:entrypoint.types.d.ts>";
 import { Nt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
@@ -3288,6 +3304,15 @@ interface LiveDriver {
   stop?(): void | Promise<void>;
 }
 
+interface LivePlatform {
+
+  liveDriver(): LiveDriver;
+
+  cursorLog?(): CursorLog | undefined;
+
+  bindDriver?(driver: LiveDriver): void;
+}
+
 interface SubscriptionRecord {
   sub: string;
   query: string;
@@ -3338,7 +3363,11 @@ interface LiveEntrypointMeta {
 declare const ConfigurableModuleClass: ConfigurableModuleClassType<LiveModuleOptions, "forRoot", "create", {
   isGlobal?: boolean;
 }>;
-declare class LiveModule extends ConfigurableModuleClass {}
+type LiveModuleRegistration = Parameters<(typeof ConfigurableModuleClass)['forRoot']>[0];
+declare class LiveModule extends ConfigurableModuleClass {
+
+  static forRoot(options?: LiveModuleRegistration): DynamicModule;
+}
 
 declare function LiveResolver(): ClassDecorator;
 
@@ -3489,9 +3518,11 @@ declare const LIVE_RESOLVER_METADATA = "vela:live:resolver";
 declare const LIVE_DRIVER: InjectionToken<LiveDriver>;
 
 declare const LIVE_CURSOR_LOG: InjectionToken<CursorLog>;
+
+declare const LIVE_PLATFORM: InjectionToken<LivePlatform>;
 declare const LIVE_MODULE_OPTIONS: InjectionToken<LiveModuleOptions>;
 
-export { LiveQueryMetadata as $, LiveEngine as A, getLiveQueries as B, LIVE_RESOLVER_METADATA as C, localLive as D, LiveInvalidation as E, PresenceResolver as F, LiveDeliveryAuthorizationContext as G, CommitStamp as H, PresenceService as I, LiveIdentity as J, LiveDriver as K, presenceTag as L, readPersistedLiveSubscriptions as M, PRESENCE_ROSTER_QUERY as N, stampCommitHeaders as O, PresenceMember as P, LiveQueryContext as Q, LiveQuery as R, LIVE_MODULE_OPTIONS as S, InMemoryCursorLog as T, CursorLog as U, LiveModule as V, InvalidationCommand as W, LiveModuleOptions as X, LiveInvalidationSink as Y, LivePresenceOptions as Z, isClientLiveFrame as _, LIVE_ERROR_CODES as a, LIVE_CURSOR_LOG as b, LiveFrame as c, ServerLiveFrame$1 as d, LiveQueryOptions as et, applyListDelta as f, encodeLiveFrame as g, encodeLiveEnvelope as h, DEFAULT_KEY_FIELD as i, SubscriptionRecord as it, LiveInspection as j, LIVE_SUBS_DATA_KEY as k, LiveQueryDefinition$1 as l, encodeListDelta as m, COMMIT_EPOCH_HEADER as n, PreparedLiveQuery as nt, LIVE_EVENT as o, defineLiveQuery as p, LiveEntrypointMeta as q, ClientLiveFrame as r, ResumeVerdict as rt, LIVE_PROTOCOL as s, COMMIT_CURSOR_HEADER as t, LiveResolverMetadata as tt, RowOp as u, isServerLiveFrame as v, encodeSubscriptionUpdate as w, LIVE_DRIVER as x, readLiveEnvelope as y, LiveResolver as z };
+export { LivePresenceOptions as $, LIVE_SUBS_DATA_KEY as A, LiveResolver as B, LIVE_PLATFORM as C, LiveInvalidation as D, InMemoryCursorLog as E, PresenceMember as F, InvalidationCommand as G, LiveModule as H, PresenceResolver as I, LiveEntrypointMeta as J, LiveDeliveryAuthorizationContext as K, PresenceService as L, LiveInspection as M, readPersistedLiveSubscriptions as N, localLive as O, PRESENCE_ROSTER_QUERY as P, LivePlatform as Q, presenceTag as R, LIVE_MODULE_OPTIONS as S, encodeSubscriptionUpdate as T, CommitStamp as U, getLiveQueries as V, CursorLog as W, LiveInvalidationSink as X, LiveIdentity as Y, LiveModuleOptions as Z, isClientLiveFrame as _, LIVE_ERROR_CODES as a, ResumeVerdict as at, LIVE_CURSOR_LOG as b, LiveFrame as c, ServerLiveFrame$1 as d, LiveQueryContext as et, applyListDelta as f, encodeLiveFrame as g, encodeLiveEnvelope as h, DEFAULT_KEY_FIELD as i, PreparedLiveQuery as it, LiveEngine as j, stampCommitHeaders as k, LiveQueryDefinition$1 as l, encodeListDelta as m, COMMIT_EPOCH_HEADER as n, LiveQueryOptions as nt, LIVE_EVENT as o, SubscriptionRecord as ot, defineLiveQuery as p, LiveDriver as q, ClientLiveFrame as r, LiveResolverMetadata as rt, LIVE_PROTOCOL as s, COMMIT_CURSOR_HEADER as t, LiveQueryMetadata as tt, RowOp as u, isServerLiveFrame as v, LIVE_RESOLVER_METADATA as w, LIVE_DRIVER as x, readLiveEnvelope as y, LiveQuery as z };
 ```
 
 ### `<internal:index-validation-validation.pipe.d.ts>`
@@ -3519,8 +3550,8 @@ export { ValidationPipe as t };
 
 ```ts
 import "<internal:metadata.d.ts>";
-import { A as WsServer, D as WsExecutionContext, E as WsClient, K as InjectionToken, P as Container, S as WebSocketGatewayOptions, T as WebSocketUpgradeIdentity, at as Type, d as PipeTransform, m as BroadcastOperator, p as BroadcastCommand } from "<internal:types-http-hono.types.d.ts>";
-import { p as ParameterMetadata } from "<internal:types-http-version.d.ts>";
+import { C as WebSocketGatewayOptions, D as WebSocketUpgradeIdentity, F as RoomRegistry, I as SyncDriver, M as WsServer, O as WsClient, T as WebSocketTransport, W as Container, d as PipeTransform, ht as Type, k as WsExecutionContext, m as BroadcastOperator, nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
+import { i as DynamicModule, p as ParameterMetadata } from "<internal:types-http-version.d.ts>";
 import { o as DiscoveryService } from "<internal:discovery.service.d.ts>";
 import { n as Entrypoint, t as ContributesEntrypoints } from "<internal:entrypoint.types.d.ts>";
 import { r as RouteManager } from "<internal:route.manager.d.ts>";
@@ -3542,56 +3573,6 @@ declare const ConnectedSocket: () => ParameterDecorator;
 
 declare function WebSocketServer(): ParameterDecorator;
 
-declare const MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES: number;
-
-declare function broadcastCommandFits(value: unknown, maxFrameBytes?: number): value is BroadcastCommand;
-declare function assertBroadcastCommandFits(value: unknown, maxFrameBytes?: number): asserts value is BroadcastCommand;
-
-declare function webSocketSyncEnvelopeFits(serialized: string, maxFrameBytes: number): boolean;
-
-interface RoomRegistry {
-
-  register(client: WsClient): void;
-  join(client: WsClient, room: string): void | Promise<void>;
-  leave(client: WsClient, room: string): void | Promise<void>;
-
-  leaveAll(client: WsClient): void | Promise<void>;
-
-  deliverLocal(cmd: BroadcastCommand): void | Promise<void>;
-
-  setDeliveryAuthorizer?(authorizer: (client: WsClient) => boolean | Promise<boolean>): void;
-  localIdsInRoom(room: string): string[];
-}
-
-interface SyncDriver {
-  readonly kind: string;
-
-  bind(registry: RoomRegistry): void;
-
-  dispatch(cmd: BroadcastCommand): void | Promise<void>;
-  /** @internal */
-  setMaxFrameBytes?(maxFrameBytes: number): void;
-  countRoom?(room: string): Promise<number>;
-  start?(): void | Promise<void>;
-  stop?(): void | Promise<void>;
-}
-
-declare function local(): SyncDriver;
-
-declare class InMemoryRoomRegistry implements RoomRegistry {
-  private readonly rooms;
-  private readonly clientRooms;
-  private readonly clients;
-  private deliveryAuthorizer?;
-  setDeliveryAuthorizer(authorizer: (client: WsClient) => boolean | Promise<boolean>): void;
-  register(client: WsClient): void;
-  join(client: WsClient, room: string): void;
-  leave(client: WsClient, room: string): void;
-  leaveAll(client: WsClient): void;
-  localIdsInRoom(room: string): string[];
-  deliverLocal(cmd: BroadcastCommand): void | Promise<void>;
-}
-
 interface WebSocketModuleOptions {
 
   sync?: SyncDriver;
@@ -3602,7 +3583,11 @@ interface WebSocketModuleOptions {
 declare const ConfigurableModuleClass: ConfigurableModuleClassType<WebSocketModuleOptions, "forRoot", "create", {
   isGlobal?: boolean;
 }>;
-declare class WebSocketModule extends ConfigurableModuleClass {}
+type WebSocketModuleRegistration = Parameters<(typeof ConfigurableModuleClass)['forRoot']>[0];
+declare class WebSocketModule extends ConfigurableModuleClass {
+
+  static forRoot(options?: WebSocketModuleRegistration): DynamicModule;
+}
 
 interface WsEntrypointMeta {
 
@@ -3794,6 +3779,8 @@ declare const WS_SERVER: InjectionToken<WsServer>;
 declare const WS_SYNC_DRIVER: InjectionToken<SyncDriver>;
 
 declare const WS_ROOM_REGISTRY: InjectionToken<RoomRegistry>;
+
+declare const WS_TRANSPORT: InjectionToken<WebSocketTransport>;
 declare const WS_MODULE_OPTIONS: InjectionToken<WebSocketModuleOptions>;
 
 declare function trySendWebSocketFrame(client: WsClient, payload: string): WebSocketSendResult;
@@ -3805,13 +3792,13 @@ declare class WsMessageQueue {
   run(frame: string | ArrayBuffer, work: () => Promise<void>): Promise<void>;
 }
 
-export { MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES as $, WebSocketTicketPrincipalType as A, createWebSocketUpgradeGate as B, VerifyWebSocketTicketOptions as C, WebSocketTicketClaim as D, WEBSOCKET_TICKET_PURPOSE as E, DEFAULT_WS_MAX_JOINED_ROOMS as F, resolveMaxFrameBytes as G, normalizeWebSocketUpgradeIdentity as H, DEFAULT_WS_MAX_ROOM_ID_BYTES as I, WsEntrypointMeta as J, webSocketFrameFits as K, WebSocketUpgradeGate as L, verifyAndConsumeWebSocketTicket as M, AuthenticatedWebSocketUpgrade as N, WebSocketTicketNonceStore as O, DEFAULT_WS_MAX_FRAME_BYTES as P, InMemoryRoomRegistry as Q, WebSocketUpgradeGateway as R, IssueWebSocketTicketOptions as S, WEBSOCKET_TICKET_MAX_TTL_MS as T, resolveGatewayRoomId as U, isWebSocketOriginAllowed as V, resolveGatewayRoomParam as W, WebSocketModule as X, readWsEntrypointMeta as Y, WebSocketModuleOptions as Z, WsException as _, WsMessageQueue as a, webSocketSyncEnvelopeFits as at, BroadcastOperatorImpl as b, WS_GATEWAY_METADATA as c, ReservedWsEvent as ct, WS_ROOM_REGISTRY as d, WebSocketServer as dt, RoomRegistry as et, WS_SERVER as f, resolveWsArgs as g, WsParamType as h, readWebSocketEnvelope as i, local as it, issueWebSocketTicket as j, WebSocketTicketPrincipal as k, WS_MODULE_OPTIONS as l, SubscribeMessage as lt, WS_SYNC_DRIVER as m, WebSocketSendPolicy$1 as n, assertBroadcastCommandFits as nt, trySendWebSocketFrame as o, ConnectedSocket as ot, WS_SUBSCRIBE_METADATA as p, WsDispatcher as q, WebSocketSendResult$1 as r, broadcastCommandFits as rt, RESERVED_WS_EVENT_PREFIX as s, MessageBody as st, WebSocketSendGate as t, SyncDriver as tt, WS_RESERVED_METADATA as u, WebSocketGateway as ut, toErrorFrame as v, WEBSOCKET_TICKET_AUDIENCE as w, WsServerImpl as x, buildWsExecutionContext as y, assertWebSocketRoomId as z };
+export { ConnectedSocket as $, WebSocketTicketPrincipal as A, assertWebSocketRoomId as B, IssueWebSocketTicketOptions as C, WEBSOCKET_TICKET_PURPOSE as D, WEBSOCKET_TICKET_MAX_TTL_MS as E, DEFAULT_WS_MAX_FRAME_BYTES as F, resolveGatewayRoomParam as G, isWebSocketOriginAllowed as H, DEFAULT_WS_MAX_JOINED_ROOMS as I, WsDispatcher as J, resolveMaxFrameBytes as K, DEFAULT_WS_MAX_ROOM_ID_BYTES as L, issueWebSocketTicket as M, verifyAndConsumeWebSocketTicket as N, WebSocketTicketClaim as O, AuthenticatedWebSocketUpgrade as P, WebSocketModuleOptions as Q, WebSocketUpgradeGate as R, WsServerImpl as S, WEBSOCKET_TICKET_AUDIENCE as T, normalizeWebSocketUpgradeIdentity as U, createWebSocketUpgradeGate as V, resolveGatewayRoomId as W, readWsEntrypointMeta as X, WsEntrypointMeta as Y, WebSocketModule as Z, resolveWsArgs as _, WsMessageQueue as a, buildWsExecutionContext as b, WS_GATEWAY_METADATA as c, WS_ROOM_REGISTRY as d, MessageBody as et, WS_SERVER as f, WsParamType as g, WS_TRANSPORT as h, readWebSocketEnvelope as i, WebSocketServer as it, WebSocketTicketPrincipalType as j, WebSocketTicketNonceStore as k, WS_MODULE_OPTIONS as l, WS_SYNC_DRIVER as m, WebSocketSendPolicy$1 as n, SubscribeMessage as nt, trySendWebSocketFrame as o, WS_SUBSCRIBE_METADATA as p, webSocketFrameFits as q, WebSocketSendResult$1 as r, WebSocketGateway as rt, RESERVED_WS_EVENT_PREFIX as s, WebSocketSendGate as t, ReservedWsEvent as tt, WS_RESERVED_METADATA as u, WsException as v, VerifyWebSocketTicketOptions as w, BroadcastOperatorImpl as x, toErrorFrame as y, WebSocketUpgradeGateway as z };
 ```
 
 ### `<internal:internal-dispatcher.d.ts>`
 
 ```ts
-import { N as VelaEnv, P as Container } from "<internal:types-http-hono.types.d.ts>";
+import { U as VelaEnv, W as Container } from "<internal:types-http-hono.types.d.ts>";
 import { n as InvocationRouteTarget, o as RunInit, s as RouteName, t as InvocationPathTarget } from "<internal:types-http-route-map.d.ts>";
 import { r as UrlGeneratorService } from "<internal:url-generator.service.d.ts>";
 
@@ -3930,7 +3917,7 @@ export { ValidationIssue as _, parseSchema as a, validateSchema as b, DtoOptions
 ### `<internal:request-container.d.ts>`
 
 ```ts
-import { I as Constructor, P as Container, W as InjectMetadata, at as Type, vt as Scope } from "<internal:types-http-hono.types.d.ts>";
+import { K as Constructor, Ot as Scope, W as Container, et as InjectMetadata, ht as Type } from "<internal:types-http-hono.types.d.ts>";
 import { f as ModuleOptions, h as RouteDefinition, n as ComponentType, p as ParameterMetadata, r as ComponentTypeMap, s as HttpHandlerMeta, v as VersionValue } from "<internal:types-http-version.d.ts>";
 import { Context } from "hono";
 
@@ -4025,13 +4012,11 @@ export { countRegisteredClasses as i, setRequestContainer as n, MetadataRegistry
 ### `<internal:request-context.d.ts>`
 
 ```ts
-import { H as InferToken, K as InjectionToken, N as VelaEnv, P as Container, St as VelaMiddlewareHandler, at as Type, bt as VelaHono, it as Token, st as TypedToken, yt as VelaContext, z as Diagnostics } from "<internal:types-http-hono.types.d.ts>";
+import { At as VelaHono, Mt as VelaMiddlewareHandler, Q as InferToken, U as VelaEnv, W as Container, Y as Diagnostics, _t as TypedToken, ht as Type, kt as VelaContext, mt as Token, nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { a as FilterType, c as InterceptorType, i as DynamicModule, m as PipeType, o as GuardType } from "<internal:types-http-version.d.ts>";
 import { o as DiscoveryService } from "<internal:discovery.service.d.ts>";
 import { n as Entrypoint, r as EntrypointKind } from "<internal:entrypoint.types.d.ts>";
-import { a as MiddlewareRouteDefinition, n as RoutePathOptions } from "<internal:route-paths.d.ts>";
-import { i as RouteManagerOptions, n as RouteDescription, r as RouteManager } from "<internal:route.manager.d.ts>";
-import { s as MountOpenApiOptions } from "<internal:types-openapi-types.d.ts>";
+import { _ as RoutePathOptions, b as MiddlewareRouteDefinition, i as RouteManagerOptions, n as RouteDescription, r as RouteManager } from "<internal:route.manager.d.ts>";
 import { i as InvocationTransport } from "<internal:types-http-route-map.d.ts>";
 import { ErrorBodyResult } from "@velajs/errors";
 
@@ -4073,6 +4058,176 @@ declare class EntrypointRegistry {
   ofKind<M>(kind: string, parseMeta: (meta: unknown) => M): Entrypoint<M>[];
   kinds(): string[];
   all(): Entrypoint[];
+}
+
+interface OpenApiInfo {
+  title: string;
+  version: string;
+  description?: string;
+}
+interface JsonSchema {
+  type?: string | string[];
+  format?: string;
+  enum?: Array<string | number | boolean | null>;
+  const?: unknown;
+  description?: string;
+  nullable?: boolean;
+  default?: unknown;
+  items?: JsonSchema;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  additionalProperties?: boolean | JsonSchema;
+  oneOf?: JsonSchema[];
+  anyOf?: JsonSchema[];
+  allOf?: JsonSchema[];
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  $ref?: string;
+  [key: string]: unknown;
+}
+interface OpenApiParameter {
+  name: string;
+  in: 'path' | 'query' | 'header' | 'cookie';
+  required?: boolean;
+  description?: string;
+  schema?: JsonSchema;
+}
+interface OpenApiRequestBody {
+  description?: string;
+  required?: boolean;
+  content?: Record<string, {
+    schema: JsonSchema;
+    encoding?: Record<string, {
+      style?: string;
+      explode?: boolean;
+    }>;
+  }>;
+  'x-vela-body-limits'?: {
+    maxBytes?: number;
+    maxFields?: number;
+    maxFieldBytes?: number;
+    maxFiles?: number;
+    maxFileBytes?: number;
+  };
+}
+interface OpenApiResponse {
+  description: string;
+
+  'x-vela-response-format'?: 'binary' | 'stream' | 'response';
+  content?: Record<string, {
+    schema: JsonSchema;
+  }>;
+}
+
+type OpenApiSecurityRequirement = Record<string, string[]>;
+interface OpenApiOperation {
+  summary?: string;
+  description?: string;
+  operationId?: string;
+  deprecated?: boolean;
+  tags?: string[];
+  parameters?: OpenApiParameter[];
+  requestBody?: OpenApiRequestBody;
+  responses: Record<string, OpenApiResponse>;
+
+  security?: OpenApiSecurityRequirement[];
+}
+
+interface OpenApiServer {
+  url: string;
+  description?: string;
+  variables?: Record<string, {
+    enum?: string[];
+    default: string;
+    description?: string;
+  }>;
+  [key: string]: unknown;
+}
+
+interface OpenApiSecurityScheme {
+  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect' | 'mutualTLS';
+  description?: string;
+  name?: string;
+  in?: 'query' | 'header' | 'cookie';
+  scheme?: string;
+  bearerFormat?: string;
+  flows?: Record<string, unknown>;
+  openIdConnectUrl?: string;
+  [key: string]: unknown;
+}
+type HttpVerb = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options' | 'head';
+type OpenApiPathItem = { [verb in HttpVerb]?: OpenApiOperation; };
+interface OpenApiDocument {
+  openapi: '3.1.0';
+  info: OpenApiInfo;
+  servers?: OpenApiServer[];
+  paths: Record<string, OpenApiPathItem>;
+  components?: {
+    schemas?: Record<string, JsonSchema>;
+    securitySchemes?: Record<string, OpenApiSecurityScheme>;
+  };
+  security?: OpenApiSecurityRequirement[];
+  tags?: Array<{
+    name: string;
+    description?: string;
+  }>;
+}
+interface ApiDocMetadata {
+  summary?: string;
+  description?: string;
+  operationId?: string;
+  deprecated?: boolean;
+  tags?: string[];
+}
+interface ApiResponseOptions {
+  description: string;
+
+  contentType?: string;
+
+  format?: 'binary' | 'stream' | 'response';
+
+  schema?: unknown;
+}
+interface ApiResponseEntry extends ApiResponseOptions {
+  status: number | string;
+}
+interface CreateOpenApiDocumentOptions extends RoutePathOptions {
+  info?: Partial<OpenApiInfo>;
+
+  tags?: Array<{
+    name: string;
+    description?: string;
+  }>;
+
+  servers?: OpenApiServer[];
+
+  securitySchemes?: Record<string, OpenApiSecurityScheme>;
+
+  security?: OpenApiSecurityRequirement[];
+}
+type OpenApiUi = 'swagger' | 'scalar' | 'redoc';
+interface MountOpenApiOptions {
+
+  document: OpenApiDocument;
+
+  specPath?: string;
+
+  ui?: OpenApiUi | OpenApiUi[] | 'all';
+
+  swaggerPath?: string;
+
+  scalarPath?: string;
+
+  redocPath?: string;
+
+  title?: string;
+  /** @deprecated */
+  path?: string;
+  /** @deprecated */
+  uiPath?: string;
 }
 
 declare class VelaApplication {
@@ -4225,14 +4380,14 @@ declare class RequestContextKey<Value> {
 declare const REQUEST_CONTEXT: InjectionToken<RequestContext>;
 declare function createRequestContext(c: VelaContext): RequestContext;
 
-export { ErrorMatcher as _, createRequestContext as a, matchesAny as b, applyRuntimeAdapters as c, bootstrap as d, ModuleLoader as f, registerEntrypointKind as g, getEntrypointKinds as h, RequestContextKeyOptions as i, BootstrapOptions as l, EntrypointRegistry as m, RequestContext as n, AdapterContext as o, VelaApplication as p, RequestContextKey as r, RuntimeAdapter as s, REQUEST_CONTEXT as t, BootstrapResult as u, ErrorReportContext as v, ExceptionHandler as y };
+export { getEntrypointKinds as A, OpenApiOperation as C, OpenApiResponse as D, OpenApiRequestBody as E, matchesAny as F, ErrorMatcher as M, ErrorReportContext as N, OpenApiUi as O, ExceptionHandler as P, OpenApiInfo as S, OpenApiPathItem as T, CreateOpenApiDocumentOptions as _, createRequestContext as a, MountOpenApiOptions as b, applyRuntimeAdapters as c, bootstrap as d, ModuleLoader as f, ApiResponseOptions as g, ApiResponseEntry as h, RequestContextKeyOptions as i, registerEntrypointKind as j, EntrypointRegistry as k, BootstrapOptions as l, ApiDocMetadata as m, RequestContext as n, AdapterContext as o, VelaApplication as p, RequestContextKey as r, RuntimeAdapter as s, REQUEST_CONTEXT as t, BootstrapResult as u, HttpVerb as v, OpenApiParameter as w, OpenApiDocument as x, JsonSchema as y };
 ```
 
-### `<internal:route-paths.d.ts>`
+### `<internal:route.manager.d.ts>`
 
 ```ts
-import { I as Constructor, at as Type, ht as HttpMethod, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
-import "<internal:types-http-version.d.ts>";
+import { At as VelaHono, K as Constructor, Mt as VelaMiddlewareHandler, Ot as Scope, Tt as HttpMethod, W as Container, _t as TypedToken, d as PipeTransform, ht as Type, i as ExceptionFilter, kt as VelaContext, l as NestInterceptor, r as CanActivate, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
+import { a as FilterType, c as InterceptorType, l as MiddlewareType, m as PipeType, o as GuardType, v as VersionValue } from "<internal:types-http-version.d.ts>";
 
 interface RouteInfo {
   path: string;
@@ -4279,16 +4434,6 @@ interface RoutePathOptions {
   globalPrefixOptions?: GlobalPrefixOptions;
   versioning?: VersioningOptions;
 }
-
-export { MiddlewareRouteDefinition as a, MiddlewareConsumer as i, RoutePathOptions as n, NestModule as o, VersioningOptions as r, RouteInfo as s, GlobalPrefixOptions as t };
-```
-
-### `<internal:route.manager.d.ts>`
-
-```ts
-import { P as Container, St as VelaMiddlewareHandler, at as Type, bt as VelaHono, d as PipeTransform, ht as HttpMethod, i as ExceptionFilter, l as NestInterceptor, r as CanActivate, st as TypedToken, u as NestMiddleware, vt as Scope, yt as VelaContext } from "<internal:types-http-hono.types.d.ts>";
-import { a as FilterType, c as InterceptorType, l as MiddlewareType, m as PipeType, o as GuardType, v as VersionValue } from "<internal:types-http-version.d.ts>";
-import { a as MiddlewareRouteDefinition, n as RoutePathOptions, r as VersioningOptions, t as GlobalPrefixOptions } from "<internal:route-paths.d.ts>";
 
 interface HttpRequestCompletion {
 
@@ -4469,7 +4614,7 @@ declare class RouteManager {
   getControllers(): ControllerRegistration[];
 }
 
-export { DEFAULT_QUERY_BYTES_LIMIT as a, VelaBodyLimitOverride as c, VelaSecurityOptions as d, ControllerOptions as f, HttpRequestObserver as h, RouteManagerOptions as i, VelaBodySecurityOptions as l, HttpRequestObservation as m, RouteDescription as n, DEFAULT_QUERY_DEPTH_LIMIT as o, HttpRequestCompletion as p, RouteManager as r, DEFAULT_QUERY_PARAMETER_LIMIT as s, DEFAULT_BODY_LIMIT_BYTES as t, VelaQuerySecurityOptions as u };
+export { RouteInfo as S, RoutePathOptions as _, DEFAULT_QUERY_BYTES_LIMIT as a, MiddlewareRouteDefinition as b, VelaBodyLimitOverride as c, VelaSecurityOptions as d, ControllerOptions as f, GlobalPrefixOptions as g, HttpRequestObserver as h, RouteManagerOptions as i, VelaBodySecurityOptions as l, HttpRequestObservation as m, RouteDescription as n, DEFAULT_QUERY_DEPTH_LIMIT as o, HttpRequestCompletion as p, RouteManager as r, DEFAULT_QUERY_PARAMETER_LIMIT as s, DEFAULT_BODY_LIMIT_BYTES as t, VelaQuerySecurityOptions as u, VersioningOptions as v, NestModule as x, MiddlewareConsumer as y };
 ```
 
 ### `<internal:schedule.registry.d.ts>`
@@ -4510,7 +4655,7 @@ export { RegisteredIntervalJob as n, ScheduleRegistry as r, RegisteredCronJob as
 ### `<internal:schedule.tokens.d.ts>`
 
 ```ts
-import { K as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
+import { nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import "<internal:index-container-module-ref.d.ts>";
 import { c as ScheduleInvocationSeed, o as ScheduleDispatchMode } from "<internal:schedule.types.d.ts>";
 
@@ -4527,7 +4672,7 @@ export { SCHEDULE_INVOCATION_SEED as i, INTERVAL_METADATA as n, SCHEDULE_DISPATC
 ### `<internal:schedule.types.d.ts>`
 
 ```ts
-import { P as Container } from "<internal:types-http-hono.types.d.ts>";
+import { W as Container } from "<internal:types-http-hono.types.d.ts>";
 import { r as InvocationTarget } from "<internal:types-http-route-map.d.ts>";
 
 type CronMatcher = (date: Date) => boolean;
@@ -4601,7 +4746,7 @@ export { ScheduleDecorator as a, ScheduleInvocationSeed as c, CronOptions as d, 
 ### `<internal:tokens.d.ts>`
 
 ```ts
-import { K as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
+import { nt as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { i as InvocationTransport } from "<internal:types-http-route-map.d.ts>";
 
 declare const INVOCATION_TRANSPORT: InjectionToken<InvocationTransport>;
@@ -5011,6 +5156,56 @@ declare const ENV: InjectionToken<VelaEnv>;
 
 declare function InjectEnv(): ParameterDecorator;
 
+declare const MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES: number;
+
+declare function broadcastCommandFits(value: unknown, maxFrameBytes?: number): value is BroadcastCommand;
+declare function assertBroadcastCommandFits(value: unknown, maxFrameBytes?: number): asserts value is BroadcastCommand;
+
+declare function webSocketSyncEnvelopeFits(serialized: string, maxFrameBytes: number): boolean;
+
+interface RoomRegistry {
+
+  register(client: WsClient): void;
+  join(client: WsClient, room: string): void | Promise<void>;
+  leave(client: WsClient, room: string): void | Promise<void>;
+
+  leaveAll(client: WsClient): void | Promise<void>;
+
+  deliverLocal(cmd: BroadcastCommand): void | Promise<void>;
+
+  setDeliveryAuthorizer?(authorizer: (client: WsClient) => boolean | Promise<boolean>): void;
+  localIdsInRoom(room: string): string[];
+}
+
+interface SyncDriver {
+  readonly kind: string;
+
+  bind(registry: RoomRegistry): void;
+
+  dispatch(cmd: BroadcastCommand): void | Promise<void>;
+  /** @internal */
+  setMaxFrameBytes?(maxFrameBytes: number): void;
+  countRoom?(room: string): Promise<number>;
+  start?(): void | Promise<void>;
+  stop?(): void | Promise<void>;
+}
+
+declare function local(): SyncDriver;
+
+declare class InMemoryRoomRegistry implements RoomRegistry {
+  private readonly rooms;
+  private readonly clientRooms;
+  private readonly clients;
+  private deliveryAuthorizer?;
+  setDeliveryAuthorizer(authorizer: (client: WsClient) => boolean | Promise<boolean>): void;
+  register(client: WsClient): void;
+  join(client: WsClient, room: string): void;
+  leave(client: WsClient, room: string): void;
+  leaveAll(client: WsClient): void;
+  localIdsInRoom(room: string): string[];
+  deliverLocal(cmd: BroadcastCommand): void | Promise<void>;
+}
+
 interface WsMessage<T = unknown> {
   id?: string;
   event: string;
@@ -5138,6 +5333,28 @@ interface ReservedWsEventHandler {
   handleSocketClose?(path: string, client: WsClient): void | Promise<void>;
 }
 
+interface ForwardedWebSocketUpgrade {
+
+  request: Request;
+
+  gatewayPath: string;
+
+  room: string;
+
+  binding: string;
+
+  identity: WebSocketUpgradeIdentity;
+}
+
+interface WebSocketTransport {
+
+  createServer?(driver: SyncDriver): WsServer;
+
+  forwardUpgrade?(upgrade: ForwardedWebSocketUpgrade): Promise<Response>;
+
+  readonly forwardingHeaders?: readonly string[];
+}
+
 interface BroadcastCommand {
 
   rooms: string[];
@@ -5215,7 +5432,7 @@ interface NestMiddleware {
   use(c: VelaContext, next: Next): Promise<Response | void>;
 }
 
-export { Provider as $, WsServer as A, FactoryInject as B, WebSocketPrincipal as C, WsExecutionContext as D, WsClient as E, CheckedProviders as F, InjectableOptions as G, InferToken as H, Constructor as I, MissingInjectionMetadataReason as J, InjectionToken as K, ContainerOptions as L, InjectEnv as M, VelaEnv as N, WsMessage as O, Container as P, MultipleProvidersFoundError as Q, DependencyToken as R, WebSocketGatewayOptions as S, VelaMiddlewareHandler as St, WebSocketUpgradeIdentity as T, InferTokens as U, ForwardRef as V, InjectMetadata as W, ModuleScope as X, ModuleDescription as Y, ModuleVisibilityError as Z, OnGatewayInit as _, ParamType as _t, ExecutionContext as a, Type as at, SubscribeMessageMetadata as b, VelaHono as bt, HttpExecutionContext as c, UnresolvedDependency as ct, PipeTransform as d, assertFactoryInject as dt, ProviderDefinition as et, WsArgumentsHost as f, defineProvider as ft, OnGatewayDisconnect as g, METADATA_KEYS as gt, OnGatewayConnection as h, HttpMethod as ht, ExceptionFilter as i, Token as it, ENV as j, WsResponse as k, NestInterceptor as l, UnresolvedDependencyError as lt, BroadcastOperator as m, forwardRef as mt, CallHandler as n, ProviderSnapshot as nt, HandlerFunction as o, TypedProviderLiteral as ot, BroadcastCommand as p, describeToken as pt, MissingInjectionMetadataError as q, CanActivate as r, ROOT_MODULE_ID as rt, HttpArgumentsHost as s, TypedToken as st, ArgumentMetadata as t, ProviderLiteral as tt, NestMiddleware as u, UnresolvedDependencyReason as ut, ReservedWsEventHandler as v, Scope as vt, WebSocketUpgradeAuthenticationContext as w, UpgradeAuthenticator as x, VelaHonoEnv as xt, ReservedWsEventMetadata as y, VelaContext as yt, Diagnostics as z };
+export { InferTokens as $, WsMessage as A, VelaHono as At, webSocketSyncEnvelopeFits as B, WebSocketGatewayOptions as C, describeToken as Ct, WebSocketUpgradeIdentity as D, ParamType as Dt, WebSocketUpgradeAuthenticationContext as E, METADATA_KEYS as Et, RoomRegistry as F, CheckedProviders as G, InjectEnv as H, SyncDriver as I, DependencyToken as J, Constructor as K, assertBroadcastCommandFits as L, WsServer as M, VelaMiddlewareHandler as Mt, InMemoryRoomRegistry as N, WsClient as O, Scope as Ot, MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES as P, InferToken as Q, broadcastCommandFits as R, UpgradeAuthenticator as S, defineProvider as St, WebSocketTransport as T, HttpMethod as Tt, VelaEnv as U, ENV as V, Container as W, FactoryInject as X, Diagnostics as Y, ForwardRef as Z, OnGatewayDisconnect as _, TypedToken as _t, ExecutionContext as a, ModuleDescription as at, ReservedWsEventMetadata as b, UnresolvedDependencyReason as bt, HttpExecutionContext as c, MultipleProvidersFoundError as ct, PipeTransform as d, ProviderLiteral as dt, InjectMetadata as et, WsArgumentsHost as f, ProviderSnapshot as ft, OnGatewayConnection as g, TypedProviderLiteral as gt, ForwardedWebSocketUpgrade as h, Type as ht, ExceptionFilter as i, MissingInjectionMetadataReason as it, WsResponse as j, VelaHonoEnv as jt, WsExecutionContext as k, VelaContext as kt, NestInterceptor as l, Provider as lt, BroadcastOperator as m, Token as mt, CallHandler as n, InjectionToken as nt, HandlerFunction as o, ModuleScope as ot, BroadcastCommand as p, ROOT_MODULE_ID as pt, ContainerOptions as q, CanActivate as r, MissingInjectionMetadataError as rt, HttpArgumentsHost as s, ModuleVisibilityError as st, ArgumentMetadata as t, InjectableOptions as tt, NestMiddleware as u, ProviderDefinition as ut, OnGatewayInit as v, UnresolvedDependency as vt, WebSocketPrincipal as w, forwardRef as wt, SubscribeMessageMetadata as x, assertFactoryInject as xt, ReservedWsEventHandler as y, UnresolvedDependencyError as yt, local as z };
 ```
 
 ### `<internal:types-http-route-map.d.ts>`
@@ -5268,7 +5485,7 @@ export { NonceStore as a, RouteParams as c, InvocationTransport as i, VelaRouteM
 ### `<internal:types-http-version.d.ts>`
 
 ```ts
-import { $ as Provider, B as FactoryInject, U as InferTokens, V as ForwardRef, at as Type, d as PipeTransform, i as ExceptionFilter, it as Token, l as NestInterceptor, r as CanActivate, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
+import { $ as InferTokens, X as FactoryInject, Z as ForwardRef, d as PipeTransform, ht as Type, i as ExceptionFilter, l as NestInterceptor, lt as Provider, mt as Token, r as CanActivate, u as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
 import { Context } from "hono";
 import { RedirectStatusCode, StatusCode } from "hono/utils/http-status";
 
@@ -5358,184 +5575,6 @@ interface ModuleMetadata {
 export { VERSION_NEUTRAL as _, FilterType as a, InterceptorType as c, ModuleMetadata as d, ModuleOptions as f, RouteVersion as g, RouteDefinition as h, DynamicModule as i, MiddlewareType as l, PipeType as m, ComponentType as n, GuardType as o, ParameterMetadata as p, ComponentTypeMap as r, HttpHandlerMeta as s, AsyncModuleOptions as t, ModuleImport as u, VersionValue as v };
 ```
 
-### `<internal:types-openapi-types.d.ts>`
-
-```ts
-import { n as RoutePathOptions } from "<internal:route-paths.d.ts>";
-
-interface OpenApiInfo {
-  title: string;
-  version: string;
-  description?: string;
-}
-interface JsonSchema {
-  type?: string | string[];
-  format?: string;
-  enum?: Array<string | number | boolean | null>;
-  const?: unknown;
-  description?: string;
-  nullable?: boolean;
-  default?: unknown;
-  items?: JsonSchema;
-  properties?: Record<string, JsonSchema>;
-  required?: string[];
-  additionalProperties?: boolean | JsonSchema;
-  oneOf?: JsonSchema[];
-  anyOf?: JsonSchema[];
-  allOf?: JsonSchema[];
-  minimum?: number;
-  maximum?: number;
-  minLength?: number;
-  maxLength?: number;
-  pattern?: string;
-  $ref?: string;
-  [key: string]: unknown;
-}
-interface OpenApiParameter {
-  name: string;
-  in: 'path' | 'query' | 'header' | 'cookie';
-  required?: boolean;
-  description?: string;
-  schema?: JsonSchema;
-}
-interface OpenApiRequestBody {
-  description?: string;
-  required?: boolean;
-  content?: Record<string, {
-    schema: JsonSchema;
-    encoding?: Record<string, {
-      style?: string;
-      explode?: boolean;
-    }>;
-  }>;
-  'x-vela-body-limits'?: {
-    maxBytes?: number;
-    maxFields?: number;
-    maxFieldBytes?: number;
-    maxFiles?: number;
-    maxFileBytes?: number;
-  };
-}
-interface OpenApiResponse {
-  description: string;
-
-  'x-vela-response-format'?: 'binary' | 'stream' | 'response';
-  content?: Record<string, {
-    schema: JsonSchema;
-  }>;
-}
-
-type OpenApiSecurityRequirement = Record<string, string[]>;
-interface OpenApiOperation {
-  summary?: string;
-  description?: string;
-  operationId?: string;
-  deprecated?: boolean;
-  tags?: string[];
-  parameters?: OpenApiParameter[];
-  requestBody?: OpenApiRequestBody;
-  responses: Record<string, OpenApiResponse>;
-
-  security?: OpenApiSecurityRequirement[];
-}
-
-interface OpenApiServer {
-  url: string;
-  description?: string;
-  variables?: Record<string, {
-    enum?: string[];
-    default: string;
-    description?: string;
-  }>;
-  [key: string]: unknown;
-}
-
-interface OpenApiSecurityScheme {
-  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect' | 'mutualTLS';
-  description?: string;
-  name?: string;
-  in?: 'query' | 'header' | 'cookie';
-  scheme?: string;
-  bearerFormat?: string;
-  flows?: Record<string, unknown>;
-  openIdConnectUrl?: string;
-  [key: string]: unknown;
-}
-type HttpVerb = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options' | 'head';
-type OpenApiPathItem = { [verb in HttpVerb]?: OpenApiOperation; };
-interface OpenApiDocument {
-  openapi: '3.1.0';
-  info: OpenApiInfo;
-  servers?: OpenApiServer[];
-  paths: Record<string, OpenApiPathItem>;
-  components?: {
-    schemas?: Record<string, JsonSchema>;
-    securitySchemes?: Record<string, OpenApiSecurityScheme>;
-  };
-  security?: OpenApiSecurityRequirement[];
-  tags?: Array<{
-    name: string;
-    description?: string;
-  }>;
-}
-interface ApiDocMetadata {
-  summary?: string;
-  description?: string;
-  operationId?: string;
-  deprecated?: boolean;
-  tags?: string[];
-}
-interface ApiResponseOptions {
-  description: string;
-
-  contentType?: string;
-
-  format?: 'binary' | 'stream' | 'response';
-
-  schema?: unknown;
-}
-interface ApiResponseEntry extends ApiResponseOptions {
-  status: number | string;
-}
-interface CreateOpenApiDocumentOptions extends RoutePathOptions {
-  info?: Partial<OpenApiInfo>;
-
-  tags?: Array<{
-    name: string;
-    description?: string;
-  }>;
-
-  servers?: OpenApiServer[];
-
-  securitySchemes?: Record<string, OpenApiSecurityScheme>;
-
-  security?: OpenApiSecurityRequirement[];
-}
-type OpenApiUi = 'swagger' | 'scalar' | 'redoc';
-interface MountOpenApiOptions {
-
-  document: OpenApiDocument;
-
-  specPath?: string;
-
-  ui?: OpenApiUi | OpenApiUi[] | 'all';
-
-  swaggerPath?: string;
-
-  scalarPath?: string;
-
-  redocPath?: string;
-
-  title?: string;
-  /** @deprecated */
-  path?: string;
-  /** @deprecated */
-  uiPath?: string;
-}
-
-export { HttpVerb as a, OpenApiDocument as c, OpenApiParameter as d, OpenApiPathItem as f, OpenApiUi as h, CreateOpenApiDocumentOptions as i, OpenApiInfo as l, OpenApiResponse as m, ApiResponseEntry as n, JsonSchema as o, OpenApiRequestBody as p, ApiResponseOptions as r, MountOpenApiOptions as s, ApiDocMetadata as t, OpenApiOperation as u };
-```
-
 ### `<internal:types-unknown.d.ts>`
 
 ```ts
@@ -5545,7 +5584,7 @@ import "<internal:types-http-version.d.ts>";
 ### `<internal:url-generator.service.d.ts>`
 
 ```ts
-import { N as VelaEnv } from "<internal:types-http-hono.types.d.ts>";
+import { U as VelaEnv } from "<internal:types-http-hono.types.d.ts>";
 import { r as RouteManager } from "<internal:route.manager.d.ts>";
 import { c as RouteParams, s as RouteName } from "<internal:types-http-route-map.d.ts>";
 

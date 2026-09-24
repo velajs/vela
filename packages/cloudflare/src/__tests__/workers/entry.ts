@@ -1,12 +1,14 @@
 import { VelaWebSocketDurableObject } from '../../durable-objects';
 import { Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
 import { Cron } from '@velajs/vela/schedule';
+import { LiveModule } from '@velajs/vela/live';
 import { countRegisteredClasses } from '@velajs/vela/internal';
 import {
   ConnectedSocket,
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
+  WebSocketModule,
   WebSocketServer,
   type OnGatewayConnection,
   type UpgradeAuthenticator,
@@ -15,7 +17,6 @@ import {
   type WsServer,
 } from '@velajs/vela/websocket';
 import {
-  CloudflareWebSocketModule,
   createCloudflareWorker,
   CLOUDFLARE_SCHEDULED_EVENT,
   type CloudflareScheduledEvent,
@@ -122,7 +123,7 @@ class TestGateway implements OnGatewayConnection {
   }
 }
 
-@Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [TestGateway] })
+@Module({ imports: [WebSocketModule.forRoot()], providers: [TestGateway] })
 class TestModule {}
 
 export class TestRoom extends VelaWebSocketDurableObject(TestModule) {}
@@ -151,9 +152,17 @@ class NightlyReports {
   }
 }
 
-@Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [NightlyReports] })
+@Module({ imports: [WebSocketModule.forRoot()], providers: [NightlyReports] })
 class CronRoomModule {}
 
 export class CronRoom extends VelaWebSocketDurableObject(CronRoomModule) {}
+
+// Live queries in a Durable Object: one class declared with SQLite storage
+// (new_sqlite_classes) and one without (new_classes), from the same module.
+@Module({ imports: [WebSocketModule.forRoot(), LiveModule.forRoot()] })
+class LiveRoomModule {}
+
+export class SqliteLiveRoom extends VelaWebSocketDurableObject(LiveRoomModule) {}
+export class KvLiveRoom extends VelaWebSocketDurableObject(LiveRoomModule) {}
 
 export default createCloudflareWorker(TestModule);

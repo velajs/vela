@@ -185,7 +185,8 @@ other server error. Mount the Vela app under bases whose parameters match one
 path segment.
 
 Some routes are served outside the global prefix: controller routes that
-`globalPrefixOptions.exclude` leaves unprefixed, `mountOpenApi()` documents
+`globalPrefixOptions.exclude` leaves unprefixed, the `OpenApiModule` document
+(`path`, `/openapi.json` by default), `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
 (`/rpc`), Cloudflare WebSocket gateway upgrade paths, Studio mounted with
 `absolute: true`, and routes added to the Hono app directly. Target them with

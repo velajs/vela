@@ -14,8 +14,6 @@ import {
 } from '@velajs/vela/module-kit';
 import type { ScheduleInvocation } from '@velajs/vela/schedule';
 import type { Entrypoint } from '@velajs/vela/module-kit';
-import { readWsEntrypointMeta } from '@velajs/vela/websocket';
-import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
 import { assertCloudflareEnvironment } from './environment';
 import {
   CLOUDFLARE_SCHEDULED_EVENT,
@@ -116,7 +114,6 @@ async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> 
  * ```
  */
 export class CloudflareApplication {
-  readonly #wsGatewayRoutes: WsGatewayRoute[] = [];
   readonly #app: VelaApplication;
   /** Scheduled triggers in flight; close() aborts their signals and awaits them. */
   readonly #scheduled = new Map<Promise<void>, AbortController>();
@@ -144,9 +141,8 @@ export class CloudflareApplication {
 
   /**
    * Resolve a provider from the application's DI container (delegates to
-   * `VelaApplication.get`). Handy for grabbing a service — e.g. an auth service —
-   * to use inside `createCloudflareApp({ middleware: env => [...] })` request middleware,
-   * which runs outside the DI request pipeline.
+   * `VelaApplication.get`). Handy in `createCloudflareWorker({ configure })`,
+   * which finishes the HTTP surface outside the DI request pipeline.
    *
    * @example
    * ```ts
@@ -183,40 +179,6 @@ export class CloudflareApplication {
   mountOpenApi(options: MountOpenApiOptions): this {
     this.#app.mountOpenApi(options);
     return this;
-  }
-
-  /**
-   * @internal Upgrade routes come from validated gateway entrypoints, including
-   * request-scoped gateways without a bootstrap instance. Retain the instance
-   * scan for legacy applications that only declare forwarding metadata.
-   */
-  scanInstances(instances: unknown[]): void {
-    const routes = new Map<string, WsGatewayRoute>();
-    for (const ep of this.#app.entrypoints.ofKind('websocket')) {
-      if (typeof ep.meta !== 'object' || ep.meta === null || !('dispatcher' in ep.meta)) continue;
-      const meta = readWsEntrypointMeta(ep.meta);
-      if (meta.options.binding) {
-        routes.set(meta.path, {
-          path: meta.path,
-          binding: meta.options.binding,
-          options: { ...meta.options },
-          moduleId: meta.moduleId,
-        });
-      }
-    }
-    const container = this.#app.getContainer();
-    for (const instance of instances) {
-      if (!instance || typeof instance !== 'object') continue;
-      for (const route of collectWsGatewayRoutes(instance, container)) {
-        if (!routes.has(route.path)) routes.set(route.path, route);
-      }
-    }
-    this.#wsGatewayRoutes.splice(0, this.#wsGatewayRoutes.length, ...routes.values());
-  }
-
-  /** @internal — upgrade routes discovered from the application's gateways. */
-  getWsGatewayRoutes(): WsGatewayRoute[] {
-    return [...this.#wsGatewayRoutes];
   }
 
   /**

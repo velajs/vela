@@ -9,7 +9,7 @@ import { collectControllers } from '../module/graph';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { joinPaths, toOpenApiPath } from '../registry/paths';
 import type { DynamicModule, ParameterMetadata, RouteDefinition } from '../registry/types';
-import { getApiDoc, getApiResponses, getApiTags } from './decorators';
+import { getApiDoc, getApiResponses, getApiTags, isApiExcluded } from './decorators';
 import type {
   CreateOpenApiDocumentOptions,
   HttpVerb,
@@ -370,13 +370,14 @@ export function createOpenApiDocument(
   const controllers = collectControllers(rootModule);
 
   for (const controller of controllers) {
+    if (isApiExcluded(controller)) continue;
     const controllerPath = MetadataRegistry.getControllerPath(controller);
     const controllerVersion = MetadataRegistry.getControllerOptions(controller).version;
     const routes = MetadataRegistry.getRoutes(controller);
 
     for (const route of routes) {
       const method = HTTP_VERBS.find((verb) => verb === route.method.toLowerCase());
-      if (!method) continue;
+      if (!method || isApiExcluded(controller, route.handlerName)) continue;
 
       for (const { path: rawPath } of composeRoutePaths(controllerPath, route, controllerVersion)) {
         const pathString = toOpenApiPath(rawPath);
@@ -397,7 +398,7 @@ export function createOpenApiDocument(
     if (!contributor.buildOpenApiPaths) continue;
     for (const controller of controllers) {
       const meta = getMetadata(contributor.claimsMetaKey, controller);
-      if (meta === undefined) continue;
+      if (meta === undefined || isApiExcluded(controller)) continue;
 
       const controllerPrefix = MetadataRegistry.getControllerPath(controller);
       const contributedPaths = contributor.buildOpenApiPaths({

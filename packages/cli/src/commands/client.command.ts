@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { createOpenApiDocument } from '@velajs/vela/openapi';
+import type { VelaApplication } from '@velajs/vela';
+import type { RouteDescription } from '@velajs/vela/module-kit';
+import { createOpenApiDocument, isApiExcluded } from '@velajs/vela/openapi';
 import type { OpenApiDocument } from '@velajs/vela/openapi';
 import { Command, Option } from 'clipanion';
 import { generateClientContract } from '../client-contract.js';
@@ -9,6 +11,13 @@ import { withApp } from '../with-app.js';
 
 /** The HTTP methods an OpenAPI path item can describe. */
 const OPENAPI_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head']);
+
+/** Whether `@ApiExclude()` keeps a controller route out of the document on purpose. */
+function isExcludedRoute(app: VelaApplication, route: RouteDescription): boolean {
+  const controllers = app.getContainer().getModuleScope(route.moduleId)?.controllers ?? [];
+  const controller = [...controllers].find((candidate) => candidate.name === route.controller);
+  return controller !== undefined && isApiExcluded(controller, route.handler);
+}
 
 export class ClientGenerateCommand extends Command {
   static override paths = [['client', 'generate']];
@@ -92,6 +101,7 @@ export class ClientGenerateCommand extends Command {
         for (const route of app.describeRoutes()) {
           // An @All handler (such as a mounted auth handler) has no OpenAPI operation.
           if (!OPENAPI_METHODS.has(route.method.toLowerCase())) continue;
+          if (isExcludedRoute(app, route)) continue;
           const path = route.path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}');
           const item = document.paths[path];
           if (!item || !Object.hasOwn(item, route.method.toLowerCase())) {

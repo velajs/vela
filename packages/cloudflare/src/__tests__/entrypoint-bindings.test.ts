@@ -1,6 +1,6 @@
 import { LiveInvalidation, LiveModule, type InvalidationCommand } from '@velajs/vela/live';
-import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
-import { durableObjectLive, type LiveNamespace } from '../websocket/do-live';
+import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
+import type { LiveNamespace } from '../websocket/live-driver';
 import type { ExecutionContext } from 'hono';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
@@ -226,9 +226,7 @@ describe('native application environments', () => {
 });
 
 describe('per-application native live namespaces', () => {
-  it('keeps a shared module definition isolated across two environments', async () => {
-    // Synthetic environments map to their namespace; the factory reads it from ENV.
-    const rooms = new WeakMap<VelaEnv, LiveNamespace>();
+  it("reads each environment's own binding for a shared module definition", async () => {
     const dispatched: string[] = [];
     const namespace = (name: string): LiveNamespace => ({
       idFromName(room): DurableObjectId {
@@ -243,28 +241,15 @@ describe('per-application native live namespaces', () => {
         };
       },
     });
+    @WebSocketGateway({ path: '/rooms/:room/ws', roomParam: 'room', binding: 'ROOMS' })
+    class RoomsGateway {}
     @Module({
-      imports: [
-        CloudflareWebSocketModule.forRoot(),
-        LiveModule.forRootAsync({
-          inject: [ENV],
-          useFactory: (env) => {
-            const live = rooms.get(env);
-            if (!live) throw new Error('ROOMS binding is missing');
-            return {
-              driver: () => durableObjectLive({ namespace: live, gatewayPath: '/rooms/:room/ws' }),
-            };
-          },
-        }),
-      ],
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [RoomsGateway],
     })
     class App {}
-    const envA = {};
-    const envB = {};
-    rooms.set(envA, namespace('a'));
-    rooms.set(envB, namespace('b'));
-    const a = await createCloudflareApp(App, { env: envA });
-    const b = await createCloudflareApp(App, { env: envB });
+    const a = await createCloudflareApp(App, { env: { ROOMS: namespace('a') } });
+    const b = await createCloudflareApp(App, { env: { ROOMS: namespace('b') } });
     await a.get(LiveInvalidation).invalidate({ tags: ['todos'] });
     await b.get(LiveInvalidation).invalidate({ tags: ['todos'] });
     await a.get(LiveInvalidation).invalidate({ tags: ['todos'] });
