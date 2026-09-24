@@ -162,12 +162,19 @@ values only deduplicates, because those values compare structurally.
 A bare class import configures nothing. A configured import under the same
 key, such as `HttpModule.forRoot({ key: 'default', baseURL })` next to
 `imports: [HttpModule]`, fails the bootstrap in either order instead of
-leaving one of them on the class's own defaults; `forRoot()` with no options
-is the bare import. Laziness is compared as the instance gets it: the spec's
-`lazy`, the class's `@Module({ lazy: true })` and a call site's `lazy: true`
-all count, so `lazy: true` on a module that is already lazy changes nothing,
-while `lazy: true` on one import of an eager module is a different
-configuration.
+leaving one of them on the class's own defaults. A definition under the bare
+key that adds nothing to its class, such as
+`HttpModule.forRoot({ key: 'default' })`, is the bare import. `forRoot()`
+alone is the bare import only on a module whose `key` returns `'default'`
+(`EventEmitterModule`, `HealthModule`, `ScheduleNodeModule`); elsewhere it
+keys by the hash of its structural options. `HttpModule.forRoot()` is
+therefore a second instance (`HttpModule#<hash>`) beside
+`imports: [HttpModule]`, and a module that imports both forms is reported as
+mixing bare and keyed imports (`'throw'` fails the bootstrap). Laziness is
+compared as the instance gets it: the spec's `lazy`, the class's
+`@Module({ lazy: true })` and a call site's `lazy: true` all count, so
+`lazy: true` on a module that is already lazy changes nothing, while
+`lazy: true` on one import of an eager module is a different configuration.
 
 The options are compared before the `global` flag, so a repeat that also asks
 for `isGlobal: true` still fails. A repeat with the same options and a
