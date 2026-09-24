@@ -35,6 +35,13 @@ import {
   segmentsUnder,
   type RouteTarget,
 } from './route-target';
+import {
+  createRouteComposer,
+  normalizeGlobalPrefix,
+  type GlobalPrefixOptions,
+  type RoutePathOptions,
+  type VersioningOptions,
+} from './route-paths';
 import { buildMiddlewareExecutionContext } from './execution-context';
 import { mapFilterResult, sendHttpError } from './error-response';
 import { HandlerExecutor } from './handler-executor';
@@ -104,7 +111,12 @@ export interface RouteManagerOptions {
    */
   getClientIp?: (c: Context) => string | null;
   middleware?: MiddlewareHandler[];
+  /** Prefix for every controller route, as Nest's `app.setGlobalPrefix(prefix)`. */
   globalPrefix?: string;
+  /** Routes served without the global prefix (`{ exclude }`). */
+  globalPrefixOptions?: GlobalPrefixOptions;
+  /** URI versioning: the version segment prefix (default `'v'`). */
+  versioning?: VersioningOptions;
   /**
    * Opt into ambient request-container access (`getCurrentContainer()` /
    * `getCurrentRequestContext()`). Registers Hono's `contextStorage()` as the
@@ -260,6 +272,8 @@ export class RouteManager {
   private globalInterceptors: Array<InterceptorType | TypedToken<NestInterceptor>> = [];
   private globalFilters: Array<FilterType | TypedToken<ExceptionFilter>> = [];
   private globalPrefix = '';
+  private globalPrefixOptions: GlobalPrefixOptions = {};
+  private readonly versioning: VersioningOptions;
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
   // The Hono handler that ends each controller route, with its controller and
   // method, for forRoutes(Controller).
@@ -330,6 +344,7 @@ export class RouteManager {
       }
     }
     this.clientIpResolver = options.getClientIp ?? defaultGetClientIp;
+    this.versioning = options.versioning ?? {};
     const argumentResolver = new ArgumentResolver((c) => this.resolveClientIp(c));
     this.handlerExecutor = new HandlerExecutor(
       argumentResolver,
@@ -419,8 +434,10 @@ export class RouteManager {
     return this;
   }
 
-  setGlobalPrefix(prefix: string): this {
-    this.globalPrefix = prefix && !prefix.startsWith('/') ? `/${prefix}` : prefix;
+  /** As Nest's `app.setGlobalPrefix(prefix, { exclude })`; takes effect at the next build. */
+  setGlobalPrefix(prefix: string, options: GlobalPrefixOptions = {}): this {
+    this.globalPrefix = normalizeGlobalPrefix(prefix);
+    this.globalPrefixOptions = options;
     return this;
   }
 
@@ -654,6 +671,15 @@ export class RouteManager {
     return this.globalPrefix;
   }
 
+  /** How controller routes compose into served paths, for OpenAPI documents. */
+  getRoutePathOptions(): RoutePathOptions {
+    return {
+      globalPrefix: this.globalPrefix,
+      globalPrefixOptions: this.globalPrefixOptions,
+      versioning: this.versioning,
+    };
+  }
+
   /** Observe the existing request lifetime without taking ownership of its resources. */
   observeRequests(observer: HttpRequestObserver): () => void {
     this.requestObservers.add(observer);
@@ -665,6 +691,7 @@ export class RouteManager {
   async build(): Promise<HonoApp> {
     const app = new Hono<VelaHonoEnv>();
     this.routeDescriptions = [];
+    const composeRoutePaths = createRouteComposer(this.getRoutePathOptions());
 
     // HTTP owns one lifetime through both response transmission and managed
     // deferred work. Native waitUntil also retains asynchronous disposal.
@@ -926,7 +953,7 @@ export class RouteManager {
             }),
           );
 
-          for (const { path: fullPath, version } of this.composeRoutePaths(
+          for (const { path: fullPath, version } of composeRoutePaths(
             metadata.prefix,
             route,
             metadata.version,
@@ -969,6 +996,7 @@ export class RouteManager {
           controllerPrefix: metadata.prefix,
           meta,
           globalPrefix: this.globalPrefix,
+          routePathOptions: this.getRoutePathOptions(),
           get globalGuards() {
             return resolveGlobalGuards();
           },
@@ -1094,22 +1122,6 @@ export class RouteManager {
         app.on(method, normalizedPath, handler);
       }
     }
-  }
-
-  // Every path one route is served on: global prefix, then each version
-  // segment, then controller prefix and route path.
-  private composeRoutePaths(
-    controllerPrefix: string,
-    route: { path: string; version?: number | number[] },
-    controllerVersion?: number | number[],
-  ): Array<{ path: string; version?: number }> {
-    const localPath = joinPaths(controllerPrefix, route.path);
-    const version = route.version ?? controllerVersion;
-    if (version === undefined) return [{ path: joinPaths(this.globalPrefix, localPath) }];
-    return (Array.isArray(version) ? version : [version]).map((v) => ({
-      path: joinPaths(this.globalPrefix, joinPaths(`/v${v}`, localPath)),
-      version: v,
-    }));
   }
 
   // Whether a consumer middleware definition applies to the request. A

@@ -161,8 +161,8 @@ export async function bootstrap(
   bindAppProviders(routeManager, container, loader);
   routeManager.registerConsumerMiddleware(loader.getConsumerMiddlewareDefinitions());
 
-  if (options.globalPrefix) {
-    routeManager.setGlobalPrefix(options.globalPrefix);
+  if (options.globalPrefix || options.globalPrefixOptions) {
+    routeManager.setGlobalPrefix(options.globalPrefix ?? '', options.globalPrefixOptions);
   }
 
   for (const handler of options.middleware ?? []) {

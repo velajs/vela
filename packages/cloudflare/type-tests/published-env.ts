@@ -69,6 +69,8 @@ export async function verifyPublishedEnvironment(
   // ENV is framework-owned: the published Worker options carry no environment token.
   const workerOptions: Record<keyof CloudflareWorkerOptions, true> = {
     globalPrefix: true,
+    globalPrefixOptions: true,
+    versioning: true,
     security: true,
     middleware: true,
     adapters: true,

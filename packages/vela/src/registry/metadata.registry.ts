@@ -1,3 +1,4 @@
+import type { VersionValue } from '../http/version';
 import type { Scope } from '../constants';
 import type { InjectMetadata } from '../container/types';
 import type {
@@ -18,7 +19,7 @@ import type {
 import { getOrCreate, getOrCreateArray, getOrCreateMap } from './util';
 
 export interface ControllerOptions {
-  version?: number | number[];
+  version?: VersionValue;
 }
 
 interface ComponentByOwner<O> {
@@ -58,7 +59,7 @@ interface RegistryState {
   injectTokens: Map<Constructor, InjectMetadata[]>;
   handlerHttpMeta: Map<Constructor, Map<string | symbol, HttpHandlerMeta>>;
   catchTypes: Map<Constructor, Type<Error>[]>;
-  routeVersions: Map<Constructor, Map<string | symbol, number | number[]>>;
+  routeVersions: Map<Constructor, Map<string | symbol, VersionValue>>;
   classMeta: Map<object, Map<string, unknown>>;
   handlerMeta: Map<object, Map<string | symbol, Map<string, unknown>>>;
   // Reverse indexes: metadata key -> targets carrying it. Backs DiscoveryService
@@ -410,7 +411,7 @@ export class MetadataRegistry {
   static setRouteVersion(
     controller: Constructor,
     method: string | symbol,
-    version: number | number[],
+    version: VersionValue,
   ): void {
     getOrCreateMap(this.routeVersions, controller).set(method, version);
   }
@@ -418,7 +419,7 @@ export class MetadataRegistry {
   static getRouteVersion(
     controller: Constructor,
     method: string | symbol,
-  ): number | number[] | undefined {
+  ): VersionValue | undefined {
     return this.routeVersions.get(controller)?.get(method);
   }
 

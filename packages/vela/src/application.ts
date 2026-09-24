@@ -13,6 +13,7 @@ import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import { LazyModuleManager } from './module/lazy-modules';
 import type { RouteDescription, RouteManager } from './http/route.manager';
+import type { RoutePathOptions } from './http/route-paths';
 import {
   hasBeforeApplicationShutdown,
   hasOnApplicationBootstrap,
@@ -137,6 +138,15 @@ export class VelaApplication {
   /** The global route prefix in effect ('' when none). */
   getGlobalPrefix(): string {
     return this.routeManager.getGlobalPrefix();
+  }
+
+  /**
+   * How controller routes compose into served paths (global prefix and its
+   * exclusions, URI versioning). Spread into `createOpenApiDocument` so the
+   * document matches the served routes.
+   */
+  getRoutePathOptions(): RoutePathOptions {
+    return this.routeManager.getRoutePathOptions();
   }
 
   // Pipeline components — applied at request time, no rebuild needed

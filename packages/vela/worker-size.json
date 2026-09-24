@@ -19,6 +19,7 @@
     "dist/fetch/",
     "dist/health/",
     "dist/http/endpoint-executor.js",
+    "dist/http/sse.js",
     "dist/http/url/",
     "dist/i18n/",
     "dist/live/",

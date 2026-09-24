@@ -86,9 +86,7 @@ export class ClientGenerateCommand extends Command {
     return withApp(
       loaded,
       async (app) => {
-        const document = createOpenApiDocument(rootModule, {
-          globalPrefix: app.getGlobalPrefix(),
-        });
+        const document = createOpenApiDocument(rootModule, app.getRoutePathOptions());
         // Detect older Vela exporters which omit versioned controller routes.
         // Never silently ship a contract which points at a different endpoint.
         for (const route of app.describeRoutes()) {

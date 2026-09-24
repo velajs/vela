@@ -32,7 +32,6 @@ export {
   Options,
   Head,
   All,
-  Sse,
   Param,
   Query,
   Body,
@@ -52,6 +51,11 @@ export {
   isController,
 } from './decorators';
 export type { RouteOptions, SchemaParamDecorator } from './decorators';
+export { Sse } from './sse';
+export type { MessageEvent, SseResult } from './sse';
+export { VERSION_NEUTRAL } from './version';
+export type { RouteVersion, VersionValue } from './version';
+export type { GlobalPrefixOptions, RoutePathOptions, VersioningOptions } from './route-paths';
 export { createLazyParamDecorator } from './lazy-param.decorator';
 export { readJsonBody } from './json-body';
 export type { ReadJsonBodyOptions } from './json-body';

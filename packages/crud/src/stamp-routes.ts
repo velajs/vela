@@ -344,7 +344,7 @@ function stampParams(
       ...(metatype ? { metatype: Object.freeze({ ...metatype, validationOwner: 'handler' }) } : {}),
     });
   }
-  add({ index, type: ParamType.REQUEST });
+  add({ index, type: ParamType.CONTEXT });
 }
 
 /** Maps the validated consumer config onto the engine's runtime configuration. */

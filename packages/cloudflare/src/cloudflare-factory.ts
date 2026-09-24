@@ -2,10 +2,12 @@ import type { ExecutionContext } from 'hono';
 import { getConnInfo } from 'hono/cloudflare-workers';
 import { VelaFactory } from '@velajs/vela';
 import type {
+  GlobalPrefixOptions,
   VelaApplication,
   VelaEnv,
   VelaMiddlewareHandler,
   VelaSecurityOptions,
+  VersioningOptions,
 } from '@velajs/vela';
 import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { CloudflareApplication } from './cloudflare-application';
@@ -18,6 +20,10 @@ import type { CloudflareRoot } from './root-module';
 
 export interface CloudflareWorkerOptions {
   globalPrefix?: string;
+  /** Routes served without the global prefix (`{ exclude }`). */
+  globalPrefixOptions?: GlobalPrefixOptions;
+  /** URI versioning: the version segment prefix (default `'v'`). */
+  versioning?: VersioningOptions;
   security?: VelaSecurityOptions;
   /** Build request middleware from the same native environment DI receives as ENV. */
   middleware?: (env: VelaEnv) => VelaMiddlewareHandler[];
@@ -104,6 +110,8 @@ export async function createCloudflareApp(
 ): Promise<CloudflareApplication> {
   const velaApp = await VelaFactory.create(rootModule, {
     globalPrefix: options.globalPrefix,
+    globalPrefixOptions: options.globalPrefixOptions,
+    versioning: options.versioning,
     security: options.security,
     middleware: options.middleware?.(options.env),
     adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],

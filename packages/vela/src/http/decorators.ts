@@ -3,13 +3,14 @@ import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 import { declareScope } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { normalizePath } from '../registry/paths';
-import type { Constructor, PipeType, Type } from '../registry/types';
+import type { Constructor, HttpHandlerMeta, PipeType, Type } from '../registry/types';
 import type { ControllerOptions } from './types';
 import type { ExecutionContext } from '../pipeline/types';
 import { isValidationSchema, type ValidationSchema } from '../validation/parse-schema';
 import { isStandardSchema } from '../validation/standard-schema';
 import { ValidationPipe } from '../validation/validation.pipe';
 import { buildExecutionContext } from './execution-context';
+import type { VersionValue } from './version';
 
 /**
  * Marks a class as a controller.
@@ -57,7 +58,7 @@ export function Controller(pathOrOptions?: string | ControllerOptions): ClassDec
  * }
  * ```
  */
-export function Version(version: number | number[]): MethodDecorator {
+export function Version(version: VersionValue): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
     const ctor = target.constructor as Constructor;
     MetadataRegistry.setRouteVersion(ctor, propertyKey, version);
@@ -73,7 +74,7 @@ export function Version(version: number | number[]): MethodDecorator {
 export function getRouteVersion(
   target: Constructor,
   propertyKey: string | symbol,
-): number | number[] | undefined {
+): VersionValue | undefined {
   return MetadataRegistry.getRouteVersion(target, propertyKey);
 }
 
@@ -116,7 +117,6 @@ export const Delete = /* @__PURE__ */ createMethodDecorator('DELETE');
 export const Options = /* @__PURE__ */ createMethodDecorator('OPTIONS');
 export const Head = /* @__PURE__ */ createMethodDecorator('HEAD');
 export const All = /* @__PURE__ */ createMethodDecorator('ALL');
-export const Sse = /* @__PURE__ */ createMethodDecorator('GET');
 
 // Parameter decorators
 
@@ -409,6 +409,13 @@ export function getResponseHeaders(
   method: string | symbol,
 ): Array<[string, string]> {
   return MetadataRegistry.getHandlerHttpMeta(target, method)?.responseHeaders ?? [];
+}
+
+export function getResponder(
+  target: Constructor,
+  method: string | symbol,
+): HttpHandlerMeta['respond'] {
+  return MetadataRegistry.getHandlerHttpMeta(target, method)?.respond;
 }
 
 export function getRedirect(

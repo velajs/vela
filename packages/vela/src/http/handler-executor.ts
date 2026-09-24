@@ -20,7 +20,7 @@ import type {
   PipeType,
 } from '../registry/types';
 import type { ArgumentResolver } from './argument-resolver';
-import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
+import { getHttpCode, getRedirect, getResponder, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
 import { getEndpointBinding } from './endpoint-registry';
 import { mapFilterResult, sendHttpError } from './error-response';
@@ -117,6 +117,7 @@ export class HandlerExecutor {
     const httpCode = getHttpCode(controller, route.handlerName);
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
     const redirect = getRedirect(controller, route.handlerName);
+    const respond = getResponder(controller, route.handlerName);
     const endpoint = getEndpointBinding(controller, route.handlerName);
     if (endpoint && (paramMetadata.length > 0 || redirect || httpCode !== undefined)) {
       throw new Error(
@@ -199,6 +200,18 @@ export class HandlerExecutor {
 
         if (redirect) {
           return mapRedirect(c, result, redirect);
+        }
+
+        if (respond) {
+          const response = respond(c, result, (error) => {
+            resolveErrorReporter(requestContainer).report(error, {
+              edge: 'http',
+              source: `${controller.name}.${String(route.handlerName)}`,
+              note: 'response stream failed',
+            });
+          });
+          applyResponseHeaders(response, responseHeaders);
+          return response;
         }
 
         const response = mapResponse(c, result, successStatus);
