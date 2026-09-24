@@ -2,6 +2,7 @@ import {
   Inject,
   InjectionToken,
   Injectable,
+  ModuleRef,
   Reflector,
   ForbiddenException,
   defineModule,
@@ -35,9 +36,8 @@ export interface CedarModuleOptions {
    */
   guard?: 'global' | 'none';
   /**
-   * Routes without `@RequireResource` or `@CedarPublic` in a module that can
-   * see this module: `'deny'` (default) rejects them with 403; `'allow'` lets
-   * them through.
+   * Routes without `@RequireResource` or `@CedarPublic`: `'deny'` (default)
+   * rejects them with 403; `'allow'` lets them through.
    */
   undeclared?: 'deny' | 'allow';
   /** Resolve resources/grants from trusted application services; invoke engine.check here. */
@@ -69,6 +69,9 @@ export function auditCedarRoutes(modules: readonly Type[]): void {
     }
   }
 }
+// The guards CedarModule installs globally, and the module each belongs to.
+const installedHosts = new WeakMap<CedarGuard, ModuleRef>();
+
 export class CedarGuard implements CanActivate {
   /** Global guards authorize after authentication and tenant admission. */
   static readonly phase: GuardPhase = 'authorize';
@@ -81,12 +84,13 @@ export class CedarGuard implements CanActivate {
     if (declared?.kind === 'public') return true;
     const moduleId = context.getModuleId(),
       container = context.getContainer();
-    const candidates =
-      moduleId && container ? container.resolveAll(CEDAR_AUTHORIZER, moduleId) : [];
+    let candidates = moduleId && container ? container.resolveAll(CEDAR_AUTHORIZER, moduleId) : [];
+    // The globally installed guard covers every application route: where the
+    // route's module does not import CedarModule, its own module's policy
+    // applies. A route-level CedarGuard there has no policy and denies.
+    const host = installedHosts.get(this);
+    if (candidates.length === 0 && host) candidates = [await host.resolve(CEDAR_AUTHORIZER)];
     if (!declared) {
-      // A module that cannot see CedarModule is outside Cedar (the Better Auth
-      // handler, for example); inside it, undeclared routes fail closed.
-      if (candidates.length === 0) return true;
       if (candidates.length === 1 && candidates[0]!.undeclared === 'allow') return true;
       throw new ForbiddenException();
     }
@@ -121,6 +125,16 @@ export class CedarGuard implements CanActivate {
 }
 Injectable()(CedarGuard);
 Inject(Reflector)(CedarGuard, undefined, 0);
+/** The instance `guard: 'global'` installs; it serves routes in every module. */
+class InstalledCedarGuard extends CedarGuard {
+  constructor(reflector: Reflector, host: ModuleRef) {
+    super(reflector);
+    installedHosts.set(this, host);
+  }
+}
+Injectable()(InstalledCedarGuard);
+Inject(Reflector)(InstalledCedarGuard, undefined, 0);
+Inject(ModuleRef)(InstalledCedarGuard, undefined, 1);
 const { ConfigurableModuleClass } = defineModule<CedarModuleOptions>({
   name: 'CedarAuthorization',
   setup: ({ OPTIONS, options }) => {
@@ -141,10 +155,10 @@ const { ConfigurableModuleClass } = defineModule<CedarModuleOptions>({
               : { ...resolved, undeclared: options.undeclared };
           },
         }),
-        ...(guard === 'none' ? [CedarGuard] : []),
+        CedarGuard,
       ],
       exports: [CEDAR_AUTHORIZER, CedarGuard],
-      global: guard === 'global' ? { guards: [CedarGuard] } : {},
+      global: guard === 'global' ? { guards: [InstalledCedarGuard] } : {},
     };
   },
 });

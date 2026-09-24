@@ -2,6 +2,7 @@ import {
   Inject,
   Injectable,
   InjectionToken,
+  ModuleRef,
   REQUEST_CONTEXT,
   Scope,
   defineModule,
@@ -69,7 +70,9 @@ class TenantScopeState implements TenantContextReader {
   }
 }
 function scopeState(container: Container, moduleId?: string): TenantScopeState {
-  const readers = container.resolveAll(TENANT_CONTEXT_READER, moduleId);
+  return assertScopeState(container.resolveAll(TENANT_CONTEXT_READER, moduleId));
+}
+function assertScopeState(readers: readonly TenantContextReader[]): TenantScopeState {
   if (readers.length !== 1 || !(readers[0] instanceof TenantScopeState))
     throw new TenantError('TENANT_CONFLICT');
   return readers[0];
@@ -84,10 +87,10 @@ export interface TenantModuleOptions extends TenantServiceOptions {
   /**
    * `'global'` (default) installs `TenantGuard` as a global guard in the
    * `tenant` phase: after authentication, before authorization, whatever the
-   * import order. It admits a tenant on every route declared in a module that
-   * can see this module; mark exceptions with `@TenantOptional()` or
-   * `@TenantIgnored()`. `'none'` leaves admission to `@UseGuards(TenantGuard)`.
-   * With `forRootAsync`, pass it beside the factory.
+   * import order. It admits a tenant on every application route, including
+   * routes in modules that do not import this module; mark exceptions with
+   * `@TenantOptional()` or `@TenantIgnored()`. `'none'` leaves admission to
+   * `@UseGuards(TenantGuard)`. With `forRootAsync`, pass it beside the factory.
    */
   guard?: 'global' | 'none';
   selector?: TenantSelector;
@@ -101,7 +104,7 @@ const { ConfigurableModuleClass } = defineModule<TenantModuleOptions>({
   name: 'Tenant',
   optionsToken: OPTIONS,
   setup: ({ OPTIONS, options }) => ({
-    global: installGuard(options.guard) ? { guards: [TenantGuard] } : {},
+    global: installGuard(options.guard) ? { guards: [InstalledTenantGuard] } : {},
     providers: [
       defineProvider(TENANT_SERVICE, {
         inject: [OPTIONS],
@@ -122,6 +125,8 @@ function installGuard(guard: TenantModuleOptions['guard']): boolean {
   return guard !== 'none';
 }
 export class TenantModule extends ConfigurableModuleClass {}
+// The guards TenantModule installs globally, and the module each belongs to.
+const installedHosts = new WeakMap<TenantGuard, ModuleRef>();
 export class TenantGuard implements CanActivate {
   /** Global guards admit tenants after authentication and before authorization. */
   static readonly phase: GuardPhase = 'tenant';
@@ -136,11 +141,19 @@ export class TenantGuard implements CanActivate {
     const owners = container?.getOwnerModuleIds(context.getClass()) ?? [];
     const moduleId = context.getModuleId() ?? (owners.length === 1 ? owners[0] : undefined);
     if (!container || !moduleId) throw new ForbiddenException('Tenant scope unavailable');
-    const candidates = container.resolveAll(TENANT_SERVICE, moduleId);
-    const options = container.resolveAll(OPTIONS, moduleId);
-    // A module that cannot see TenantModule is outside the tenant phase (the
-    // Better Auth handler, for example), unless the route declares a tenant.
-    if (candidates.length === 0 && options.length === 0 && declared === undefined) return true;
+    let candidates = container.resolveAll(TENANT_SERVICE, moduleId);
+    let options = container.resolveAll(OPTIONS, moduleId);
+    let state = () => scopeState(container, moduleId);
+    // The globally installed guard covers every application route: where the
+    // route's module does not import TenantModule, it admits through its own
+    // module. A route-level TenantGuard there has no configuration and denies.
+    const host = installedHosts.get(this);
+    if (host && candidates.length === 0 && options.length === 0) {
+      candidates = [await host.resolve(TENANT_SERVICE)];
+      options = [await host.resolve(OPTIONS)];
+      const reader = await host.resolve(TENANT_CONTEXT_READER, context);
+      state = () => assertScopeState([reader]);
+    }
     if (candidates.length !== 1 || options.length !== 1)
       throw new ForbiddenException('Tenant configuration is ambiguous');
     const service = candidates[0]!,
@@ -165,7 +178,7 @@ export class TenantGuard implements CanActivate {
         };
     }
     if (!input) {
-      if (this.#reflector.getAllAndOverride(requirement, context) === 'optional') return true;
+      if (declared === 'optional') return true;
       throw new BadRequestException('Tenant and authenticated identity are required');
     }
     if (identity?.tenantId && identity.tenantId !== input.tenantId)
@@ -190,7 +203,7 @@ export class TenantGuard implements CanActivate {
       setTrustedRequestTenant(request, identity, tenant.id);
     }
     const admittedIdentity = request ? getTrustedRequestIdentity(request) : undefined;
-    scopeState(container, moduleId).publish(
+    state().publish(
       tenant,
       request ? () => getTrustedRequestIdentity(request) === admittedIdentity : undefined,
     );
@@ -202,6 +215,16 @@ export class TenantGuard implements CanActivate {
 // This package is authored without decorator syntax.
 Injectable()(TenantGuard);
 Inject(Reflector)(TenantGuard, undefined, 0);
+/** The instance `guard: 'global'` installs; it serves routes in every module. */
+class InstalledTenantGuard extends TenantGuard {
+  constructor(reflector: Reflector, host: ModuleRef) {
+    super(reflector);
+    installedHosts.set(this, host);
+  }
+}
+Injectable()(InstalledTenantGuard);
+Inject(Reflector)(InstalledTenantGuard, undefined, 0);
+Inject(ModuleRef)(InstalledTenantGuard, undefined, 1);
 export const CurrentTenant = createParamDecorator((_data: undefined, context: ExecutionContext) =>
   context.getContainer()?.resolve(TENANT_CONTEXT_READER, context.getModuleId()).requireTenant(),
 );
