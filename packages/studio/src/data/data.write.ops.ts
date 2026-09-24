@@ -4,7 +4,7 @@
  * {@link STUDIO_MODEL_SOURCE} port — this provider knows nothing about crud, so
  * a BYO write-capable source binds the same token.
  *
- * Registered by the source-binding module (`StudioCrudModule`), NOT the core
+ * Registered by the panel that binds the source (`crudPanel()`), NOT the core
  * `StudioModule`: a write op only makes sense with a bound source, and keeping
  * it off the core surface means an app without a source never advertises a write
  * handler (the read ops stay on core for a stable read surface). Gating,
@@ -12,8 +12,8 @@
  * registry AROUND these handlers; each handler adds the before/after images and
  * the human summary to its audit row.
  *
- * `runAsIdentity`: when the `identity` editable gate is open and an identity is
- * configured, it is threaded into the source write context (a kernel-ready seam)
+ * `runAsIdentity`: when the `identity` editable gate is open and the data panel
+ * configures an identity ({@link STUDIO_DATA_OPTIONS}), it is threaded into the source write context (a kernel-ready seam)
  * and its subject is stamped on the audit row. M1: in THIS adapter-direct path
  * runAsIdentity is audit-subject-only — the subject is recorded on the audit row
  * but the write is NOT policy-scoped by it (no per-identity authorization or row
@@ -30,10 +30,9 @@ import type {
   WriteRowRequest,
 } from '@velajs/studio-protocol';
 import { AdminConfirmSummary, AdminRpc } from '../rpc/admin-rpc.decorator';
-import type { AdminOpContext, ResolvedStudioConfig, StudioRunAsIdentity } from '../studio.types';
+import type { AdminOpContext, StudioRunAsIdentity } from '../studio.types';
 import { studioBadRequest, studioError } from '../studio.errors';
-import { STUDIO_RESOLVED_CONFIG } from '../tokens';
-import { STUDIO_MODEL_SOURCE } from './model-source.port';
+import { STUDIO_DATA_OPTIONS, STUDIO_MODEL_SOURCE } from './model-source.port';
 import type { StudioModelSource, StudioWriteContext } from './model-source.port';
 
 /**
@@ -189,15 +188,11 @@ export class StudioDataWriteOps {
    * and no `runAsIdentity` subject is stamped.
    */
   private identity(ctx: AdminOpContext): { ctx: StudioWriteContext; subject?: string } {
-    const configured = this.resolvedConfig()?.runAsIdentity;
+    const configured = this.container.has(STUDIO_DATA_OPTIONS)
+      ? this.container.resolve(STUDIO_DATA_OPTIONS).runAsIdentity
+      : undefined;
     if (configured === undefined || !ctx.editable.identity) return { ctx: {} };
     return { ctx: { identity: configured }, subject: identitySubject(configured) };
-  }
-
-  private resolvedConfig(): ResolvedStudioConfig | undefined {
-    return this.container.has(STUDIO_RESOLVED_CONFIG)
-      ? this.container.resolve(STUDIO_RESOLVED_CONFIG)
-      : undefined;
   }
 }
 

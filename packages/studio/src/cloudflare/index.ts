@@ -1,10 +1,15 @@
 import { defineProvider } from '@velajs/vela';
-import type { ModuleImport } from '@velajs/vela';
+import {
+  Container,
+  readEnv,
+  resolveBinding,
+  type BindingKind,
+} from '@velajs/vela/module-kit';
 /**
  * `@velajs/studio/cloudflare` — the CF-NATIVE time-travel tier: a
  * {@link CloudflareDoTimeTravelPort} that binds `TIME_TRAVEL_PORT` to a SQLite
  * Durable Object's point-in-time recovery (PITR) bookmarks, plus the opt-in
- * {@link StudioCloudflareTimeTravelModule} that wires it.
+ * {@link cloudflareTimeTravelPanel} that wires it.
  *
  * This subpath is the ONLY module in the package that imports `@velajs/cloudflare`
  * (the optional-peer discipline, mirroring `@velajs/studio/crud`): the core `.`
@@ -21,7 +26,6 @@ import type { ModuleImport } from '@velajs/vela';
  * `studio.capabilities` resolves this port's `capabilities()` exactly as it does
  * the portable one; each advertises its true powers via the capability booleans.
  */
-import { defineModule } from '@velajs/vela';
 import type {
   RestoreOutcome,
   RestorePreview,
@@ -36,6 +40,7 @@ import type { DoPitrArmOptions, DoPitrNamespace, VelaDoPitrRpc } from '@velajs/c
 import { ConfirmTokenSigner } from '../security/confirm-token';
 import { studioError, studioNotFound } from '../studio.errors';
 import { TIME_TRAVEL_PORT } from '../timetravel/port.token';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 
 /** The op `preview` mints the confirm token against (the dispatch registry's 428 gate verifies it). */
 const ARM_RESTORE_OP = 'timeTravel.armRestore';
@@ -77,8 +82,11 @@ function isPitrUnavailable(error: unknown): boolean {
 
 /** Construction dependencies for {@link CloudflareDoTimeTravelPort}. */
 export interface CloudflareDoTimeTravelPortDeps {
-  /** The Durable Object namespace binding whose stubs expose the PITR RPC. */
-  namespace: DoPitrNamespace;
+  /**
+   * The Durable Object namespace binding whose stubs expose the PITR RPC, or a
+   * function that reads it when a call first needs it.
+   */
+  namespace: DoPitrNamespace | (() => DoPitrNamespace);
   /** The shared confirm-token signer (same instance the dispatch registry uses). */
   confirm: ConfirmTokenSigner;
   /**
@@ -122,12 +130,13 @@ export interface CloudflareDoTimeTravelPortDeps {
 export class CloudflareDoTimeTravelPort implements TimeTravelPort {
   readonly id = 'cf-do-pitr';
 
-  private readonly namespace: DoPitrNamespace;
+  readonly #namespace: () => DoPitrNamespace;
   private readonly confirm: ConfirmTokenSigner;
   private readonly shardKey: (scope?: TimeTravelScope) => string;
 
   constructor(deps: CloudflareDoTimeTravelPortDeps) {
-    this.namespace = deps.namespace;
+    const { namespace } = deps;
+    this.#namespace = typeof namespace === 'function' ? namespace : () => namespace;
     this.confirm = deps.confirm;
     this.shardKey = deps.shardKey ?? ((scope) => scope?.dataset ?? 'default');
   }
@@ -232,7 +241,8 @@ export class CloudflareDoTimeTravelPort implements TimeTravelPort {
   /** The PITR RPC stub for the scope's shard (DO name). */
   private stubFor(scope?: TimeTravelScope): VelaDoPitrRpc {
     const name = this.shardKey(scope);
-    return this.namespace.get(this.namespace.idFromName(name));
+    const namespace = this.#namespace();
+    return namespace.get(namespace.idFromName(name));
   }
 
   /** Run an RPC call, mapping a DO-PITR-unavailable error to `TIMETRAVEL_UNAVAILABLE` (409). */
@@ -247,15 +257,27 @@ export class CloudflareDoTimeTravelPort implements TimeTravelPort {
 }
 
 // ---------------------------------------------------------------------------
-// The module
+// The panel
 // ---------------------------------------------------------------------------
 
-/** Options for {@link StudioCloudflareTimeTravelModule}. */
-export interface StudioCloudflareTimeTravelModuleOptions {
-  /** Module exporting the Studio confirmation signer. */
-  imports?: ModuleImport[];
-  /** The Durable Object namespace binding whose stubs expose the PITR RPC. */
-  namespace: DoPitrNamespace;
+/** A Durable Object namespace whose stubs expose the PITR RPC. */
+const PITR_NAMESPACE: BindingKind<DoPitrNamespace> = {
+  name: 'Durable Object namespace',
+  configKey: 'durable_objects.bindings',
+  accepts: (value): value is DoPitrNamespace =>
+    typeof value === 'object' &&
+    value !== null &&
+    typeof Reflect.get(value, 'idFromName') === 'function' &&
+    typeof Reflect.get(value, 'get') === 'function',
+};
+
+/** Options for {@link cloudflareTimeTravelPanel}. */
+export interface CloudflareTimeTravelPanelOptions {
+  /**
+   * The Durable Object namespace binding whose stubs expose the PITR RPC, read
+   * from each application's `ENV` when a time-travel call first needs it.
+   */
+  binding: string;
   /**
    * Maps a {@link TimeTravelScope} to the DO name (the shard). Default:
    * `scope.dataset` (the room / DO name), else `'default'`.
@@ -263,38 +285,30 @@ export interface StudioCloudflareTimeTravelModuleOptions {
   shardKey?: (scope?: TimeTravelScope) => string;
 }
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
-  StudioCloudflareTimeTravelModuleOptions,
-  'imports'
->({
-  name: 'StudioCloudflareTimeTravel',
-  structural: ['imports'],
-  setup: ({ OPTIONS, options: moduleOptions }) => ({
-    imports: moduleOptions.imports,
+/**
+ * Binds {@link CloudflareDoTimeTravelPort} to `TIME_TRAVEL_PORT` in a Cloudflare
+ * app whose SQLite Durable Object extends `VelaWebSocketDurableObject`:
+ * `StudioModule.forRoot({ plugins: [cloudflareTimeTravelPanel({ binding: 'ROOM' })] })`.
+ * It needs no `STUDIO_MODEL_SOURCE` (unlike the portable tier) — it restores
+ * the DO's own storage, not managed crud models.
+ */
+export function cloudflareTimeTravelPanel(options: CloudflareTimeTravelPanelOptions): StudioPlugin {
+  const { binding, shardKey } = options;
+  if (typeof binding !== 'string' || binding.length === 0) {
+    throw new TypeError('cloudflareTimeTravelPanel needs the { binding } of its Durable Object namespace.');
+  }
+  return defineStudioPlugin({
+    name: 'cloudflare-time-travel',
     providers: [
       defineProvider(TIME_TRAVEL_PORT, {
-        useFactory: (
-          confirm: ConfirmTokenSigner,
-          options: StudioCloudflareTimeTravelModuleOptions,
-        ) =>
+        useFactory: (confirm: ConfirmTokenSigner, container: Container) =>
           new CloudflareDoTimeTravelPort({
-            namespace: options.namespace,
+            namespace: () => resolveBinding(readEnv(container), { binding }, PITR_NAMESPACE),
             confirm,
-            ...(options.shardKey !== undefined ? { shardKey: options.shardKey } : {}),
+            ...(shardKey !== undefined ? { shardKey } : {}),
           }),
-        inject: [ConfirmTokenSigner, OPTIONS],
+        inject: [ConfirmTokenSigner, Container],
       }),
     ],
-    exports: [TIME_TRAVEL_PORT],
-  }),
-});
-
-/**
- * Binds {@link CloudflareDoTimeTravelPort} to `TIME_TRAVEL_PORT`. Import it with
- * `StudioCloudflareTimeTravelModule.forRoot({ namespace: env.ROOM, imports: [studio] })`
- * alongside the same configured `studio = StudioModule.forRoot(...)` instance in a Cloudflare app whose SQLite Durable Object extends
- * `VelaWebSocketDurableObject`. It needs no `STUDIO_MODEL_SOURCE` (unlike the
- * portable tier) — it restores the DO's own storage, not managed crud models.
- */
-export class StudioCloudflareTimeTravelModule extends ConfigurableModuleClass {}
-export { MODULE_OPTIONS_TOKEN as STUDIO_CLOUDFLARE_TIMETRAVEL_MODULE_OPTIONS };
+  });
+}

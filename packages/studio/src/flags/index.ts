@@ -5,8 +5,8 @@
  * This subpath is the ONLY module in the package that imports
  * `@velajs/feature-flags`: the core `.` entry never does, so apps without it
  * still mount `StudioModule` and just report the `flags` feature false. An app
- * WITH feature-flags imports `StudioFlagsModule` ALONGSIDE `StudioModule`, which
- * registers the {@link StudioFlagsOps} handlers — the seam that lights the
+ * WITH feature-flags adds `flagsPanel()` to `StudioModule.forRoot({ plugins })`,
+ * which registers the {@link StudioFlagsOps} handlers — the seam that lights the
  * `flags` feature (op-namespace registration; see the M4 features service).
  *
  * The ops reach the flags service through its PUBLIC `FEATURE_FLAG_TOKENS`
@@ -21,7 +21,8 @@
  * method from the flag's declared manifest default; a key absent from the
  * manifest is probed as a boolean (documented — the driver carries no type).
  */
-import { Inject, Injectable, defineModule } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 import { Container } from '@velajs/vela/module-kit';
 import { FEATURE_FLAG_TOKENS } from '@velajs/feature-flags';
 import type {
@@ -35,7 +36,6 @@ import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
 import { studioError } from '../studio.errors';
 
-export const STUDIO_FLAGS_MODULE_ID = 'studio.flags';
 
 @Injectable()
 export class StudioFlagsOps {
@@ -111,17 +111,11 @@ export class StudioFlagsOps {
   }
 }
 
-/** Options for {@link StudioFlagsModule}. Reserved for future flags-panel wiring. */
-export type StudioFlagsModuleOptions = Record<string, never>;
-
-const { ConfigurableModuleClass } = defineModule<StudioFlagsModuleOptions>({
-  name: 'StudioFlags',
-  setup: () => ({ providers: [StudioFlagsOps] }),
-});
-
 /**
- * Registers {@link StudioFlagsOps}. Import it with `StudioFlagsModule.forRoot({})`
- * ALONGSIDE `StudioModule` (and `FeatureFlagsModule`) in apps that use
- * feature-flags — this is the seam that lights the `flags` feature.
+ * The flags panel: registers {@link StudioFlagsOps}, lighting the `flags`
+ * feature in apps with a global `FeatureFlagsModule`:
+ * `StudioModule.forRoot({ plugins: [flagsPanel()] })`.
  */
-export class StudioFlagsModule extends ConfigurableModuleClass {}
+export function flagsPanel(): StudioPlugin {
+  return defineStudioPlugin({ name: 'flags', providers: [StudioFlagsOps] });
+}

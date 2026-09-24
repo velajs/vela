@@ -39,11 +39,11 @@ import type {
   StudioWriteContext,
   StudioWriteRowOutcome,
 } from '../src';
-import { BetterAuthStudioSource, StudioAuthModule } from '../src/auth';
-import { StudioFlagsModule } from '../src/flags';
-import { StudioQueueModule } from '../src/queue';
-import { StudioScheduleModule } from '../src/schedule';
-import { StudioLiveModule } from '../src/live';
+import { BetterAuthStudioSource } from '../src/auth';
+import { flagsPanel } from '../src/flags';
+import { queuesPanel } from '../src/queue';
+import { schedulePanel } from '../src/schedule';
+import { livePanel } from '../src/live';
 import type {
   AdminRpcResponse,
   AuthOrgRow,
@@ -609,9 +609,8 @@ describe('flags ops (@velajs/studio/flags)', () => {
   });
 
   it('lights the flags feature and lists / evaluates manifest flags', async () => {
-    const app = await makeApp({}, [
+    const app = await makeApp({ plugins: [flagsPanel()] }, [
       FeatureFlagsModule.forRoot({ manifest, isGlobal: true }),
-      StudioFlagsModule.forRoot({}),
     ]);
     expect(ok(await rpc(app, 'studio.capabilities')).features.flags).toBe(true);
 
@@ -641,11 +640,10 @@ class EmailProcessorModule {}
 
 describe('queue ops (@velajs/studio/queue)', () => {
   function queueApp(editable: Partial<StudioModuleOptions['editable']> = {}) {
-    return makeApp({ editable: { ops: true, ...editable } }, [
+    return makeApp({ editable: { ops: true, ...editable }, plugins: [queuesPanel()] }, [
       QueueModule.forRoot(),
       QueueModule.registerQueue({ name: 'email' }, { name: 'audit' }),
       EmailProcessorModule,
-      StudioQueueModule.forRoot({}),
     ]);
   }
 
@@ -705,10 +703,9 @@ class ReportsModule {}
 
 describe('schedule ops (@velajs/studio/schedule)', () => {
   it('lists jobs + triggers and runs a job now (opsEditable-gated)', async () => {
-    const app = await makeApp({ editable: { ops: true } }, [
+    const app = await makeApp({ editable: { ops: true }, plugins: [schedulePanel()] }, [
       ScheduleModule,
       ReportsModule,
-      StudioScheduleModule.forRoot({}),
     ]);
     expect(ok(await rpc(app, 'studio.capabilities')).features.schedule).toBe(true);
 
@@ -753,11 +750,10 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
     }
     @Module({ lazy: true, providers: [Deferred] })
     class DeferredModule {}
-    const app = await makeApp({ editable: { ops: true } }, [
+    const app = await makeApp({ editable: { ops: true }, plugins: [schedulePanel()] }, [
       ScheduleModule,
       ScopedModule,
       DeferredModule,
-      StudioScheduleModule.forRoot({}),
     ]);
     try {
       const jobs = ok(await rpc(app, 'schedule.jobs'));
@@ -808,8 +804,8 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
     class GuardedModule {}
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const app = await makeApp(
-      { editable: { ops: true } },
-      [ScheduleModule, GuardedModule, StudioScheduleModule.forRoot({})],
+      { editable: { ops: true }, plugins: [schedulePanel()] },
+      [ScheduleModule, GuardedModule],
       [defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
     );
     try {
@@ -848,10 +844,9 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
     }
     @Module({ providers: [Digest] })
     class DigestModule {}
-    const app = await makeApp({ editable: { ops: true } }, [
+    const app = await makeApp({ editable: { ops: true }, plugins: [schedulePanel()] }, [
       ScheduleModule,
       DigestModule,
-      StudioScheduleModule.forRoot({}),
     ]);
     try {
       const before = Date.now();
@@ -899,8 +894,8 @@ describe('schedule run-now on the Cloudflare adapter', () => {
     class ExportsModule {}
     const env = {};
     const app = await makeApp(
-      { editable: { ops: true } },
-      [ScheduleModule, ExportsModule, StudioScheduleModule.forRoot({})],
+      { editable: { ops: true }, plugins: [schedulePanel()] },
+      [ScheduleModule, ExportsModule],
       [],
       [cloudflareAdapter({ env })],
     );
@@ -944,10 +939,9 @@ describe('schedule run-now on the Cloudflare adapter', () => {
     }
     @Module({ providers: [Slow] })
     class SlowModule {}
-    const app = await makeApp({ editable: { ops: true } }, [
+    const app = await makeApp({ editable: { ops: true }, plugins: [schedulePanel()] }, [
       ScheduleModule,
       SlowModule,
-      StudioScheduleModule.forRoot({}),
     ]);
     const running = rpc(app, 'schedule.runNow', { id: 'drain' });
     await entered.promise;
@@ -970,16 +964,18 @@ describe('live / presence ops (@velajs/studio/live)', () => {
       rooms: [{ room: 'default', count: 1, members: ['client-1'] }],
     };
     let reads = 0;
-    const app = await makeApp({}, [
-      StudioLiveModule.forRoot({
-        source: {
-          inspect: async () => {
-            reads++;
-            return structuredClone(snapshot);
+    const app = await makeApp({
+      plugins: [
+        livePanel({
+          source: {
+            inspect: async () => {
+              reads++;
+              return structuredClone(snapshot);
+            },
           },
-        },
-      }),
-    ]);
+        }),
+      ],
+    });
     const caps = ok(await rpc(app, 'studio.capabilities'));
     expect(caps.features.live).toBe(true);
     expect(caps.features.presence).toBe(true);
@@ -996,7 +992,7 @@ describe('live / presence ops (@velajs/studio/live)', () => {
   });
 
   it('does not advertise live + presence handlers without introspection support', async () => {
-    const app = await makeApp({}, [StudioLiveModule.forRoot({})]);
+    const app = await makeApp({ plugins: [livePanel()] });
     const caps = ok(await rpc(app, 'studio.capabilities'));
     expect(caps.features.live).toBe(false);
     expect(caps.features.presence).toBe(false);

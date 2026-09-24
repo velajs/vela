@@ -13,6 +13,7 @@ import { Container, ROOT_MODULE } from '@velajs/vela/module-kit';
 import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
 import { resolveStudioConfig, StudioEnvReader } from './studio.config';
 import type { StudioModuleOptions } from './studio.types';
+import { collectStudioPlugins } from './plugin';
 import { ADMIN_AUDIT_SINK, STUDIO_RESOLVED_CONFIG } from './tokens';
 import type { AdminAuditSink } from './tokens';
 import { AdminSubTokenSigner } from './security/sub-token.signer';
@@ -38,9 +39,16 @@ function resolveSink(container: Container): AdminAuditSink | undefined {
   return container.has(ADMIN_AUDIT_SINK) ? container.resolve(ADMIN_AUDIT_SINK) : undefined;
 }
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioModuleOptions>({
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
+  StudioModuleOptions,
+  'plugins'
+>({
   name: 'Studio',
-  setup: ({ OPTIONS }) => {
+  // Plugins decide the providers, so forRootAsync takes them next to its factory.
+  structural: ['plugins'],
+  defaults: { plugins: [] },
+  setup: ({ OPTIONS, options }) => {
+    const plugins = collectStudioPlugins(options.plugins);
     const providers: Array<Type | ProviderDefinition> = [
       // Env-derived config slice (reads VELA_STUDIO_* from the optional ENV).
       StudioEnvReader,
@@ -99,9 +107,13 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
       // NDJSON ingest). Registered unconditionally against STUDIO_MODEL_SOURCE;
       // each reports FEATURE_UNCONFIGURED until a source is bound.
       StudioTransferOps,
+      // Each panel's ops and ports, in this module's scope: they inject the
+      // signers, buffers and resolved config above directly.
+      ...plugins.flatMap((plugin) => plugin.providers ?? []),
     ];
 
     return {
+      imports: plugins.flatMap((plugin) => plugin.imports ?? []),
       providers,
       controllers: [StudioAdminController],
       exports: [
@@ -118,5 +130,10 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
   },
 });
 
+/**
+ * The Studio admin surface. Panels join through one contract,
+ * `StudioModule.forRoot({ plugins: [queuesPanel(), livePanel(), ...] })`: each
+ * plugin's providers register in this module's scope. `plugins` is structural.
+ */
 export class StudioModule extends ConfigurableModuleClass {}
 export { MODULE_OPTIONS_TOKEN as STUDIO_MODULE_OPTIONS };

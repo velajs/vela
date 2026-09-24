@@ -17,8 +17,8 @@ import type {
   ReadOptions,
 } from '@velajs/crud/adapter';
 import { MAX_GENERATE_ROWS, StudioModule } from '../src';
-import type { StudioConfirmChallenge, StudioModuleOptions } from '../src';
-import { StudioCrudModule } from '../src/crud';
+import type { StudioConfirmChallenge, StudioDataOptions, StudioModuleOptions } from '../src';
+import { crudPanel } from '../src/crud';
 import type {
   AdminAuditEntry,
   AdminRpcResponse,
@@ -216,7 +216,14 @@ function memoryAdapter(model: Model, db: MemoryDb): CrudAdapter<Row> {
 
 type App = Awaited<ReturnType<typeof VelaFactory.create>>;
 
-async function makeApp(studio: Partial<StudioModuleOptions> = {}): Promise<App> {
+async function makeApp(
+  options: Partial<StudioModuleOptions> & StudioDataOptions = {},
+): Promise<App> {
+  const { managedModels, runAsIdentity, ...studio } = options;
+  const crud = crudPanel({
+    ...(managedModels === undefined ? {} : { managedModels }),
+    ...(runAsIdentity === undefined ? {} : { runAsIdentity }),
+  });
   const db = new MemoryDb();
   db.seed('users', [
     { id: 'u1', email: 'ann@x.io', role: 'admin', createdAt: 1, updatedAt: 1 },
@@ -248,7 +255,7 @@ async function makeApp(studio: Partial<StudioModuleOptions> = {}): Promise<App> 
   );
 
   @Module({
-    imports: [StudioModule.forRoot({ token: TOKEN, ...studio }), StudioCrudModule.forRoot({})],
+    imports: [StudioModule.forRoot({ token: TOKEN, ...studio, plugins: [crud] })],
     controllers: [UsersController, PostsController],
   })
   class AppModule {}

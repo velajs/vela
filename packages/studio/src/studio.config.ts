@@ -110,13 +110,9 @@ export function resolveStudioConfig(
     ...(token !== undefined ? { token } : {}),
     ...(rootModule !== undefined ? { rootModule } : {}),
     editable,
-    ...(options.managedModels !== undefined ? { managedModels: options.managedModels } : {}),
     rateLimit: options.rateLimit === undefined ? { ...DEFAULT_RATE_LIMIT } : options.rateLimit,
     subTokenTtlSec: options.subTokenTtlSec ?? 300,
     auditBufferSize: options.auditBufferSize ?? 500,
     logBufferSize: options.logBufferSize ?? 1000,
-    // Server-only impersonation identity (no env source — never read from the
-    // environment, and never serialized).
-    ...(options.runAsIdentity !== undefined ? { runAsIdentity: options.runAsIdentity } : {}),
   };
 }

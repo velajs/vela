@@ -57,7 +57,7 @@ export interface StudioAuthSource {
 
 /**
  * DI token the `auth.*` ops resolve their source from. Bound by
- * `StudioAuthModule` (the `@velajs/studio/auth` subpath). Unbound ⇒ the `auth`
+ * `authPanel()` (the `@velajs/studio/auth` subpath). Unbound ⇒ the `auth`
  * (and `authOrganizations`) features read false and every `auth.*` op reports
  * `FEATURE_UNCONFIGURED`.
  */

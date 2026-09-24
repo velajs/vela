@@ -27,8 +27,8 @@ import { Crud, CrudModule, defineModel } from '@velajs/crud';
 import { drizzleAdapter } from '@velajs/crud-drizzle';
 import { durableObjectRoomName } from '@velajs/cloudflare';
 import { StudioModule } from '@velajs/studio';
-import { StudioCrudModule } from '@velajs/studio/crud';
-import { StudioLiveModule } from '@velajs/studio/live';
+import { crudPanel } from '@velajs/studio/crud';
+import { livePanel } from '@velajs/studio/live';
 import { schema as authSchema } from './auth-schema';
 import { todoSchema, todoList } from './contracts';
 
@@ -151,19 +151,18 @@ class TodoGateway {}
     // secret from ENV; it stays closed without one.
     StudioModule.forRoot({
       editable: { ops: true },
-      managedModels: { include: ['todo'] },
-    }),
-    StudioCrudModule.forRoot({}),
-    StudioLiveModule.forRootAsync({
-      inject: [ENV],
-      useFactory: (env) => ({
-        source: {
-          inspect: () =>
-            env.LIVE_ROOM.get(
-              env.LIVE_ROOM.idFromName(durableObjectRoomName(GATEWAY, 'default')),
-            ).inspectLive(),
-        },
-      }),
+      plugins: [
+        crudPanel({ managedModels: { include: ['todo'] } }),
+        // Each application inspects the room Durable Object of its own ENV.
+        livePanel({
+          source: (env) => ({
+            inspect: () =>
+              env.LIVE_ROOM.get(
+                env.LIVE_ROOM.idFromName(durableObjectRoomName(GATEWAY, 'default')),
+              ).inspectLive(),
+          }),
+        }),
+      ],
     }),
   ],
   controllers: [TodosController, MeController, HealthController],

@@ -1,15 +1,15 @@
-import { Inject, Injectable, defineModule, defineProvider } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
+import { Inject, Injectable, defineProvider } from '@velajs/vela';
+import { Container, readEnv, type EnvFactory } from '@velajs/vela/module-kit';
 import type { LiveSubscriptionRow, PresenceRoomRow } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
 import { studioError } from '../studio.errors';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 import { STUDIO_LIVE_SOURCE } from './live.port';
 import type { StudioLiveSource } from './live.port';
 
 export { STUDIO_LIVE_SOURCE } from './live.port';
 export type { StudioLiveSource } from './live.port';
-export const STUDIO_LIVE_MODULE_ID = 'studio.live';
 
 @Injectable()
 export class StudioLiveOps {
@@ -35,24 +35,31 @@ export class StudioLiveOps {
   }
 }
 
-export interface StudioLiveModuleOptions {
-  /** No implicit global room discovery. Supply the scope this admin should inspect. */
-  source?: StudioLiveSource;
+export interface LivePanelOptions {
+  /**
+   * The scope this admin inspects, or a function that builds it from the
+   * application's `ENV` (a Durable Object room's `inspectLive()` RPC). There is
+   * no implicit global room discovery; without a source the panel stays off.
+   */
+  source?: StudioLiveSource | EnvFactory<StudioLiveSource>;
 }
 
-const { ConfigurableModuleClass } = defineModule<StudioLiveModuleOptions>({
-  name: 'StudioLive',
-  setup: ({ OPTIONS }) => ({
+/**
+ * The live and presence panel: authenticated polling over an app-owned
+ * inspection source, lighting the `live` and `presence` features:
+ * `StudioModule.forRoot({ plugins: [livePanel({ source: (env) => ... })] })`.
+ */
+export function livePanel(options: LivePanelOptions = {}): StudioPlugin {
+  const { source } = options;
+  return defineStudioPlugin({
+    name: 'live',
     providers: [
       defineProvider(STUDIO_LIVE_SOURCE, {
-        inject: [OPTIONS],
-        useFactory: (options) => options.source,
+        inject: [Container],
+        useFactory: (container: Container) =>
+          typeof source === 'function' ? source(readEnv(container)) : source,
       }),
       StudioLiveOps,
     ],
-    exports: [STUDIO_LIVE_SOURCE],
-  }),
-});
-
-/** Authenticated polling over an app-owned inspection source; absent sources stay disabled. */
-export class StudioLiveModule extends ConfigurableModuleClass {}
+  });
+}
