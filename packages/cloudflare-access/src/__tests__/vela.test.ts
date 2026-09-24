@@ -590,6 +590,37 @@ describe('shared identity enforcement across Access, authz and core', () => {
     expect((await app.getHonoApp().request(withHeader('/open'))).status).toBe(200);
     await app.dispose();
   });
+
+  it('takes guard beside a forRootAsync factory, defaulting to one global install', async () => {
+    const options = { preset, aud: AUD, keySet: keys.jwks };
+    // A spelled-out default is the same instance as leaving it out.
+    expect(CloudflareAccessModule.forRoot({ ...options, guard: 'global' }).key).toBe(
+      CloudflareAccessModule.forRoot(options).key,
+    );
+    @Controller('/async')
+    class AsyncController {
+      @Get() read() {
+        return { ok: true };
+      }
+    }
+    const statuses: number[] = [];
+    for (const guard of [undefined, 'global', 'none'] as const) {
+      @Module({
+        imports: [
+          CloudflareAccessModule.forRootAsync({
+            ...(guard ? { guard } : {}),
+            useFactory: () => options,
+          }),
+        ],
+        controllers: [AsyncController],
+      })
+      class App {}
+      const app = await VelaFactory.create(App);
+      statuses.push((await app.getHonoApp().request(withHeader('/async'))).status);
+      await app.dispose();
+    }
+    expect(statuses).toEqual([401, 401, 200]);
+  });
 });
 
 it('retains mapped Access payload only while its exact core identity is current', async () => {

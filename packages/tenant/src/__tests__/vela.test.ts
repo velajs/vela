@@ -271,6 +271,34 @@ describe('Vela tenant admission', () => {
     }
   });
 
+  it('takes guard beside a forRootAsync factory, defaulting to one global install', async () => {
+    const options = () => ({
+      lookup: new MemoryTenantRegistryStore([tenant('a')]),
+      authorize: () => true,
+    });
+    // A spelled-out default is the same instance as leaving it out.
+    const configured = options();
+    expect(TenantModule.forRoot({ ...configured, guard: 'global' }).key).toBe(
+      TenantModule.forRoot(configured).key,
+    );
+    const Tenanted = route(reply('tenanted'), '/tenanted');
+    const statuses: number[] = [];
+    for (const guard of [undefined, 'global', 'none'] as const) {
+      class App {}
+      Module({
+        imports: [TenantModule.forRootAsync({ ...(guard ? { guard } : {}), useFactory: options })],
+        controllers: [Tenanted],
+      })(App);
+      const app = await VelaFactory.create(App);
+      try {
+        statuses.push((await app.getHonoApp().request('/tenanted')).status);
+      } finally {
+        await app.close();
+      }
+    }
+    expect(statuses).toEqual([400, 400, 200]);
+  });
+
   it('admits the tenant for routes in modules that do not import TenantModule', async () => {
     const tenancy = TenantModule.forRoot({
       lookup: new MemoryTenantRegistryStore([tenant('a'), tenant('b')]),
