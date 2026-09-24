@@ -52,6 +52,18 @@ function sqlStorage(): SqlStorageLike {
   };
 }
 
+/**
+ * workerd's `ctx.storage.sql` on a Durable Object class without SQLite: the
+ * handle exists, and every statement throws.
+ */
+function sqlDisabledStorage(): SqlStorageLike {
+  return {
+    exec() {
+      throw new Error('SQL is not enabled for this Durable Object class.');
+    },
+  };
+}
+
 class RecordingWs implements WsLike {
   readonly sent: string[] = [];
   private attachment: unknown = null;
@@ -325,13 +337,22 @@ describe('Cloudflare live platform wiring', () => {
     class App {}
 
     const sqlite = await buildDoRuntime(App, new DoState({ sql: sqlStorage() }), { env: {} });
-    const plain = await buildDoRuntime(App, new DoState(), { env: {} });
+    const plain = await buildDoRuntime(App, new DoState({ sql: sqlDisabledStorage() }), {
+      env: {},
+    });
+    const bare = await buildDoRuntime(App, new DoState(), { env: {} });
     try {
       expect(sqlite.container.resolve(LIVE_CURSOR_LOG)).toBeInstanceOf(DoCursorLog);
-      expect(plain.container.resolve(LIVE_CURSOR_LOG)).toBeInstanceOf(InMemoryCursorLog);
-      expect(plain.container.resolve(LIVE_DRIVER).kind).toBe('local');
+      for (const runtime of [plain, bare]) {
+        expect(runtime.container.resolve(LIVE_CURSOR_LOG)).toBeInstanceOf(InMemoryCursorLog);
+        expect(runtime.container.resolve(LIVE_DRIVER).kind).toBe('local');
+        // oxlint-disable-next-line eslint/no-await-in-loop -- one runtime at a time
+        expect(await runtime.live?.applyInvalidation({ tags: ['t'] })).toMatchObject({
+          cursor: 1,
+        });
+      }
     } finally {
-      await Promise.all([sqlite.close(), plain.close()]);
+      await Promise.all([sqlite.close(), plain.close(), bare.close()]);
     }
   });
 });

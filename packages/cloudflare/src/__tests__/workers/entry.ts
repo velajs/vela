@@ -1,6 +1,7 @@
 import { VelaWebSocketDurableObject } from '../../durable-objects';
 import { Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
 import { Cron } from '@velajs/vela/schedule';
+import { LiveModule } from '@velajs/vela/live';
 import { countRegisteredClasses } from '@velajs/vela/internal';
 import {
   ConnectedSocket,
@@ -155,5 +156,13 @@ class NightlyReports {
 class CronRoomModule {}
 
 export class CronRoom extends VelaWebSocketDurableObject(CronRoomModule) {}
+
+// Live queries in a Durable Object: one class declared with SQLite storage
+// (new_sqlite_classes) and one without (new_classes), from the same module.
+@Module({ imports: [WebSocketModule.forRoot(), LiveModule.forRoot()] })
+class LiveRoomModule {}
+
+export class SqliteLiveRoom extends VelaWebSocketDurableObject(LiveRoomModule) {}
+export class KvLiveRoom extends VelaWebSocketDurableObject(LiveRoomModule) {}
 
 export default createCloudflareWorker(TestModule);

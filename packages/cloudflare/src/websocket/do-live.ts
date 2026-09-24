@@ -17,9 +17,10 @@ const DEFAULT_MAX_LOG_ROWS = 4096;
  * re-run — the real-resume half of the live protocol.
  *
  * The Cloudflare adapter gives `LiveModule` one inside every SQLite-backed
- * WebSocket Durable Object (wrangler: `new_sqlite_classes`). The Worker never
- * consults a log: its invalidations go to the room Durable Object, one log
- * scope per room, exactly the protocol's model.
+ * WebSocket Durable Object (wrangler: `new_sqlite_classes`); a class without
+ * SQLite keeps an in-memory log. The Worker never consults a log: its
+ * invalidations go to the room Durable Object, one log scope per room, exactly
+ * the protocol's model.
  */
 export class DoCursorLog implements CursorLog {
   private readonly epoch: string;
@@ -107,6 +108,21 @@ export class DoCursorLog implements CursorLog {
 }
 
 /**
+ * The object's SQLite handle, or undefined when its class is not SQLite-backed.
+ * workerd exposes `ctx.storage.sql` on every class; without SQLite (wrangler
+ * `new_classes`) each statement throws, so probe with one.
+ */
+function sqliteStorage(ctx: DoStateLike): SqlStorageLike | undefined {
+  try {
+    const sql = ctx.storage?.sql;
+    sql?.exec('SELECT 1');
+    return sql;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The live platform inside a WebSocket Durable Object: invalidations apply to
  * this object's own engine (a `durableObjectLive()` driver switches to local
  * delivery), and the cursor log lives in its SQLite storage when the class is
@@ -116,7 +132,7 @@ export function durableObjectLivePlatform(ctx: DoStateLike): LivePlatform {
   return {
     liveDriver: () => localLive(),
     cursorLog() {
-      const sql = ctx.storage?.sql;
+      const sql = sqliteStorage(ctx);
       return sql ? new DoCursorLog(sql) : undefined;
     },
     bindDriver(driver) {

@@ -24,7 +24,10 @@ export interface DoStateLike {
   acceptWebSocket(ws: WsLike, tags?: string[]): void;
   getWebSockets(tag?: string): WsLike[];
   setWebSocketAutoResponse?(pair: unknown): void;
-  /** Present on SQLite-backed DOs — the live cursor log lives here. */
+  /**
+   * workerd exposes `sql` on every class, but its statements throw unless the
+   * class is SQLite-backed (`new_sqlite_classes`), where the live cursor log lives.
+   */
   readonly storage?: { sql?: SqlStorageLike };
 }
 
