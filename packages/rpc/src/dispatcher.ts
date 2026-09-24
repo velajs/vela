@@ -5,6 +5,7 @@ import {
   buildHttpExecutionContext,
   createDiscoverableDecorator,
   getRequestContainer,
+  orderGuardsByPhase,
   PipelineRunner,
   resolveErrorReporter,
   resolvePipelineComponents,
@@ -171,7 +172,7 @@ export class RpcRegistry {
       ];
       const guards = [
         { canActivate: () => this.#authorize === 'public' || this.#authorize(context) },
-        ...(await resolvePipelineComponents('guard', globals.guards, scope)),
+        ...orderGuardsByPhase(await resolvePipelineComponents('guard', globals.guards, scope)),
         ...(await resolveScopedComponentsAsync(
           'guard',
           entry.metatype,

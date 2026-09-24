@@ -2,7 +2,8 @@ import { Injectable, Inject } from '../container/decorators';
 import { Reflector } from '../pipeline/reflector';
 import type { CanActivate, ExecutionContext } from '../pipeline/types';
 import { TooManyRequestsException } from '../errors/http-exception';
-import { RouteManager, type GuardPhase } from '../http/route.manager';
+import { RouteManager } from '../http/route.manager';
+import type { GuardPhase } from '../pipeline/guard-phase';
 import {
   getTrustedRequestIdentity,
   type TrustedRequestIdentity,

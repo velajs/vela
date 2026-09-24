@@ -51,6 +51,12 @@ import { findRequestContainer, setRequestContainer } from './request-container';
 import type { HttpRequestCompletion, HttpRequestObserver } from './request-observer';
 import { shouldFilterCatch } from '../pipeline/decorators';
 import { getScopedComponents } from '../pipeline/scoped-components';
+import {
+  declaredField,
+  FEATURE_PHASE_RANK,
+  guardPhaseRank,
+  orderGuardsByPhase,
+} from '../pipeline/guard-phase';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -198,39 +204,9 @@ function trackResponseStream(
   };
 }
 
-// A component's declared field (a middleware's `priority`, a guard's `phase`):
-// a class's static field, or an instance's own field or its class's static one.
-function declaredField(value: unknown, field: string): unknown {
-  if (typeof value !== 'function' && (typeof value !== 'object' || value === null)) {
-    return undefined;
-  }
-  const declared: unknown = Reflect.get(value, field);
-  if (declared !== undefined || typeof value === 'function') return declared;
-  const constructor: unknown = Reflect.get(value, 'constructor');
-  return typeof constructor === 'function' ? declaredField(constructor, field) : undefined;
-}
-
 function priorityOf(value: unknown): number | undefined {
   const priority = declaredField(value, 'priority');
   return typeof priority === 'number' ? priority : undefined;
-}
-
-/**
- * The deterministic order of global guards, whatever order modules register
- * them in: authentication publishes identity, tenant admission scopes it,
- * authorization checks it, then feature guards (throttling, flags) run. A
- * guard declares its phase with `static readonly phase`; undeclared guards run
- * in the `'feature'` phase. Guards keep registration order within a phase.
- */
-export type GuardPhase = 'authenticate' | 'tenant' | 'authorize' | 'feature';
-const GUARD_PHASES: readonly GuardPhase[] = ['authenticate', 'tenant', 'authorize', 'feature'];
-
-function phaseRank(value: unknown): number | undefined {
-  const phase = declaredField(value, 'phase');
-  if (phase === undefined) return undefined;
-  const rank = GUARD_PHASES.indexOf(phase as GuardPhase);
-  if (rank < 0) throw new Error(`Global guard declares an unknown guard phase '${String(phase)}'`);
-  return rank;
 }
 
 // The entry `owners` has for a handler Hono matched. A parent app that mounts
@@ -496,7 +472,7 @@ export class RouteManager {
     const ranked = [...this.globalGuards, ...guards].map((entry, index) => ({
       entry,
       index,
-      rank: this.guardPhaseRank(entry),
+      rank: this.registeredPhaseRank(entry),
     }));
     this.globalGuards = ranked
       .sort((a, b) => a.rank - b.rank || a.index - b.index)
@@ -505,11 +481,13 @@ export class RouteManager {
   }
 
   // A token's registered target declares the phase without being constructed.
-  private guardPhaseRank(entry: GuardType | TypedToken<CanActivate>): number {
-    const declared = phaseRank(entry);
-    if (declared !== undefined || !isTokenEntry(entry)) return declared ?? GUARD_PHASES.length - 1;
+  // A factory's guard declares it only once built; transports re-sort the
+  // constructed guards (orderGuardsByPhase), so it still runs in its phase.
+  private registeredPhaseRank(entry: GuardType | TypedToken<CanActivate>): number {
+    const declared = guardPhaseRank(entry);
+    if (declared !== undefined || !isTokenEntry(entry)) return declared ?? FEATURE_PHASE_RANK;
     const target = this.componentTarget(entry);
-    return phaseRank(target?.instance?.value ?? target?.useClass) ?? GUARD_PHASES.length - 1;
+    return guardPhaseRank(target?.instance?.value ?? target?.useClass) ?? FEATURE_PHASE_RANK;
   }
 
   useGlobalInterceptors(...interceptors: InterceptorType[]): this {
@@ -1026,7 +1004,7 @@ export class RouteManager {
     // resolve.
     const contributors = getRouteContributors();
     const resolveGlobalGuards = () =>
-      instantiateMany<CanActivate>(this.globalGuards, this.container);
+      orderGuardsByPhase(instantiateMany<CanActivate>(this.globalGuards, this.container));
     for (const { controller, metadata, routes } of this.controllers) {
       for (const contributor of contributors) {
         const meta = getMetadata(contributor.claimsMetaKey, controller);

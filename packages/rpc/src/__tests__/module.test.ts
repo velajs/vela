@@ -79,6 +79,39 @@ describe('RPC module composition', () => {
     await app.close();
   });
 
+  it('runs global guards in phase order, including factory-provided ones', async () => {
+    const trace: string[] = [];
+    @Injectable()
+    class Authorize {
+      static readonly phase = 'authorize';
+      canActivate() {
+        trace.push('authorize');
+        return true;
+      }
+    }
+    class FactoryAuthenticate {
+      static readonly phase = 'authenticate';
+      canActivate() {
+        trace.push('authenticate');
+        return true;
+      }
+    }
+    @Module({
+      imports: [RpcModule.forRoot({ authorize: 'public' })],
+      providers: [
+        Greetings,
+        Authorize,
+        defineProvider(APP_GUARD, { useExisting: Authorize }),
+        defineProvider(APP_GUARD, { useFactory: () => new FactoryAuthenticate() }),
+      ],
+    })
+    class Root {}
+    const app = await VelaFactory.create(Root);
+    expect(await client(app).call(greet, 'world')).toBe('Hello world');
+    expect(trace).toEqual(['authenticate', 'authorize']);
+    await app.close();
+  });
+
   it('supports async server settings and injected named service-binding clients', async () => {
     @Module({
       providers: [Greetings],

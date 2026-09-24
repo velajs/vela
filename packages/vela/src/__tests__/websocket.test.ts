@@ -703,6 +703,50 @@ describe('WsDispatcher — code-review regressions', () => {
     expect(client.sent).toEqual([{ event: 'exception', data: { message: 'Forbidden' }, id: '1' }]);
   });
 
+  it('runs global guards on gateway messages in phase order, including factory-provided ones', async () => {
+    const trace: string[] = [];
+    @Injectable()
+    class AuthorizeGuard implements CanActivate {
+      static readonly phase = 'authorize';
+      canActivate(): boolean {
+        trace.push('authorize');
+        return true;
+      }
+    }
+    class FactoryAuthenticateGuard implements CanActivate {
+      static readonly phase = 'authenticate';
+      canActivate(): boolean {
+        trace.push('authenticate');
+        return true;
+      }
+    }
+
+    @WebSocketGateway({ path: '/phased' })
+    class Gateway {
+      @SubscribeMessage('ping')
+      onPing() {
+        return { event: 'pong', data: trace };
+      }
+    }
+
+    @Module({
+      imports: [WebSocketModule.forRoot()],
+      providers: [
+        Gateway,
+        AuthorizeGuard,
+        defineProvider(APP_GUARD, { useExisting: AuthorizeGuard }),
+        defineProvider(APP_GUARD, { useFactory: () => new FactoryAuthenticateGuard() }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app.get(WsDispatcher).dispatchMessage('/phased', client, frame('ping', {}, '1'));
+
+    expect(client.sent).toEqual([{ event: 'pong', data: ['authenticate', 'authorize'], id: '1' }]);
+  });
+
   it('falls back to a default exception frame when an exception filter throws', async () => {
     @Catch(WsException)
     class BrokenFilter implements ExceptionFilter {

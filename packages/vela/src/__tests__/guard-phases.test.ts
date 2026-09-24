@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APP_GUARD,
   Controller,
   defineModule,
+  defineProvider,
   Get,
   Injectable,
+  InjectionToken,
   Module,
+  UseGuards,
   VelaFactory,
   type CanActivate,
   type GuardPhase,
 } from '../index.js';
+import { SkipGuardPhases } from '../module-kit.js';
 
 function phasedGuard(name: string, phase?: GuardPhase) {
   @Injectable()
@@ -94,6 +99,80 @@ describe('deterministic global guard phases', () => {
     const app = await VelaFactory.create(AppModule);
     trace = [];
     expect(await (await app.getHonoApp().request('/phased')).json()).toEqual(['tenant']);
+  });
+
+  it('ranks a factory-provided global guard by the phase its instance declares', async () => {
+    const Authorize = phasedGuard('authorize', 'authorize');
+    const FactoryAuthenticate = phasedGuard('factory-authenticate', 'authenticate');
+    const Aliased = phasedGuard('aliased-tenant', 'tenant');
+    const ALIASED = new InjectionToken<CanActivate>('aliased tenant guard');
+    @Module({
+      controllers: [PhasedController],
+      providers: [
+        Authorize,
+        defineProvider(APP_GUARD, { useExisting: Authorize }),
+        // Neither registration names a class, so the phase is only known once built.
+        defineProvider(APP_GUARD, { useExisting: ALIASED }),
+        defineProvider(ALIASED, { useFactory: () => new Aliased() }),
+        defineProvider(APP_GUARD, { useFactory: () => new FactoryAuthenticate() }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    trace = [];
+    expect(await (await app.getHonoApp().request('/phased')).json()).toEqual([
+      'factory-authenticate',
+      'aliased-tenant',
+      'authorize',
+    ]);
+  });
+
+  it('skips tenant and authorize global guards on routes an integration marks', async () => {
+    const RouteGuard = phasedGuard('route', 'authorize');
+    @Controller('/integration')
+    @SkipGuardPhases(['tenant', 'authorize'])
+    @UseGuards(RouteGuard)
+    class IntegrationController {
+      @Get()
+      get() {
+        return trace;
+      }
+    }
+
+    @Module({
+      imports: [
+        Throttling.forRoot({}),
+        Authorization.forRoot({}),
+        Tenancy.forRoot({}),
+        Authentication.forRoot({}),
+      ],
+      controllers: [PhasedController, IntegrationController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    trace = [];
+    // Authentication and feature guards still run, and so do the route's own guards.
+    expect(await (await app.getHonoApp().request('/integration')).json()).toEqual([
+      'authenticate',
+      'feature',
+      'route',
+    ]);
+    trace = [];
+    expect(await (await app.getHonoApp().request('/phased')).json()).toEqual([
+      'authenticate',
+      'tenant',
+      'authorize',
+      'feature',
+    ]);
+  });
+
+  it('lets integration routes skip only the tenant and authorize phases', () => {
+    // @ts-expect-error: authentication and feature guards cover every route.
+    expect(() => SkipGuardPhases(['authenticate'])).toThrow(
+      "SkipGuardPhases accepts 'tenant' and 'authorize', not 'authenticate'",
+    );
   });
 
   it('rejects an unknown phase', async () => {

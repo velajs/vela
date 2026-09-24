@@ -3,6 +3,12 @@ import type { Container } from '../container/container';
 import type { TypedToken, Type } from '../container/types';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { shouldFilterCatch } from '../pipeline/decorators';
+import {
+  isSkippableGuardPhase,
+  orderGuardsByPhase,
+  SKIP_GUARD_PHASES_KEY,
+  type GuardPhase,
+} from '../pipeline/guard-phase';
 import { PipelineRunner } from '../pipeline/pipeline-runner';
 import { getScopedComponents } from '../pipeline/scoped-components';
 import type {
@@ -12,6 +18,7 @@ import type {
   NestInterceptor,
   PipeTransform,
 } from '../pipeline/types';
+import { MetadataRegistry } from '../registry/metadata.registry';
 import type {
   FilterType,
   GuardType,
@@ -32,6 +39,21 @@ import {
   resolveSuccessStatus,
 } from './response-mapper';
 import type { ParamMetadata, RouteMetadata } from './types';
+
+// The global guard phases an integration's route leaves to the integration
+// (`SkipGuardPhases`). Only tenant and authorize phases can be skipped.
+function skippedGuardPhases(
+  controller: Type,
+  handlerName: string | symbol,
+): ReadonlySet<GuardPhase> | undefined {
+  const declared: unknown =
+    MetadataRegistry.getCustomHandlerMeta(controller, handlerName, SKIP_GUARD_PHASES_KEY) ??
+    MetadataRegistry.getCustomClassMeta(controller, SKIP_GUARD_PHASES_KEY);
+  if (!Array.isArray(declared)) return undefined;
+  const phases = new Set<GuardPhase>();
+  for (const phase of declared) if (isSkippableGuardPhase(phase)) phases.add(phase);
+  return phases.size > 0 ? phases : undefined;
+}
 
 export interface HandlerGlobals {
   guards: Array<GuardType | TypedToken<CanActivate>>;
@@ -125,6 +147,7 @@ export class HandlerExecutor {
       );
     }
     const successStatus = resolveSuccessStatus(controller, route.handlerName);
+    const skippedPhases = skippedGuardPhases(controller, route.handlerName);
 
     return async (c: Context) => {
       // Combine global + method at request time so post-create registrations propagate.
@@ -140,7 +163,10 @@ export class HandlerExecutor {
 
       try {
         const guards = [
-          ...(await instantiateManyAsync<CanActivate>(globals.guards, requestContainer)),
+          ...orderGuardsByPhase(
+            await instantiateManyAsync<CanActivate>(globals.guards, requestContainer),
+            skippedPhases,
+          ),
           ...(await instantiateManyAsync<CanActivate>(methodGuards, requestContainer, moduleId)),
         ];
         const pipes = [
