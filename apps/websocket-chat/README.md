@@ -11,7 +11,10 @@ the sender gets an `ack` frame.
 The Worker pushes to a room with `Gateways`: `POST /rooms/:id/announce` calls
 `gateways.of<ChatEvents>(ChatGateway).to(id).emit('system', { text })`, typed by
 the `ChatEvents` event map, and the push reaches that room's `ChatRoom` over its
-broadcast RPC. Try it while a tab is open on the `general` room:
+broadcast RPC. The route validates its body (400 unless `text` has 1 to 500
+characters) but, as a demo, has no guard: anyone who can reach it can push
+into any room, so a real application guards it with its own authorization. Try
+it while a tab is open on the `general` room:
 
 ```sh
 curl -X POST localhost:5173/rooms/general/announce \

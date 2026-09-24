@@ -1,5 +1,14 @@
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
-import { Body, Controller, Get, Injectable, Module, Param, Post } from '@velajs/vela';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Injectable,
+  Module,
+  Param,
+  Post,
+} from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import {
   Gateways,
@@ -127,18 +136,31 @@ export class PageController {
 
 // ---- Server push: the Worker announces to a room through Gateways ----
 
+/** Validates an announcement body before any of it reaches a room: 1 to 500 characters of text. */
+const Announcement = {
+  parse(value: unknown): { text: string } {
+    const text: unknown =
+      typeof value === 'object' && value !== null ? Reflect.get(value, 'text') : undefined;
+    if (typeof text !== 'string' || text.length === 0 || text.length > 500) {
+      throw new BadRequestException('An announcement needs text of 1 to 500 characters');
+    }
+    return { text };
+  },
+};
+
 /**
  * The Worker holds no sockets; `Gateways` sends the push to the room's
- * `ChatRoom` Durable Object over its broadcast RPC. A real application
- * guards this route; the demo leaves it open.
+ * `ChatRoom` Durable Object over its broadcast RPC. DEMO ONLY: anyone who can
+ * reach this route can push into any room it names. A real application guards
+ * it with its own authorization, for example `@UseGuards(StaffGuard)`.
  */
 @Controller('/rooms')
 export class AnnouncementController {
   constructor(private readonly gateways: Gateways) {}
 
   @Post('/:id/announce')
-  async announce(@Param('id') room: string, @Body() body: { text?: string }) {
-    const text = `announcement: ${body.text ?? ''}`;
+  async announce(@Param('id') room: string, @Body(Announcement) body: { text: string }) {
+    const text = `announcement: ${body.text}`;
     await this.gateways.of<ChatEvents>(ChatGateway).to(room).emit('system', { text });
     return { announced: room };
   }

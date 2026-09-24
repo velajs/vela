@@ -110,4 +110,22 @@ describe('websocket-chat compiled by Oxc under workerd', () => {
     expect(announcement.data).toEqual({ text: 'announcement: maintenance at noon' });
     socket.close(1000, 'done');
   });
+
+  it('rejects an announcement whose body is not validated text', async () => {
+    for (const body of [{}, { text: 42 }, { text: '' }, null]) {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`${origin}/rooms/lobby/announce`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+        env,
+        ctx,
+      );
+      await response.arrayBuffer();
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(400);
+    }
+  });
 });
