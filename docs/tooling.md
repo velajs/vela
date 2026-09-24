@@ -123,7 +123,10 @@ vela deploy check
   barrels to the file declaring it (exported by name, as
   `export default AppModule` or in an `export { … as default }` list, else
   that file's only `@Module()` class); in other module files the edited class
-  is the one the file exports. `queue` adds
+  is the one the file exports. Metadata with a computed argument, or with a
+  spread or computed key that may set the list being extended, is refused with
+  nothing written: an entry added there would replace the spread list or be
+  replaced by it. `queue` adds
   `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module only
   when no source file configures the driver yet. `--skip-import` prints the
   registration instead.
@@ -136,8 +139,9 @@ vela deploy check
   default one, the `types` script (which reads the default file) is left for
   you to run against it. Every module edit is computed on the current sources
   before anything is created and written once Wrangler succeeds, so a root
-  module the CLI cannot edit (computed `@Module()` metadata, a re-export of a
-  file that does not exist) or a `bindings.module.ts` that does not parse fails
+  module the CLI cannot edit (computed `@Module()` metadata, a spread or
+  computed key that may set `imports`, a re-export of a file that does not
+  exist) or a `bindings.module.ts` that does not parse fails
   with nothing created or written; a failed `wrangler types` only warns.
   `--skip-import` needs no editable root.
 - **Wrangler sync.** `vela cf sync` derives cron triggers, queue producers and

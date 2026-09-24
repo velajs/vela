@@ -130,6 +130,33 @@ export class AppModule {}
     );
   });
 
+  it('keeps a comment trailing the last entry on that entry', () => {
+    const list = `@Module({\n  imports: [\n    A, // first\n  ],\n})\nclass M {}\n`;
+    expect(addToModule('m.ts', list, 'imports', 'B').source).toBe(
+      `@Module({\n  imports: [\n    A, // first\n    B,\n  ],\n})\nclass M {}\n`,
+    );
+    const uncommaed = `@Module({\n  imports: [\n    A // first\n  ],\n})\nclass M {}\n`;
+    expect(addToModule('m.ts', uncommaed, 'imports', 'B').source).toBe(
+      `@Module({\n  imports: [\n    A, // first\n    B\n  ],\n})\nclass M {}\n`,
+    );
+    const block = `@Module({\n  imports: [\n    A /* first */ , /* after\n    the comma */\n  ],\n})\nclass M {}\n`;
+    expect(addToModule('m.ts', block, 'imports', 'B').source).toBe(
+      `@Module({\n  imports: [\n    A /* first */ , /* after\n    the comma */\n    B,\n  ],\n})\nclass M {}\n`,
+    );
+    const property = `@Module({\n  imports: [A], // deps\n})\nclass M {}\n`;
+    expect(addToModule('m.ts', property, 'providers', 'S').source).toBe(
+      `@Module({\n  imports: [A], // deps\n  providers: [S],\n})\nclass M {}\n`,
+    );
+    const uncommaedProperty = `@Module({\n  imports: [A] // deps\n})\nclass M {}\n`;
+    expect(addToModule('m.ts', uncommaedProperty, 'providers', 'S').source).toBe(
+      `@Module({\n  imports: [A], // deps\n  providers: [S]\n})\nclass M {}\n`,
+    );
+    const inline = `@Module({ imports: [A /* first */] })\nclass M {}\n`;
+    expect(addToModule('m.ts', inline, 'imports', 'B').source).toBe(
+      `@Module({ imports: [A /* first */, B] })\nclass M {}\n`,
+    );
+  });
+
   it('edits the module class the file exports, or the one named', () => {
     const source = `import { Module } from '@velajs/vela';
 
@@ -250,6 +277,31 @@ export default AppModule;
     expect(() => addToModule('a.ts', `@Module({ providers: [ }\n`, 'providers', 'X')).toThrow(
       /Cannot parse a.ts/,
     );
+  });
+
+  it('refuses metadata whose spread or computed key may set the list', () => {
+    for (const source of [
+      // A new `imports` after the spread would replace the list it holds.
+      `@Module({ ...shared, controllers: [AppController] })\nclass A {}\n`,
+      `@Module({ ...jobs })\nclass A {}\n`,
+      `@Module({ [key]: [], controllers: [AppController] })\nclass A {}\n`,
+      // A spread or computed key after the list may replace it.
+      `@Module({ imports: [OpenApiModule], ...shared })\nclass A {}\n`,
+      `@Module({\n  imports: [OpenApiModule],\n  ['imports']: [],\n})\nclass A {}\n`,
+    ]) {
+      expect(() => addToModule('a.ts', source, 'imports', 'BindingsModule'), source).toThrow(
+        'a.ts: a spread or computed key in @Module() may set imports; register BindingsModule yourself.',
+      );
+    }
+    // A list written after the spread is the one the module gets.
+    expect(
+      addToModule(
+        'a.ts',
+        `@Module({ ...shared, imports: [OpenApiModule] })\nclass A {}\n`,
+        'imports',
+        'BindingsModule',
+      ).source,
+    ).toBe(`@Module({ ...shared, imports: [OpenApiModule, BindingsModule] })\nclass A {}\n`);
   });
 });
 

@@ -97,10 +97,13 @@ names is edited (else that file's only module class); elsewhere, the file's
 exported module class. A queue adds the `cloudflareQueues()` driver
 to the root module only when no source file configures `QueueModule.forRoot()`
 yet. Module files are edited with `oxc-parser` and `magic-string`, so comments
-and formatting stay as they are; a name imported with `import type` becomes a
-value import when the registration needs it. Generated code uses the application kit, feature
-subpaths (`@velajs/vela/queue`, `@velajs/vela/schedule`), `ENV`, and plain
-decorator routes; a resource validates bodies with zod when the project depends
+and formatting stay as they are (a comment trailing the last entry stays on
+it); a name imported with `import type` becomes a value import when the
+registration needs it. A module whose metadata is computed, or spreads or
+computes a key that may set the list, is refused with nothing written.
+Generated code uses the application kit, feature subpaths
+(`@velajs/vela/queue`, `@velajs/vela/schedule`), `ENV`, and plain decorator
+routes; a resource validates bodies with zod when the project depends
 on it, and with generated parse functions otherwise. Existing files are never
 overwritten; `--dry-run` lists the changes.
 

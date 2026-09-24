@@ -253,6 +253,20 @@ export class AppModule {}
       'takes a computed argument',
     ],
     [
+      'a root module whose metadata spreads its imports',
+      'src/app.module.ts',
+      `import { Module } from '@velajs/vela';
+import { OpenApiModule } from '@velajs/vela/openapi';
+import { AppController } from './app.controller.js';
+
+const shared = { imports: [OpenApiModule.forRoot({ info: { title: 'Demo', version: '1' } })] };
+
+@Module({ ...shared, controllers: [AppController] })
+export class AppModule {}
+`,
+      'a spread or computed key in @Module() may set imports',
+    ],
+    [
       'a root module re-exported from a missing file',
       'src/app.module.ts',
       `export { AppModule } from './root.module.js';\n`,
@@ -269,6 +283,12 @@ export class AppModule {}
       'src/bindings.module.ts',
       `import { Module } from '@velajs/vela';\n\n@Module({ providers: [ })\nexport class BindingsModule {}\n`,
       'Cannot parse',
+    ],
+    [
+      'a bindings module whose metadata spreads its providers',
+      'src/bindings.module.ts',
+      `import { Global, Module } from '@velajs/vela';\n\nconst base = { providers: [], exports: [] };\n\n@Global()\n@Module({ ...base })\nexport class BindingsModule {}\n`,
+      'a spread or computed key in @Module() may set providers',
     ],
   ])('creates nothing for %s', async (_case, file, content, message) => {
     await writeFile(join(project, file), content);

@@ -337,8 +337,9 @@ function moduleDecorator(
   );
 }
 
+/** The property that sets `key` as written: the last literal one, as at runtime. */
 function propertyNamed(object: ObjectExpression, key: string): ObjectProperty | undefined {
-  return object.properties.find(
+  return object.properties.findLast(
     (property): property is ObjectProperty =>
       property.type === 'Property' &&
       !property.computed &&
@@ -347,7 +348,52 @@ function propertyNamed(object: ObjectExpression, key: string): ObjectProperty | 
   );
 }
 
-/** Insert `text` as the last item of a comma-separated list closed at `close`. */
+/** The offset of the first character from `from` on that is neither whitespace nor a comment. */
+function skipTrivia(source: string, from: number): number {
+  let offset = from;
+  for (;;) {
+    while (/\s/.test(source.charAt(offset))) offset++;
+    if (source.startsWith('//', offset)) {
+      const end = source.indexOf('\n', offset);
+      offset = end === -1 ? source.length : end;
+    } else if (source.startsWith('/*', offset)) {
+      const end = source.indexOf('*/', offset + 2);
+      offset = end === -1 ? source.length : end + 2;
+    } else {
+      return offset;
+    }
+  }
+}
+
+/**
+ * The end of the comments trailing `from` on its line: through a line comment
+ * to the line break, through block comments (which may run over several
+ * lines) to their close.
+ */
+function trailEnd(source: string, from: number): number {
+  let offset = from;
+  let at = from;
+  for (;;) {
+    while (source.charAt(offset) === ' ' || source.charAt(offset) === '\t') offset++;
+    if (source.startsWith('//', offset)) {
+      const newline = source.indexOf('\n', offset);
+      if (newline === -1) return source.length;
+      return source.charAt(newline - 1) === '\r' ? newline - 1 : newline;
+    }
+    if (!source.startsWith('/*', offset)) return at;
+    const close = source.indexOf('*/', offset + 2);
+    if (close === -1) return at;
+    offset = close + 2;
+    at = offset;
+  }
+}
+
+/**
+ * Insert `text` as the last item of the comma-separated list `container`: on
+ * the line of the last item when that one shares a line, else on a line of its
+ * own after the comma and comment trailing the last item, so a comment keeps
+ * annotating the item it follows.
+ */
 function appendItem(
   code: MagicString,
   source: string,
@@ -365,13 +411,51 @@ function appendItem(
     !source.slice(container.start, container.end).includes('\n') ||
     source.slice(lineStart, last.start).trim() !== ''
   ) {
-    code.appendLeft(last.end, `, ${text}`);
+    // On the line: after the last item and the block comments trailing it there.
+    let at = last.end;
+    for (;;) {
+      const offset = /^[ \t]*/.exec(source.slice(at))?.[0].length ?? 0;
+      if (!source.startsWith('/*', at + offset)) break;
+      const close = source.indexOf('*/', at + offset + 2);
+      if (close === -1) break;
+      at = close + 2;
+    }
+    code.appendLeft(at, `, ${text}`);
     return;
   }
   const indent = indentAt(source, last.start);
-  const comma = /^\s*,/.exec(source.slice(last.end, container.end - 1));
-  if (comma) code.appendLeft(last.end + comma[0].length, `\n${indent}${text},`);
-  else code.appendLeft(last.end, `,\n${indent}${text}`);
+  const next = skipTrivia(source, last.end);
+  if (source.charAt(next) === ',') {
+    // A trailing comma stays trailing: the new line goes after it and its comment.
+    code.appendLeft(trailEnd(source, next + 1), `\n${indent}${text},`);
+    return;
+  }
+  // The comma goes right after the last item, which keeps its own comment.
+  code.appendLeft(last.end, ',');
+  code.appendLeft(trailEnd(source, last.end), `\n${indent}${text}`);
+}
+
+/**
+ * Throw when a spread or computed key of `metadata` may set `key` after the
+ * literal property the edit targets (or anywhere, without one): an entry added
+ * there would be replaced, or would replace the list the spread holds.
+ */
+function assertOwnsKey(
+  file: string,
+  metadata: ObjectExpression,
+  property: ObjectProperty | undefined,
+  key: string,
+  entry: string,
+): void {
+  const after =
+    property === undefined
+      ? metadata.properties
+      : metadata.properties.slice(metadata.properties.indexOf(property) + 1);
+  if (after.some((candidate) => candidate.type === 'SpreadElement' || candidate.computed)) {
+    throw new SourceEditError(
+      `${file}: a spread or computed key in @Module() may set ${key}; register ${entry} yourself.`,
+    );
+  }
 }
 
 /**
@@ -405,6 +489,7 @@ export function addToModule(
     );
   } else {
     const property = propertyNamed(argument, key);
+    assertOwnsKey(file, argument, property, key, entry);
     if (property === undefined) {
       const last = argument.properties.at(-1);
       if (last) appendItem(code, source, argument, last, `${key}: [${entry}]`);

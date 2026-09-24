@@ -228,8 +228,9 @@ interface RegistrationPlan {
 /**
  * Plan the registration of `binding` on the current sources: every module
  * edit runs here, so a module the CLI cannot edit (computed `@Module()`
- * metadata, a root re-exported from another file, a bindings module that does
- * not parse) fails before Wrangler creates anything.
+ * metadata or a spread that may set the list, a root re-exported from a file
+ * that does not exist, a bindings module that does not parse) fails before
+ * Wrangler creates anything.
  */
 async function planRegistration(
   resource: Resource,

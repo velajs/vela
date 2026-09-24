@@ -251,6 +251,32 @@ export class InfraModule {}
     expect(await read('src/app.module.ts')).toBe(barrel);
   });
 
+  it('writes nothing when a spread in the module metadata may hold the list', async () => {
+    await scaffold('minimal');
+    const app = `import { Module } from '@velajs/vela';
+import { AppController } from './app.controller.js';
+import { AppService } from './app.service.js';
+
+const jobs = { providers: [AppService] };
+
+@Module({ ...jobs, controllers: [AppController] })
+export class AppModule {}
+`;
+    await writeFile(join(project, 'src/app.module.ts'), app);
+    for (const [schematic, key] of [
+      ['service', 'providers'],
+      ['module', 'imports'],
+    ]) {
+      const result = await generate('g', schematic, 'billing');
+      expect(result.code, result.output).toBe(1);
+      expect(result.output).toContain(
+        `src/app.module.ts: a spread or computed key in @Module() may set ${key}; register`,
+      );
+    }
+    expect(await read('src/app.module.ts')).toBe(app);
+    await expect(readdir(join(project, 'src/billing'))).rejects.toThrow();
+  });
+
   it('adds a cron job with a validated Cloudflare schedule', async () => {
     await scaffold('minimal');
     const result = await generate('g', 'cron', 'digest', '--schedule', '30 6 * * MON');
