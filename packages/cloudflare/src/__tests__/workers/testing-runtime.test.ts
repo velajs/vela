@@ -19,6 +19,7 @@ import {
   type QueueJob,
   type QueueJobOutput,
 } from '@velajs/vela/queue';
+import { OpenApiModule } from '@velajs/vela/openapi';
 import { Cron, type CronInvocation } from '@velajs/vela/schedule';
 import type { StandardSchemaV1 } from '@velajs/vela/validation';
 import { cloudflareQueues } from '../../queues';
@@ -116,6 +117,48 @@ describe('createTestingWorker under workerd', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ id: '1', at: 'test time' });
       expect(worker.module.get(CLOCK).now()).toBe('test time');
+    } finally {
+      await worker.close();
+    }
+  });
+
+  it("runs the Worker's configure hook on the application it builds", async () => {
+    const configured: VelaEnv[] = [];
+    const worker = await createTestingWorker(AppModule, {
+      configure(app, env) {
+        configured.push(env);
+        app.getHonoApp().get('/extra', (c) => c.text(`extra ${variable(env, 'ENV_PROBE')}`));
+      },
+    });
+    try {
+      expect(configured).toEqual([worker.env]);
+      const response = await worker.fetch('/extra');
+      expect(await response.text()).toBe('extra workerd-env');
+    } finally {
+      await worker.close();
+    }
+    await expect(
+      createTestingWorker(AppModule, {
+        // A void-returning hook type accepts an async function; construction rejects it.
+        configure: async () => {},
+      }),
+    ).rejects.toThrow(/configure must finish synchronously/);
+  });
+
+  it("serves OpenApiModule's document of the Worker's root module", async () => {
+    @Module({
+      imports: [AppModule, OpenApiModule.forRoot({ info: { title: 'todos', version: '1.0.0' } })],
+    })
+    class DocumentedModule {}
+    const worker = await createTestingWorker(DocumentedModule, { globalPrefix: '/api' });
+    try {
+      const response = await worker.fetch('/openapi.json');
+      expect(response.status).toBe(200);
+      const document: unknown = await response.json();
+      expect(document).toMatchObject({
+        info: { title: 'todos', version: '1.0.0' },
+        paths: { '/api/todos/{id}': { get: expect.any(Object) } },
+      });
     } finally {
       await worker.close();
     }
