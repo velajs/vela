@@ -22,7 +22,15 @@ the same platform trust boundary. The built-in throttler store remains
 per-isolate; for limits shared across isolates, give `ThrottlerModule` the
 Workers Rate Limiting bindings by name:
 `ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }], storage: rateLimitStore({ binding: 'API_LIMITER' }) })`.
-Each binding's configured `limit` and `period` must equal its throttler's.
+Each binding's configured `limit` and `period` must equal its throttler's, so one
+binding serves only throttlers that share them. Workers Rate Limiting keeps its
+counters per Cloudflare location and updates them eventually, so its limits are
+approximate: a client spread across locations can exceed the declared quota, and
+nothing enforces a global or exact count. For strict limits, such as login
+attempts per account, implement a `ThrottlerStore` that counts in a Durable
+Object instead. The platform
+exposes no reset time, so `X-RateLimit-Reset` and `Retry-After` report the
+configured period, not a measured one.
 
 `createCloudflareApp({ security })` forwards Vela's body/query policy,
 including narrow streaming route overrides.

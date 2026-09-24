@@ -442,8 +442,16 @@ ThrottlerModule.forRoot({
 binding. Each binding's `simple.limit` and `simple.period` in the Wrangler
 `ratelimits` block must equal its throttler's `limit` and `ttl` (10 or 60
 seconds): the platform enforces them, so a `@Throttle()` override that changes
-them fails the request. The platform exposes no counters, so responses carry no
-`X-RateLimit-Remaining`.
+them fails at bootstrap, and one binding serves only throttlers that share a
+`limit` and `ttl` (another fails its first request). The platform exposes no
+counters, so responses carry no `X-RateLimit-Remaining`, and no reset time, so
+`X-RateLimit-Reset` and `Retry-After` report the configured period.
+
+Workers Rate Limiting counts per Cloudflare location, and its counters are
+eventually consistent: limits are approximate, not a global or exact quota. A
+client spread across locations can exceed them. For strict limits such as login
+attempts per account, implement a `ThrottlerStore` that counts in a Durable
+Object.
 
 ## R2 storage and caches
 
@@ -476,6 +484,11 @@ CacheModule.forRoot({
   invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' }),
 });
 ```
+
+Each operation reads the namespace from the application's `ENV`. A binding that
+is not declared fails the operation with an error naming it and
+`kv_namespaces`; the cache treats that as a miss and sends the error to the
+application's error reporter (edge `'cache'`).
 
 `KVCacheStore` and `KVCacheInvalidationStore` take a namespace or a function
 returning one, for composition such as

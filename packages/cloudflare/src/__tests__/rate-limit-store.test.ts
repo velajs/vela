@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Controller, Get, Module } from '@velajs/vela';
+import { Controller, Get, Module, type Type } from '@velajs/vela';
 import { Throttle, ThrottlerModule } from '@velajs/vela/throttler';
 import { createCloudflareApp, rateLimitStore } from '../index';
 
@@ -44,6 +44,18 @@ describe('rateLimitStore({ binding })', () => {
     );
   });
 
+  it('refuses throttlers with different limits or windows on one binding', async () => {
+    const API_LIMITER = limiter();
+    const store = rateLimitStore({ binding: 'API_LIMITER' })({ API_LIMITER });
+    await store.increment('a', 10_000, 3, 'short');
+    // Another throttler with the same limit and window can share the binding.
+    await store.increment('b', 10_000, 3, 'twin');
+    await expect(store.increment('c', 60_000, 1_000, 'long')).rejects.toThrow(
+      "one binding enforces one limit and period: throttlers 'short' (3 per 10000ms) and 'long' (1000 per 60000ms)",
+    );
+    expect(API_LIMITER.limit).toHaveBeenCalledTimes(2);
+  });
+
   it('fails closed for unsupported periods and unbounded keys', async () => {
     const API_LIMITER = limiter();
     const store = rateLimitStore({ binding: 'API_LIMITER', maxKeyBytes: 8 })({ API_LIMITER });
@@ -67,25 +79,26 @@ describe('rateLimitStore({ binding })', () => {
   });
 
   it('backs a static ThrottlerModule with each application ENV', async () => {
+    const limited = (controller: Type) => {
+      @Module({
+        imports: [
+          ThrottlerModule.forRoot({
+            throttlers: [{ ttl: 60_000, limit: 100 }],
+            storage: rateLimitStore({ binding: 'API_LIMITER' }),
+          }),
+        ],
+        controllers: [controller],
+      })
+      class App {}
+      return App;
+    };
     @Controller('/limited')
     class Limited {
       @Get() read() {
         return { ok: true };
       }
-      @Get('/stricter') @Throttle({ default: { limit: 1 } }) stricter() {
-        return { ok: true };
-      }
     }
-    @Module({
-      imports: [
-        ThrottlerModule.forRoot({
-          throttlers: [{ ttl: 60_000, limit: 100 }],
-          storage: rateLimitStore({ binding: 'API_LIMITER' }),
-        }),
-      ],
-      controllers: [Limited],
-    })
-    class App {}
+    const App = limited(Limited);
     const envA = { API_LIMITER: limiter([true, false]) };
     const envB = { API_LIMITER: limiter([true]) };
     const a = await createCloudflareApp(App, { env: envA });
@@ -96,9 +109,17 @@ describe('rateLimitStore({ binding })', () => {
     expect((await b.fetch(request(), envB, ctx)).status).toBe(200);
     expect(envA.API_LIMITER.limit).toHaveBeenCalledTimes(2);
     expect(envB.API_LIMITER.limit).toHaveBeenCalledTimes(1);
-    // The binding enforces its configured limit, so a route override fails loudly.
-    const stricter = await b.fetch(new Request('https://worker.test/limited/stricter'), envB, ctx);
-    expect(stricter.status).toBe(500);
     await Promise.all([a.close(), b.close()]);
+
+    // The binding enforces its configured limit, so a route override fails the bootstrap.
+    @Controller('/limited')
+    class Stricter {
+      @Get() @Throttle({ default: { limit: 1 } }) read() {
+        return { ok: true };
+      }
+    }
+    await expect(createCloudflareApp(limited(Stricter), { env: envB })).rejects.toThrow(
+      '@Throttle() on Stricter.read cannot change them',
+    );
   });
 });

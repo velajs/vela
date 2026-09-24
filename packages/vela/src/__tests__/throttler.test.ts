@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { APP_GUARD, VelaFactory, Controller, Get, Injectable, Module } from '../index.js';
 import { setTrustedRequestIdentity } from '../module-kit.js';
 import { ThrottlerModule, Throttle, SkipThrottle } from '../throttler/index.js';
-import type { CanActivate, ExecutionContext, VelaEnv } from '../index.js';
+import type { CanActivate, ExecutionContext, Type, VelaEnv } from '../index.js';
 import type {
   ThrottlerOptions,
   ThrottlerStore,
@@ -715,51 +715,121 @@ describe('named throttlers (Nest v5)', () => {
     expect(seen.map((env) => Reflect.get(env, 'REGION'))).toEqual(['east', 'west']);
   });
 
-  it('refuses route overrides a fixed-limit platform store cannot enforce', async () => {
+  it('refuses, at bootstrap, route overrides a fixed-limit platform store cannot enforce', async () => {
     const store: ThrottlerStore = {
       fixedLimits: true,
       increment: (_key, ttl) => ({ count: 0, ttlMs: ttl, allowed: true }),
       reset: () => undefined,
     };
+    const fixed = (controller: Type) => {
+      @Module({
+        imports: [
+          ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }], storage: store }),
+        ],
+        controllers: [controller],
+      })
+      class App {}
+      return VelaFactory.create(App);
+    };
     @Controller('/fixed')
-    class Fixed {
-      @Get('/same') @Throttle({ default: { limit: 5, ttl: 60_000 } }) same() {
+    class Same {
+      @Get() @Throttle({ default: { limit: 5, ttl: 60_000 } }) same() {
         return { ok: true };
       }
-      @Get('/other') @Throttle({ default: { limit: 1 } }) other() {
+    }
+    const hono = (await fixed(Same)).getHonoApp();
+    expect((await hono.request('/fixed')).status).toBe(200);
+
+    @Controller('/fixed')
+    class Other {
+      @Get() @Throttle({ default: { limit: 1 } }) other() {
+        return { ok: true };
+      }
+    }
+    await expect(fixed(Other)).rejects.toThrow(
+      "enforces throttler 'default' at its declared 5 requests per 60000ms",
+    );
+  });
+
+  it('rejects unknown throttler names at bootstrap, on routes and controllers', async () => {
+    const bootstrapWith = (controller: Type) => {
+      @Module({
+        imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }] })],
+        controllers: [controller],
+      })
+      class App {}
+      return VelaFactory.create(App);
+    };
+    @Controller('/unknown')
+    class OnRoute {
+      @Get() @Throttle({ burst: { limit: 1 } }) read() {
+        return { ok: true };
+      }
+    }
+    await expect(bootstrapWith(OnRoute)).rejects.toThrow(
+      "@Throttle() on OnRoute.read names throttler 'burst'",
+    );
+
+    // A route's own @Throttle() does not hide a typo on its controller.
+    @Controller('/unknown')
+    @Throttle({ defualt: { limit: 1 } })
+    class OnController {
+      @Get() @Throttle({ default: { limit: 2 } }) read() {
+        return { ok: true };
+      }
+    }
+    await expect(bootstrapWith(OnController)).rejects.toThrow(
+      "@Throttle() on OnController names throttler 'defualt'",
+    );
+  });
+
+  it('rejects @Throttle() limits and windows that are not positive integers', () => {
+    for (const config of [
+      { limit: Number.NaN },
+      { limit: Number.POSITIVE_INFINITY },
+      { limit: 0 },
+      { ttl: 1.5 },
+      { ttl: -1_000 },
+    ]) {
+      expect(() => Throttle({ default: config })).toThrow(/throttler 'default' (limit|ttl)/);
+    }
+  });
+
+  it('overrides limit and ttl separately, a route field over its controller field, as Nest v5', async () => {
+    const { store, calls } = recordingStore();
+    @Controller('/partial')
+    @Throttle({ default: { ttl: 1_000 } })
+    class Partial {
+      @Get() @Throttle({ default: { limit: 1 } }) read() {
+        return { ok: true };
+      }
+      @Get('/inherited') inherited() {
         return { ok: true };
       }
     }
     @Module({
       imports: [
-        ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }], storage: store }),
+        ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }], storage: store }),
       ],
-      controllers: [Fixed],
+      controllers: [Partial],
     })
     class App {}
     const hono = (await VelaFactory.create(App)).getHonoApp();
-    expect((await hono.request('/fixed/same')).status).toBe(200);
-    expect((await hono.request('/fixed/other')).status).toBe(500);
+    const response = await hono.request('/partial');
+    expect(response.headers.get('X-RateLimit-Limit')).toBe('1');
+    expect(response.headers.get('X-RateLimit-Reset')).toBe('1');
+    expect(calls.at(-1)).toMatchObject({ ttl: 1_000, limit: 1 });
+    await hono.request('/partial/inherited');
+    expect(calls.at(-1)).toMatchObject({ ttl: 1_000, limit: 100 });
   });
 
-  it('rejects unknown throttler names and invalid throttler declarations', async () => {
-    @Controller('/unknown')
+  it('rejects invalid throttler declarations', async () => {
+    @Controller('/declared')
     class Unknown {
-      @Get() @Throttle({ burst: { limit: 1 } }) read() {
+      @Get() read() {
         return { ok: true };
       }
     }
-    @Module({
-      imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }] })],
-      controllers: [Unknown],
-    })
-    class App {}
-    const errors: unknown[] = [];
-    const app = await VelaFactory.create(App);
-    app.useGlobalExceptionHandler({ report: (error) => void errors.push(error) });
-    expect((await app.getHonoApp().request('/unknown')).status).toBe(500);
-    expect(String(errors[0])).toContain("throttler 'burst'");
-
     const bootstrap = (throttlers: ThrottlerOptions[]) => {
       @Module({ imports: [ThrottlerModule.forRoot({ throttlers })], controllers: [Unknown] })
       class Invalid {}
