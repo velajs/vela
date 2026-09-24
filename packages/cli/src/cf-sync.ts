@@ -76,7 +76,9 @@ export function kebabCase(name: string): string {
     .toLowerCase();
 }
 
-const show = (value: unknown): string => JSON.stringify(value, null, 1).replace(/\s*\n\s*/g, ' ');
+// JSON.stringify writes no whitespace before a line break, and string values
+// cannot hold a raw one, so only the indentation after each break needs folding.
+const show = (value: unknown): string => JSON.stringify(value, null, 1).replace(/\n */g, ' ');
 
 /** A key of the target: inheritable keys live where the environment reads them from. */
 function location(
