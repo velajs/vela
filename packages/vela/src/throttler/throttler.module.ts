@@ -22,9 +22,10 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<Throttler
 });
 
 /**
- * Checks every `@Throttle()` once, at bootstrap: a name the module does not
- * declare, or a changed value a fixed-limit store cannot enforce, fails the
- * application instead of every request to the route.
+ * Checks the configuration once, at bootstrap: the store validates the
+ * declared throttlers, and every `@Throttle()` naming a throttler the module
+ * does not declare, or changing a value a fixed-limit store cannot enforce,
+ * fails the application instead of every request to the route.
  */
 @Injectable()
 class ThrottlerConfiguration {
@@ -36,6 +37,7 @@ class ThrottlerConfiguration {
 
   onApplicationBootstrap(): void {
     const throttlers = declareThrottlers(this.options.throttlers);
+    this.storage.validate?.(throttlers);
     const { fixedLimits } = this.storage;
     const filter = { metadataOnly: true, deferLazy: true };
     for (const { metatype, meta } of this.discovery.providersWithMeta<ThrottleRecord>(

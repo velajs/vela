@@ -1950,6 +1950,8 @@ interface ThrottlerStore {
   reset(key: string): void | Promise<void>;
 
   readonly fixedLimits?: boolean;
+
+  validate?(throttlers: readonly Required<ThrottlerOptions>[]): void;
 }
 interface RateLimitInfo {
   limit: number;

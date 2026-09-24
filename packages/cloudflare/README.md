@@ -452,7 +452,9 @@ binding. Each binding's `simple.limit` and `simple.period` in the Wrangler
 `ratelimits` block must equal its throttler's `limit` and `ttl` (10 or 60
 seconds): the platform enforces them, so a `@Throttle()` override that changes
 them fails at bootstrap, and one binding serves only throttlers that share a
-`limit` and `ttl` (another fails its first request). The platform exposes no
+`limit` and `ttl`. The store checks the declared throttlers at bootstrap: another
+period, different values on one binding, or a throttler the per-name map leaves
+out fails the application before any binding is charged. The platform exposes no
 counters, so responses carry no `X-RateLimit-Remaining`, and no reset time, so
 `X-RateLimit-Reset` and `Retry-After` report the configured period.
 

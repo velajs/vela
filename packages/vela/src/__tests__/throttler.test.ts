@@ -752,6 +752,37 @@ describe('named throttlers (Nest v5)', () => {
     );
   });
 
+  it('lets the store check the declared throttlers at bootstrap, before any request', async () => {
+    const validated: Array<readonly Required<ThrottlerOptions>[]> = [];
+    const store: ThrottlerStore = {
+      increment: (_key, ttl) => ({ count: 0, ttlMs: ttl, allowed: true }),
+      reset: () => undefined,
+      validate(throttlers) {
+        validated.push(throttlers);
+        const long = throttlers.find(({ ttl }) => ttl > 60_000);
+        if (long) throw new Error(`the store cannot serve throttler '${long.name}'`);
+      },
+    };
+    const bootstrap = (throttlers: ThrottlerOptions[]) => {
+      @Module({ imports: [ThrottlerModule.forRoot({ throttlers, storage: store })] })
+      class App {}
+      return VelaFactory.create(App);
+    };
+    await bootstrap([
+      { ttl: 60_000, limit: 5 },
+      { name: 'burst', ttl: 1_000, limit: 2 },
+    ]);
+    expect(validated).toEqual([
+      [
+        { name: 'default', ttl: 60_000, limit: 5 },
+        { name: 'burst', ttl: 1_000, limit: 2 },
+      ],
+    ]);
+    await expect(bootstrap([{ name: 'daily', ttl: 86_400_000, limit: 5 }])).rejects.toThrow(
+      "the store cannot serve throttler 'daily'",
+    );
+  });
+
   it('rejects unknown throttler names at bootstrap, on routes and controllers', async () => {
     const bootstrapWith = (controller: Type) => {
       @Module({

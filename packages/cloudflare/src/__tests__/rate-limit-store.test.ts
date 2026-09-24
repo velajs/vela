@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Controller, Get, Module, type Type } from '@velajs/vela';
-import { Throttle, ThrottlerModule } from '@velajs/vela/throttler';
+import { Throttle, ThrottlerModule, type ThrottlerModuleOptions } from '@velajs/vela/throttler';
 import { createCloudflareApp, rateLimitStore } from '../index';
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} };
@@ -76,6 +76,66 @@ describe('rateLimitStore({ binding })', () => {
       "ENV.API_LIMITER is not set: declare the rate limiter binding 'API_LIMITER' under ratelimits",
     );
     expect(() => rateLimitStore({ binding: '' })).toThrow('non-empty');
+  });
+
+  it('fails bootstrap for throttlers its bindings cannot serve, before charging any binding', async () => {
+    @Controller('/limited')
+    class Limited {
+      @Get() read() {
+        return { ok: true };
+      }
+    }
+    const bootstrap = (options: ThrottlerModuleOptions, env: Record<string, unknown>) => {
+      @Module({ imports: [ThrottlerModule.forRoot(options)], controllers: [Limited] })
+      class App {}
+      return createCloudflareApp(App, { env });
+    };
+    const S = limiter();
+    const L = limiter();
+    const env = { S, L };
+    const short = { name: 'short', ttl: 10_000, limit: 3 };
+    const long = { name: 'long', ttl: 60_000, limit: 100 };
+
+    await expect(
+      bootstrap({ throttlers: [short, long], storage: rateLimitStore({ binding: 'S' }) }, env),
+    ).rejects.toThrow(
+      "one binding enforces one limit and period: throttlers 'short' (3 per 10000ms) and 'long' (100 per 60000ms)",
+    );
+    await expect(
+      bootstrap(
+        { throttlers: [short, long], storage: rateLimitStore({ binding: { short: 'S' } }) },
+        env,
+      ),
+    ).rejects.toThrow("no rate limiting binding for throttler 'long'");
+    await expect(
+      bootstrap(
+        {
+          throttlers: [short],
+          storage: rateLimitStore({ binding: { short: 'S', shrot: 'L' } }),
+        },
+        env,
+      ),
+    ).rejects.toThrow("maps throttler 'shrot', which ThrottlerModule does not declare");
+    await expect(
+      bootstrap(
+        { throttlers: [{ ttl: 30_000, limit: 5 }], storage: rateLimitStore({ binding: 'S' }) },
+        env,
+      ),
+    ).rejects.toThrow("Throttler 'default' has a 30000ms window");
+    expect(S.limit).not.toHaveBeenCalled();
+    expect(L.limit).not.toHaveBeenCalled();
+
+    const app = await bootstrap(
+      {
+        throttlers: [short, long],
+        storage: rateLimitStore({ binding: { short: 'S', long: 'L' } }),
+      },
+      env,
+    );
+    const response = await app.fetch(new Request('https://worker.test/limited'), env, ctx);
+    expect(response.status).toBe(200);
+    expect([S.limit.mock.calls.length, L.limit.mock.calls.length]).toEqual([1, 1]);
+    await app.close();
   });
 
   it('backs a static ThrottlerModule with each application ENV', async () => {

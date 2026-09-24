@@ -10,8 +10,9 @@ export interface RateLimitStoreOptions {
    * `{ burst: 'BURST_LIMITER', sustained: 'API_LIMITER' }`. Each binding's
    * `simple.limit` and `simple.period` must equal its throttler's `limit` and
    * `ttl`; the platform enforces them. One binding therefore serves only
-   * throttlers that share a limit and window: a throttler with other values
-   * fails instead of being enforced at the binding's.
+   * throttlers that share a limit and window: a throttler with other values,
+   * or one the map leaves out, fails the application's bootstrap instead of
+   * being enforced at the binding's.
    */
   binding: string | Readonly<Record<string, string>>;
   /** Bound attacker-influenced tracking keys before calling the platform. Default 1024. */
@@ -36,7 +37,8 @@ const PERIODS = new Set([10_000, 60_000]);
  * times, so the store reports no `remaining` quota. It enforces the limit and
  * period configured on the binding, so it declares `fixedLimits`: a
  * `@Throttle()` override that changes them fails instead of being ignored.
- * Periods are 10 or 60 seconds.
+ * Periods are 10 or 60 seconds. `ThrottlerModule` checks the declared
+ * throttlers against the bindings when the application starts.
  */
 export function rateLimitStore(options: RateLimitStoreOptions): EnvFactory<ThrottlerStore> {
   const maxKeyBytes = options.maxKeyBytes ?? 1_024;
@@ -54,6 +56,19 @@ export function rateLimitStore(options: RateLimitStoreOptions): EnvFactory<Throt
     throw new TypeError('rateLimitStore needs a binding, or one per named throttler');
   }
   const encoder = new TextEncoder();
+  const checkPeriod = (name: string, ttl: number): void => {
+    if (!PERIODS.has(ttl)) {
+      throw new Error(
+        `Throttler '${name}' has a ${ttl}ms window; Workers Rate Limiting bindings ` +
+          'support periods of 10 or 60 seconds.',
+      );
+    }
+  };
+  const unmapped = (name: string): Error =>
+    new Error(
+      `rateLimitStore has no rate limiting binding for throttler '${name}'. ` +
+        'Map it in rateLimitStore({ binding: { name: BINDING } }).',
+    );
 
   return (env: VelaEnv): ThrottlerStore => {
     // The first throttler the single binding served: the binding enforces one
@@ -73,18 +88,28 @@ export function rateLimitStore(options: RateLimitStoreOptions): EnvFactory<Throt
     return {
       fixedLimits: true,
 
+      validate(throttlers) {
+        for (const { name, ttl, limit } of throttlers) {
+          checkPeriod(name, ttl);
+          if (single !== undefined) assertShared(name, ttl, limit);
+          else if (!named.has(name)) throw unmapped(name);
+        }
+        for (const name of named.keys()) {
+          if (!throttlers.some((throttler) => throttler.name === name)) {
+            throw new Error(
+              `rateLimitStore maps throttler '${name}', which ThrottlerModule does not declare.`,
+            );
+          }
+        }
+      },
+
       async increment(
         key: string,
         ttl: number,
         limit: number,
         throttlerName: string,
       ): Promise<ThrottlerStorageRecord> {
-        if (!PERIODS.has(ttl)) {
-          throw new Error(
-            `Throttler '${throttlerName}' has a ${ttl}ms window; Workers Rate Limiting bindings ` +
-              'support periods of 10 or 60 seconds.',
-          );
-        }
+        checkPeriod(throttlerName, ttl);
         if (
           typeof key !== 'string' ||
           key.length === 0 ||
@@ -95,12 +120,7 @@ export function rateLimitStore(options: RateLimitStoreOptions): EnvFactory<Throt
         }
         if (single !== undefined) assertShared(throttlerName, ttl, limit);
         const reference = single ?? named.get(throttlerName);
-        if (reference === undefined) {
-          throw new Error(
-            `rateLimitStore has no rate limiting binding for throttler '${throttlerName}'. ` +
-              'Map it in rateLimitStore({ binding: { name: BINDING } }).',
-          );
-        }
+        if (reference === undefined) throw unmapped(throttlerName);
         const decision: unknown = await reference(env).limit({ key });
         const success: unknown =
           typeof decision === 'object' && decision !== null

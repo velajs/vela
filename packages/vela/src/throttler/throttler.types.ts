@@ -44,6 +44,11 @@ export interface ThrottlerStore {
    * changes them fails instead of being ignored.
    */
   readonly fixedLimits?: boolean;
+  /**
+   * Check the declared throttlers once, when the application starts: a store
+   * that cannot serve one throws, failing bootstrap instead of every request.
+   */
+  validate?(throttlers: readonly Required<ThrottlerOptions>[]): void;
 }
 
 export interface RateLimitInfo {
