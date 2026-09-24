@@ -189,6 +189,38 @@ responses report the returned range length.
 See [queues](queues.md), [events](event-sourcing.md), [scheduling](scheduling.md)
 and [storage](../packages/storage/README.md).
 
+## Feature surfaces
+
+Each feature has one module, configured with names instead of live bindings:
+
+- **Bindings:** module options name a binding, `{ binding: 'CACHE' }`, which is
+  read from each application's `ENV` when first used. The Workers factories
+  `kv`, `r2`, `d1`, `queue`, `durableObject` and `rateLimit` come from
+  `@velajs/cloudflare`; a missing binding fails naming its Wrangler key.
+- **Storage:** the Cloudflare `StorageModule` and `@velajs/vela/storage` are
+  removed. Register `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })`
+  from `@velajs/storage`, with `r2Storage` from `@velajs/cloudflare/storage`, per
+  former disk. The presign-proxy route `GET /storage/:disk` is gone.
+- **Cache:** the synchronous cache is removed and the response cache takes its
+  names: `ResponseCacheModule` is `CacheModule`, `ResponseCacheService` is
+  `CacheService`. Replace `@Cacheable()` with `@CacheResponse({ key, ttl })`, and
+  a Workers KV store with `store: kvCache({ binding })`.
+- **CORS:** `CorsModule` is removed. Call `app.enableCors(options)` or pass the
+  `cors` create option (`createCloudflareWorker(AppModule, { cors })` on Workers).
+- **Throttling:** `ThrottlerModule.forRoot({ limit, ttl })` becomes
+  `forRoot({ throttlers: [{ limit, ttl }] })`, and `@Throttle({ limit })` becomes
+  `@Throttle({ default: { limit } })`. `cloudflareRateLimitStore(binding, …)` becomes
+  `storage: rateLimitStore({ binding: 'API_LIMITER' })`.
+- **Studio:** the per-feature modules (`StudioCrudModule`, `StudioLiveModule`,
+  `StudioQueueModule` and the others) become panels in
+  `StudioModule.forRoot({ plugins: [crudPanel(), livePanel({ rooms }), …] })`.
+  `managedModels` and `runAsIdentity` move to `crudPanel()`, and
+  `StudioCloudflareTimeTravelModule.forRoot({ namespace })` becomes
+  `cloudflareTimeTravelPanel({ binding })`.
+
+See [caching](caching.md), [security](security.md) for CORS and throttling,
+[storage](../packages/storage/README.md) and [Studio](../packages/studio/README.md).
+
 ## Optional transports and multiple databases
 
 RPC and GraphQL remain separate, opt-in packages. RPC supplies typed HTTP/Fetcher
