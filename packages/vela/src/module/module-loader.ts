@@ -493,11 +493,15 @@ export class ModuleLoader {
   private registerEnhancers(): void {
     for (const [moduleId, hosts] of this.#enhancerHosts) {
       const tokens = this.#moduleTokens.get(moduleId) ?? [];
+      // The module class is the first host.
+      const [moduleClass] = hosts;
       for (const host of hosts) {
-        // Its own declarations, and those it inherits from an ancestor class.
-        const references: ComponentInstance[] = ENHANCER_TYPES.flatMap((type) =>
-          MetadataRegistry.getDeclaredComponents(type, host).concat(ancestorComponents(type, host)),
-        );
+        // Its own declarations and, as pipelines apply them, those it inherits
+        // from an ancestor class; a module class's apply as it declares them.
+        const references: ComponentInstance[] = ENHANCER_TYPES.flatMap((type) => {
+          const declared = MetadataRegistry.getDeclaredComponents(type, host);
+          return host === moduleClass ? declared : declared.concat(ancestorComponents(type, host));
+        });
         for (const params of MetadataRegistry.getParameters(host).values()) {
           for (const { pipes = [] } of params) references.push(...pipes);
         }
@@ -521,7 +525,6 @@ export class ModuleLoader {
         }
       }
       // The module class, its first host, comes last.
-      const [moduleClass] = hosts;
       if (moduleClass) tokens.push(moduleClass);
     }
   }
