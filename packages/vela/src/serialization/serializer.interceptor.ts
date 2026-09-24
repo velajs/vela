@@ -1,5 +1,5 @@
 import { Injectable } from '../container/decorators';
-import { MetadataRegistry } from '../registry/metadata.registry';
+import { inheritedHandlerMeta } from '../registry/inherited-metadata';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '../pipeline/types';
 import { isValidationSchema, parseSchemaAsync } from '../validation';
 import { SERIALIZE_METADATA } from './serialize.decorator';
@@ -11,7 +11,9 @@ export class SerializerInterceptor implements NestInterceptor {
     const controller = context.getClass();
     const handler = context.getHandlerName();
 
-    const dto = MetadataRegistry.getCustomHandlerMeta(controller, handler, SERIALIZE_METADATA);
+    // The route's own declaration, else that of the nearest ancestor whose
+    // method it serves unchanged, as the Reflector reads method metadata.
+    const dto = inheritedHandlerMeta(controller, handler, SERIALIZE_METADATA);
     if (dto === undefined) return result;
     if (
       dto === null ||

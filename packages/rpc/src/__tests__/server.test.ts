@@ -26,6 +26,7 @@ import type {
   ExceptionFilter,
   ExecutionContext,
   ExecutionLifetime,
+  HttpErrorResponse,
   NestInterceptor,
   RequestContext,
   VelaApplication,
@@ -261,21 +262,35 @@ describe('Vela RPC adapter', () => {
       input: z.null(),
       output: z.string(),
     });
-    class LockedError extends Error {
-      toResponse() {
+    const foreign = defineProcedure({
+      name: 'error.foreign',
+      input: z.null(),
+      output: z.string(),
+    });
+    class LockedError extends HttpException {
+      constructor() {
+        super('hidden', 409);
+      }
+      override toResponse(): HttpErrorResponse {
+        return { status: 409, body: { locked: 'internal lock owner' } };
+      }
+    }
+    // Not a framework exception: its toResponse() is never used.
+    class ForeignLockError extends Error {
+      toResponse(): HttpErrorResponse {
         return { status: 409, body: { locked: 'internal lock owner' } };
       }
     }
     // An owned body with an `error: { code, message }` member, as CRUD's envelope has.
-    class CodedLockError extends Error {
+    class CodedLockError extends HttpException {
       readonly wireCode: string;
 
       constructor(wireCode: string) {
-        super('hidden');
+        super('hidden', 409);
         this.wireCode = wireCode;
       }
 
-      toResponse() {
+      override toResponse(): HttpErrorResponse {
         return {
           status: 409,
           body: {
@@ -296,7 +311,10 @@ describe('Vela RPC adapter', () => {
         throw new Error('hidden');
       }
       @Rpc(owned) locked(_: null): string {
-        throw new LockedError('hidden');
+        throw new LockedError();
+      }
+      @Rpc(foreign) foreign(_: null): string {
+        throw new ForeignLockError('hidden');
       }
       @Rpc(coded) coded(_: null): string {
         throw new CodedLockError('locked');
@@ -327,6 +345,13 @@ describe('Vela RPC adapter', () => {
         error: { code: 'conflict', message: 'RPC request failed', status: 409 },
       });
       expect(JSON.stringify(body)).not.toContain('internal lock owner');
+      // Another error's toResponse() owns nothing: it is an internal failure.
+      const foreignResponse = await app.fetch(request(foreign.name, null));
+      expect(foreignResponse.status).toBe(500);
+      expect(await foreignResponse.json()).toMatchObject({
+        ok: false,
+        error: { code: 'internal', message: 'Internal Server Error', status: 500 },
+      });
       // Such a body keeps its code and message, and nothing else.
       const codedResponse = await app.fetch(request(coded.name, null));
       expect(codedResponse.status).toBe(409);

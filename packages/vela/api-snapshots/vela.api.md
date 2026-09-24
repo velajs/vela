@@ -2230,6 +2230,7 @@ interface ModuleDecoratorOptions<P extends readonly unknown[] = readonly Provide
 }
 declare function Module(options?: ModuleDecoratorOptions<readonly (Type | ProviderDefinition)[]>): ClassDecorator;
 declare function Module<const P extends readonly unknown[] = readonly Provider[]>(options?: ModuleDecoratorOptions<P>): ClassDecorator;
+
 declare function isModule(target: Constructor): boolean;
 declare function getModuleMetadata(target: Constructor): ModuleMetadata | undefined;
 
@@ -2764,6 +2765,7 @@ interface HttpErrorResponse {
   readonly status: number;
   readonly body: unknown;
 }
+
 declare class HttpException extends Error {
   #private;
   readonly statusCode: number;
@@ -5165,6 +5167,8 @@ interface ModuleOptions {
 
 interface ModuleRecord extends ModuleOptions {
   global?: boolean;
+  /** @internal */
+  hostOnly?: true;
 }
 interface ModuleMetadata {
   providers: readonly Provider[];

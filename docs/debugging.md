@@ -152,8 +152,12 @@ The response a client saw comes from the first of these that applies:
 2. the application's `ExceptionHandler.render` hook;
 3. a Hono `HTTPException` below 500 built with its own `res`, which keeps that
    response (an auth challenge with its headers);
-4. the exception's own `toResponse()`;
+4. the exception's own `toResponse()`, only for an `HttpException` or a
+   subclass (another object's `toResponse()` is ignored);
 5. the canonical `{ error: { code, message, details? } }` body.
+
+An error that declares a status outside 400–599, such as an `HttpException`
+constructed with 302, is reported and renders as a redacted 500.
 
 Reproduce a body without a request with `renderHttpError(error)`, which returns
 `{ status, body, redacted }`; `redacted: true` means the client never saw the

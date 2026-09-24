@@ -20,6 +20,7 @@ import {
   APP_PIPE,
 } from '../pipeline/tokens';
 import { getScope, isDecoratedClass, planConstructor } from '../container/decorators';
+import { ancestorComponents } from '../registry/inherited-metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { getOrCreateArray } from '../registry/util';
 import type { ComponentInstance, DynamicModule, ModuleImport } from '../registry/types';
@@ -32,6 +33,7 @@ import {
   DEFAULT_MODULE_KEY,
   UNCONFIGURED_MODULE,
   assertDefinedEntries,
+  generatedModuleMethods,
   isDynamicModule,
   moduleKeyOf,
   readModuleIdentity,
@@ -79,6 +81,19 @@ export type ModuleOverrides = ReadonlyMap<Type | DynamicModule, Type | DynamicMo
 
 function tokenOfProvider(provider: Type | ProviderDefinition): Token | undefined {
   return typeof provider === 'function' ? provider : provider.provide;
+}
+
+// A bare import of a class that declares no module. A generated module class
+// is configured only through the methods it generated.
+function notAModule(moduleClass: Type): Error {
+  const name = moduleClass.name || 'AnonModule';
+  const methods = generatedModuleMethods(moduleClass);
+  return new Error(
+    methods
+      ? `${name} is not a module: import ${methods.map((method) => `${name}.${method}(...)`).join(' or ')} ` +
+          'instead of the bare class, which configures nothing.'
+      : `${name} is not a module. Add @Module() decorator to the class.`,
+  );
 }
 
 /**
@@ -245,6 +260,9 @@ export class ModuleLoader {
       key = moduleClassOrDynamic.key ?? DEFAULT_MODULE_KEY;
     } else {
       moduleClass = moduleClassOrDynamic;
+      // Checked before deduplication: a bare import configures nothing, so it
+      // names a module only when the class declares one itself.
+      if (!isModule(moduleClass)) throw notAModule(moduleClass);
     }
 
     const moduleId = this.getModuleId(moduleClass, key);
@@ -271,14 +289,10 @@ export class ModuleLoader {
       throw new Error(`Circular module dependency detected: ${chain}`);
     }
 
-    if (!isModule(moduleClass)) {
-      if (isDynamicModule(moduleClassOrDynamic)) {
-        MetadataRegistry.setModuleOptions(moduleClass, {});
-      } else {
-        throw new Error(
-          `${moduleClass.name} is not a module. Add @Module() decorator to the class.`,
-        );
-      }
+    // A DynamicModule's class needs no @Module of its own. The record marks
+    // the class as decorated for dependency injection, not as a module.
+    if (MetadataRegistry.getModuleOptions(moduleClass) === undefined) {
+      MetadataRegistry.setModuleOptions(moduleClass, { hostOnly: true });
     }
 
     const metadata = getModuleMetadata(moduleClass);
@@ -488,7 +502,8 @@ export class ModuleLoader {
 
   /**
    * Register every guard, pipe, interceptor and filter class a module's
-   * classes reference in `@Use*` or parameter decorators, in that module's
+   * classes reference in `@Use*` or parameter decorators, their own or
+   * inherited from an ancestor class, in that module's
    * bucket, unless one is already visible there. Each then resolves through
    * the container from its declaring module, like a provider: once per scope,
    * with its dependencies, in its module's lazy group.
@@ -496,10 +511,15 @@ export class ModuleLoader {
   private registerEnhancers(): void {
     for (const [moduleId, hosts] of this.#enhancerHosts) {
       const tokens = this.#moduleTokens.get(moduleId) ?? [];
+      // The module class is the first host.
+      const [moduleClass] = hosts;
       for (const host of hosts) {
-        const references: ComponentInstance[] = ENHANCER_TYPES.flatMap((type) =>
-          MetadataRegistry.getDeclaredComponents(type, host),
-        );
+        // Its own declarations and, as pipelines apply them, those it inherits
+        // from an ancestor class; a module class's apply as it declares them.
+        const references: ComponentInstance[] = ENHANCER_TYPES.flatMap((type) => {
+          const declared = MetadataRegistry.getDeclaredComponents(type, host);
+          return host === moduleClass ? declared : declared.concat(ancestorComponents(type, host));
+        });
         for (const params of MetadataRegistry.getParameters(host).values()) {
           for (const { pipes = [] } of params) references.push(...pipes);
         }
@@ -523,7 +543,6 @@ export class ModuleLoader {
         }
       }
       // The module class, its first host, comes last.
-      const [moduleClass] = hosts;
       if (moduleClass) tokens.push(moduleClass);
     }
   }

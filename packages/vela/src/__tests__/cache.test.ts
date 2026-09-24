@@ -12,6 +12,7 @@ import {
   VelaFactory,
   type ErrorReportContext,
   type ExecutionContext,
+  type Type,
   type VelaEnv,
 } from '../index';
 import {
@@ -567,6 +568,64 @@ describe('response cache pipeline', () => {
     })
     class KeyedDuplicates {}
     await expect(VelaFactory.create(KeyedDuplicates)).rejects.toThrow('only one CacheModule');
+  });
+
+  it('checks inherited @CacheResponse declarations at bootstrap as the interceptor reads them', async () => {
+    const boot = (controller: Type) => {
+      @Module({
+        imports: [
+          CacheModule.forRoot({
+            namespace: 'inherited',
+            store: new AsyncStore(),
+            scope: () => publicScope,
+          }),
+        ],
+        controllers: [controller],
+      })
+      class App {}
+      return VelaFactory.create(App);
+    };
+
+    // On a method the controller routes unchanged.
+    class TaggedBase {
+      @CacheResponse({ tags: ['items'] })
+      read() {
+        return 1;
+      }
+    }
+    @Controller('/inherited-method')
+    class InheritedMethod extends TaggedBase {}
+    Get()(
+      InheritedMethod.prototype,
+      'read',
+      Object.getOwnPropertyDescriptor(TaggedBase.prototype, 'read')!,
+    );
+    await expect(boot(InheritedMethod)).rejects.toThrow('invalidation store');
+
+    // On an ancestor class.
+    @CacheResponse({ tags: ['items'] })
+    abstract class TaggedClass {}
+    @Controller('/inherited-class')
+    class InheritedClass extends TaggedClass {
+      @Get() read() {
+        return 1;
+      }
+    }
+    await expect(boot(InheritedClass)).rejects.toThrow('invalidation store');
+
+    // An override reads only its own declarations.
+    @Controller('/overridden')
+    class Overridden extends TaggedBase {
+      @Get() override read() {
+        return 2;
+      }
+    }
+    const app = await boot(Overridden);
+    try {
+      expect(await (await app.getHonoApp().request('/overridden')).json()).toBe(2);
+    } finally {
+      await app.close();
+    }
   });
 
   it('bypasses public caching for trusted identities without credential headers', async () => {

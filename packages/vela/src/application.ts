@@ -73,9 +73,11 @@ export class VelaApplication {
     // redacted body path every other edge uses.
     this.honoApp.onError((err, c) => {
       const reporter = resolveErrorReporter(findRequestContainer(c) ?? this.container);
-      // A Hono HTTPException below 500 (an auth challenge, say) is a deliberate
-      // client response, not a server fault; everything else is reported.
-      if (!(err instanceof HTTPException) || err.status >= 500) {
+      // A Hono HTTPException with a 4xx status (an auth challenge, say) is a
+      // deliberate client response, not a server fault. Everything else is
+      // reported, as on the handler edge, including one with any other status
+      // below 500, such as 302, which renders as a 500 without its own `res`.
+      if (!(err instanceof HTTPException) || err.status < 400 || err.status >= 500) {
         reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
       }
       // The raw edge only sees unplanned throws, so exception-owned 5xx bodies

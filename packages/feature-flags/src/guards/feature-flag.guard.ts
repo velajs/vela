@@ -24,7 +24,7 @@ import { FEATURE_FLAG_TOKENS } from '../feature-flags.tokens';
  * `NotFoundException` (route hidden) or `ForbiddenException` per the decorator.
  * Handlers with no `@FeatureFlag()` metadata pass through untouched, so
  * `FeatureFlagsModule` registers the guard app-wide by default; with
- * `globalGuard: false`, apply it per route via `@UseGuards(FeatureFlagGuard)`.
+ * `guard: 'none'`, apply it per route via `@UseGuards(FeatureFlagGuard)`.
  *
  * It does NOT inject `REQUEST_CONTEXT` — that would make the guard request-
  * scoped and break lazy-module materialization (which constructs every provider

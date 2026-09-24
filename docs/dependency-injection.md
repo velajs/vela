@@ -116,7 +116,8 @@ Guard, pipe, interceptor and filter classes that a module's classes reference in
 `@UsePipes`, `@UseInterceptors`, `@UseFilters` or parameter decorators such as
 `@Param('id', ParseIntPipe)` need no `providers` entry. The module loader scans the module class,
 its class providers (including `useClass` targets) and its controllers, so gateways, processors,
-live resolvers and other entrypoint classes are covered too. It registers each referenced class in
+live resolvers and other entrypoint classes are covered too, with the enhancers each inherits from
+an ancestor class. It registers each referenced class in
 the declaring module unless one is already visible there, such as a provider exported by an
 imported module. The class then resolves like any provider of that module: its dependencies come
 from the declaring module, a singleton is built once instead of per request, a request-scoped

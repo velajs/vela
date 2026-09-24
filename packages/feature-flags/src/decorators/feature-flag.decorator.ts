@@ -23,7 +23,7 @@ export const FEATURE_FLAG_METADATA = 'vela:feature-flags:flag';
 /**
  * Gate a route (handler) or controller behind a boolean feature flag. The
  * {@link FeatureFlagGuard} that `FeatureFlagsModule` registers app-wide by
- * default enforces it; with `globalGuard: false`, add
+ * default enforces it; with `guard: 'none'`, add
  * `@UseGuards(FeatureFlagGuard)` to each gated controller or handler.
  *
  * @example

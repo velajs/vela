@@ -107,5 +107,13 @@ identities explicitly. To order a fully route-level pipeline yourself, pass
 `guard: 'none'` and apply `@UseGuards(AuthenticationGuard, TenantGuard, CedarGuard)`
 in that order: global guards run before route guards.
 
+Each `guard: 'global'` registration installs its own global `CedarGuard`,
+including each keyed instance (`forRoot({ key, ... })`), and every installed
+guard runs on every application route. The installed guard authorizes through
+the `CedarModule` the route's module sees, so one global installation serves
+every module: when several modules register their own authorizer, give each
+registration its own `key`, keep `guard: 'global'` on one and pass
+`guard: 'none'` on the others.
+
 The package includes NestM BSD-licensed adaptations and unmodified Apache-licensed
 Cedar WASM; see `THIRD_PARTY_LICENSES`.

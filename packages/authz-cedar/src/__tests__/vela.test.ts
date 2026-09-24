@@ -71,6 +71,47 @@ describe('resource authorization declarations', () => {
     CedarPublic()(Routes);
     expect(() => auditCedarRoutes([App])).not.toThrow();
   });
+  it('audits and authorizes a declaration an ancestor makes on a method the controller inherits', async () => {
+    class Base {
+      read() {
+        return { ok: true };
+      }
+    }
+    const read = Object.getOwnPropertyDescriptor(Base.prototype, 'read')!;
+    RequireResource({ action: 'read', resourceType: 'Doc' })(Base.prototype, 'read', read);
+    class Routes extends Base {}
+    Controller('/inherited')(Routes);
+    Get()(Routes.prototype, 'read', read);
+    const requirements: string[] = [];
+    class App {}
+    Module({
+      controllers: [Routes],
+      imports: [
+        CedarModule.forRoot({
+          auditModules: [App],
+          authorize: async ({ requirement }) => {
+            requirements.push(`${requirement.action}:${requirement.resourceType}`);
+            return true;
+          },
+        }),
+      ],
+    })(App);
+    expect(() => auditCedarRoutes([App])).not.toThrow();
+    const app = await VelaFactory.create(App, {
+      middleware: [
+        async (c, next) => {
+          setTrustedRequestIdentity(c.req.raw, { principal, tenantId: 'a' });
+          await next();
+        },
+      ],
+    });
+    try {
+      expect((await app.getHonoApp().request('/inherited')).status).toBe(200);
+      expect(requirements).toEqual(['read:Doc']);
+    } finally {
+      await app.close();
+    }
+  });
   it('requires verified identities, honors denial and fails if authority changes during a check', async () => {
     let allowed = true,
       clear = false,
