@@ -15,15 +15,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@velajs/cloudflare": "1.29.0",
-    "@velajs/vela": "1.29.0",
+    "@velajs/cloudflare": "1.30.0",
+    "@velajs/vela": "1.30.0",
     "hono": "4.13.8"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.56.0",
     "@cloudflare/vitest-plugin": "1.1.13",
     "@cloudflare/workers-types": "5.20260920.1",
-    "@velajs/cli": "1.29.0",
+    "@velajs/cli": "1.30.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",
     "vitest": "4.1.11",

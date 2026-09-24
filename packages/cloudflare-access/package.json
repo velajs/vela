@@ -1,6 +1,6 @@
 {
   "name": "@velajs/cloudflare-access",
-  "version": "1.29.0",
+  "version": "1.30.0",
   "description": "Zero Trust / OIDC identity for Vela: RS256-pinned JWKS verification, fail-closed resolveIdentity + composeResolvers, an issuer-preset generic JWKS adapter, and a Vela guard/module bridge into @velajs/authz",
   "keywords": [
     "access",
