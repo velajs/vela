@@ -805,7 +805,7 @@ export class LiveEngine
         liveContext = this.liveQueryContext(record, client);
         const partition = prepared.coalesceBy(liveContext);
         if (typeof partition === 'string') {
-          cacheKey = liveCoalescingKey(record.query, record.args, partition);
+          cacheKey = liveCoalescingKey(liveContext.path, record.query, record.args, partition);
         }
       } catch {
         // App partitioning is an optimization assertion, never a delivery

@@ -41,9 +41,11 @@ export interface LiveQueryOptions<A = unknown> {
   key?: string;
   /**
    * Opt into flush-local resolver execution coalescing. Vela always prefixes
-   * this partition with the query name and canonical parsed args. Returning the
-   * same key asserts that the resolver AND its interceptors produce the same
-   * result for those subscribers despite client/identity/room differences.
+   * this partition with the subscribing gateway's path, the query name and the
+   * canonical parsed args, so subscribers of different gateways never share a
+   * run. Returning the same key asserts that the resolver AND its interceptors
+   * produce the same result for those subscribers despite
+   * client/identity/room differences.
    *
    * Expiry, guards, and delivery authorization still run per subscription.
    * Return `undefined` to execute independently. Throws, empty/control-bearing

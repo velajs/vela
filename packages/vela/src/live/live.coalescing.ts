@@ -120,8 +120,14 @@ function canonicalArgs(value: unknown): string | undefined {
   }
 }
 
-/** Build a collision-free, flush-local cache key, or opt out safely. */
+/**
+ * Build a collision-free, flush-local cache key, or opt out safely. `path` is
+ * the route path of the gateway the subscription arrived through: a resolver
+ * may answer per gateway (`LiveQueryContext.path`), so subscribers of two
+ * gateways never share a run, whatever partition they return.
+ */
 export function liveCoalescingKey(
+  path: string,
   query: string,
   args: unknown,
   partition: string,
@@ -140,7 +146,8 @@ export function liveCoalescingKey(
   const canonical = canonicalArgs(args);
   if (canonical === undefined) return undefined;
 
-  // JSON tuple encoding prevents delimiter collisions. Query is first on
-  // purpose: no two registered resolvers can share a cache entry.
-  return JSON.stringify([query, canonical, partition]);
+  // JSON tuple encoding prevents delimiter collisions. The gateway path and
+  // query come first on purpose: no two gateways and no two registered
+  // resolvers can share a cache entry.
+  return JSON.stringify([path, query, canonical, partition]);
 }
