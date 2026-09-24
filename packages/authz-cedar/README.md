@@ -89,10 +89,14 @@ Apply `@RequireResource({ action, resourceType, idParam })` or `@CedarPublic()`
 to handlers/classes. The callback receives verified identity and execution
 context, resolves authoritative resource entities, and calls the engine.
 
-Routes declared in a module that can see `CedarModule` and carry neither
-declaration are denied (403) by default; `undeclared: 'allow'` lets them
-through. Routes in modules that cannot see it, such as another package's own
-controller, are outside Cedar unless they declare `@RequireResource()`.
+Application routes that carry neither declaration are denied (403) by
+default; `undeclared: 'allow'` lets them through. The global guard covers
+every application route, including routes in modules that do not import
+`CedarModule` (they use the installing module's policy) and whether or not it
+is registered with `isGlobal`. An integration package's own controller opts out
+with `SkipGuardPhases(['authorize'])` from `@velajs/vela/module-kit`, as the
+Better Auth handler, the storage controllers and the GraphQL endpoint do. A
+route-level `CedarGuard` in a module that cannot see `CedarModule` denies.
 `auditCedarRoutes([Module])` (or `auditModules`) rejects undeclared routes in
 selected modules at startup. Queue/socket adapters must supply verified
 identities explicitly. To order a fully route-level pipeline yourself, pass

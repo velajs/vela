@@ -140,6 +140,8 @@ class ScopeGuard implements CanActivate {
 
 `Reflector` methods: `get`, `getHandler`, `getClass`, `getAll` (each target, or `[handler, class]` for a context), `getAllAndOverride` (first defined), `getAllAndMerge` (concat/assign).
 
+A handler function reads the metadata of the method it was decorated as. When several controllers decorate the same function (one inherited method decorated per controller, without decorator syntax), the function cannot name its controller: reading through `context.getHandler()` throws, so pass the `ExecutionContext` there.
+
 ## Built-in pipes
 
 | Pipe | Constructor | Behavior |

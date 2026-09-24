@@ -118,7 +118,9 @@ with `@Req() request: Request` when the handler only read `c.req.raw`.
 `ExecutionContext.getHandler()` returns the handler method, as in Nest, and the
 new `getHandlerName()` returns its name. Custom execution contexts implement both.
 Pass `context.getHandler()` and `context.getClass()` to the `Reflector`, or keep
-passing the context. Code that used the handler name, such as a throttling key,
+passing the context; keep the context where several controllers decorate one
+inherited method, since that function cannot name its controller and reading
+through it throws. Code that used the handler name, such as a throttling key,
 calls `getHandlerName()`.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
@@ -126,9 +128,12 @@ Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule` and `CedarModule`
 install their guard globally by default; `guard: 'none'` opts out. Replace
 Better Auth's `isGlobal` with `guard` and Cedar's `globalGuard: false` with
 `guard: 'none'`. Remove `@UseGuards` for guards the modules now install, or pass
-`guard: 'none'` and keep a fully route-level pipeline. Cedar denies routes
-without `@RequireResource()` or `@CedarPublic()` in its modules; set
-`undeclared: 'allow'` to keep the previous behavior. Import order no longer
+`guard: 'none'` and keep a fully route-level pipeline. The installed guards
+cover every application route, including modules that do not import
+`TenantModule` or `CedarModule`. Cedar denies routes without
+`@RequireResource()` or `@CedarPublic()`; set `undeclared: 'allow'` to keep
+the previous behavior. Integration packages mark their own controllers with
+`SkipGuardPhases` from `@velajs/vela/module-kit` so those phases skip them. Import order no longer
 decides whether authentication runs before throttling.
 
 `ThrottlerGuard` publishes its decision under the `RATE_LIMIT` request-context

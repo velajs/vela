@@ -343,13 +343,20 @@ gateway path to Cloudflare broadcast/live helpers.
 ## Admitted tenants and authentication payload
 
 Global guards authenticate before `TenantGuard` runs in the `tenant` phase, then authorize
-and throttle. `TenantGuard` and `CedarGuard` apply to routes declared in modules that can
-see `TenantModule` or `CedarModule`; a route elsewhere (such as a package's own handler)
-is outside that phase unless it declares a requirement (`@TenantRequired()`,
-`@RequireResource()`), which then fails closed. Inside Cedar's modules, a route without
-`@RequireResource()` or `@CedarPublic()` is denied unless `undeclared: 'allow'` is set.
-Opt a route out of one phase with its marker: `@Public(true)`, `@TenantIgnored()` or
-`@CedarPublic()`. Tenant
+and throttle. The guards `TenantModule` and `CedarModule` install cover every application
+route: a route in a module that does not import them is admitted or authorized through the
+installing module, and `isGlobal` changes nothing. A route without `@RequireResource()` or
+`@CedarPublic()` is denied unless `undeclared: 'allow'` is set. A route-level `TenantGuard`
+or `CedarGuard` in a module that cannot see its module denies. Opt a route out of one phase
+with its marker: `@Public(true)`, `@TenantIgnored()` or `@CedarPublic()`.
+
+An integration package's own controller, which applications cannot annotate, declares the
+phases it enforces itself with `SkipGuardPhases([...])` from `@velajs/vela/module-kit`:
+global guards in those phases (`tenant`, `authorize`) do not run for its routes, while
+authentication, feature and route guards still do. The Better Auth handler and the storage
+controllers skip both phases; the GraphQL endpoint skips `authorize`, because resolvers
+authorize each field. A custom global guard provided by a factory runs in the phase its
+built instance declares. Tenant
 admission preserves `CurrentUser`, `CurrentSession`, and `CurrentAccessIdentity` payloads.
 The core identity remains an immutable snapshot; use it (or `CurrentTenant`) for the admitted
 tenant rather than assuming an identity-provider payload contains the selected tenant.

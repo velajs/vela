@@ -34,11 +34,15 @@ Import `TenantModule`, `TenantGuard`, `TenantRequired`, `TenantOptional`,
 `TenantIgnored`, `CurrentTenant`, and `TENANT_CONTEXT_READER` from `/vela`.
 Register `TenantModule.forRoot({ lookup, authorize })` (or `forRootAsync`). It installs
 `TenantGuard` as a global guard in the `tenant` phase: after global authentication and
-before authorization, whatever the import order. It admits a tenant on routes declared in
-modules that can see `TenantModule`; routes elsewhere (such as another package's own
-controller) are outside it unless they declare `@TenantRequired()`. Pass `guard: 'none'`
+before authorization, whatever the import order. It admits a tenant on every application route,
+including routes in modules that do not import `TenantModule`, which admit through the
+installing module, and whether or not it is registered with `isGlobal`. Mark tenant-free
+routes with `@TenantIgnored()` or `@TenantOptional()`. An integration package's own
+controller (the Better Auth handler, a storage controller) opts out with
+`SkipGuardPhases(['tenant'])` from `@velajs/vela/module-kit`. Pass `guard: 'none'`
 (beside the factory for `forRootAsync`) to apply `@UseGuards(TenantGuard)` after a
-route-level authentication guard instead. Required is the guard's default;
+route-level authentication guard instead; a route-level `TenantGuard` in a module that
+cannot see `TenantModule` answers 403. Required is the guard's default;
 optional permits absence, but an explicit selector still requires authentication.
 Ignored routes do not admit a tenant. Conflicting authenticated tenant IDs fail.
 The guard publishes the canonical tenant into the trusted identity and CRUD's
