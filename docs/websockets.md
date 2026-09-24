@@ -174,6 +174,70 @@ Broadcasting builds a serializable `BroadcastCommand` (`{ rooms, exceptRooms?, e
 
 ---
 
+## Server push from anywhere: `Gateways`
+
+`@WebSocketServer()` reaches the sockets of the isolate it runs in. To push to
+a gateway's rooms from an HTTP handler, a queue consumer, a cron job or
+another gateway, inject `Gateways` (provided and exported by
+`WebSocketModule`) and name the gateway class. An explicit event map types
+each push:
+
+```ts
+import { Body, Controller, Param, Post } from '@velajs/vela';
+import { Gateways } from '@velajs/vela/websocket';
+import { ChatGateway } from './chat.gateway.js';
+
+/** Each event the chat's rooms receive, and its payload. */
+interface ChatEvents {
+  chat: { from: string; text: string };
+  system: { text: string };
+}
+
+@Controller('/rooms')
+export class AnnouncementController {
+  constructor(private readonly gateways: Gateways) {}
+
+  @Post('/:id/announce')
+  async announce(@Param('id') room: string, @Body() body: { text: string }) {
+    await this.gateways.of<ChatEvents>(ChatGateway).to(room).emit('system', { text: body.text });
+    return { announced: room };
+  }
+}
+```
+
+`gateways.of<Events>(Gateway)` returns a `GatewayServer<Events>`: `to(room)`
+(or `in(room)`) chains rooms, and `emit(event, data)` checks the event name
+and payload against the map (an event whose payload admits `undefined` may
+omit it). Without a type argument, any event and payload are accepted.
+
+- The target comes from the gateway's `@WebSocketGateway` metadata: `path`,
+  `binding` and `roomParam`. A room is a `roomParam` value; a gateway without
+  `roomParam` admits every upgrade into one room, its path.
+- Each push is bounded by that gateway's `maxFrameBytes` (default 64 KiB)
+  before anything is resolved or sent.
+- `emit()` without a room and `except()` throw with guidance: sockets live
+  with their room, and a push reaches every socket in every room it names.
+  Filter recipients with the gateway's `authorizeDelivery` option, which runs
+  for each recipient before delivery.
+- Without a platform transport that delivers pushes, `Gateways` pushes through
+  the server gateways inject: in-process hosts (node, Bun, Deno) broadcast it
+  through the module's sync driver, so `redis()` fans pushes out across
+  instances.
+- On Cloudflare, each room is a Durable Object. From the Worker, a push is a
+  `broadcast` RPC to the gateway + room object, whose namespace is read by the
+  gateway's `binding` from `ENV` when the push needs it. Inside a Durable
+  Object, a push to its own room goes to its sockets, and a push to another
+  room goes to that room's object. A gateway without a `binding` has no
+  object to reach, so pushing to it fails with guidance.
+
+A platform adapter supplies the delivery through the `WS_TRANSPORT` token:
+`deliver(delivery)` receives one `GatewayDelivery` (`{ gatewayPath, binding?,
+room, command }`) per room. A transport that delivers pushes but builds no
+server gives gateways a `@WebSocketServer()` that keeps no sockets and refuses
+each push with guidance to `Gateways`.
+
+---
+
 ## Guards / pipes / interceptors / filters
 
 Vela's existing pipeline is reused. A component that reads `getClass()`/`getHandler()` or calls `switchToWs()` works unchanged on both HTTP and WS.
@@ -324,7 +388,8 @@ supplies the platform through the global `WS_TRANSPORT` token: in the Worker,
 `binding` and forwards each authenticated upgrade to that room's Durable
 Object; inside the Durable Object, the server gateways inject broadcasts to the
 object's hibernatable sockets. A gateway's server has no sockets in the Worker
-isolate, so pushes from there fail with guidance; use `broadcastToRoom` below.
+isolate, so pushes from there fail with guidance to `Gateways`, which reaches
+each room's Durable Object (see [Server push from anywhere](#server-push-from-anywhere-gateways)).
 Without `WebSocketModule`, the Worker mounts no upgrade route: its upgrades
 answer 404, and the adapter reports each binding-backed gateway through the
 diagnostics policy (a warning by default).
@@ -363,12 +428,13 @@ new_sqlite_classes = ["ChatRoom"]
 
 How it works: the Worker's upgrade route validates the `Upgrade` header, removes client copies of the internal `x-vela-*` forwarding headers, resolves the room, runs the gateway's origin, authorization and authenticator checks, and forwards the request with the verified identity to the gateway + room Durable Object (a canonical namespace derived from the declared gateway path and room id). An identity that request middleware published with `setTrustedRequestIdentity` must match the authenticator's; the earlier expiry wins. The DO owns the raw socket via `WebSocketPair` + `ctx.acceptWebSocket(server, tags)` (hibernatable) and dispatches `webSocketMessage`/`webSocketClose`/`webSocketError` into the gateway. **One Durable Object per gateway room = native horizontal scale without cross-gateway room collisions.** Hono's `upgradeWebSocket` cannot bridge DO hibernation, which is why the DO uses the raw runtime API.
 
-Server-initiated push from an HTTP controller / cron / queue:
+Server-initiated push from an HTTP controller, cron job or queue consumer
+goes through `Gateways`: the Worker calls the `broadcast` RPC of the gateway +
+room Durable Object, and a push from inside a Durable Object to another room is
+forwarded the same way.
 
 ```ts
-import { broadcastToRoom } from '@velajs/cloudflare';
-// env is the native Worker environment, injected with @Inject(ENV).
-await broadcastToRoom(env.CHAT_ROOM, '/rooms/:id/ws', roomId, 'order.created', order);
+await this.gateways.of<ChatEvents>(ChatGateway).to(roomId).emit('chat', message);
 ```
 
 ### Node.js
@@ -456,7 +522,7 @@ Delivery guarantees (honest): at-most-once, no ordering across publishers, no re
 - Cloudflare per-connection state (`client.data`, room membership) lives in the hibernation **attachment** — max **16 KiB**; store larger state in Durable Object storage keyed by `client.id`. Room membership survives hibernation; never keep it in DO instance fields.
 - Inbound and outbound frames default to a **64 KiB** limit. The per-gateway value follows each connection through local or Redis fan-out and Cloudflare hibernation. Raise `maxFrameBytes` only after considering isolate memory, synchronization traffic, and validation cost.
 - Protocol is **JSON text frames only** — binary frames and backpressure signalling are out of scope.
-- Not yet implemented: Worker-isolate `@WebSocketServer()` emit (use `broadcastToRoom` from a controller instead), cross-DO global `server.emit()`, per-user-DO direct messages.
+- Not yet implemented: cross-DO global `server.emit()` (push per room with `Gateways`), per-user-DO direct messages. On Cloudflare a `Gateways` push reaches the room's own Durable Object, so sockets of another room's object that joined the pushed room dynamically do not receive it.
 
 ## Admission and slow peers
 

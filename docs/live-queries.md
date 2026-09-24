@@ -12,14 +12,19 @@ import { LiveModule, LiveQuery, LiveResolver, defineLiveQuery } from '@velajs/ve
 import type { LiveQueryContext } from '@velajs/vela/live';
 
 // Put this definition in a portable module imported by both server and browser.
-const todoListDefinition = defineLiveQuery({ args: TodoListArgs, result: TodoListResult });
+// It declares the query's wire name once.
+const todoListDefinition = defineLiveQuery({
+  name: 'todos.list',
+  args: TodoListArgs,
+  result: TodoListResult,
+});
 
 @LiveResolver() // implies @Injectable()
 class TodoLive {
   constructor(private readonly todos: TodoService) {}
 
-  @LiveQuery('todos.list', todoListDefinition, {
-    tags: (args) => [`crud:todos`, `todos:${args.listId}`],
+  @LiveQuery(todoListDefinition, {
+    tags: (args) => [crudLiveTag('todos'), `todos:${args.listId}`],
   })
   list(args: { listId: string }, ctx: LiveQueryContext) {
     const userId = ctx.identity?.userId;
@@ -41,7 +46,7 @@ import { createLiveClient } from '@velajs/client';
 
 const client = createLiveClient({
   url: 'https://api.example.com',
-  queries: { 'todos.list': todoListDefinition },
+  queries: [todoListDefinition],
 });
 client.subscribe('todos.list', { listId }, (todos) => render(todos));
 
@@ -54,10 +59,34 @@ Subscriptions arrive over the `$live` WebSocket event, so `LiveModule` requires
 `WebSocketModule.forRoot()` in the same application, on every runtime. Without it,
 bootstrap fails instead of silently dropping every subscription.
 
-Writes invalidate tags either **automatically** — `@Crud({ ..., live: true })` in `@velajs/crud` emits `crud:<tableName>` after every successful write verb and stamps the commit headers — or **explicitly**:
+`crudLiveTag(table)` from `@velajs/crud` names the tag a live CRUD resource
+invalidates (`crud:<table>`). The engine parses every result with the
+definition's `result` schema after the resolver and its interceptors run, so a
+resolver returns its rows as read; a result that fails the schema is reported
+and never cached or delivered.
+
+Writes invalidate tags either **automatically** — `@Crud({ ..., live: true })` in `@velajs/crud` emits `crud:<tableName>` after every successful write verb and stamps the commit headers — or **declaratively** on a handler:
 
 ```ts
-const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // inject LiveInvalidation
+@Post()
+@LiveInvalidates((todo: Todo) => [`todos:${todo.listId}`])
+create(@Body(CreateTodo) body: CreateTodo): Promise<Todo> {
+  return this.todos.add(body);
+}
+```
+
+`@LiveInvalidates(tags, { room? })` runs as an interceptor: after the handler
+succeeds it invalidates the tags (static, or derived from the result and the
+execution context), then stamps the commit headers on the handler's HTTP
+response through `switchToHttp().getResponse()`, or on a `Response` the handler
+returns. A handler that throws invalidates nothing, and a tags callback that
+returns `[]` skips the invalidation. It resolves `LiveInvalidation` from the
+module that declares the controller before the handler runs, so a module that
+cannot reach `LiveModule` fails without committing the write. For code outside
+a handler, inject `LiveInvalidation`:
+
+```ts
+const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // returns { cursor, epoch }
 ```
 
 ## How it works
@@ -72,7 +101,7 @@ const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // inje
 Resolver runs remain per subscription by default. A side-effect-free query can opt into flush-local sharing with `coalesceBy`; Vela automatically combines the returned authorization/result partition with the query name and canonical parsed args:
 
 ```ts
-@LiveQuery('todos.list', todoListDefinition, {
+@LiveQuery(todoListDefinition, {
   tags: (args) => [`todos:${args.listId}`],
   coalesceBy: (_args, { identity }) =>
     typeof identity?.tenantId === 'string' ? identity.tenantId : undefined,
@@ -129,12 +158,24 @@ file. A Worker configured with `localLive()` warns once: its invalidations would
 never reach the subscriptions the Durable Object holds.
 
 - Declare the DO class SQLite-backed (wrangler `migrations[].new_sqlite_classes`) so its cursor log survives hibernation and eviction. A class declared with `new_classes` keeps an in-memory log, so a client reconnecting after an eviction receives a snapshot.
-- Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the gateway + room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, gatewayPath, room, tags)` is the imperative sibling of `broadcastToRoom`.
+- Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the gateway + room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, gatewayPath, room, tags)` does the same through an explicit namespace.
 - Subscriptions persist their original args in the hibernation attachment. Restore validates record fields and data-only identity claims, reparses args through the query definition, and recomputes dependency tags. An eviction is invisible to subscribers; the next update is a snapshot because cached result/cursor baselines are never restored.
+
+## Inspection
+
+`LiveInspector` (exported by `LiveModule`) reads the subscriptions and presence
+rooms of the rooms you name, for an authenticated admin surface: there is no
+global room list. `inspect(rooms)` reads each room where its subscriptions
+live. A platform adapter reads it through `LIVE_PLATFORM.inspect(room)`: on
+Cloudflare the Worker calls the `inspectLive` RPC of the room's Durable Object,
+through the gateway binding the live driver delivers to. Without a platform
+reader, the application's own engine answers. Rows exclude query arguments,
+results and identity claims. Studio's `StudioLiveModule.forRoot({ rooms })`
+uses it.
 
 ## Optimistic updates
 
-Mutation responses expose `Vela-Commit-Cursor` / `Vela-Commit-Epoch` (automatic with the CRUD bridge, or via `stampCommitHeaders(c, stamp)`; with `VelaFactory.create(m, { ambientContainer: true })` `LiveInvalidation.invalidate()` stamps them itself). The client paints optimistic layers immediately, **re-folds them onto every new server value** (unrelated updates don't clobber them), and drops a layer only when a subscription frame's cursor passes the mutation's commit cursor — never on HTTP response timing, which races the broadcast. No headers ⇒ graceful one-shot optimism; failures roll back.
+Mutation responses expose `Vela-Commit-Cursor` / `Vela-Commit-Epoch` (automatic with the CRUD bridge and `@LiveInvalidates`; with `VelaFactory.create(m, { ambientContainer: true })` `LiveInvalidation.invalidate()` stamps them itself, and `stampCommitHeaders(c, stamp)` writes them onto any Hono context). The client paints optimistic layers immediately, **re-folds them onto every new server value** (unrelated updates don't clobber them), and drops a layer only when a subscription frame's cursor passes the mutation's commit cursor — never on HTTP response timing, which races the broadcast. No headers ⇒ graceful one-shot optimism; failures roll back.
 
 ## Presence
 
@@ -147,7 +188,7 @@ All may be lowered; the first three have explicit bounded module options.
 ## Cloudflare gotchas
 
 - **Data locality**: the Worker and each Durable Object bootstrap SEPARATE app instances of the same module. State that live queries read and mutations write must live in a shared store (D1/KV/external DB) — per-isolate memory makes writes invisible to re-runs. See the [live todo example](../apps/live-todo/README.md).
-- **Commit headers on Workers**: stamp them explicitly (`stampCommitHeaders(c, stamp)`; the CRUD bridge does it automatically). Do NOT rely on `ambientContainer`: awaiting a Durable Object RPC inside hono's ALS `contextStorage()` middleware hangs the response under workerd.
+- **Commit headers on Workers**: stamp them with `@LiveInvalidates` (the CRUD bridge does it automatically). Do NOT rely on `ambientContainer`: awaiting a Durable Object RPC inside hono's ALS `contextStorage()` middleware hangs the response under workerd.
 - **Worker-side driver**: leave `driver` unset. `localLive()` would deliver to the engine in the Worker isolate, but the subscriptions live in the Durable Object, so the Cloudflare adapter warns once per isolate when a Worker application configures it.
 - Driver/log factories run once in each application container. Keep state on the returned instance and return a new instance each time; shared mutable drivers or logs would leak environment bindings, sinks, or cursor state between applications.
 
@@ -159,7 +200,7 @@ All may be lowered; the first three have explicit bounded module options.
 - Resume, invalidation re-runs, and delivery re-check identity expiry plus the
   app/gateway/resolver authorization chain. A revoked identity removes the
   subscription and closes the socket with 1008.
-- Server and client import the same `defineLiveQuery({ args, result })` definitions. The typed decorator checks handler args/results; `createLiveClient({ queries })` infers its contract from the parser map. No separately maintained live result interface is needed.
+- Server and client import the same `defineLiveQuery({ name, args, result })` definitions, so each query's name is declared once. The typed decorator checks handler args/results; `createLiveClient({ queries: [definition, ...] })` infers its contract, keyed by name, from the definitions. No separately maintained live result interface is needed.
 
 ## Protocol compatibility
 

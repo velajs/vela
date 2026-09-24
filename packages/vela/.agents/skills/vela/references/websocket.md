@@ -35,7 +35,7 @@ class ChatGateway implements OnGatewayConnection {
 - Upgrades fail closed until the gateway names `authenticator: SomeAuthenticator`, a class implementing `UpgradeAuthenticator` (`authenticate(request, { gatewayPath, room, ticket? })` → `{ principal, tenantId, expiresAtMs }` or `false`). Each application resolves it once through DI from the module that declares the gateway, so it may inject that module's providers. Ready-made: `BetterAuthUpgradeAuthenticator` (`@velajs/better-auth`, tenant from the active organization or a `BETTER_AUTH_UPGRADE_TENANT` resolver) and `CloudflareAccessUpgradeAuthenticator` (`@velajs/cloudflare-access/vela`). `allowedOrigins` takes origins or `(env) => origins`, read from `ENV` once per application; there is no closure-based authentication option.
 - `@SubscribeMessage(event)` — handler for an inbound message event (stackable).
 - `@MessageBody()` injects an unknown wire payload; validate it with a pipe or schema before use; `@ConnectedSocket()` injects the `WsClient`. With no param decorators a handler receives `(client, data)` positionally.
-- `@WebSocketServer()` injects the `WsServer` for broadcasting.
+- `@WebSocketServer()` injects the `WsServer` for broadcasting to the sockets of the current isolate. To push from anywhere else (HTTP handlers, queue consumers, crons, another gateway), inject `Gateways`.
 - Returning a `WsResponse` (`{ event, data }`) frames a reply to the sender.
 
 Gateway lifecycle interfaces: `OnGatewayInit` (`afterInit(server)`), `OnGatewayConnection` (`handleConnection(client)`), `OnGatewayDisconnect` (`handleDisconnect(client)`).
@@ -47,6 +47,24 @@ Gateway lifecycle interfaces: `OnGatewayInit` (`afterInit(server)`), `OnGatewayC
 `WsClient`: `readonly rooms`, `join(room)` / `leave(room)`, `send(event, data?, id?)`, `close(code?, reason?)`, `commit()` (persist data/room changes — required for Cloudflare hibernation), `readonly raw`.
 
 Throw `WsException(errorOrObject)` to send an `{ event: 'exception', data }` frame instead of crashing the socket.
+
+## Server push: `Gateways`
+
+```ts
+interface ChatEvents { message: { from: string; text: string } } // event → payload
+
+@Controller('/rooms')
+class RoomsController {
+  constructor(private readonly gateways: Gateways) {} // from @velajs/vela/websocket
+
+  @Post('/:id/announce')
+  announce(@Param('id') id: string) {
+    return this.gateways.of<ChatEvents>(ChatGateway).to(id).emit('message', { from: 'system', text: 'hi' });
+  }
+}
+```
+
+`gateways.of<Events>(Gateway)` returns a `GatewayServer<Events>` built from the gateway's metadata (`path`, `binding`, `roomParam`); `to(room)`/`in(room)` chain rooms and `emit(event, data)` is typed by the event map and bounded by the gateway's `maxFrameBytes`. `emit()` without a room and `except()` throw with guidance. Without a delivering transport, pushes go through the injected `WsServer` (in-process hosts: the sync driver); on Cloudflare the Worker calls the gateway + room Durable Object's `broadcast` RPC (namespace read by `binding` from `ENV`), and inside a Durable Object its own room is local while other rooms are forwarded. A gateway without `roomParam` has one room: its path.
 
 ## Module & sync driver
 
@@ -81,6 +99,6 @@ The gateway + module are identical across runtimes; you only choose the wiring:
 | Node / Bun / Deno | `@velajs/vela/websocket-node` → `registerWebSocketGateways(app, upgradeWebSocket)` | `redis()` for multi-process |
 | Cloudflare Workers | the same `WebSocketModule.forRoot()`; `createCloudflareWorker` and a `VelaWebSocketDurableObject(AppModule)` from `@velajs/cloudflare/durable-objects` register the platform (`WS_TRANSPORT`), and each seeds its own `ENV` | native per-room Durable Object |
 
-On Node/Bun/Deno, pass the runtime's Hono `upgradeWebSocket` factory (`@hono/node-ws`, `hono/bun`, or `hono/deno`); `registerWebSocketGateways` iterates `app.entrypoints.ofKind('websocket')` and mounts each gateway route (auto-joining the room from a `:id` path param). On Cloudflare, the Worker mounts an upgrade route for each gateway naming a `binding`, authenticates the upgrade, and forwards it to the gateway + room Durable Object, which owns the raw socket via `WebSocketPair` + hibernation (`ctx.acceptWebSocket`), which Hono's `upgradeWebSocket` cannot bridge — one DO per room gives native horizontal scale. The Worker's `@WebSocketServer()` has no sockets and throws on push; use `broadcastToRoom`. Other runtime adapters wire a platform the same way: register a `WebSocketTransport` as the global `WS_TRANSPORT` (`createServer(driver)`; `forwardUpgrade` + `forwardingHeaders` when sockets live in another isolate).
+On Node/Bun/Deno, pass the runtime's Hono `upgradeWebSocket` factory (`@hono/node-ws`, `hono/bun`, or `hono/deno`); `registerWebSocketGateways` iterates `app.entrypoints.ofKind('websocket')` and mounts each gateway route (auto-joining the room from a `:id` path param). On Cloudflare, the Worker mounts an upgrade route for each gateway naming a `binding`, authenticates the upgrade, and forwards it to the gateway + room Durable Object, which owns the raw socket via `WebSocketPair` + hibernation (`ctx.acceptWebSocket`), which Hono's `upgradeWebSocket` cannot bridge — one DO per room gives native horizontal scale. The Worker's `@WebSocketServer()` has no sockets and throws on push with guidance to `Gateways`. Other runtime adapters wire a platform the same way: register a `WebSocketTransport` as the global `WS_TRANSPORT` (`createServer(driver)`; `deliver(delivery)` for `Gateways` pushes to another isolate — without `createServer` the injected server then refuses pushes; `forwardUpgrade` + `forwardingHeaders` when sockets live in another isolate).
 
 For the full transport walkthrough, read the repo's `docs/websockets.md`.
