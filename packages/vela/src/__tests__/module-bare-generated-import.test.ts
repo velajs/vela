@@ -3,6 +3,7 @@ import {
   ConfigurableModuleBuilder,
   Controller,
   Get,
+  Global,
   Module,
   VelaFactory,
   defineModule,
@@ -81,6 +82,24 @@ describe('a bare import of a generated module class without @Module', () => {
     await expect(VelaFactory.create(appImporting(RealmModule))).rejects.toThrow(
       'RealmModule is not a module: import RealmModule.register(...) or RealmModule.registerAsync(...)',
     );
+  });
+
+  it('fails for a generated class that is only @Global()', async () => {
+    const { ConfigurableModuleClass } = defineModule<{ realm: string }, 'realm'>({
+      name: 'Policy',
+      structural: ['realm'],
+      setup: () => ({ global: { guards: [DenyAll] } }),
+    });
+    // Every configured instance is global; the class still declares no module.
+    @Global()
+    class PolicyModule extends ConfigurableModuleClass {}
+    const configured = await VelaFactory.create(appImporting(PolicyModule.forRoot({ realm: 'a' })));
+    try {
+      expect((await configured.getHonoApp().request('/items')).status).toBe(403);
+    } finally {
+      await configured.close();
+    }
+    await expect(VelaFactory.create(appImporting(PolicyModule))).rejects.toThrow(NOT_A_MODULE);
   });
 
   it('boots a generated class that declares @Module itself when imported bare', async () => {

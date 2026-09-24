@@ -160,7 +160,12 @@ definition (export a const of the `DynamicModule`), or give each
 configuration its own `key`. A helper that builds its configuration from plain
 values only deduplicates, because those values compare structurally.
 
-A bare class import configures nothing. A configured import under the same
+A bare class import configures nothing, so it names a module only when the
+class declares one with `@Module()`. A generated class without its own
+`@Module()` (`class CedarModule extends ConfigurableModuleClass {}`, even with
+`@Global()`) fails the bootstrap when imported bare, with a message naming its
+`forRoot(...)`/`forRootAsync(...)` methods, whatever definitions of it loaded
+before. A configured import under the same
 key, such as `HttpModule.forRoot({ key: 'default', baseURL })` next to
 `imports: [HttpModule]`, fails the bootstrap in either order instead of
 leaving one of them on the class's own defaults. A definition under the bare

@@ -275,7 +275,7 @@ export class ModuleLoader {
     // A DynamicModule's class needs no @Module of its own. The record marks
     // the class as decorated for dependency injection, not as a module.
     if (MetadataRegistry.getModuleOptions(moduleClass) === undefined) {
-      MetadataRegistry.setModuleOptions(moduleClass, { dynamicHost: true });
+      MetadataRegistry.setModuleOptions(moduleClass, { hostOnly: true });
     }
 
     const metadata = getModuleMetadata(moduleClass);

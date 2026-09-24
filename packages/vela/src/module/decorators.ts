@@ -6,13 +6,16 @@ import type { Constructor, ModuleMetadata, ModuleOptions } from '../registry/typ
  * Make a module class global: its exported tokens are visible to every
  * module. Applies in any order relative to `@Module()`. A single instance is
  * made global through `DynamicModule.global` (the `isGlobal` extra of
- * generated `forRoot`/`forRootAsync`).
+ * generated `forRoot`/`forRootAsync`). Without `@Module()`, as on a generated
+ * module class, it makes every configured instance global and the class is
+ * still no module a bare import may name.
  */
 export function Global(): ClassDecorator {
   return (target) => {
     const ctor = target as unknown as Constructor;
     const existing = MetadataRegistry.getModuleOptions(ctor);
-    MetadataRegistry.setModuleOptions(ctor, { ...existing, global: true });
+    // Alone, it declares no module: only the class's definitions configure it.
+    MetadataRegistry.setModuleOptions(ctor, { ...(existing ?? { hostOnly: true }), global: true });
   };
 }
 
@@ -57,13 +60,14 @@ export function Module(options: ModuleOptions = {}): ClassDecorator {
 }
 
 /**
- * Whether a class declares a module itself (`@Module()` or `@Global()`), so a
- * bare import of it names a module. The class of a DynamicModule that
- * declares none is not one, whatever definitions of it loaded before.
+ * Whether a class declares module options itself (`@Module()`), so a bare
+ * import of it names a module. `@Global()` alone, or the class of a
+ * DynamicModule, is not one, whatever definitions of it loaded before: such
+ * as a generated module class, which `forRoot(...)` configures.
  */
 export function isModule(target: Constructor): boolean {
   const options = MetadataRegistry.getModuleOptions(target);
-  return options !== undefined && options.dynamicHost !== true;
+  return options !== undefined && options.hostOnly !== true;
 }
 
 export function getModuleMetadata(target: Constructor): ModuleMetadata | undefined {

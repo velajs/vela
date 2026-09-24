@@ -162,11 +162,12 @@ export interface ModuleOptions {
 export interface ModuleRecord extends ModuleOptions {
   global?: boolean;
   /**
-   * @internal Recorded by the module loader for the class of a DynamicModule
-   * that declares no module itself: only its definitions configure it, so a
-   * bare import of the class is not a module.
+   * @internal The class declares no module options of its own: `@Global()`
+   * without `@Module()`, or the class of a DynamicModule, which the module
+   * loader records. Only its definitions configure it, so a bare import of
+   * the class is not a module.
    */
-  dynamicHost?: true;
+  hostOnly?: true;
 }
 
 export interface ModuleMetadata {
