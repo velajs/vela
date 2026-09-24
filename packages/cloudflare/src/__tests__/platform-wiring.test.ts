@@ -1,12 +1,15 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Injectable, Module } from '@velajs/vela';
+import { Global, Injectable, Module, defineProvider } from '@velajs/vela';
 import {
   WS_SERVER,
+  WS_TRANSPORT,
   WebSocketGateway,
   WebSocketModule,
   WebSocketServer,
+  WsServerImpl,
   type UpgradeAuthenticator,
+  type WebSocketTransport,
   type WebSocketUpgradeIdentity,
   type WsServer,
 } from '@velajs/vela/websocket';
@@ -140,6 +143,40 @@ describe('Cloudflare WebSocket platform wiring', () => {
         /only available inside the WebSocket Durable Object/,
       );
       expect(() => server.emit('ping')).toThrow(/broadcastToRoom/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("lets an application's global WS_TRANSPORT override the adapter's for every reader", async () => {
+    const forwarded: string[] = [];
+    const custom: WebSocketTransport = {
+      createServer: (driver) => new WsServerImpl(driver),
+      forwardUpgrade: async ({ binding }) => {
+        forwarded.push(binding);
+        return new Response('custom transport');
+      },
+    };
+    @Global()
+    @Module({
+      providers: [defineProvider(WS_TRANSPORT, { useValue: custom })],
+      exports: [WS_TRANSPORT],
+    })
+    class TransportModule {}
+    @WebSocketGateway({ path: '/chat', binding: 'CHAT', authenticator: TestAuthenticator })
+    class ChatGateway {}
+    @Module({ imports: [TransportModule, WebSocketModule.forRoot()], providers: [ChatGateway] })
+    class App {}
+
+    const env = {};
+    const app = await createCloudflareApp(App, { env });
+    try {
+      expect(app.get(WS_SERVER)).toBeInstanceOf(WsServerImpl);
+      const upgrade = new Request('https://worker.test/chat', {
+        headers: { upgrade: 'websocket' },
+      });
+      expect(await (await app.fetch(upgrade, env)).text()).toBe('custom transport');
+      expect(forwarded).toEqual(['CHAT']);
     } finally {
       await app.close();
     }

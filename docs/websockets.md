@@ -423,7 +423,9 @@ sockets live in another isolate also implements `forwardUpgrade(upgrade)`:
 authenticates the upgrade there and passes the request, gateway path, room,
 binding and verified identity to it. `forwardingHeaders` names the headers the
 transport sets; the route removes client copies before any application hook
-runs. The adapter never replaces the module's providers.
+runs. The adapter never replaces the module's providers. An application
+overrides the adapter's transport with a `@Global()` module that provides and
+exports `WS_TRANSPORT`; the gateway server and the upgrade routes both use it.
 
 ---
 
