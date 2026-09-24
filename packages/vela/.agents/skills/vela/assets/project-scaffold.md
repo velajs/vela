@@ -104,19 +104,14 @@ it('serves /api/app', async () => {
 
 ```ts
 import { Controller, Get, Module } from '@velajs/vela';
-import { Endpoint, defineEndpoint } from '@velajs/vela/openapi';
 import { z } from 'zod';
 
-const hello = defineEndpoint({
-  input: z.object({}),
-  output: z.object({ message: z.string() }),
-});
+const Hello = z.object({ message: z.string() });
 
 @Controller('/app')
 class AppController {
-  @Get()
-  @Endpoint(hello)
-  hello(_input: ReturnType<typeof hello.input.parse>) {
+  @Get({ response: Hello })
+  hello() {
     return { message: 'Hello from Workers' };
   }
 }

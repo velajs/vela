@@ -75,16 +75,51 @@ headless engine calls still require raw input: do not parse a transforming schem
 first and submit its transformed result for another parse. There is no global
 validation receipt: `ValidationPipe.consumeValidated` has been removed.
 
-`@Serialize` still requires `SerializerInterceptor` and applies its schema to each
-array element. Standard Schema output validation now runs instead of allowing
-unfiltered values through; malformed metadata and output-contract failures raise
-server errors. Use `defineSerializer` to project domain objects through public
-methods, including objects with `#private` state. It does not hydrate classes or
-read private fields. Review response schemas if clients depended on extra fields
-that should have been filtered.
-
 See [schema contracts](types.md), [serialization](serialization.md) and
 [typed CRUD services](crud/services.md).
+
+## Schema-first routes
+
+Routes declare their contract on the method decorator. `@Endpoint`,
+`defineEndpoint`, `@Serialize`, `SerializerInterceptor` and `SERIALIZE_METADATA`
+are removed:
+
+- Replace `@Endpoint(defineEndpoint({ input, output, status }))` with route
+  options and schema arguments: `@Post({ response: Output, status })` and
+  `@Body(Json)`, `@Query(Query)`, `@Param('id', schema)`, `@Headers('x', schema)`
+  instead of one `input` object with `json`, `query`, `param` and `header`
+  groups. The handler takes ordinary parameters. To share the contract with a
+  browser client, declare it with `defineRoute({ method, path, params, query,
+  body, response, status })` from `@velajs/vela/contract` and serve it with
+  `@Post(contract)` or `@Get('/:id', contract)`.
+- Replace `body: { contentType: 'multipart/form-data', ...limits }` with
+  `body: { multipart: limits }`, `application/x-www-form-urlencoded` with
+  `body: { form: limits }` and `application/json` with `body: { json: { maxBytes } }`.
+  Multipart now defaults to one file and a body of `maxFiles × maxFileBytes` plus
+  1 MiB, and a route's `maxBytes` replaces the application body limit for that
+  route, so upload routes no longer need a `streamingOverrides` entry.
+- Replace `format: 'binary' | 'stream' | 'response'` endpoint definitions with
+  the same `format` and `contentType` route options.
+- Replace `@Serialize(dto)` and `SerializerInterceptor` with
+  `@Get({ response: dto })`. The response is parsed as a whole, after
+  interceptors: use `z.array(item)` where `@Serialize` parsed each array element.
+  A `defineSerializer` result is a Standard Schema and serves as `response`
+  directly; it no longer has a `.schema` property.
+- `@ApiResponse(status, options)` becomes Nest's `@ApiResponse({ status,
+  description, schema })`, and `schema` is a Standard Schema or `defineDto`
+  descriptor; raw JSON Schema is rejected. Declare the success body with the
+  route's `response` option instead.
+
+Statuses follow Nest: POST answers 201, `response: null` or `@HttpCode(204)`
+answers 204, and every other method answers 200 — whatever the handler returns.
+A handler returning `null` or `undefined` no longer answers 204; it answers the
+route's status with an empty body. Declare `response: null` (or `@HttpCode(204)`)
+where clients expect 204, and `@HttpCode(200)` on POST routes that must keep 200.
+
+`@Query()` returns repeated keys (`?tag=a&tag=b`) as arrays, and keys a query
+schema declares as arrays as arrays even when sent once. `@Body()` with no schema
+validates a parameter class carrying a static Standard Schema; a global
+`ValidationPipe` no longer validates such a body a second time.
 
 ## HTTP errors, request parameters and guards
 

@@ -41,17 +41,18 @@ import { ApiDoc, ApiTags, ApiResponse } from '@velajs/vela/openapi';
 @Controller({ path: '/catalog', version: 1 })
 @ApiTags('catalog')
 class CatalogController {
-  @Get('/items', { name: 'catalog.list' })
+  @Get('/items', { name: 'catalog.list', response: z.array(PublicProduct) })
   @ApiDoc({ summary: 'List products', operationId: 'listProducts' })
-  @ApiResponse(200, { description: 'Product list', schema: PublicProductDto })
+  @ApiResponse({ status: 404, description: 'Catalog closed', schema: Problem })
   list() { return this.products.list(); }
 }
 ```
 
 - `@ApiTags(...tags)` — class or method; tags merge and de-dupe.
 - `@ApiDoc({ summary?, description?, operationId?, deprecated?, tags? })` — class or method.
-- `@ApiResponse(status, { description, schema? })` — method; stackable for multiple statuses. `schema` accepts a Zod schema, a `defineDto` descriptor, or checked raw JSON Schema.
-- The document always lists the success status the handler sends: an `@Endpoint` status or `@HttpCode`, otherwise 200. A 2xx documented only with `@ApiResponse` is listed beside that 200, so a handler that answers 201 declares `@HttpCode(201)` to drop the 200 from the document and generated clients.
+- `@ApiResponse({ status, description, schema? })` — Nest's shape; method; stackable for multiple statuses (`status` may be a number, `'4XX'` or `'default'`). `schema` is a Standard Schema (Zod, Valibot, …) or a `defineDto` descriptor; raw JSON Schema is rejected when the decorator runs.
+- The success response comes from the route: its status (POST 201, `response: null` 204, otherwise 200, or `status`/`@HttpCode`) and its `response` schema (output direction). An `@ApiResponse` for that status only describes it; one for another 2xx is listed beside it.
+- Request schemas come from parameter decorators (`@Body(schema)`, `@Query(schema)`, `@Param('id', schema)`, `@Headers('x', schema)`) or a `defineRoute` contract's `params`/`query`/`body`. Array query parameters get `style: form`, `explode: true`; form routes document their media type, field `encoding` and `x-vela-body-limits`.
 
 ### operationId from the route name
 
@@ -83,7 +84,7 @@ Each UI is a self-contained HTML shell (CDN-loaded), so mounting docs adds no se
 
 ## Schema-bound Hono RPC
 
-Use `defineEndpoint({ input, output, status? })` plus `@Endpoint(definition)` for one runtime-validated contract; see `validation.md`. A schema passed to a parameter decorator, such as `@Body(dto)` or `@Query('page', schema)`, also supplies request schema metadata. `@ApiResponse` documents a result but does not validate it; TypeScript interfaces alone carry no schema.
+Route options (`@Post({ response })` with `@Body(schema)`) and `defineRoute` contracts are runtime-validated contracts; see `validation.md`. Both styles generate the same client. `@ApiResponse` documents a result but does not validate it; TypeScript interfaces alone carry no schema. `ContractApp<typeof routes>` (`@velajs/vela/contract`) types an `hc` client from `defineRoute` contracts without generation.
 
 ```sh
 vela client generate --out src/api.generated.ts --strict
@@ -98,7 +99,7 @@ const api = hc<AppType>('https://api.example.com');
 
 Use the server origin: generated paths already include prefix/version segments. The client entrypoint re-exports Hono's client/types; do not cast the runtime Vela Hono instance into a fabricated route schema. Missing schemas become unknown or fail `--strict`; raw Hono mounts require their own contract. Read the client package's `HTTP.md` for supported wire formats and global error responses.
 
-Form endpoints emit the declared multipart/URL-encoded media type, required fields,
+Form routes emit the declared multipart/URL-encoded media type, required fields,
 binary file schemas, repeated-field encoding, and `x-vela-body-limits` on the request
 body. CLI generation adds a `formEncodings` value beside `AppType`. Configure
 `hc<AppType>(origin, { fetch: withFormEncoding(formEncodings, suppliedFetch) })`
@@ -110,10 +111,10 @@ adapter preserves cancellation, credentials and caller-supplied native/browser
 transports, without Expo dependencies. Custom encodings and binary JSON fail
 generation rather than producing inaccurate file/string types.
 
-Native endpoint formats (`binary`, `stream`, `response`) emit their `contentType`
+Native route formats (`binary`, `stream`, `response`) emit their `contentType`
 and `x-vela-response-format`. Binary/stream bodies have a binary wire schema;
 no parsed JSON record type is inferred. Additional statuses can use
-`@ApiResponse(206, { description: 'Partial content', format: 'binary', contentType:
+`@ApiResponse({ status: 206, description: 'Partial content', format: 'binary', contentType:
 'application/pdf' })`. Generated native `.json()` results remain `unknown`.
 Use `readHttpResponse(call, 'response' | 'blob' | 'stream')` from
 `@velajs/client/http` to keep the native response, buffer a blob, or access its

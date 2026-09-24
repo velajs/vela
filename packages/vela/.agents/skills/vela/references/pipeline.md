@@ -52,7 +52,7 @@ Three ways to register globals:
     TraceMiddleware,
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_PIPE, useClass: ValidationPipe },
-    { provide: APP_INTERCEPTOR, useClass: SerializerInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: TimingInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_MIDDLEWARE, useExisting: TraceMiddleware },
   ],
@@ -62,7 +62,7 @@ class AppModule {}
 // 2. App methods (chainable) — instances only
 app.useGlobalGuards(new RolesGuard(app.get(Reflector)))
    .useGlobalPipes(new ValidationPipe())
-   .useGlobalInterceptors(new SerializerInterceptor())
+   .useGlobalInterceptors(new TimingInterceptor())
    .useGlobalFilters(new AllExceptionsFilter());
 
 // 3. From a defineModule setup via the `global:` slot, or a provider

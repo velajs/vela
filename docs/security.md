@@ -29,25 +29,29 @@ a trusted outer proxy enforces an equivalent bound. Production Node runtimes
 raised above the secure defaults, when a streaming limit is disabled, or when a
 WebSocket gateway opts out of Origin isolation with `allowedOrigins: '*'`.
 
-JSON bodies read by `@Body()` and `defineEndpoint` `json` groups must use
-`application/json` or a `+json` media type such as `application/vnd.api+json`;
-parameters like `charset` are allowed. Any other body returns 415, because
-browsers send `text/plain` and form-encoded POSTs cross-site without a CORS
-preflight. A request without a body still reaches the handler as `undefined`.
-Routes registered directly on Hono can apply the same rule with
-`readJsonBody(c)`.
+JSON bodies read by `@Body()` must use `application/json` or a `+json` media
+type such as `application/vnd.api+json`; parameters like `charset` are allowed.
+Any other body returns 415, because browsers send `text/plain` and form-encoded
+POSTs cross-site without a CORS preflight. A request without a body still
+reaches the handler as `undefined`. Routes registered directly on Hono can apply
+the same rule with `readJsonBody(c)`.
 
-`defineEndpoint` form contracts add bounded parsing after guards. Set
-`body.contentType` to `multipart/form-data` or `application/x-www-form-urlencoded`
-and optionally tighten `maxBytes`, `maxFields`, `maxFieldBytes`, `maxFiles`, and
-`maxFileBytes`. Defaults are 1 MiB encoded bytes, 100 text entries, 64 KiB per text
-entry (including its UTF-8 name), 10 files, and 1 MiB per file. Repeated entries
-count individually. Endpoint limits supplement the application policy; raise a
-route's outer limit too when accepting larger bodies. The encoded byte limit
-runs before native parsing; part limits run before schema validation. Unknown
-fields, duplicate scalar fields, and wrong text/file kinds return 400; a wrong
-media type returns 415; size/count violations return 413. See
-[form contracts](client/HTTP.md#form-bodies-and-uploads).
+A route opts into a form body per route, with bounded parsing after guards:
+`@Post({ body: { multipart: limits } })` or `body: { form: limits }` (a
+`defineRoute` contract takes `multipart:` or `form:`). Such a route accepts only
+that media type. Limits are `maxBytes`, `maxFields`, `maxFieldBytes` and, for
+multipart, `maxFiles` and `maxFileBytes`. URL-encoded defaults are 1 MiB
+encoded bytes, 100 text entries and 64 KiB per text entry (including its UTF-8
+name); multipart defaults to one file of 1 MiB, the same text limits, and a
+body of `maxFiles × maxFileBytes` plus 1 MiB. Repeated entries count
+individually. The route's `maxBytes` replaces the application's body limit for
+that route (a `streamingOverrides` entry still takes precedence), so the
+framework boundary and the route agree. The body is read counting the bytes
+received and cancelled at the limit; every part is measured before schema
+validation. Size/count violations return 413; unknown fields, duplicate scalar
+fields, and wrong text/file kinds return 400; a wrong media type returns 415.
+`body: { json: { maxBytes } }` bounds a JSON route the same way. See
+[form bodies](client/HTTP.md#form-bodies-and-uploads).
 
 ## Request execution order and parameters
 
