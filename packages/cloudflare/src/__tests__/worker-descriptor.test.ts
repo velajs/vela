@@ -57,8 +57,13 @@ describe('Worker descriptor', () => {
   it('builds the same application for an environment as the Worker does', async () => {
     const worker = createCloudflareWorker(AppModule, { globalPrefix: '/api' });
     const env = { GREETING: 'from the descriptor' };
-    const { rootModule, createOptions } = worker[CLOUDFLARE_WORKER];
-    const app = await VelaFactory.create(rootModule, createOptions(env));
+    const { rootModule, createOptions, createApplication } = worker[CLOUDFLARE_WORKER];
+    // createOptions() feeds VelaFactory.create (and @velajs/cloudflare/testing) directly.
+    const created = await VelaFactory.create(rootModule, createOptions(env));
+    expect(created.get(ENV)).toBe(env);
+    expect(created.getGlobalPrefix()).toBe('/api');
+    await created.dispose();
+    const app = await createApplication(env);
     try {
       expect(app.get(ENV)).toBe(env);
       expect(app.describeRoutes().map((route) => `${route.method} ${route.path}`)).toEqual([

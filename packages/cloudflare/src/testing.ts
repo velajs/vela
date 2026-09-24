@@ -128,15 +128,20 @@ export async function createTestingWorker(
     contexts.add(ctx);
     return ctx;
   };
+  // A request completes once its response body is consumed: close() cancels
+  // the bodies a test never read, so waiting for its background work ends.
+  const responses = new Set<Response>();
   return {
     module,
     env,
-    fetch(input, init) {
+    async fetch(input, init) {
       const request =
         typeof input === 'string' && input.startsWith('/')
           ? new Request(new URL(input, 'http://localhost'), init)
           : new Request(input, init);
-      return app.fetch(request, env, context());
+      const response = await app.fetch(request, env, context());
+      responses.add(response);
+      return response;
     },
     async queue(queue, messages) {
       const batch = pool.createMessageBatch(
@@ -171,6 +176,12 @@ export async function createTestingWorker(
       await pool.waitOnExecutionContext(ctx);
     },
     async close() {
+      await Promise.all(
+        [...responses].map((response) =>
+          response.bodyUsed ? undefined : response.body?.cancel().catch(() => {}),
+        ),
+      );
+      responses.clear();
       await Promise.all([...contexts].map((ctx) => pool.waitOnExecutionContext(ctx)));
       contexts.clear();
       await module.close();

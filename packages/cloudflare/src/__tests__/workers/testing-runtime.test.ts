@@ -121,6 +121,15 @@ describe('createTestingWorker under workerd', () => {
     }
   });
 
+  it('closes after responses whose bodies a test never read', async () => {
+    const worker = await createTestingWorker(AppModule);
+    const missing = await worker.fetch('/missing');
+    const found = await worker.fetch(new Request('http://worker.test/todos/2'));
+    expect(missing.status).toBe(404);
+    expect(found.status).toBe(200);
+    await worker.close();
+  }, 3000);
+
   it('delivers a queue batch and reports what the handler acknowledged', async () => {
     seen.length = 0;
     const worker = await createTestingWorker(AppModule);

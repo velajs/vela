@@ -143,6 +143,8 @@ export interface CloudflareWorkerDescriptor {
   readonly options: CloudflareWorkerOptions;
   /** The `VelaFactory.create()` options the Worker builds its application with for `env`. */
   createOptions(env: VelaEnv): VelaCreateOptions;
+  /** `VelaFactory.create(rootModule, createOptions(env))`: the application without its Worker handlers. */
+  createApplication(env: VelaEnv): Promise<VelaApplication>;
 }
 
 /** The exported handlers of a `createCloudflareWorker()` entry. */
@@ -186,6 +188,8 @@ export function createCloudflareWorker(
     rootModule,
     options,
     createOptions: (env) => cloudflareCreateOptions({ ...options, env }),
+    createApplication: (env) =>
+      VelaFactory.create(rootModule, cloudflareCreateOptions({ ...options, env })),
   };
   const worker: CloudflareWorker = {
     async fetch(request: Request, env: VelaEnv, ctx: ExecutionContext): Promise<Response> {
