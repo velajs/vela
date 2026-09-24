@@ -110,15 +110,20 @@ vela deploy check
   `entrypoint list`, `openapi dump`, `client generate`, `doctor --app`,
   `deploy check`, `cf sync`) seed `ENV` with the Wrangler `vars` only; `db seed`
   uses Wrangler's `getPlatformProxy()` local bindings. A `vela.config` in the
-  working directory takes precedence. While a command runs the application,
-  its console output (`Logger` lines included) goes to stderr, so `--json`
-  output and the `mcp serve` channel on stdout stay machine-readable.
+  working directory takes precedence. While a command loads and runs the
+  application, its console output (module-scope code of the config or Worker
+  entry and `Logger` lines included) goes to stderr, so `--json` output and
+  the `mcp serve` channel on stdout stay machine-readable.
 - **Generators.** `vela generate module|controller|service|resource|queue|cron|durable-object <name>`
   writes current-API code (the root application kit, `@velajs/vela/queue`,
   `@velajs/vela/schedule`, `ENV`, plain decorator routes) and registers it:
   module files are parsed with `oxc-parser` and edited with `magic-string`, so
-  only the changed spans move. The edited class is the one the Worker entry
-  names (in the root module file) or the one the file exports. `queue` adds
+  only the changed spans move. The root module is the class the Worker entry
+  names, followed through `export { … } from` re-exports and `export *`
+  barrels to the file declaring it (exported by name, as
+  `export default AppModule` or in an `export { … as default }` list, else
+  that file's only `@Module()` class); in other module files the edited class
+  is the one the file exports. `queue` adds
   `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module only
   when no source file configures the driver yet. `--skip-import` prints the
   registration instead.
@@ -129,13 +134,21 @@ vela deploy check
   Wrangler file), runs the project's `types` script and registers the binding.
   `--config` is passed on to Wrangler; with a Wrangler file other than the
   default one, the `types` script (which reads the default file) is left for
-  you to run against it. The root module is checked before anything is
-  created; `--skip-import` needs no editable root.
+  you to run against it. Every module edit is computed on the current sources
+  before anything is created and written once Wrangler succeeds, so a root
+  module the CLI cannot edit (computed `@Module()` metadata, a re-export of a
+  file that does not exist) or a `bindings.module.ts` that does not parse fails
+  with nothing created or written; a failed `wrangler types` only warns.
+  `--skip-import` needs no editable root.
 - **Wrangler sync.** `vela cf sync` derives cron triggers, queue producers and
   consumers, Durable Object bindings and migrations, and Workflows from the
   application and the Worker entry's exports; it exits 1 on differences, and
   `--write` edits JSON/JSONC through `jsonc-parser`, one element at a time
-  (a cron trigger is appended or removed on its own), keeping comments.
+  (a cron trigger is appended or removed on its own), keeping comments. An
+  added element follows its array's or object's layout: on the line of the
+  last one when that one shares a line (a one-line Wrangler file stays on one
+  line), else on its own line after the comma and comment trailing the last
+  one.
 - **Deployment check.** `vela deploy check` defaults to the Wrangler file in the
   working directory and its top-level configuration, and computes the
   entrypoint snapshot from the application unless `--entrypoints` names a saved

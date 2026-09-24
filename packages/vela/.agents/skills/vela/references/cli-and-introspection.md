@@ -31,7 +31,7 @@ export default defineVelaConfig({
 | `vela add <d1\|kv\|r2\|queue> <BINDING>` | `--name`, `--config`, `--env`, `--skip-import` | Create the resource with the project's Wrangler (`--binding --update-config`; a queue's producer and consumer are added to the JSONC), run the `types` script, then provide the binding from a global `BindingsModule` (`@Inject(DB) db: D1Database`) or register `QueueModule.registerQueue({ name, binding })` |
 | `vela cf sync` | `--config`, `--env`, `--write`, `--json` | Compare the Wrangler file with the app: a trigger per `@Cron` expression, a producer per registered binding, a consumer per processed or `@QueueConsumer` queue, a binding and `new_sqlite_classes` migration per exported Durable Object, a `workflows` entry per exported `WorkflowEntrypoint`. Exits 1 on differences; `--write` edits JSON/JSONC through jsonc-parser (comments kept); TOML is compared only. Stale triggers are removed, other stale entries are reported |
 
-Generators place files in `src/<name>/` and register a controller, service, cron job or processor in the module of that directory (else the nearest one up to the root module the Worker entry passes to `createCloudflareWorker`); a module or resource registers in the module above. In the root module file the edited class is the one the Worker entry names; elsewhere, the file's exported module class. `queue` also adds `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module unless some source file already configures the driver; `durable-object` adds `export { Name } from ...` to the Worker entry. Follow a generator or `add` with `vela cf sync --write` and the `types` script.
+Generators place files in `src/<name>/` and register a controller, service, cron job or processor in the module of that directory (else the nearest one up to the root module the Worker entry passes to `createCloudflareWorker`); a module or resource registers in the module above. The root module is the class the Worker entry names, followed through re-exports and `export *` barrels to the file declaring it; elsewhere, the edited class is the file's exported module class. `queue` also adds `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module unless some source file already configures the driver; `durable-object` adds `export { Name } from ...` to the Worker entry. Follow a generator or `add` with `vela cf sync --write` and the `types` script.
 
 ## Commands
 
@@ -46,7 +46,7 @@ Generators place files in `src/<name>/` and register a controller, service, cron
 | `vela db seed` | `--config`, `--env`, `--continue-on-error`, `--list`, `--json` | Run each seeder registration in order, or list names/orders/owners without executing seeders (`--json` requires `--list`) |
 | `vela mcp serve` | `--config`, `--env` | Start the MCP server over stdio (see below) |
 
-`openapi dump` emits JSON directly. `doctor --app` and seeder inventory still run application startup/shutdown hooks; while a command runs the application, its console output (`Logger` lines included) goes to stderr, so JSON on stdout stays parseable.
+`openapi dump` emits JSON directly. `doctor --app` and seeder inventory still run application startup/shutdown hooks; while a command loads and runs the application, its console output (module-scope code and `Logger` lines included) goes to stderr, so JSON on stdout stays parseable.
 
 ```bash
 vela route list
