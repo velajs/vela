@@ -1,6 +1,7 @@
 import { Container } from '../container/container';
 import { defineProvider, InjectionToken } from '../container/types';
 import type { DynamicModule } from '../module/types';
+import type { ModuleRegistrationOptions } from '../module/configurable-module.types';
 import { defineModule } from '../module/define-module';
 import { attachModuleIdentity } from '../module/module-fingerprints';
 import { ConfigService } from './config.service';
@@ -55,11 +56,11 @@ function namespaceSubModule(namespace: AnyConfigNamespace): DynamicModule {
 // factories are synchronous, so the sync seam is safe). `resolveAllInstances`
 // treats the KEY tokens as lazy-only (they belong solely to the lazy
 // sub-module) and skips them at bootstrap.
-const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions, 'load'>({
   name: 'Config',
+  structural: ['load'],
   setup: ({ OPTIONS, options }) => {
     const load = options.load ?? [];
-    const { validateSchema } = options;
     return {
       // Lazy sub-modules carry the KEY providers; re-exported below so direct
       // `@Inject(ns.KEY)` and `ConfigStore`'s container lookup both reach them.
@@ -73,11 +74,11 @@ const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
           inject: [OPTIONS],
         }),
         defineProvider(ConfigStore, {
-          // Factory-provided so the store closes over the namespace list +
-          // schema; it resolves each namespace's KEY lazily via the container.
-          useFactory: (container, config) =>
-            new ConfigStore(container, config, load, validateSchema),
-          inject: [Container, CONFIG_OPTIONS],
+          // Factory-provided so the store closes over the namespace list; it
+          // resolves each namespace's KEY lazily via the container.
+          useFactory: (container, config, opts) =>
+            new ConfigStore(container, config, load, opts.validateSchema),
+          inject: [Container, CONFIG_OPTIONS, OPTIONS],
         }),
         ConfigService,
       ],
@@ -93,8 +94,8 @@ export class ConfigModule extends ConfigurableModuleClass {
    * provider is a passthrough (no double validation). `validateSchema` (the
    * merged-config schema) is deferred to first read — its input needs env.
    */
-  static forRoot(
-    options: ConfigModuleOptions & { isGlobal?: boolean; key?: string } = {},
+  static override forRoot(
+    options: ConfigModuleOptions & { isGlobal?: boolean } & ModuleRegistrationOptions = {},
   ): DynamicModule {
     const validatedConfig = options.validate
       ? options.validate(options.config ?? {})

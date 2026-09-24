@@ -57,7 +57,7 @@ class CheckoutController {
 }
 ```
 
-Or gate every `@FeatureFlag()` route app-wide with `FeatureFlagsModule.forRoot({ isGlobal: true })`.
+Or gate every `@FeatureFlag()` route app-wide with `FeatureFlagsModule.forRoot({ globalGuard: true })`; `isGlobal: true` separately makes the service visible to every module.
 
 The route guard opens only when the driver returns the literal boolean `true`
 and evaluation completed without error. Non-boolean driver output, a missing

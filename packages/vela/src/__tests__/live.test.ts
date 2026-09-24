@@ -211,15 +211,28 @@ describe('LiveModule (tag-based live queries)', () => {
     await app.close();
   });
 
-  it('does not collapse distinct security callbacks into one dynamic module', () => {
+  it('reports distinct security callbacks instead of collapsing them into one instance', async () => {
     const first = LiveModule.forRoot({ authorizeDelivery: () => true });
     const second = LiveModule.forRoot({ authorizeDelivery: () => true });
     const shared = () => true;
     const sameA = LiveModule.forRoot({ authorizeDelivery: shared });
     const sameB = LiveModule.forRoot({ authorizeDelivery: shared });
 
-    expect(first.key).not.toBe(second.key);
+    // One engine per application: every configuration shares the instance key,
+    // and the loader compares the callbacks by reference.
+    expect(first.key).toBe(second.key);
     expect(sameA.key).toBe(sameB.key);
+
+    @Module({ imports: [WebSocketModule.forRoot({}), first, second] })
+    class Conflicting {}
+    await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
+      /LiveModule#\w+ was imported again with different options/,
+    );
+
+    @Module({ imports: [WebSocketModule.forRoot({}), sameA, sameB] })
+    class Shared {}
+    const app = await VelaFactory.create(Shared, { diagnostics: 'throw' });
+    await app.close();
   });
 
   it('restores attachment records with a fresh snapshot and no cached result baseline', async () => {

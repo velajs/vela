@@ -16,12 +16,6 @@ export type { ValidationSchema } from './parse-schema';
 // provider (`APP_PIPE` with `useClass`), where the schema is simply absent.
 @Injectable()
 export class ValidationPipe implements PipeTransform {
-  /** @deprecated No cross-boundary validation state is retained. Let the handler
-   * own generated-route validation with validationOwner: 'handler' metadata. */
-  static consumeValidated(_value: unknown, _schema: ValidationSchema): boolean {
-    return false;
-  }
-
   /** Explicit schema metadata shared with OpenAPI and programmatic route builders. */
   constructor(@Optional() readonly parser?: ValidationSchema) {}
 

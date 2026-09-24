@@ -23,9 +23,9 @@ import { s3Driver } from '@velajs/storage/drivers/s3';
 class AppModule {}
 ```
 
-`StorageModuleOptions`: `driver` (a built `StorageDriver`, required), `name?` (default `'default'`), `prefix?`, `readonly?`, `hooks?`, and `http?` (mounts the HTTP controller). `forRootAsync({ inject?, imports, useFactory, name?, prefix?, readonly?, hooks?, http?, key? })` — its `useFactory` returns the `StorageDriver`, so you can pull credentials from config or `ENV`; a factory without parameters may omit `inject`. The `driver` is a value, not a string — there is no name-based selector.
+`StorageModuleOptions`: `driver` (a built `StorageDriver`, or a function that builds one on the first operation; required), `name?` (default `'default'`), `prefix?`, `readonly?`, `hooks?`, `http?` (mounts the HTTP controller) and `multipartGrantSecret?`. `name` and `http` are structural: `forRootAsync({ inject?, imports, useFactory, name?, http?, key? })` takes them at the call site and its `useFactory` returns the rest, such as `{ driver: () => r2Driver({ bucket: env.FILES }), multipartGrantSecret: env.GRANT_SECRET }`; a factory without parameters may omit `inject`. One instance per bucket `name`: a second configuration of a name is reported. The `driver` is a value, not a string — there is no name-based selector.
 
-`StorageHttpOptions` (when `http` is set): `basePath` (default `/api/storage`), `authorize`, `defaultPolicy` (`'deny'` default), `download` (`'redirect'` default | `'proxy'`), `mountController`, `defaultExpiresIn`, `maxExpiresIn`, `maxUploadSize`, `maxListLimit`, `deleteConcurrency`.
+`StorageHttpOptions` (when `http` is set): `basePath` (default `/api/storage`), `authorize` (routes deny without it), `download` (`'redirect'` default | `'proxy'`), `mountController`, `defaultExpiresIn`, `maxExpiresIn`, `maxUploadSize`, `multipartGrantSecret`, `maxMultipartParts`, `maxListLimit`, `deleteConcurrency`.
 
 ## Drivers
 

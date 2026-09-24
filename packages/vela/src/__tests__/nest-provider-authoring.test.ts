@@ -163,7 +163,9 @@ describe('zero-argument factories', () => {
         // @ts-expect-error Async module factories follow the same rule.
         useFactory: (size: number) => ({ size }),
       }),
-    ).toThrow(/MissingInject_MODULE_OPTIONS.*inject/);
+    ).toThrow(
+      /MissingInjectModuleHost\.forRootAsync: useFactory declares parameters but no inject/,
+    );
   });
 });
 
@@ -221,8 +223,9 @@ describe('provider literals', () => {
       }
     }
 
-    const { ConfigurableModuleClass } = defineModule<{ label: string }>({
+    const { ConfigurableModuleClass } = defineModule<{ label: string }, 'label'>({
       name: 'LiteralContributions',
+      structural: ['label'],
       setup: ({ options }) => ({
         providers: [{ provide: LABEL, useValue: options.label ?? 'none' }],
         exports: [LABEL],

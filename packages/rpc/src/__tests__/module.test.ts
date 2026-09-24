@@ -90,7 +90,7 @@ describe('RPC module composition', () => {
       'bindings',
     );
     const binding = { fetch: (r: Request) => Promise.resolve(server.fetch(r)) };
-    const rpc = RpcClientModule.registerAsync({
+    const rpc = RpcClientModule.forRootAsync({
       name: 'greetings',
       binding: 'SERVICE',
       inject: [ENV],
@@ -123,7 +123,7 @@ describe('RPC module composition', () => {
     @Module({ providers: [Greetings], imports: [RpcModule.forRoot({ authorize: 'public' })] })
     class Server {}
     const server = await VelaFactory.create(Server);
-    const rpc = RpcClientModule.registerAsync({
+    const rpc = RpcClientModule.forRootAsync({
       name: 'static-greetings',
       useFactory: () => ({
         url: 'https://worker/rpc',
@@ -137,7 +137,7 @@ describe('RPC module composition', () => {
     expect(await consumer.get(token).call(greet, 'factory')).toBe('Hello factory');
     const missingInject = () =>
       // @ts-expect-error A factory with parameters names the tokens that supply them.
-      RpcClientModule.registerAsync({ name: 'missing', useFactory: (url: string) => ({ url }) });
+      RpcClientModule.forRootAsync({ name: 'missing', useFactory: (url: string) => ({ url }) });
     void missingInject;
     await Promise.all([consumer.close(), server.close()]);
   });
@@ -170,7 +170,7 @@ describe('RPC module composition', () => {
   );
 
   it('rejects conflicting named clients and deduplicates reused imports', async () => {
-    const shared = RpcClientModule.register({ name: 'shared', url: 'https://one/rpc' });
+    const shared = RpcClientModule.forRoot({ name: 'shared', url: 'https://one/rpc' });
     @Module({ imports: [shared] })
     class Feature {}
     @Module({ imports: [shared, Feature] })
@@ -178,11 +178,23 @@ describe('RPC module composition', () => {
     const good = await VelaFactory.create(Good);
     expect(good.entrypoints.ofKind('rpc:client')).toHaveLength(1);
     await good.close();
+    // Another configuration of the name is reported, never merged.
     @Module({
-      imports: [shared, RpcClientModule.register({ name: 'shared', url: 'https://two/rpc' })],
+      imports: [shared, RpcClientModule.forRoot({ name: 'shared', url: 'https://two/rpc' })],
     })
     class Bad {}
-    await expect(VelaFactory.create(Bad)).rejects.toThrow('Duplicate RPC client');
+    await expect(VelaFactory.create(Bad, { diagnostics: 'throw' })).rejects.toThrow(
+      /RpcClientModule#\w+ was imported again with different options/,
+    );
+    // Two registrations of one name fail closed even when keyed apart.
+    @Module({
+      imports: [
+        shared,
+        RpcClientModule.forRoot({ name: 'shared', url: 'https://two/rpc', key: 'second' }),
+      ],
+    })
+    class Keyed {}
+    await expect(VelaFactory.create(Keyed)).rejects.toThrow('Duplicate RPC client');
   });
 
   it('rejects authorization, duplicate procedures and conflicting endpoint routes', async () => {

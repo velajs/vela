@@ -14,7 +14,7 @@ const createComparer = (): ModuleIdentityComparer => new ModuleIdentityFingerpri
 
 /**
  * @internal Record the inputs a generated DynamicModule was built from
- * (`defineModule`, `sideEffectModule`, `defineConfigurableModule`), so the
+ * (`defineModule`, `sideEffectModule`, `ConfigModule`), so the
  * loader can tell a repeated identical import from a conflicting one.
  */
 export function attachModuleIdentity<T extends DynamicModule>(definition: T, inputs: unknown): T {

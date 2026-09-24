@@ -29,8 +29,9 @@ class AppModule {}
 | `default` | `string` | Name of the driver the injected service targets. Defaults to `drivers[0].name`. |
 | `manifest` | `FlagManifest` (`Record<string, FlagValue>`) | Declared flags + defaults. Powers manifest defaults and `service.all()`. |
 | `context` | `(ctx: RequestContext) => FlagContext \| Promise<FlagContext>` | Per-request context resolver merged into every evaluation; skipped outside request scope. |
+| `globalGuard` | `boolean` | Registers `FeatureFlagGuard` app-wide via `APP_GUARD`. Structural: pass it next to a `forRootAsync` factory. |
 
-`isGlobal: true` is a `forRoot` **extra** (not a field on the typed options): it makes the module global **and** registers `FeatureFlagGuard` app-wide via `APP_GUARD`. `forRootAsync({ imports, inject, useFactory })` returns the same options object from the factory.
+`isGlobal: true` is a `forRoot` **extra** (not a field on the typed options): it makes the module global, nothing more. `forRootAsync({ imports, inject, useFactory, globalGuard? })` returns the other options from the factory.
 
 ## Evaluating — `FeatureFlagsService`
 
@@ -64,7 +65,7 @@ Primitive reads `getBooleanValue`, `getStringValue`, and `getNumberValue` take `
 ```ts
 import { FeatureFlag, FeatureFlagGuard } from '@velajs/feature-flags';
 
-@UseGuards(FeatureFlagGuard)                          // or module-wide via forRoot({ isGlobal: true })
+@UseGuards(FeatureFlagGuard)                          // or app-wide via forRoot({ globalGuard: true })
 @Controller('/checkout')
 class CheckoutController {
   @FeatureFlag('new-checkout')                        // flag off → 404 (route looks hidden)

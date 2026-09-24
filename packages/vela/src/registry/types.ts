@@ -115,14 +115,12 @@ export type AsyncModuleOptions<T = unknown, Inject extends readonly Token[] = re
 export interface DynamicModule {
   module: Type;
   /**
-   * Author-supplied instance discriminator. Two DynamicModules with the same
-   * `module` class and the same `key` dedup; with different keys they coexist
-   * as separate module instances. Defaults to `"default"` when absent — which
-   * preserves single-instance dedup for the common case.
-   *
-   * For `forRoot(options)`, derive `key: stableHash(options)` so identical
-   * options dedup automatically. For `forRootAsync` (factories aren't
-   * structurally hashable), pass an explicit string.
+   * Instance discriminator. Two DynamicModules with the same `module` class
+   * and the same `key` are one instance; with different keys they coexist as
+   * separate module instances. Defaults to `"default"` when absent. A repeat
+   * of the same `(class, key)` built from different inputs, or with a
+   * different `global` flag, is reported by the module loader.
+   * `defineModule` derives the key from the declared structural options.
    */
   key?: string;
   imports?: ModuleImport[];
@@ -130,6 +128,7 @@ export interface DynamicModule {
   providers?: Provider[];
   controllers?: Type[];
   exports?: Token[];
+  /** Make this instance's exports visible to every module (see `@Global()`). */
   global?: boolean;
   /**
    * Defer this module instance's providers/controllers to first use: nothing
@@ -140,14 +139,22 @@ export interface DynamicModule {
   lazy?: boolean;
 }
 
+/**
+ * `@Module` options. A module class is made global with `@Global()`; a module
+ * instance with `DynamicModule.global`.
+ */
 export interface ModuleOptions {
   providers?: readonly Provider[];
   controllers?: Type[];
   imports?: ModuleImport[];
   exports?: Token[];
-  isGlobal?: boolean;
   /** Defer to first use (see {@link DynamicModule.lazy}). */
   lazy?: boolean;
+}
+
+/** What the metadata registry records for a module class: `@Module` options and `@Global()`. */
+export interface ModuleRecord extends ModuleOptions {
+  global?: boolean;
 }
 
 export interface ModuleMetadata {
@@ -155,6 +162,7 @@ export interface ModuleMetadata {
   controllers: Type[];
   imports: ModuleImport[];
   exports: Token[];
-  isGlobal: boolean;
+  /** Set by `@Global()`. */
+  global: boolean;
   lazy: boolean;
 }

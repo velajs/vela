@@ -65,7 +65,7 @@ app.mountOpenApi({ document, ui: 'all' });                       // swagger + sc
 | `redocPath` | `/redoc` | ReDoc path |
 | `title` | — | UI page title |
 
-Each UI is a self-contained HTML shell (CDN-loaded), so mounting docs adds no server bundling and stays edge-safe. (`path`/`uiPath` are deprecated aliases for `specPath`/single-UI path.)
+Each UI is a self-contained HTML shell (CDN-loaded), so mounting docs adds no server bundling and stays edge-safe.
 
 ## Schema-bound Hono RPC
 

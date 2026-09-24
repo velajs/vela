@@ -5,10 +5,7 @@ import {
   defineProvider,
   InjectionToken,
   Injectable,
-  type AsyncModuleOptions,
-  type DynamicModule,
-  type ModuleImport,
-  type Provider,
+  type ConfigurableModuleAsyncOptions,
   type Token,
 } from '@velajs/vela';
 import {
@@ -101,92 +98,81 @@ export function rpcClientToken(name: string): InjectionToken<RpcClient> {
 }
 
 export interface RpcClientModuleOptions extends RpcClientOptions {
+  /** Client name: inject the client with `rpcClientToken(name)`. Structural. */
   name: string;
-  /** Declared Wrangler service binding. Transport is supplied through fetch. */
+  /** Declared Wrangler service binding. Transport is supplied through fetch. Structural. */
   binding?: string;
-  imports?: ModuleImport[];
 }
+
+/** The options `forRootAsync` takes alongside its factory: they declare the client. */
+export type RpcClientStructuralOption = 'name' | 'binding';
+
+/** Deferred client registration; a factory without parameters may omit `inject`. */
 export type RpcClientAsyncOptions<Inject extends readonly Token[] = readonly Token[]> =
-  AsyncModuleOptions<RpcClientOptions, Inject> & {
-    name: string;
-    binding?: string;
-  };
+  ConfigurableModuleAsyncOptions<
+    RpcClientModuleOptions,
+    RpcClientStructuralOption,
+    'create',
+    Inject
+  >;
 
-function clientModule(
-  name: string,
-  binding: string | undefined,
-  imports: ModuleImport[] | undefined,
-  provider: Provider,
-  options: InjectionToken<RpcClientOptions>,
-): DynamicModule {
-  const token = rpcClientToken(name);
-  if (binding !== undefined && !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(binding)) {
-    throw new TypeError('Invalid RPC service binding name');
-  }
-  @Injectable()
-  class ClientDeclaration {
-    constructor(@Inject(Container) private readonly container: Container) {}
-    collectEntrypoints(): Entrypoint[] {
-      if (this.container.getOwnerModuleIds(token).length !== 1)
-        throw new Error(
-          `Duplicate RPC client registration '${name}'. Reuse the same module import.`,
-        );
-      return [
-        {
-          kind: 'rpc:client',
-          token,
-          instance: undefined,
-          meta: { name, ...(binding ? { binding } : {}) },
-        },
-      ];
-    }
-  }
-  class RpcClientRegistration {}
-  return {
-    module: RpcClientRegistration,
-    key: name,
-    imports: imports ?? [],
-    providers: [
-      provider,
-      ClientDeclaration,
-      defineProvider(token, {
-        inject: [options],
-        useFactory: (config) => {
-          if (binding !== undefined && !config.fetch)
-            throw new TypeError('A declared RPC binding requires a fetch transport');
-          return createRpcClient(config);
-        },
-      }),
-    ],
-    exports: [token],
-  };
-}
+const RPC_CLIENT_OPTIONS = new InjectionToken<RpcClientModuleOptions>('vela:rpc:client-options');
 
-export class RpcClientModule {
-  static register({ name, binding, imports, ...config }: RpcClientModuleOptions): DynamicModule {
-    const options = new InjectionToken<RpcClientOptions>(`RPC client options: ${name}`);
-    return clientModule(
-      name,
-      binding,
-      imports,
-      defineProvider(options, { useValue: config }),
-      options,
-    );
-  }
-  static registerAsync<const Inject extends readonly Token[]>(
-    config: RpcClientAsyncOptions<Inject>,
-  ): DynamicModule {
-    const options = new InjectionToken<RpcClientOptions>(`RPC client options: ${config.name}`);
-    return clientModule(
-      config.name,
-      config.binding,
-      config.imports,
+/** Declares one registration's client to the application's entrypoints. */
+@Injectable()
+class RpcClientDeclaration {
+  constructor(
+    @Inject(Container) private readonly container: Container,
+    @Inject(RPC_CLIENT_OPTIONS) private readonly options: RpcClientModuleOptions,
+  ) {}
+  collectEntrypoints(): Entrypoint[] {
+    const { name, binding } = this.options;
+    const token = rpcClientToken(name);
+    if (this.container.getOwnerModuleIds(token).length !== 1)
+      throw new Error(`Duplicate RPC client registration '${name}'. Reuse the same module import.`);
+    return [
       {
-        provide: options,
-        useFactory: config.useFactory,
-        ...(config.inject && { inject: config.inject }),
+        kind: 'rpc:client',
+        token,
+        instance: undefined,
+        meta: { name, ...(binding ? { binding } : {}) },
       },
-      options,
-    );
+    ];
   }
 }
+
+const { ConfigurableModuleClass: RpcClientModuleHost } = defineModule<
+  RpcClientModuleOptions,
+  RpcClientStructuralOption
+>({
+  name: 'RpcClient',
+  optionsToken: RPC_CLIENT_OPTIONS,
+  structural: ['name', 'binding'],
+  setup: ({ OPTIONS, options: { name, binding } }) => {
+    const token = rpcClientToken(name);
+    if (binding !== undefined && !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(binding)) {
+      throw new TypeError('Invalid RPC service binding name');
+    }
+    return {
+      providers: [
+        RpcClientDeclaration,
+        defineProvider(token, {
+          inject: [OPTIONS],
+          useFactory: ({ name: _name, binding: _binding, ...config }) => {
+            if (binding !== undefined && !config.fetch)
+              throw new TypeError('A declared RPC binding requires a fetch transport');
+            return createRpcClient(config);
+          },
+        }),
+      ],
+      exports: [token],
+    };
+  },
+});
+
+/**
+ * Registers a named RPC client, injected with `rpcClientToken(name)`.
+ * `name` and `binding` are structural: `forRootAsync` takes them alongside its
+ * factory, which returns the transport settings (`url`, `fetch`, ...).
+ */
+export class RpcClientModule extends RpcClientModuleHost {}

@@ -344,7 +344,7 @@ export class ModuleLoader {
       localProviders.add(moduleClass);
 
       const isGlobal =
-        metadata.isGlobal ||
+        metadata.global ||
         (isDynamicModule(moduleClassOrDynamic) && moduleClassOrDynamic.global === true);
 
       const isLazy =
@@ -523,7 +523,18 @@ export class ModuleLoader {
   private reportIdentityCollision(moduleId: string, repeat: Type | DynamicModule): void {
     const first = this.#definitionByModuleId.get(moduleId);
     if (!first || !isDynamicModule(repeat) || first === repeat) return;
-    // Hand-written DynamicModules record no inputs and are never reported.
+    // The first definition decided whether the instance's exports are global;
+    // a repeat that says otherwise would silently lose (or gain) visibility.
+    if ((first.global === true) !== (repeat.global === true)) {
+      reportDiagnostic(
+        this.container.getDiagnostics(),
+        `[vela] ${moduleId} was imported again with a different global flag; the repeated ` +
+          `import was ignored in favor of the first (global: ${first.global === true}). ` +
+          `Import the module with one global setting, or give each configuration its own key.`,
+      );
+      return;
+    }
+    // Other hand-written DynamicModules record no inputs and are never reported.
     const firstIdentity = readModuleIdentity(first);
     const repeatIdentity = readModuleIdentity(repeat);
     if (!firstIdentity || !repeatIdentity) return;

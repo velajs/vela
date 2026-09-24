@@ -67,14 +67,15 @@ it('omits optional companion imports and controllers using async structural opti
       return 'enabled';
     }
   }
-  const { ConfigurableModuleClass } = defineModule<{ http: boolean }>({
+  const { ConfigurableModuleClass } = defineModule<{ http: boolean }, 'http'>({
     name: 'OptionalHttp',
+    structural: ['http'],
     setup: ({ options }) =>
       options.http ? { imports: [Companion], controllers: [HttpController] } : {},
   });
   class Feature extends ConfigurableModuleClass {}
   const root = (http: boolean) => {
-    @Module({ imports: [Feature.forRootAsync({ http, inject: [], useFactory: () => ({ http }) })] })
+    @Module({ imports: [Feature.forRootAsync({ http, inject: [], useFactory: () => ({}) })] })
     class Root {}
     return Root;
   };

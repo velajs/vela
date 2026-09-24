@@ -1,4 +1,4 @@
-export { GraphqlModule, type GraphqlModuleOptions } from './module';
+export { GraphqlModule, type GraphqlModuleOptions, type GraphqlStructuralOption } from './module';
 export { GraphqlOperation, GraphqlLoader } from './operation';
 export { bindResolver, type ResolverOptions, type GraphqlExecutionContext } from './resolver';
 export { GraphqlClientError, type GraphqlErrorCode } from './errors';

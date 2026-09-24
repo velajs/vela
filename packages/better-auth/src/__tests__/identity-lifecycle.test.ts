@@ -137,7 +137,7 @@ describe('canonical identity lifecycle', () => {
             api: { getSession: async () => sessionFixture() },
             handler: async () => new Response(),
           },
-          isGlobal: false,
+          globalGuard: false,
         }),
       ],
       controllers: [ControllerUnderTest],
@@ -179,7 +179,7 @@ describe('canonical identity lifecycle', () => {
       }
     }
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, isGlobal: false })],
+      imports: [BetterAuthModule.forRoot({ auth, globalGuard: false })],
       controllers: [ControllerUnderTest],
     })
     class App {}
@@ -216,7 +216,7 @@ describe('canonical identity lifecycle', () => {
       imports: [
         BetterAuthModule.forRoot({
           auth: { api: { getSession: async () => fixture }, handler: async () => new Response() },
-          isGlobal: false,
+          globalGuard: false,
         }),
         AuthzModule.forRoot({
           resolver: {

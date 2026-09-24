@@ -10,8 +10,9 @@ export interface SeederModuleOptions {
   seeders?: Type[];
 }
 
-const { ConfigurableModuleClass } = defineModule<SeederModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<SeederModuleOptions, 'seeders'>({
   name: 'Seeder',
+  structural: ['seeders'],
   // Class references aren't value-hashable — key on the seeder names, the same
   // identity the hand-rolled forRoot used.
   key: (options) => stableHash({ seeders: (options.seeders ?? []).map((s) => s.name) }),

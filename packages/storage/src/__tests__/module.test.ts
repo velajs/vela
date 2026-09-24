@@ -1,7 +1,15 @@
 import { Test } from '@velajs/testing';
+import { Module, VelaFactory, type DynamicModule, type VelaApplication } from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
-import { StorageModule, StorageService, storageToken } from '../index';
+import { StorageModule, StorageService, storageToken, type StorageModuleOptions } from '../index';
 import { memoryDriver } from '../drivers/memory';
+
+/** An application importing `imports`, with wiring problems failing bootstrap. */
+function appWith(imports: DynamicModule[]): Promise<VelaApplication> {
+  class Root {}
+  Module({ imports })(Root);
+  return VelaFactory.create(Root, { diagnostics: 'throw' });
+}
 
 describe('StorageModule', () => {
   it('forRoot provides a working StorageService', async () => {
@@ -20,73 +28,79 @@ describe('StorageModule', () => {
     expect(await svc.exists('missing')).toBe(false);
   });
 
-  it('does not collapse distinct security-sensitive registrations with equal-looking options', () => {
+  it('reports distinct security-sensitive registrations of one bucket instead of merging them', async () => {
     const driverA = memoryDriver();
     const driverB = memoryDriver();
     const authorizeA = () => true;
     const authorizeB = () => true;
+    const register = (overrides: Partial<StorageModuleOptions> = {}) =>
+      StorageModule.forRoot({
+        driver: driverA,
+        http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
+        ...overrides,
+      });
 
-    const first = StorageModule.forRoot({
-      driver: driverA,
-      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
-    });
-    const same = StorageModule.forRoot({
-      driver: driverA,
-      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
-    });
-    const otherDriver = StorageModule.forRoot({
-      driver: driverB,
-      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
-    });
-    const otherAuthorizer = StorageModule.forRoot({
-      driver: driverA,
-      http: { authorize: authorizeB, multipartGrantSecret: 'a'.repeat(32) },
-    });
-    const otherSecret = StorageModule.forRoot({
-      driver: driverA,
-      http: { authorize: authorizeA, multipartGrantSecret: 'b'.repeat(32) },
-    });
+    const first = register();
+    // One bucket name is one instance key; the key never carries a secret.
+    expect(first.key).toBe('default');
+    const conflicting = [
+      register({ driver: driverB }),
+      register({ http: { authorize: authorizeB, multipartGrantSecret: 'a'.repeat(32) } }),
+      register({ http: { authorize: authorizeA, multipartGrantSecret: 'b'.repeat(32) } }),
+    ];
+    for (const other of conflicting) {
+      expect(other.key).toBe(first.key);
+      await expect(appWith([first, other])).rejects.toThrow(
+        /StorageModule#default was imported again with different options/,
+      );
+    }
 
-    expect(same.key).toBe(first.key);
-    expect(otherDriver.key).not.toBe(first.key);
-    expect(otherAuthorizer.key).not.toBe(first.key);
-    expect(otherSecret.key).not.toBe(first.key);
+    const app = await appWith([first, register()]);
+    expect(app.get(StorageService)).toBeInstanceOf(StorageService);
+    await app.close();
   });
 
-  it('includes async factory identity in the dynamic-module key', () => {
-    const factoryA = () => memoryDriver();
-    const factoryB = () => memoryDriver();
+  it('reports a second async factory for one bucket', async () => {
+    const factoryA = () => ({ driver: memoryDriver() });
+    const factoryB = () => ({ driver: memoryDriver() });
     const first = StorageModule.forRootAsync({ useFactory: factoryA });
     const same = StorageModule.forRootAsync({ useFactory: factoryA });
     const other = StorageModule.forRootAsync({ useFactory: factoryB });
 
     expect(same.key).toBe(first.key);
-    expect(other.key).not.toBe(first.key);
+    expect(other.key).toBe(first.key);
+    await expect(appWith([first, other])).rejects.toThrow(
+      /was imported again with different options/,
+    );
+    const app = await appWith([first, same]);
+    await app.close();
   });
 
   it('rejects a driver factory that declares parameters but no inject', () => {
     expect(() =>
       StorageModule.forRootAsync({
         // @ts-expect-error A factory with parameters names the tokens that supply them.
-        useFactory: (bucket: string) => memoryDriver({ initial: { bucket } }),
+        useFactory: (bucket: string) => ({ driver: memoryDriver({ initial: { bucket } }) }),
       }),
     ).toThrow(/StorageModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
   });
 
-  it('forRootAsync builds the driver lazily (edge-binding safe)', async () => {
+  it('builds a driver function lazily (edge-binding safe)', async () => {
     let calls = 0;
     const moduleRef = await Test.createTestingModule({
       imports: [
         StorageModule.forRootAsync({
-          useFactory: () => {
-            calls += 1;
-            return memoryDriver();
-          },
+          useFactory: () => ({
+            driver: () => {
+              calls += 1;
+              return memoryDriver();
+            },
+          }),
         }),
       ],
     }).compile();
 
-    expect(calls).toBe(0); // not built at module load
+    expect(calls).toBe(0); // not built at bootstrap
     const svc = moduleRef.get(StorageService);
     expect(calls).toBe(0); // not built on service construction
 
@@ -96,12 +110,12 @@ describe('StorageModule', () => {
     expect(calls).toBe(1); // cached
   });
 
-  it('forRootAsync runs the factory again on the next operation until it succeeds', async () => {
+  it('runs a driver function again on the next operation until it succeeds', async () => {
     let calls = 0;
     const moduleRef = await Test.createTestingModule({
       imports: [
-        StorageModule.forRootAsync({
-          useFactory: () => {
+        StorageModule.forRoot({
+          driver: () => {
             calls += 1;
             if (calls === 1) throw new Error('binding not ready');
             return memoryDriver();

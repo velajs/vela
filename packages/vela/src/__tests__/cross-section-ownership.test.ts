@@ -11,9 +11,9 @@ import {
   VelaFactory,
   defineProvider,
   type CanActivate,
+  type DynamicModule,
   type ExecutionContext,
 } from '../index';
-import { defineDynamicModule } from '../module-kit';
 
 describe('module ownership across HTTP guards and async DI', () => {
   it('keeps two dynamic registrations and two applications isolated through the pipeline', async () => {
@@ -80,24 +80,23 @@ describe('module ownership across HTTP guards and async DI', () => {
     class Feature {}
 
     const createApp = async (appId: string) => {
-      const feature = (side: 'left' | 'right') =>
-        defineDynamicModule({
-          module: Feature,
-          key: side,
-          providers: [
-            defineProvider(ownerToken, { useValue: `${appId}:${side}` }),
-            defineProvider(Session, {
-              scope: Scope.REQUEST,
-              inject: [ownerToken],
-              useFactory: async (owner) => {
-                await Promise.resolve();
-                return new Session(owner);
-              },
-            }),
-            OwnerGuard,
-          ],
-          controllers: [side === 'left' ? LeftController : RightController],
-        });
+      const feature = (side: 'left' | 'right'): DynamicModule => ({
+        module: Feature,
+        key: side,
+        providers: [
+          defineProvider(ownerToken, { useValue: `${appId}:${side}` }),
+          defineProvider(Session, {
+            scope: Scope.REQUEST,
+            inject: [ownerToken],
+            useFactory: async (owner) => {
+              await Promise.resolve();
+              return new Session(owner);
+            },
+          }),
+          OwnerGuard,
+        ],
+        controllers: [side === 'left' ? LeftController : RightController],
+      });
 
       @Module({ imports: [feature('left'), feature('right')] })
       class App {}

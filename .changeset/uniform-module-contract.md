@@ -1,0 +1,19 @@
+---
+'@velajs/vela': minor
+---
+
+Make `defineModule` the one module engine with a uniform contract. A module declares its structural options, the ones that shape its graph, with a second type argument and a `structural` list: `defineModule<Opts, 'name' | 'http'>({ structural: ['name', 'http'], ... })`. `setup` and `key` receive only those fields, `forRootAsync` takes them at the call site (`Pick<Opts, S>`) and its factory returns the rest (`Omit<Opts, S>`); `S` defaults to `never`, where the factory returns the complete options. Adds `referenceKey(...values)` to `@velajs/vela/module-kit` for a `key` over stateful values: objects, functions and symbols key by reference (held weakly), other values by value. Every first-party module exposes `forRoot()`, including `EventEmitterModule`, `HealthModule`, `ScheduleModule` and `ScheduleNodeModule`, and the module loader reports a repeated `(class, key)` whose `global` flag differs.
+
+**Behavior change:** the default instance key is `stableHash` of the structural options only, so a module without structural fields has one instance per class: `CacheModule.forRoot({ ttl: 60 })` and `CacheModule.forRoot({ ttl: 120 })` are one key, and the second configuration is reported by the loader (`'log'` warns, `'throw'` fails bootstrap) instead of becoming a second instance. Give a second instance its own `key`. `key`, `lazy` and the extras (`isGlobal`, or a spec's own `extras`) no longer change the key and no longer reach the options token. `setup` sees only the structural fields for `forRoot` too, and a `forRootAsync` factory that returns a structural field fails bootstrap. An explicit `key` must be a non-empty string without surrounding whitespace.
+
+**Behavior change:** `ConfigurableModuleBuilder` generates Nest's `register`/`registerAsync` by default; call `setClassMethodName('forRoot')` for the previous names. `defineModule` keeps `forRoot`/`forRootAsync`.
+
+**Behavior change:** removed with no alias: `defineConfigurableModule` and `DefineConfigurableModuleSpec` (use `defineModule`), `defineDynamicModule` (return a `DynamicModule` literal), `moduleKey` (use `stableHash` or `referenceKey`), `moduleToken` (use `new InjectionToken`), `provideGlobal` (use the `global:` slot of `setup`, or `{ provide: APP_GUARD, useClass }`), and the plugin API: `definePlugin`, `composePlugins`, `PluginRegistry`, `PluginRootModule`, `PLUGIN_REGISTRY_TOKEN` and the `Plugin` type (compose modules with `imports`).
+
+**Behavior change:** `@Module` no longer accepts `isGlobal`. A module class is global with `@Global()`, which now applies in either decorator order; one instance is global through `DynamicModule.global` (the `isGlobal` extra). `ModuleMetadata.isGlobal` is renamed `global`.
+
+**Behavior change:** `CacheModule`'s `isGlobal` option, which registered `CacheInterceptor` as an `APP_INTERCEPTOR`, is renamed `globalInterceptor` (a structural option); `isGlobal` now only makes the module global, as on every module. `defineModule`'s `DefineModuleSpec`, `ModuleSetupContext`, `ConfigurableModuleAsyncOptions`, `ConfigurableModuleClassType` and `ConfigurableModuleHost` take the structural type argument (`ModuleFactoryOptions<Opts, S>` names the factory result).
+
+**Behavior change:** `ScheduleModule` and `ScheduleNodeModule` share one internal registry module, so importing both keeps a single `ScheduleRegistry`; `ScheduleModule.forRoot({ dispatch })` returns a `ScheduleModule` instance that also registers the registry. `ConfigModule.forRootAsync` takes `load` next to its factory, and `validateSchema` may now come from the factory.
+
+**Behavior change:** removed deprecated members: `ValidationPipe.consumeValidated` (no validation receipt exists; let the handler own generated-route validation), and the `path` and `uiPath` options of `mountOpenApi` (use `specPath`, and `swaggerPath`, `scalarPath` or `redocPath`).

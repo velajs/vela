@@ -34,7 +34,7 @@ function guardedController() {
 async function appWith(
   controller: ReturnType<typeof guardedController>,
   driver: FeatureFlagDriver,
-  moduleOpts: { isGlobal?: boolean; manifest?: FlagManifest } = {},
+  moduleOpts: { globalGuard?: boolean; manifest?: FlagManifest } = {},
 ) {
   const moduleRef = await Test.createTestingModule({
     controllers: [controller],
@@ -129,7 +129,7 @@ describe('FeatureFlagGuard (integration)', () => {
     expect((await app.request('/checkout/v2')).status).toBe(404);
   });
 
-  it('gates app-wide via the isGlobal APP_GUARD (no @UseGuards on the controller)', async () => {
+  it('gates app-wide via the globalGuard APP_GUARD (no @UseGuards on the controller)', async () => {
     @Controller('/promo')
     class PromoController {
       @FeatureFlag('promo')
@@ -141,7 +141,7 @@ describe('FeatureFlagGuard (integration)', () => {
     const driver = memoryFlagDriver({ values: { promo: false } });
     const moduleRef = await Test.createTestingModule({
       controllers: [PromoController],
-      imports: [FeatureFlagsModule.forRoot({ drivers: [driver], isGlobal: true })],
+      imports: [FeatureFlagsModule.forRoot({ drivers: [driver], globalGuard: true })],
     }).compile();
     const app = (await moduleRef.createApplication()).getHonoApp();
 
