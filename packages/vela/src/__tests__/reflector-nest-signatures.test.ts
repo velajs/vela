@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   Controller,
   Get,
@@ -92,6 +92,59 @@ describe("Reflector accepts Nest's (key, target | target[]) signatures", () => {
         viaContext: ['reader'],
       },
     ]);
+  });
+
+  it('refuses to read through a handler function several controllers decorate', async () => {
+    const seen: Array<string[] | undefined> = [];
+
+    @Injectable()
+    class RolesGuard implements CanActivate {
+      constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+      canActivate(context: ExecutionContext): boolean {
+        seen.push(this.reflector.getAllAndOverride(Roles, context));
+        const roles = this.reflector.getAllAndOverride(Roles, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        return !roles?.length;
+      }
+    }
+
+    class Docs {
+      list() {
+        return { listed: true };
+      }
+    }
+    class AdminDocs extends Docs {}
+    class PublicDocs extends Docs {}
+    // Both controllers decorate the one inherited method without decorator syntax.
+    const shared = Object.getOwnPropertyDescriptor(Docs.prototype, 'list')!;
+    Controller('/admin')(AdminDocs);
+    Get()(AdminDocs.prototype, 'list', shared);
+    Roles(['admin'])(AdminDocs.prototype, 'list', shared);
+    Controller('/public')(PublicDocs);
+    Get()(PublicDocs.prototype, 'list', shared);
+    Roles([])(PublicDocs.prototype, 'list', shared);
+    for (const controller of [AdminDocs, PublicDocs]) UseGuards(RolesGuard)(controller);
+
+    @Module({ controllers: [AdminDocs, PublicDocs], providers: [RolesGuard] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'silent' });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      // The function cannot say which controller it serves, so the read fails closed.
+      expect((await app.getHonoApp().request('/admin')).status).toBe(500);
+      expect((await app.getHonoApp().request('/public')).status).toBe(500);
+    } finally {
+      errors.mockRestore();
+    }
+    // The execution context still names the controller.
+    expect(seen).toEqual([['admin'], []]);
+    expect(() => new Reflector().get(Roles, Docs.prototype.list)).toThrow(
+      "Reflector cannot read metadata through the handler function 'list'",
+    );
   });
 
   it('resolves string keys set with SetMetadata on handler functions', () => {

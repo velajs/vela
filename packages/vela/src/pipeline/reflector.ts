@@ -61,7 +61,15 @@ function resolveKey(key: MetadataKey<unknown>): string {
 
 // A handler function reads its declaring method's metadata; any other function
 // (a class) reads class metadata, as does metadata defined on the function itself.
+// A function several controllers decorate cannot say which one it serves.
 function readTarget(target: ReflectorTarget, key: string): unknown {
+  if (MetadataRegistry.isAmbiguousHandler(target)) {
+    throw new Error(
+      `Reflector cannot read metadata through the handler function '${target.name}': ` +
+        'several controllers decorate it with their own metadata. Pass the execution ' +
+        'context instead, as in reflector.get(key, context).',
+    );
+  }
   const owner = MetadataRegistry.getHandlerOwner(target);
   const value = owner ? MetadataRegistry.getCustomHandlerMeta(owner[0], owner[1], key) : undefined;
   return value ?? MetadataRegistry.getCustomClassMeta(target, key);

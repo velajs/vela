@@ -75,6 +75,8 @@ interface RegistryState {
   // Handler function -> (declaring class, method name), recorded by
   // SetMetadata, so Reflector reads handler metadata from a function target.
   handlerOwners: WeakMap<object, readonly [Constructor, string | symbol]>;
+  // Handler functions decorated as the method of more than one (class, name).
+  ambiguousHandlers: WeakSet<object>;
 }
 
 function createRegistryState(): RegistryState {
@@ -104,6 +106,7 @@ function createRegistryState(): RegistryState {
     },
     nextDecoratorKey: 0,
     handlerOwners: new WeakMap(),
+    ambiguousHandlers: new WeakSet(),
   };
 }
 
@@ -128,6 +131,7 @@ function registryState(): RegistryState {
   state.handlerMetaIndex ??= new Map();
   state.nextDecoratorKey ??= 0;
   state.handlerOwners ??= new WeakMap();
+  state.ambiguousHandlers ??= new WeakSet();
   return state;
 }
 
@@ -464,9 +468,21 @@ export class MetadataRegistry {
     return this.handlerMeta.get(target)?.get(handler)?.get(key);
   }
 
-  /** Record which class method a handler function is, for function-target metadata reads. */
+  /**
+   * Record which class method a handler function is, for function-target
+   * metadata reads. A function decorated as the method of several classes
+   * (one inherited method decorated per controller) cannot name its owner.
+   */
   static setHandlerOwner(handler: object, owner: Constructor, name: string | symbol): void {
-    registryState().handlerOwners.set(handler, [owner, name]);
+    const state = registryState();
+    const known = state.handlerOwners.get(handler);
+    if (known && (known[0] !== owner || known[1] !== name)) state.ambiguousHandlers.add(handler);
+    state.handlerOwners.set(handler, [owner, name]);
+  }
+
+  /** Whether several (class, method name) pairs decorated this handler function. */
+  static isAmbiguousHandler(handler: object): boolean {
+    return registryState().ambiguousHandlers.has(handler);
   }
 
   /** The (class, method name) a handler function was decorated as, if any. */
