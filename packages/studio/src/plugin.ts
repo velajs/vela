@@ -55,12 +55,22 @@ const COLLECTED = new Set<Token>([
   APP_MIDDLEWARE,
 ]);
 
+/** The token a provider registers under. */
+export function providerToken(provider: Type | ProviderDefinition): Token {
+  return typeof provider === 'function' ? provider : provider.provide;
+}
+
 /**
- * The plugins of one StudioModule, each name once. Two plugins providing the
- * same token (two time-travel tiers binding `TIME_TRAVEL_PORT`) fail, since the
- * later registration would silently replace the earlier.
+ * The plugins of one StudioModule, each name once. A plugin providing one of
+ * StudioModule's own tokens (`reserved`), or a token another plugin provides
+ * (two time-travel tiers binding `TIME_TRAVEL_PORT`), fails, since the later
+ * registration would silently replace the earlier.
  */
-export function collectStudioPlugins(plugins: readonly StudioPlugin[] | undefined): StudioPlugin[] {
+export function collectStudioPlugins(
+  plugins: readonly StudioPlugin[] | undefined,
+  reserved: readonly Token[] = [],
+): StudioPlugin[] {
+  const core = new Set(reserved);
   const names = new Set<string>();
   const owners = new Map<Token, string>();
   return (plugins ?? []).map((plugin) => {
@@ -70,8 +80,14 @@ export function collectStudioPlugins(plugins: readonly StudioPlugin[] | undefine
     }
     names.add(checked.name);
     for (const provider of checked.providers ?? []) {
-      const token: Token = typeof provider === 'function' ? provider : provider.provide;
+      const token = providerToken(provider);
       if (COLLECTED.has(token)) continue;
+      if (core.has(token)) {
+        throw new TypeError(
+          `Studio plugin '${checked.name}' provides ${describeToken(token)}, which StudioModule ` +
+            'provides itself; a panel cannot replace it.',
+        );
+      }
       const owner = owners.get(token);
       if (owner !== undefined && owner !== checked.name) {
         throw new TypeError(

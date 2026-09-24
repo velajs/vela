@@ -13,7 +13,7 @@ import { Container, ROOT_MODULE } from '@velajs/vela/module-kit';
 import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
 import { resolveStudioConfig, StudioEnvReader } from './studio.config';
 import type { StudioModuleOptions } from './studio.types';
-import { collectStudioPlugins } from './plugin';
+import { collectStudioPlugins, providerToken } from './plugin';
 import { ADMIN_AUDIT_SINK, STUDIO_RESOLVED_CONFIG } from './tokens';
 import type { AdminAuditSink } from './tokens';
 import { AdminSubTokenSigner } from './security/sub-token.signer';
@@ -51,8 +51,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
   // configuration fails bootstrap instead of mounting another surface.
   key: () => 'application',
   setup: ({ OPTIONS, options }) => {
-    const plugins = collectStudioPlugins(options.plugins);
-    const providers: Array<Type | ProviderDefinition> = [
+    const core: Array<Type | ProviderDefinition> = [
       // Env-derived config slice (reads VELA_STUDIO_* from the optional ENV).
       StudioEnvReader,
       // Resolved config = env UNDER module options; OpenAPI documents the
@@ -110,14 +109,15 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
       // NDJSON ingest). Registered unconditionally against STUDIO_MODEL_SOURCE;
       // each reports FEATURE_UNCONFIGURED until a source is bound.
       StudioTransferOps,
-      // Each panel's ops and ports, in this module's scope: they inject the
-      // signers, buffers and resolved config above directly.
-      ...plugins.flatMap((plugin) => plugin.providers ?? []),
     ];
+    // A panel never replaces these: providing one of their tokens fails here.
+    const plugins = collectStudioPlugins(options.plugins, [OPTIONS, ...core.map(providerToken)]);
 
     return {
       imports: plugins.flatMap((plugin) => plugin.imports ?? []),
-      providers,
+      // Each panel's ops and ports, in this module's scope: they inject the
+      // signers, buffers and resolved config above directly.
+      providers: [...core, ...plugins.flatMap((plugin) => plugin.providers ?? [])],
       controllers: [StudioAdminController],
       exports: [
         STUDIO_RESOLVED_CONFIG,

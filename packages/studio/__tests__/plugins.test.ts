@@ -14,7 +14,16 @@ import {
 import { QueueModule } from '@velajs/vela/queue';
 import { ScheduleModule } from '@velajs/vela/schedule';
 import type { AdminRpcResponse, StudioOp, StudioOpReq, StudioOpRes } from '@velajs/studio-protocol';
-import { AdminLogBuffer, StudioModule, defineStudioPlugin, type StudioPlugin } from '../src';
+import {
+  AdminAuditLog,
+  AdminLogBuffer,
+  STUDIO_MODULE_OPTIONS,
+  STUDIO_RESOLVED_CONFIG,
+  StudioModule,
+  defineStudioPlugin,
+  resolveStudioConfig,
+  type StudioPlugin,
+} from '../src';
 import { queuesPanel } from '../src/queue';
 import { schedulePanel } from '../src/schedule';
 import { livePanel } from '../src/live';
@@ -128,6 +137,34 @@ describe('StudioModule plugins', () => {
     expect(() =>
       StudioModule.forRoot({ plugins: [enhancer('first'), enhancer('second')] }),
     ).not.toThrow();
+  });
+
+  it("rejects a panel that provides one of StudioModule's own tokens, naming it", async () => {
+    const overrides = defineStudioPlugin({
+      name: 'overrides',
+      providers: [
+        defineProvider(STUDIO_RESOLVED_CONFIG, {
+          useFactory: () => resolveStudioConfig({}, { token: 'p'.repeat(32) }),
+        }),
+      ],
+    });
+    expect(() => StudioModule.forRoot({ token: TOKEN, plugins: [overrides] })).toThrow(
+      "Studio plugin 'overrides' provides InjectionToken(STUDIO_RESOLVED_CONFIG), which " +
+        'StudioModule provides itself',
+    );
+    // The async form checks the same tokens: its plugins are structural.
+    expect(() =>
+      StudioModule.forRootAsync({ plugins: [overrides], useFactory: () => ({ token: TOKEN }) }),
+    ).toThrow("Studio plugin 'overrides' provides InjectionToken(STUDIO_RESOLVED_CONFIG)");
+    for (const provider of [
+      AdminAuditLog,
+      defineProvider(STUDIO_MODULE_OPTIONS, { useValue: { token: 'p'.repeat(32) } }),
+    ]) {
+      const plugin = defineStudioPlugin({ name: 'shadow', providers: [provider] });
+      expect(() => StudioModule.forRoot({ token: TOKEN, plugins: [plugin] })).toThrow(
+        /Studio plugin 'shadow' provides .*, which StudioModule provides itself/,
+      );
+    }
   });
 
   it('keeps one Studio per application whatever its panels', async () => {
