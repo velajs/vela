@@ -30,6 +30,7 @@ const countResult = {
 
 const syncCount = defineLiveQuery({ name: 'sync', args: idArgs, result: countResult });
 const asyncCount = defineLiveQuery({ name: 'async', args: idArgs, result: countResult });
+const scopedCount = defineLiveQuery({ name: 'scoped', args: idArgs, result: countResult });
 
 export class CheckedResolver {
   @LiveQuery(syncCount, {
@@ -37,6 +38,12 @@ export class CheckedResolver {
     coalesceBy: (args, context) => `${args.id}:${context.clientId}`,
   })
   sync(args: { id: string }, _context: LiveQueryContext): { count: number } {
+    return { count: args.id.length };
+  }
+
+  // Tags may derive from the subscribing gateway, whose rooms can share ids with another's.
+  @LiveQuery(scopedCount, { tags: (args, context) => [`${context.path}#${args.id}`] })
+  async gatewayScoped(args: { id: string }): Promise<{ count: number }> {
     return { count: args.id.length };
   }
 

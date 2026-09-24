@@ -71,7 +71,8 @@ export function LiveQuery<Name extends string, Args, Result>(
         return {
           input,
           args,
-          tags: () => (typeof options.tags === 'function' ? options.tags(args) : options.tags),
+          tags: (context: LiveQueryContext) =>
+            typeof options.tags === 'function' ? options.tags(args, context) : options.tags,
           ...(coalesceBy === undefined
             ? {}
             : {

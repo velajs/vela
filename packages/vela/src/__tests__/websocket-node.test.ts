@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VelaFactory, Module } from '../index.js';
+import { VelaFactory, Module, Inject } from '../index.js';
 import {
   WebSocketModule,
   WebSocketGateway,
@@ -11,12 +11,14 @@ import {
   WS_ROOM_REGISTRY,
   InMemoryRoomRegistry,
   Gateways,
+  WS_SERVER,
 } from '../websocket/index.js';
 import type {
   WsClient,
   WsServer,
   BroadcastCommand,
   OnGatewayConnection,
+  OnGatewayInit,
   UpgradeAuthenticator,
   WebSocketUpgradeAuthenticationContext,
   WebSocketUpgradeIdentity,
@@ -291,6 +293,75 @@ describe('registerWebSocketGateways', () => {
       { event: 'message', data: 'hi' },
     ]);
     expect(adminWs.sent).toHaveLength(1);
+    await app.close();
+  });
+
+  it("keeps each gateway's @WebSocketServer() pushes to its own sockets when gateways share a room id", async () => {
+    // A shared base constructor: each gateway that inherits it still gets its own server.
+    abstract class OrgGateway {
+      constructor(@WebSocketServer() readonly server: WsServer) {}
+    }
+    @WebSocketGateway({
+      path: '/admin/:org/ws',
+      roomParam: 'org',
+      authenticator: TestUpgradeAuthenticator,
+    })
+    class AdminGateway extends OrgGateway {}
+    @WebSocketGateway({
+      path: '/chat/:org/ws',
+      roomParam: 'org',
+      authenticator: TestUpgradeAuthenticator,
+    })
+    class ChatGateway extends OrgGateway implements OnGatewayInit {
+      initServer?: WsServer;
+      afterInit(server: WsServer) {
+        this.initServer = server;
+      }
+    }
+    @WebSocketGateway({
+      path: '/support/:org/ws',
+      roomParam: 'org',
+      authenticator: TestUpgradeAuthenticator,
+    })
+    class SupportGateway {
+      constructor(@Inject(WS_SERVER) readonly server: WsServer) {}
+    }
+    @Module({
+      imports: [WebSocketModule.forRoot()],
+      providers: [AdminGateway, ChatGateway, SupportGateway],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+    const orgContext = (path: string) => ({
+      req: {
+        raw: new Request(`http://localhost${path}`),
+        param: (name: string) => (name === 'org' ? 'org-1' : undefined),
+      },
+    });
+    const sockets = [new FakeWSContext(), new FakeWSContext(), new FakeWSContext()] as const;
+    const [adminWs, chatWs, supportWs] = sockets;
+    const paths = ['/admin/org-1/ws', '/chat/org-1/ws', '/support/org-1/ws'];
+    for (const [index, ws] of sockets.entries()) {
+      const events = await captured[index](orgContext(paths[index]));
+      events.onOpen?.(new Event('open'), ws as unknown as WSContext);
+    }
+    await tick();
+    const received = (ws: FakeWSContext) => ws.sent.map((frame) => JSON.parse(frame));
+
+    await app.get(ChatGateway).server.to('org-1').emit('chat', 'hi');
+    await app.get(AdminGateway).server.emit('audit', { action: 'granted' });
+    await app.get(ChatGateway).initServer?.emit('hello');
+    await app.get(SupportGateway).server.in('org-1').emit('ticket', 7);
+    expect(received(chatWs)).toEqual([{ event: 'chat', data: 'hi' }, { event: 'hello' }]);
+    expect(received(adminWs)).toEqual([{ event: 'audit', data: { action: 'granted' } }]);
+    expect(received(supportWs)).toEqual([{ event: 'ticket', data: 7 }]);
+
+    // The module's server, injected outside a gateway, addresses every gateway's sockets.
+    await app.get(WS_SERVER).to('org-1').emit('all', 1);
+    for (const ws of sockets) expect(received(ws).at(-1)).toEqual({ event: 'all', data: 1 });
     await app.close();
   });
 

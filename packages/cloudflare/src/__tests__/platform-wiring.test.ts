@@ -184,12 +184,12 @@ describe('Cloudflare WebSocket platform wiring', () => {
 
     const app = await createCloudflareApp(App, { env: {} });
     try {
-      const server = app.get(RoomsGateway).server;
-      expect(server).toBe(app.get(WS_SERVER));
       // Sockets live in each room's Durable Object: pushes point at Gateways.
       const guidance = /gateways\.of\(Gateway\)\.to\(room\)\.emit\(event, data\)/;
-      expect(() => server.to('general')).toThrow(guidance);
-      expect(() => server.emit('ping')).toThrow(guidance);
+      for (const server of [app.get(RoomsGateway).server, app.get(WS_SERVER)]) {
+        expect(() => server.to('general')).toThrow(guidance);
+        expect(() => server.emit('ping')).toThrow(guidance);
+      }
     } finally {
       await app.close();
     }
@@ -349,9 +349,12 @@ describe('Cloudflare WebSocket platform wiring', () => {
       });
       ctx.acceptWebSocket(ws, ['room:room-1']);
 
-      expect(runtime.container.resolve(ChatGateway).server).toBe(runtime.server);
-      await runtime.server.to('room-1').emit('hello', 1);
-      expect(ws.sent.map((frame) => JSON.parse(frame))).toEqual([{ event: 'hello', data: 1 }]);
+      await runtime.container.resolve(ChatGateway).server.to('room-1').emit('hello', 1);
+      await runtime.server.to('room-1').emit('again', 2);
+      expect(ws.sent.map((frame) => JSON.parse(frame))).toEqual([
+        { event: 'hello', data: 1 },
+        { event: 'again', data: 2 },
+      ]);
     } finally {
       await runtime.close();
     }

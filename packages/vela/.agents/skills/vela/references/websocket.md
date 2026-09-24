@@ -16,7 +16,8 @@ import type { WsClient, WsServer, OnGatewayConnection } from '@velajs/vela/webso
 
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway implements OnGatewayConnection {
-  @WebSocketServer() private readonly server!: WsServer;   // sugar for @Inject(WS_SERVER)
+  // Constructor injection only; sugar for @Inject(WS_SERVER). This gateway's own server.
+  constructor(@WebSocketServer() private readonly server: WsServer) {}
 
   handleConnection(client: WsClient) {
     client.join('lobby');
@@ -35,14 +36,14 @@ class ChatGateway implements OnGatewayConnection {
 - Upgrades fail closed until the gateway names `authenticator: SomeAuthenticator`, a class implementing `UpgradeAuthenticator` (`authenticate(request, { gatewayPath, room, ticket? })` → `{ principal, tenantId, expiresAtMs }` or `false`). Each application resolves it once through DI from the module that declares the gateway, so it may inject that module's providers. Ready-made: `BetterAuthUpgradeAuthenticator` (`@velajs/better-auth`, tenant from the active organization or a `BETTER_AUTH_UPGRADE_TENANT` resolver) and `CloudflareAccessUpgradeAuthenticator` (`@velajs/cloudflare-access/vela`). `allowedOrigins` takes origins or `(env) => origins`, read from `ENV` once per application; there is no closure-based authentication option.
 - `@SubscribeMessage(event)` — handler for an inbound message event (stackable).
 - `@MessageBody()` injects an unknown wire payload; validate it with a pipe or schema before use; `@ConnectedSocket()` injects the `WsClient`. With no param decorators a handler receives `(client, data)` positionally.
-- `@WebSocketServer()` injects the `WsServer` for broadcasting to the sockets of the current isolate. To push from anywhere else (HTTP handlers, queue consumers, crons, another gateway), inject `Gateways`.
+- `@WebSocketServer()` (or `@Inject(WS_SERVER)` in a gateway's constructor, declared or inherited) injects the gateway's own `WsServer`: its broadcasts carry the gateway path and reach only this gateway's sockets in the current isolate, even when another gateway uses the same room id; `afterInit(server)` receives the same server. `WS_SERVER` injected outside a gateway addresses every gateway's sockets. To push from anywhere else (HTTP handlers, queue consumers, crons, another gateway), inject `Gateways`.
 - Returning a `WsResponse` (`{ event, data }`) frames a reply to the sender.
 
 Gateway lifecycle interfaces: `OnGatewayInit` (`afterInit(server)`), `OnGatewayConnection` (`handleConnection(client)`), `OnGatewayDisconnect` (`handleDisconnect(client)`).
 
 ## Server, clients & rooms
 
-`WsServer` (from `@WebSocketServer()`): `emit(event, data?)` broadcasts to everyone; `to(room)` / `in(room)` / `except(room)` return a chainable `BroadcastOperator` whose terminal `emit(event, data?)` targets rooms.
+`WsServer` (from `@WebSocketServer()`): `emit(event, data?)` broadcasts to every socket of the gateway; `to(room)` / `in(room)` / `except(room)` return a chainable `BroadcastOperator` whose terminal `emit(event, data?)` targets rooms.
 
 `WsClient`: `readonly path?` (the gateway route it connected through), `readonly rooms`, `join(room)` / `leave(room)`, `send(event, data?, id?)`, `close(code?, reason?)`, `commit()` (persist data/room changes — required for Cloudflare hibernation), `readonly raw`.
 
@@ -77,7 +78,7 @@ import { WebSocketModule } from '@velajs/vela/websocket';
 class AppModule {}
 ```
 
-`WebSocketModuleOptions`: `sync?` (cross-instance broadcast driver — defaults to `local()` for a single instance) and `registry?` (room registry — defaults to in-memory). Use a real sync driver for horizontal scale (Redis on Node, native per-room Durable Objects on Cloudflare). `WebSocketModule` stays eager; transport discovery reads owner-bearing metadata without constructing request gateways.
+`WebSocketModuleOptions`: `sync?` (cross-instance broadcast driver — defaults to `local()` for a single instance) and `registry?` (room registry — defaults to in-memory). Use a real sync driver for horizontal scale (Redis on Node, native per-room Durable Objects on Cloudflare). A custom `registry` must skip sockets whose `WsClient.path` differs from `cmd.gatewayPath` in `deliverLocal`, or gateway pushes leak across gateways that share a room id. Upgrade every `redis()` instance together: older instances ignore `gatewayPath` and deliver to every gateway's sockets in the room. `WebSocketModule` stays eager; transport discovery reads owner-bearing metadata without constructing request gateways.
 
 Each handler invocation gets a managed child with the gateway's module owner;
 scoped guards/components and asynchronous providers use that child. Guards run

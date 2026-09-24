@@ -388,7 +388,7 @@ export class LiveEngine
             client.close(1008, 'presence room not joined');
             return;
           }
-          this.presence.beat(frame.room, client.id, frame.meta);
+          this.presence.beat(path, frame.room, client.id, frame.meta);
         }
         return;
     }
@@ -431,7 +431,7 @@ export class LiveEngine
       const registered = this.queries.get(record.query);
       if (!registered) throw new Error('unknown persisted live query');
       const prepared = registered.prepare(record.args);
-      const tags = prepared.tags();
+      const tags = prepared.tags(this.liveQueryContext(record, client, path));
       this.assertTags(tags, 'restored subscription');
       const restored: SubscriptionRecord = {
         sub: record.sub,
@@ -527,7 +527,7 @@ export class LiveEngine
     const identity = (this.options.identity ?? defaultIdentity)(client);
     let tags: string[];
     try {
-      tags = prepared.tags();
+      tags = prepared.tags(this.liveQueryContext({ identity }, client, path));
       this.assertTags(tags, `subscription '${frame.query}'`);
     } catch (err) {
       resolveErrorReporter(this.container).report(err, {
@@ -759,11 +759,16 @@ export class LiveEngine
     }
   }
 
-  private liveQueryContext(record: SubscriptionRecord, client: WsClient): LiveQueryContext {
+  private liveQueryContext(
+    record: Pick<SubscriptionRecord, 'identity'>,
+    client: WsClient,
+    path = this.connections.get(client.id)?.path ?? '',
+  ): LiveQueryContext {
     return {
       identity: record.identity,
       clientId: client.id,
       rooms: [...client.rooms],
+      path,
     };
   }
 

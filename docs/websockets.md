@@ -52,6 +52,7 @@ const chatMessage = z.object({ text: z.string().min(1).max(2000) });
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Constructor injection only (the DI container has no property-injection pass).
+  // This gateway's own server: its pushes reach only ChatGateway's sockets.
   constructor(@WebSocketServer() private readonly server: WsServer) {}
 
   handleConnection(client: WsClient) {
@@ -163,23 +164,31 @@ interface WsClient<TData = Record<string, unknown>> {
 }
 
 interface WsServer {                         // injected via @WebSocketServer()
-  emit(event: string, data?: unknown): void | Promise<void>;   // everyone (global)
+  emit(event: string, data?: unknown): void | Promise<void>;   // every socket of the gateway
   to(room: string): BroadcastOperator;       // one room (chainable)
   in(room: string): BroadcastOperator;       // alias of to()
-  except(room: string): BroadcastOperator;   // everyone not in room
+  except(room: string): BroadcastOperator;   // every socket of the gateway not in room
 }
 // BroadcastOperator: .to(room).in(room).except(room).emit(event, data)
 ```
 
 Broadcasting builds a serializable `BroadcastCommand` (`{ rooms, exceptRooms?, exceptIds?, gatewayPath?, frame }`) handed to the active sync driver — so the same gateway code runs single-instance, on Cloudflare (Durable Object), or on Node with Redis, unchanged.
 
+A gateway's `@WebSocketServer()` (or `@Inject(WS_SERVER)` in its constructor,
+declared or inherited from a base class) is that gateway's own server: every
+broadcast carries the gateway's path and is bounded by its `maxFrameBytes`, so
+it reaches only the sockets connected through that gateway, even when another
+gateway has a room with the same id. `afterInit(server)` receives the same
+server. `WS_SERVER` injected outside a gateway addresses every gateway's
+sockets; push to one gateway's rooms with `Gateways` instead.
+
 ---
 
 ## Server push from anywhere: `Gateways`
 
-`@WebSocketServer()` reaches the sockets of the isolate it runs in. To push to
-a gateway's rooms from an HTTP handler, a queue consumer, a cron job or
-another gateway, inject `Gateways` (provided and exported by
+A gateway's `@WebSocketServer()` reaches its own sockets in the isolate it
+runs in. To push to a gateway's rooms from an HTTP handler, a queue consumer, a
+cron job or another gateway, inject `Gateways` (provided and exported by
 `WebSocketModule`) and name the gateway class. An explicit event map types
 each push:
 
@@ -227,8 +236,12 @@ omit it). Without a type argument, any event and payload are accepted.
 - A push reaches only that gateway's sockets, on every runtime. Two gateways
   may use the same room id, such as an organization id: a push to one
   gateway's room never reaches the other gateway's sockets. The push's
-  `BroadcastCommand` carries the gateway path, and each room registry skips
-  sockets whose `WsClient.path` differs.
+  `BroadcastCommand` carries the gateway path, and the in-memory and Durable
+  Object room registries skip sockets whose `WsClient.path` differs. A custom
+  `RoomRegistry` passed to `WebSocketModule.forRoot({ registry })` must apply
+  the same filter in `deliverLocal`: one that ignores `cmd.gatewayPath`
+  delivers every gateway-scoped push and broadcast to all gateways' sockets in
+  the named rooms.
 - Each push is bounded by that gateway's `maxFrameBytes` (default 64 KiB)
   before anything is resolved or sent.
 - `emit()` without a room and `except()` throw with guidance: sockets live
@@ -529,7 +542,12 @@ WebSocketModule.forRoot({
 });
 ```
 
-Delivery guarantees (honest): at-most-once, no ordering across publishers, no replay. The driver delivers locally first, then fans the command out on one broadcast channel; each instance filters to its own local room members and drops its own echo.
+Delivery guarantees (honest): at-most-once, no ordering across publishers, no replay. The driver delivers locally first, then fans the command out on one broadcast channel; each instance filters to its own local room members and the command's gateway, and drops its own echo.
+
+Upgrade every instance together. Instances running a release before gateway
+scoping ignore a command's `gatewayPath`, so during a rolling upgrade a
+gateway's push or broadcast reaches every gateway's sockets in the named rooms
+on the instances that have not upgraded yet.
 
 ---
 

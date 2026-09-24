@@ -207,7 +207,7 @@ describe('LiveModule (tag-based live queries)', () => {
     snapshot.subscriptions[0]!.tags.push('outside');
     expect(engine.inspect().subscriptions[0]!.tags).toEqual(['todos:l1']);
     const presence = app.get(PresenceService);
-    presence.beat('l1', client.id, { secret: 'private metadata' });
+    presence.beat('/rooms/:id/ws', 'l1', client.id, { secret: 'private metadata' });
     expect(engine.inspect().rooms).toEqual([{ room: 'l1', count: 1, members: ['c1'] }]);
     presence.reap(client.id);
     await dispatch(JSON.stringify({ event: '$live', data: { t: 'unsub', sub: 's1' } }));
@@ -749,7 +749,7 @@ describe('LiveModule (tag-based live queries)', () => {
       }),
     );
 
-    expect(app.get(PresenceService).roster('lobby')).toEqual([]);
+    expect(app.get(PresenceService).roster('/rooms/:id/ws', 'lobby')).toEqual([]);
   });
 
   it('rejects presence heartbeats and roster reads outside joined rooms', async () => {
@@ -763,7 +763,7 @@ describe('LiveModule (tag-based live queries)', () => {
     );
 
     expect(client.closed).toEqual({ code: 1008, reason: 'presence room not joined' });
-    expect(app.get(PresenceService).roster('foreign')).toEqual([]);
+    expect(app.get(PresenceService).roster('/rooms/:id/ws', 'foreign')).toEqual([]);
 
     const watcher = new FakeClient('foreign-watcher');
     watcher.rooms.add('lobby');
@@ -776,6 +776,60 @@ describe('LiveModule (tag-based live queries)', () => {
     expect(watcher.live()).toContainEqual(
       expect.objectContaining({ t: 'error', sub: 'p-foreign', fatal: true }),
     );
+  });
+
+  it('keeps presence rosters per gateway when gateways share a room id', async () => {
+    @WebSocketGateway({ path: '/admin' })
+    class AdminGateway {}
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [AdminGateway, ChatGateway],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const dispatcher = app.get(WsDispatcher);
+      const engine = app.get(LiveEngine);
+      const presence = app.get(PresenceService);
+      const beat = (name: string) =>
+        JSON.stringify({ event: '$live', data: { t: 'presence', room: 'org-1', meta: { name } } });
+      const admin = new FakeClient('admin');
+      const chat = new FakeClient('chat');
+      admin.rooms.add('org-1');
+      chat.rooms.add('org-1');
+      await dispatcher.handleOpen('/admin', admin);
+      await dispatcher.handleOpen('/chat', chat);
+      await dispatcher.dispatchMessage(
+        '/chat',
+        chat,
+        subFrame('roster', PRESENCE_ROSTER_QUERY, { room: 'org-1' }),
+      );
+      expect(chat.live()[1]).toMatchObject({ t: 'data', snapshot: [] });
+      chat.clear();
+
+      // Another gateway's heartbeat in a room with the same id is not this roster's concern.
+      await dispatcher.dispatchMessage('/admin', admin, beat('admin'));
+      await engine.whenIdle();
+      expect(chat.live()).toEqual([]);
+      expect(presence.roster('/chat', 'org-1')).toEqual([]);
+      expect(presence.roster('/admin', 'org-1')).toEqual([
+        expect.objectContaining({ id: 'admin', meta: { name: 'admin' } }),
+      ]);
+
+      await dispatcher.dispatchMessage('/chat', chat, beat('chat'));
+      await engine.whenIdle();
+      expect(chat.live()).toEqual([
+        expect.objectContaining({ t: 'data', snapshot: [expect.objectContaining({ id: 'chat' })] }),
+      ]);
+      expect(engine.inspect().rooms).toEqual([
+        { room: 'org-1', count: 2, members: ['admin', 'chat'] },
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('drops live subscriptions when the socket closes', async () => {

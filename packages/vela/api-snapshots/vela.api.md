@@ -2919,10 +2919,12 @@ interface LiveQueryContext {
   clientId: string;
 
   rooms: string[];
+
+  path: string;
 }
 interface LiveQueryOptions<A = unknown> {
 
-  tags: string[] | ((args: A) => string[]);
+  tags: string[] | ((args: A, context: LiveQueryContext) => string[]);
 
   key?: string;
 
@@ -2941,7 +2943,7 @@ interface LiveQueryMetadata {
 interface PreparedLiveQuery {
   readonly input: unknown;
   readonly args: unknown;
-  tags(): string[];
+  tags(context: LiveQueryContext): string[];
   coalesceBy?: (context: LiveQueryContext) => string | undefined;
   invoke(instance: unknown, context: LiveQueryContext): unknown | Promise<unknown>;
 }
@@ -3070,7 +3072,7 @@ declare function LiveQuery<Name extends string, Args, Result>(definition: LiveQu
 
 declare function getLiveQueries(resolverClass: object): LiveQueryMetadata[];
 
-declare const presenceTag: (room: string) => string;
+declare const presenceTag: (gatewayPath: string, room: string) => string;
 
 declare const PRESENCE_ROSTER_QUERY = "$presence.roster";
 
@@ -3090,16 +3092,18 @@ declare class PresenceService {
   constructor(ttlMs?: number, enabled?: boolean);
 
   bindInvalidator(invalidator: (tags: string[]) => void): void;
-  beat(room: string, clientId: string, meta?: unknown): void;
+  beat(gatewayPath: string, room: string, clientId: string, meta?: unknown): void;
 
   reap(clientId: string): void;
-  roster(room: string): PresenceMember[];
+
+  roster(gatewayPath: string, room: string): PresenceMember[];
 
   inspectRooms(): Array<{
     room: string;
     count: number;
     members: string[];
   }>;
+  private alive;
 }
 
 declare class PresenceResolver {
@@ -3307,6 +3311,9 @@ declare class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypo
   #private;
   constructor(container: Container, discovery: DiscoveryService, server?: WsServer, routeManager?: RouteManager);
 
+  private gatewayServer;
+  private connectGatewayServers;
+
   get gatewayPaths(): string[];
 
   getGatewayMaxFrameBytes(path: string): number | undefined;
@@ -3429,7 +3436,8 @@ declare class BroadcastOperatorImpl implements BroadcastOperator {
   private readonly rooms;
   private readonly exceptRooms;
   private readonly exceptIds;
-  constructor(driver: SyncDriver, maxFrameBytes?: () => number, rooms?: Set<string>, exceptRooms?: Set<string>, exceptIds?: Set<string>);
+  private readonly gatewayPath?;
+  constructor(driver: SyncDriver, maxFrameBytes?: () => number, rooms?: Set<string>, exceptRooms?: Set<string>, exceptIds?: Set<string>, gatewayPath?: string | undefined);
   to(room: string): this;
   in(room: string): this;
   except(room: string): this;
@@ -3438,14 +3446,18 @@ declare class BroadcastOperatorImpl implements BroadcastOperator {
 
 declare class WsServerImpl implements WsServer {
   private readonly driver;
+  private readonly gatewayPath?;
   private maxFrameBytes;
   private hasGatewayLimit;
-  constructor(driver: SyncDriver);
+
+  constructor(driver: SyncDriver, gatewayPath?: string | undefined);
   setOutboundFrameLimit(maxFrameBytes: number): void;
+  forGateway(gatewayPath: string, maxFrameBytes: number): WsServer;
   emit(event: string, data?: unknown): void | Promise<void>;
   to(room: string): BroadcastOperator;
   in(room: string): BroadcastOperator;
   except(room: string): BroadcastOperator;
+  private operator;
 }
 
 declare function buildWsExecutionContext(client: WsClient, data: unknown, controller: Type, handlerName: string | symbol, pattern: string, moduleId?: string, container?: Container): WsExecutionContext;
@@ -4798,6 +4810,8 @@ interface WsServer {
   except(room: string): BroadcastOperator;
   /** @internal */
   setOutboundFrameLimit?(maxFrameBytes: number): void;
+
+  forGateway?(gatewayPath: string, maxFrameBytes: number): WsServer;
 }
 
 interface WsExecutionContext extends ExecutionContext {

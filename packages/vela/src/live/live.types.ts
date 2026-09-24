@@ -20,17 +20,23 @@ export interface LiveQueryContext {
   clientId: string;
   /** Rooms the connection was in when it subscribed. */
   rooms: string[];
+  /**
+   * The route path of the gateway the connection subscribed through. Rooms
+   * of different gateways may share an id; the path tells them apart.
+   */
+  path: string;
 }
 
 export interface LiveQueryOptions<A = unknown> {
   /**
    * Dependency tags this query's result is built from — the invalidation
    * contract. Static for the common case; the function form derives
-   * per-entity tags from the (parsed) subscribe args. Writes invalidate tags
-   * via `LiveInvalidation.invalidate()` (the CRUD bridge does it
-   * automatically with `crud:<table>` tags).
+   * per-entity tags from the (parsed) subscribe args and the subscribing
+   * connection's context. Writes invalidate tags via
+   * `LiveInvalidation.invalidate()` (the CRUD bridge does it automatically
+   * with `crud:<table>` tags).
    */
-  tags: string[] | ((args: A) => string[]);
+  tags: string[] | ((args: A, context: LiveQueryContext) => string[]);
   /** Key field for incremental list deltas (default `'id'`). */
   key?: string;
   /**
@@ -60,7 +66,7 @@ export interface LiveQueryMetadata {
 export interface PreparedLiveQuery {
   readonly input: unknown;
   readonly args: unknown;
-  tags(): string[];
+  tags(context: LiveQueryContext): string[];
   coalesceBy?: (context: LiveQueryContext) => string | undefined;
   invoke(instance: unknown, context: LiveQueryContext): unknown | Promise<unknown>;
 }

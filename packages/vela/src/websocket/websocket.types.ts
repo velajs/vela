@@ -59,7 +59,12 @@ export interface BroadcastOperator {
   emit(event: string, data?: unknown): void | Promise<void>;
 }
 
-/** The server handle injected via `@WebSocketServer()`. Server-origin broadcasts never exclude anyone. */
+/**
+ * The server handle injected via `@WebSocketServer()`. Server-origin
+ * broadcasts never exclude anyone. A gateway's server reaches only the
+ * sockets connected through that gateway; `WS_SERVER` injected outside a
+ * gateway addresses every gateway's sockets.
+ */
 export interface WsServer {
   emit(event: string, data?: unknown): void | Promise<void>;
   to(room: string): BroadcastOperator;
@@ -67,6 +72,12 @@ export interface WsServer {
   except(room: string): BroadcastOperator;
   /** @internal Set by gateway discovery to bound cross-instance commands. */
   setOutboundFrameLimit?(maxFrameBytes: number): void;
+  /**
+   * The server one gateway injects: every push carries `gatewayPath` (see
+   * `BroadcastCommand.gatewayPath`) and is bounded by the gateway's
+   * `maxFrameBytes`. Without it, each gateway injects this server as is.
+   */
+  forGateway?(gatewayPath: string, maxFrameBytes: number): WsServer;
 }
 
 /** An `ExecutionContext` whose transport is a WebSocket gateway. `switchToWs()` is guaranteed present. */
@@ -347,8 +358,13 @@ export interface BroadcastCommand {
   exceptIds?: string[];
   /**
    * Deliver only to sockets that connected through this gateway path
-   * (`WsClient.path`). `Gateways` sets it on every push, so rooms that share
-   * an id across gateways stay separate on every runtime.
+   * (`WsClient.path`). `Gateways` sets it on every push and a gateway's
+   * `@WebSocketServer()` on every broadcast, so rooms that share an id across
+   * gateways stay separate. A `RoomRegistry` must skip sockets of other paths
+   * (the in-memory and Durable Object registries do); one that ignores the
+   * field delivers the command to every gateway's sockets in its rooms. A
+   * command without it (`WS_SERVER` injected outside a gateway) addresses
+   * every gateway's sockets.
    */
   gatewayPath?: string;
   /** The exact bytes written to each socket: `JSON.stringify({ event, data })`. */

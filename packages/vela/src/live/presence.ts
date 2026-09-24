@@ -6,10 +6,14 @@ import type { LiveQueryContext } from './live.types';
 
 const encoder = new TextEncoder();
 
-/** The invalidation tag for one room's roster. `$`-prefixed: never collides with app tags. */
-export const presenceTag = (room: string): string => {
+/**
+ * The invalidation tag for one gateway room's roster. `$`-prefixed: never
+ * collides with app tags. The gateway path keeps rooms that share an id
+ * across gateways apart.
+ */
+export const presenceTag = (gatewayPath: string, room: string): string => {
   assertWebSocketRoomId(room);
-  return `$presence:${room}`;
+  return `$presence:${JSON.stringify([gatewayPath, room])}`;
 };
 
 /** The built-in roster query name (`useLiveQuery`-able like any app query). */
@@ -63,21 +67,25 @@ const presenceRosterDefinition = defineLiveQuery({
 });
 
 interface RoomState {
+  room: string;
   members: Map<string, { meta?: unknown; lastSeen: number }>;
 }
 
 /**
  * The presence preset's server half. Heartbeats arrive as `{ t: 'presence' }`
  * frames on the live socket (routed here by the engine); the roster is a
- * built-in live query invalidated per room. Departure is immediate: the WS
- * close hook reaps the member without waiting out the TTL. Staleness (an
- * ungraceful drop the transport never noticed) is filtered AT READ TIME —
+ * built-in live query invalidated per gateway room. Departure is immediate:
+ * the WS close hook reaps the member without waiting out the TTL. Staleness
+ * (an ungraceful drop the transport never noticed) is filtered AT READ TIME —
  * no timers, per the edge rules (`setInterval` is forbidden).
  *
- * Scope note: the roster lives in this log scope (one process on node, one
- * room-DO on Cloudflare — where it is exactly the room's roster).
+ * A roster belongs to one gateway room: the gateway's path and the room id,
+ * so gateways whose rooms share an id keep separate rosters. It lives in this
+ * log scope (one process on node, one room-DO on Cloudflare — where it is
+ * exactly the room's roster).
  */
 export class PresenceService {
+  // Keyed by presenceTag(gatewayPath, room): one entry per gateway room.
   private readonly rooms = new Map<string, RoomState>();
   private readonly roomsByClient = new Map<string, Set<string>>();
   private invalidator?: (tags: string[]) => void;
@@ -96,9 +104,9 @@ export class PresenceService {
     this.invalidator = invalidator;
   }
 
-  beat(room: string, clientId: string, meta?: unknown): void {
+  beat(gatewayPath: string, room: string, clientId: string, meta?: unknown): void {
     if (!this.enabled) return;
-    assertWebSocketRoomId(room);
+    const key = presenceTag(gatewayPath, room);
     if (meta !== undefined) {
       let serialized: string | undefined;
       try {
@@ -115,10 +123,10 @@ export class PresenceService {
         );
       }
     }
-    let state = this.rooms.get(room);
+    let state = this.rooms.get(key);
     if (!state) {
-      state = { members: new Map() };
-      this.rooms.set(room, state);
+      state = { room, members: new Map() };
+      this.rooms.set(key, state);
     }
     state.members.set(clientId, { meta, lastSeen: Date.now() });
 
@@ -127,9 +135,9 @@ export class PresenceService {
       joined = new Set();
       this.roomsByClient.set(clientId, joined);
     }
-    joined.add(room);
+    joined.add(key);
 
-    this.invalidator?.([presenceTag(room)]);
+    this.invalidator?.([key]);
   }
 
   /** Immediate departure on socket close — peers see it without a TTL wait. */
@@ -137,30 +145,41 @@ export class PresenceService {
     const joined = this.roomsByClient.get(clientId);
     if (!joined) return;
     this.roomsByClient.delete(clientId);
-    for (const room of joined) {
-      const state = this.rooms.get(room);
+    for (const key of joined) {
+      const state = this.rooms.get(key);
       if (!state) continue;
       state.members.delete(clientId);
-      if (state.members.size === 0) this.rooms.delete(room);
-      this.invalidator?.([presenceTag(room)]);
+      if (state.members.size === 0) this.rooms.delete(key);
+      this.invalidator?.([key]);
     }
   }
 
-  roster(room: string): PresenceMember[] {
-    const state = this.rooms.get(room);
-    if (!state) return [];
+  /** The live members of one gateway room. */
+  roster(gatewayPath: string, room: string): PresenceMember[] {
+    const state = this.rooms.get(presenceTag(gatewayPath, room));
+    return state ? this.alive(state) : [];
+  }
+
+  /**
+   * Occupied rooms in this service's scope, each room once with the members
+   * of every gateway that uses its id. Expired memberships and metadata are
+   * omitted.
+   */
+  inspectRooms(): Array<{ room: string; count: number; members: string[] }> {
+    const occupied = new Map<string, string[]>();
+    for (const state of this.rooms.values()) {
+      const members = this.alive(state).map((member) => member.id);
+      if (members.length)
+        occupied.set(state.room, [...(occupied.get(state.room) ?? []), ...members]);
+    }
+    return [...occupied].map(([room, members]) => ({ room, count: members.length, members }));
+  }
+
+  private alive(state: RoomState): PresenceMember[] {
     const oldestAlive = Date.now() - this.ttlMs;
     return [...state.members.entries()]
       .filter(([, member]) => member.lastSeen >= oldestAlive)
       .map(([id, member]) => ({ id, meta: member.meta, lastSeen: member.lastSeen }));
-  }
-
-  /** Occupied rooms in this service's scope. Expired memberships and metadata are omitted. */
-  inspectRooms(): Array<{ room: string; count: number; members: string[] }> {
-    return [...this.rooms.keys()].flatMap((room) => {
-      const members = this.roster(room).map((member) => member.id);
-      return members.length ? [{ room, count: members.length, members }] : [];
-    });
   }
 }
 
@@ -170,12 +189,12 @@ export class PresenceResolver {
   constructor(@Inject(PresenceService) private readonly presence: PresenceService) {}
 
   @LiveQuery(presenceRosterDefinition, {
-    tags: (args) => [presenceTag(args.room)],
+    tags: (args, context) => [presenceTag(context.path, args.room)],
   })
   roster(args: { room: string }, context: LiveQueryContext): PresenceMember[] {
     if (!context.rooms.includes(args.room)) {
       throw new Error('presence roster room is not joined by this connection');
     }
-    return this.presence.roster(args.room);
+    return this.presence.roster(context.path, args.room);
   }
 }

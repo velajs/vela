@@ -66,6 +66,6 @@ Create that factory once at module scope; use its matching provider and hooks to
 - Redis fanout does not provide a shared log, so cross-instance resume falls back to snapshots.
 - A runtime adapter's global `LIVE_PLATFORM` supplies the driver and cursor log the options leave open (`options.driver?.() ?? platform.liveDriver() ?? localLive()`). On Cloudflare that is `durableObjectLive()` in the Worker (the single binding-backed gateway's room Durable Object, namespace read from `ENV` lazily; an ambiguity error only when several could hold the subscriptions) and local delivery with a SQLite `DoCursorLog` inside the Durable Object; see `cloudflare.md`. Construct any configured `driver`/`log` with factories per application.
 - One room per subscription. Query work is per subscription unless `coalesceBy` declares an equivalent authorization/result partition; authorization and result baselines remain per subscriber.
-- Presence uses `$presence.roster`, heartbeat TTLs, and immediate departure on close; disable with `presence: false`.
+- Presence uses `$presence.roster`, heartbeat TTLs, and immediate departure on close; each roster belongs to one gateway room (gateway path + room id); disable with `presence: false`.
 
 For protocol guarantees, delivery/coalescing limits, and commit semantics consult the repository's `docs/live-queries.md`, protocol package README, and client README. HTTP RPC is separate: `@velajs/client/http` re-exports Hono `hc`; see `openapi.md`.

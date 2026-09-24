@@ -4,7 +4,7 @@ import { Scope } from '../constants';
 import { runInEntrypointScope } from '../entrypoint/execution-scope';
 import { resolveEntrypoint } from '../entrypoint/execution-context';
 import { Container } from '../container/container';
-import { Inject, Injectable, Optional } from '../container/decorators';
+import { getConstructorMetadata, Inject, Injectable, Optional } from '../container/decorators';
 import type { Type } from '../container/types';
 import { DiscoveryService } from '../discovery/discovery.service';
 import type { ContributesEntrypoints, Entrypoint } from '../entrypoint/entrypoint.types';
@@ -34,11 +34,13 @@ import { shouldWarnProductionSecurity } from '../http/security-options';
 import { resolveWsArgs } from './ws-argument-resolver';
 import { buildWsExecutionContext } from './ws-execution-context';
 import {
+  DEFAULT_WS_MAX_FRAME_BYTES,
   normalizeWebSocketUpgradeIdentity,
   resolveGatewayRoomParam,
   resolveMaxFrameBytes,
   webSocketFrameFits,
 } from './gateway-routing';
+import { gatewayServerToken } from './ws-server';
 import { toErrorFrame, WsException } from './ws-exception';
 import {
   RESERVED_WS_EVENT_PREFIX,
@@ -76,6 +78,8 @@ interface GatewayEntry {
   path: string;
   options: WebSocketGatewayOptions;
   maxFrameBytes: number;
+  /** The gateway's own server, which `afterInit` receives. */
+  server?: WsServer;
   instance: unknown;
   gatewayClass: Type;
   moduleId: string;
@@ -151,6 +155,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   readonly #reserved = new Map<string, ReservedEntry>();
 
   readonly #initializing = new WeakMap<object, Promise<void>>();
+  // Each gateway class's own server (`WsServer.forGateway`), built once.
+  readonly #gatewayServers = new Map<Type, WsServer>();
   readonly #container: Container;
   readonly #discovery: DiscoveryService;
   readonly #server?: WsServer;
@@ -166,6 +172,45 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     this.#discovery = discovery;
     this.#server = server;
     this.#routeManager = routeManager;
+    // Connect every gateway's @WebSocketServer() before any lifecycle hook
+    // runs, so a gateway may push from its own hooks.
+    this.connectGatewayServers();
+  }
+
+  /**
+   * The server a gateway pushes through: the module server's view of the
+   * gateway, whose pushes reach only the sockets connected through its path.
+   * The gateway's `@WebSocketServer()` is connected to it.
+   */
+  private gatewayServer(
+    gatewayClass: Type,
+    options: WebSocketGatewayOptions,
+  ): WsServer | undefined {
+    const server = this.#server;
+    if (!server) return undefined;
+    let scoped = this.#gatewayServers.get(gatewayClass);
+    if (!scoped) {
+      scoped =
+        server.forGateway?.(
+          options.path ?? '',
+          options.maxFrameBytes ?? DEFAULT_WS_MAX_FRAME_BYTES,
+        ) ?? server;
+      this.#gatewayServers.set(gatewayClass, scoped);
+      const token = gatewayServerToken(gatewayClass);
+      if (getConstructorMetadata(gatewayClass).inject.some((entry) => entry.token === token)) {
+        this.#container.resolve(token).connect(scoped);
+      }
+    }
+    return scoped;
+  }
+
+  private connectGatewayServers(): void {
+    for (const { metatype, meta } of this.#discovery.providersWithMeta<WebSocketGatewayOptions>(
+      WS_GATEWAY_METADATA,
+      { metadataOnly: true },
+    )) {
+      this.gatewayServer(metatype, meta);
+    }
   }
 
   /** Paths of every discovered `@WebSocketGateway` — used by transports to register routes. */
@@ -248,9 +293,9 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       this.#gateways.set(entry.path, entry);
       this.#server?.setOutboundFrameLimit?.(entry.maxFrameBytes);
 
-      if (this.#server && hasAfterInit(instance)) {
+      if (entry.server && hasAfterInit(instance)) {
         try {
-          await this.initializeGateway(instance);
+          await this.initializeGateway(instance, entry.server);
         } catch (err) {
           this.reportBootstrapError(gatewayClass.name, err);
         }
@@ -274,11 +319,9 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     }));
   }
 
-  private async initializeGateway(instance: OnGatewayInit): Promise<void> {
-    if (!this.#server) return;
+  private async initializeGateway(instance: OnGatewayInit, server: WsServer): Promise<void> {
     let pending = this.#initializing.get(instance);
     if (!pending) {
-      const server = this.#server;
       pending = Promise.resolve().then(() => instance.afterInit(server));
       this.#initializing.set(instance, pending);
     }
@@ -290,7 +333,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       token: entry.gatewayClass,
       moduleId: entry.moduleId,
     });
-    if (hasAfterInit(instance)) await this.initializeGateway(instance);
+    if (entry.server && hasAfterInit(instance))
+      await this.initializeGateway(instance, entry.server);
     return instance;
   }
 
@@ -730,6 +774,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       path: options.path ?? '',
       options: { ...options },
       maxFrameBytes,
+      server: this.gatewayServer(gatewayClass, options),
       instance,
       gatewayClass,
       moduleId,
