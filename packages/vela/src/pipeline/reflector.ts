@@ -72,15 +72,20 @@ function declaresFor(owner: Constructor, target: ReflectorTarget): boolean {
 // The metadata of method `name` as `type` routes it: its own, else that of the
 // nearest ancestor whose method is the same function (inherited unchanged).
 function methodMeta(type: Constructor, name: string | symbol, key: string): unknown {
+  const own = MetadataRegistry.getCustomHandlerMeta(type, name, key);
+  if (own !== undefined) return own;
+  // Only a method is inherited; a name that is not one (such as a framework
+  // host's marker symbol) reads the class's own declarations only.
   const handler: unknown = Reflect.get(type.prototype, name);
-  let current: unknown = type;
+  if (typeof handler !== 'function') return undefined;
+  let current: unknown = Object.getPrototypeOf(type);
   while (typeof current === 'function') {
+    const prototype: unknown = current.prototype;
+    if (typeof prototype !== 'object' || prototype === null) return undefined;
+    if (Reflect.get(prototype, name) !== handler) return undefined;
     const value = MetadataRegistry.getCustomHandlerMeta(current, name, key);
     if (value !== undefined) return value;
     current = Object.getPrototypeOf(current);
-    const prototype: unknown = typeof current === 'function' ? current.prototype : undefined;
-    if (typeof prototype !== 'object' || prototype === null) return undefined;
-    if (Reflect.get(prototype, name) !== handler) return undefined;
   }
   return undefined;
 }
