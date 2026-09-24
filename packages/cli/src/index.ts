@@ -15,6 +15,8 @@ import { NewCommand } from './commands/new.command.js';
 import { DoctorCommand } from './commands/doctor.command.js';
 import { DeployCheckCommand } from './commands/deploy-check.command.js';
 import { CloudflareSyncCommand } from './commands/cf-sync.command.js';
+import { GenerateCommand } from './commands/generate.command.js';
+import { AddCommand } from './commands/add.command.js';
 
 const cli = new Cli({
   binaryName: 'vela',
@@ -36,6 +38,8 @@ cli.register(ClientGenerateCommand);
 cli.register(DoctorCommand);
 cli.register(DeployCheckCommand);
 cli.register(CloudflareSyncCommand);
+cli.register(GenerateCommand);
+cli.register(AddCommand);
 
 void cli.runExit(process.argv.slice(2));
 
@@ -53,6 +57,10 @@ export { ClientGenerateCommand } from './commands/client.command.js';
 export { DoctorCommand } from './commands/doctor.command.js';
 export { DeployCheckCommand } from './commands/deploy-check.command.js';
 export { CloudflareSyncCommand } from './commands/cf-sync.command.js';
+export { GenerateCommand } from './commands/generate.command.js';
+export { AddCommand } from './commands/add.command.js';
+export { planGeneration, writeGeneration, SCHEMATICS } from './generate/generate.js';
+export type { GenerateOptions, GeneratePlan, Schematic } from './generate/generate.js';
 export { applyCloudflareSync, planCloudflareSync } from './cf-sync.js';
 export type { CloudflareFacts, SyncChange, SyncPlan } from './cf-sync.js';
 export { generateClientContract } from './client-contract.js';
