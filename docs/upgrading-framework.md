@@ -133,8 +133,9 @@ too, so pass the context. Code that used the handler name, such as a throttling
 key, calls `getHandlerName()`.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
-Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule` and `CedarModule`
-install their guard globally by default; `guard: 'none'` opts out. Replace
+Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule`, `CedarModule` and
+`FeatureFlagsModule` install their guard globally by default; `guard: 'none'`
+opts out. Replace
 Better Auth's `isGlobal` with `guard` and Cedar's `globalGuard: false` with
 `guard: 'none'`. Remove `@UseGuards` for guards the modules now install, or pass
 `guard: 'none'` and keep a fully route-level pipeline. The installed guards

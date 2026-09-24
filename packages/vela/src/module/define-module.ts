@@ -98,8 +98,8 @@ export interface DefineModuleSpec<
   /**
    * Values for structural options a call site leaves out or passes as
    * `undefined`. `key`, `setup` and the comparison of repeated imports see
-   * them, so with `{ globalGuard: true }` here `forRoot({})` and
-   * `forRoot({ globalGuard: true })` are one configuration and one instance.
+   * them, so with `{ guard: 'global' }` here `forRoot({})` and
+   * `forRoot({ guard: 'global' })` are one configuration and one instance.
    * The options token receives the options as given. Only options in
    * `structural` may have a default.
    */
