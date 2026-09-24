@@ -49,7 +49,7 @@ class HealthController {
           emailAndPassword: { enabled: true, autoSignIn: true },
           trustedOrigins: ['http://localhost:8789', 'http://localhost'],
         }),
-      isGlobal: true,
+      guard: 'global',
     }),
   ],
   controllers: [MeController, HealthController],

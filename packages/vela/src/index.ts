@@ -78,6 +78,7 @@ export {
   URL_SIGNING_SECRET,
 } from './http/index';
 export type {
+  GuardPhase,
   RouteOptions,
   SchemaParamDecorator,
   MessageEvent,

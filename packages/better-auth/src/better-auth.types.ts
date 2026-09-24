@@ -24,10 +24,12 @@ export interface BetterAuthRuntimeOptions {
   issuer?: string;
   basePath?: string;
   /**
-   * Register AuthGuard application-wide. Defaults to `true`; opt out only when
-   * the application installs an equivalent global authentication guard itself.
+   * `'global'` (default) installs AuthGuard as a global guard in the
+   * `authenticate` phase, so it runs before tenant, authorization and feature
+   * guards whatever the import order. Use `'none'` only when the application
+   * installs an equivalent authentication guard itself.
    */
-  isGlobal?: boolean;
+  guard?: 'global' | 'none';
   mountHandler?: boolean;
 }
 

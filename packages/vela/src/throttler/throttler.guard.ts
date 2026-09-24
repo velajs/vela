@@ -2,7 +2,7 @@ import { Injectable, Inject } from '../container/decorators';
 import { Reflector } from '../pipeline/reflector';
 import type { CanActivate, ExecutionContext } from '../pipeline/types';
 import { TooManyRequestsException } from '../errors/http-exception';
-import { RouteManager } from '../http/route.manager';
+import { RouteManager, type GuardPhase } from '../http/route.manager';
 import {
   getTrustedRequestIdentity,
   type TrustedRequestIdentity,
@@ -24,6 +24,9 @@ import type {
 
 @Injectable()
 export class ThrottlerGuard implements CanActivate {
+  /** Throttling runs after authentication, so it partitions by trusted identity. */
+  static readonly phase: GuardPhase = 'feature';
+
   constructor(
     @Inject(THROTTLER_OPTIONS) private options: ThrottlerModuleOptions,
     @Inject(THROTTLER_STORAGE) private storage: ThrottlerStore,

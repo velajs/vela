@@ -1,5 +1,5 @@
 export { DEFAULT_BODY_LIMIT_BYTES, RouteManager } from './route.manager';
-export type { RouteManagerOptions } from './route.manager';
+export type { GuardPhase, RouteManagerOptions } from './route.manager';
 export {
   DEFAULT_QUERY_BYTES_LIMIT,
   DEFAULT_QUERY_DEPTH_LIMIT,

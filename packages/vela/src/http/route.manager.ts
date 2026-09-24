@@ -198,17 +198,39 @@ function trackResponseStream(
   };
 }
 
-// A middleware's `priority`: a class's static field, or an instance's own
-// field or its class's static one.
-function priorityOf(value: unknown): number | undefined {
+// A component's declared field (a middleware's `priority`, a guard's `phase`):
+// a class's static field, or an instance's own field or its class's static one.
+function declaredField(value: unknown, field: string): unknown {
   if (typeof value !== 'function' && (typeof value !== 'object' || value === null)) {
     return undefined;
   }
-  const priority: unknown = Reflect.get(value, 'priority');
-  if (typeof priority === 'number') return priority;
-  if (typeof value === 'function') return undefined;
+  const declared: unknown = Reflect.get(value, field);
+  if (declared !== undefined || typeof value === 'function') return declared;
   const constructor: unknown = Reflect.get(value, 'constructor');
-  return typeof constructor === 'function' ? priorityOf(constructor) : undefined;
+  return typeof constructor === 'function' ? declaredField(constructor, field) : undefined;
+}
+
+function priorityOf(value: unknown): number | undefined {
+  const priority = declaredField(value, 'priority');
+  return typeof priority === 'number' ? priority : undefined;
+}
+
+/**
+ * The deterministic order of global guards, whatever order modules register
+ * them in: authentication publishes identity, tenant admission scopes it,
+ * authorization checks it, then feature guards (throttling, flags) run. A
+ * guard declares its phase with `static readonly phase`; undeclared guards run
+ * in the `'feature'` phase. Guards keep registration order within a phase.
+ */
+export type GuardPhase = 'authenticate' | 'tenant' | 'authorize' | 'feature';
+const GUARD_PHASES: readonly GuardPhase[] = ['authenticate', 'tenant', 'authorize', 'feature'];
+
+function phaseRank(value: unknown): number | undefined {
+  const phase = declaredField(value, 'phase');
+  if (phase === undefined) return undefined;
+  const rank = GUARD_PHASES.indexOf(phase as GuardPhase);
+  if (rank < 0) throw new Error(`Global guard declares an unknown guard phase '${String(phase)}'`);
+  return rank;
 }
 
 // The entry `owners` has for a handler Hono matched. A parent app that mounts
@@ -462,13 +484,32 @@ export class RouteManager {
   }
 
   useGlobalGuards(...guards: GuardType[]): this {
-    this.globalGuards.push(...guards);
-    return this;
+    return this.addGlobalGuards(guards);
   }
 
   useGlobalGuardTokens(...guardTokens: Array<TypedToken<CanActivate>>): this {
-    this.globalGuards.push(...guardTokens);
+    return this.addGlobalGuards(guardTokens);
+  }
+
+  // Keeps global guards ordered by phase (see GuardPhase), then registration.
+  private addGlobalGuards(guards: Array<GuardType | TypedToken<CanActivate>>): this {
+    const ranked = [...this.globalGuards, ...guards].map((entry, index) => ({
+      entry,
+      index,
+      rank: this.guardPhaseRank(entry),
+    }));
+    this.globalGuards = ranked
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .map(({ entry }) => entry);
     return this;
+  }
+
+  // A token's registered target declares the phase without being constructed.
+  private guardPhaseRank(entry: GuardType | TypedToken<CanActivate>): number {
+    const declared = phaseRank(entry);
+    if (declared !== undefined || !isTokenEntry(entry)) return declared ?? GUARD_PHASES.length - 1;
+    const target = this.componentTarget(entry);
+    return phaseRank(target?.instance?.value ?? target?.useClass) ?? GUARD_PHASES.length - 1;
   }
 
   useGlobalInterceptors(...interceptors: InterceptorType[]): this {
@@ -500,7 +541,7 @@ export class RouteManager {
     // A token's registered target (useClass, useExisting, useValue) carries
     // its priority without being constructed, which also keeps request-scoped
     // middleware off the root container.
-    const target = this.middlewareTarget(entry);
+    const target = this.componentTarget(entry);
     const targetPriority = priorityOf(target?.instance?.value ?? target?.useClass);
     if (targetPriority !== undefined) return targetPriority;
     // A token owned exclusively by unmaterialized lazy modules must not be
@@ -530,9 +571,9 @@ export class RouteManager {
     return 0;
   }
 
-  // The registration a middleware token resolves to, following useExisting
+  // The registration a component token resolves to, following useExisting
   // aliases from their declaring module. Inspection never constructs.
-  private middlewareTarget(token: Token): ProviderSnapshot | undefined {
+  private componentTarget(token: Token): ProviderSnapshot | undefined {
     const seen = new Set<Token>();
     let current: Token | undefined = token;
     let requester: string | undefined;

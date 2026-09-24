@@ -52,12 +52,14 @@ BetterAuthModule.forRoot({
   auth,                          // pre-constructed betterAuth({ ... }) instance
   issuer: 'my-app:better-auth',  // stable namespace paired with user ids
   basePath: '/api/auth',         // default — must match your better-auth config
-  isGlobal: true,                // default — register AuthGuard as APP_GUARD
+  guard: 'global',               // default — AuthGuard runs globally in the authenticate phase
   mountHandler: true,            // mount /api/auth/* catch-all controller
 });
 ```
 
-Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `isGlobal: false` is intended only for applications that install an equivalent global authentication guard themselves.
+Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `guard: 'none'` is intended only for applications that install an equivalent global authentication guard themselves.
+
+Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity.
 
 ## Three composition patterns
 
@@ -67,7 +69,7 @@ Authentication has no allow-by-default compatibility mode. Use `@Public(true)` f
 imports: [
   BetterAuthModule.forRoot({
     auth: betterAuth({ database, plugins: [magicLink({ sendMagicLink }), apiKey()] }),
-    isGlobal: true,
+    guard: 'global',
   }),
 ]
 ```
@@ -88,7 +90,7 @@ imports: [
           twoFactor(),
         ],
     }),
-    isGlobal: true,
+    guard: 'global',
   }),
 ]
 ```
@@ -131,7 +133,7 @@ export class MagicLinkAuthModule {}
       imports: [MagicLinkAuthModule, OAuthAuthModule],
       inject: [MAGIC_LINK_PLUGIN, OAUTH_PLUGIN],
       useFactory: (magicLink, oauth) => betterAuth({ database, plugins: [magicLink, oauth] }),
-      isGlobal: true,
+      guard: 'global',
     }),
   ],
 })

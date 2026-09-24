@@ -31,7 +31,7 @@ describe('BetterAuthModule', () => {
     expect(app.get(BETTER_AUTH_OPTIONS)).toMatchObject({
       basePath: '/api/auth',
       issuer: 'better-auth:/api/auth',
-      isGlobal: true,
+      guard: 'global',
       mountHandler: true,
     });
   });
@@ -62,7 +62,7 @@ describe('BetterAuthModule', () => {
             useFactory: factory,
             key: 'rebuilt-async-auth',
             basePath: '/internal-auth',
-            isGlobal: false,
+            guard: 'none',
           }),
         ],
       })
@@ -147,7 +147,7 @@ describe('BetterAuthModule', () => {
     expect(service.api).toBe(auth.api);
     expect(factoryCalls).toBe(1);
 
-    expect(app.get(BETTER_AUTH_OPTIONS).isGlobal).toBe(true);
+    expect(app.get(BETTER_AUTH_OPTIONS).guard).toBe('global');
   });
 
   it('mounts the catch-all controller at /api/auth/* by default', async () => {

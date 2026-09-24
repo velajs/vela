@@ -1,7 +1,6 @@
-import { defineProvider, type DynamicModule, type Token, type Type } from '@velajs/vela';
+import { APP_GUARD, defineProvider, type DynamicModule, type Token, type Type } from '@velajs/vela';
 import {
   lazyProvider,
-  provideGlobal,
   stableHash,
   type FactoryInject,
   type InferTokens,
@@ -46,11 +45,15 @@ function explicitKey(key: string, shape: string, reference: object): string {
 interface NormalizedOptions {
   basePath: string;
   issuer: string;
-  isGlobal: boolean;
+  guard: 'global' | 'none';
   mountHandler: boolean;
 }
 
 function normalize(options: BetterAuthRuntimeOptions): NormalizedOptions {
+  const guard = options.guard ?? 'global';
+  if (guard !== 'global' && guard !== 'none') {
+    throw new Error("@velajs/better-auth: guard must be 'global' or 'none'");
+  }
   const basePath = normalizeBetterAuthBasePath(options.basePath);
   const issuer = options.issuer ?? `better-auth:${basePath}`;
   if (issuer.length === 0 || issuer !== issuer.trim()) {
@@ -59,9 +62,14 @@ function normalize(options: BetterAuthRuntimeOptions): NormalizedOptions {
   return {
     basePath,
     issuer,
-    isGlobal: options.isGlobal ?? true,
+    guard,
     mountHandler: options.mountHandler ?? true,
   };
+}
+
+/** AuthGuard as a global guard; it declares the `authenticate` phase. */
+function globalGuard(n: NormalizedOptions): NonNullable<DynamicModule['providers']> {
+  return n.guard === 'global' ? [defineProvider(APP_GUARD, { useExisting: AuthGuard })] : [];
 }
 
 /** Providers, controllers, and exports shared by both entry points. */
@@ -97,7 +105,7 @@ function commonContributions(n: NormalizedOptions): {
 type ForRootAsyncOptions<Inject extends readonly Token[] = readonly Token[]> = {
   imports?: DynamicModule['imports'];
   useFactory: (...deps: InferTokens<Inject>) => BetterAuthInstance;
-  isGlobal?: boolean;
+  guard?: 'global' | 'none';
   mountHandler?: boolean;
   basePath?: string;
   issuer?: string;
@@ -111,9 +119,7 @@ export class BetterAuthModule {
    * `betterAuth({...})` are available at startup (Node apps with a static DB
    * connection, in-memory adapters, etc.).
    */
-  static forRoot(
-    options: BetterAuthModuleOptions & { isGlobal?: boolean; key?: string },
-  ): DynamicModule {
+  static forRoot(options: BetterAuthModuleOptions & { key?: string }): DynamicModule {
     const normalized = normalize(options);
     const shape = stableHash(normalized);
     const key =
@@ -128,7 +134,7 @@ export class BetterAuthModule {
         defineProvider(BETTER_AUTH_OPTIONS, { useValue: normalized }),
         defineProvider(BETTER_AUTH_BUILDER, { useValue: () => options.auth }),
         ...common.providers,
-        ...(normalized.isGlobal ? provideGlobal('guard', AuthGuard) : []),
+        ...globalGuard(normalized),
       ],
       controllers: common.controllers,
       exports: common.exports,
@@ -167,7 +173,7 @@ export class BetterAuthModule {
           memoize: false,
         }),
         ...common.providers,
-        ...(n.isGlobal ? provideGlobal('guard', AuthGuard) : []),
+        ...globalGuard(n),
       ],
       controllers: common.controllers,
       exports: common.exports,

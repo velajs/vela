@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Controller, Get, Module, Reflector, VelaFactory } from '@velajs/vela';
 import { setTrustedRequestIdentity, clearTrustedRequestIdentity } from '@velajs/vela/module-kit';
-import { auditCedarRoutes, CedarModule, CedarPublic, RequireResource } from '../vela/index';
+import {
+  auditCedarRoutes,
+  CedarGuard,
+  CedarModule,
+  CedarPublic,
+  RequireResource,
+} from '../vela/index';
 const principal = { issuer: 'test', subject: 'alice', principalType: 'user' } as const;
 describe('resource authorization declarations', () => {
   it('reads declarations through the application Reflector', async () => {
@@ -117,6 +123,47 @@ describe('resource authorization declarations', () => {
       expect((await app.getHonoApp().request('/docs/public')).status).toBe(200);
     } finally {
       await app.close();
+    }
+  });
+  it('denies undeclared routes by default within modules that see Cedar', async () => {
+    expect(CedarGuard.phase).toBe('authorize');
+    const route = (path: string) => {
+      class Routes {
+        read() {
+          return { path };
+        }
+      }
+      Controller(path)(Routes);
+      Get()(Routes.prototype, 'read', Object.getOwnPropertyDescriptor(Routes.prototype, 'read')!);
+      return Routes;
+    };
+    const Undeclared = route('/undeclared');
+    const Elsewhere = route('/elsewhere');
+    class Outside {}
+    Module({ controllers: [Elsewhere] })(Outside);
+    const build = (options: { guard?: 'global' | 'none'; undeclared?: 'deny' | 'allow' }) => {
+      class App {}
+      Module({
+        controllers: [Undeclared],
+        imports: [CedarModule.forRoot({ authorize: async () => true, ...options }), Outside],
+      })(App);
+      return VelaFactory.create(App);
+    };
+    const strict = await build({});
+    try {
+      expect((await strict.getHonoApp().request('/undeclared')).status).toBe(403);
+      // Routes declared in a module that cannot see CedarModule are outside Cedar.
+      expect((await strict.getHonoApp().request('/elsewhere')).status).toBe(200);
+    } finally {
+      await strict.close();
+    }
+    for (const options of [{ undeclared: 'allow' as const }, { guard: 'none' as const }]) {
+      const relaxed = await build(options);
+      try {
+        expect((await relaxed.getHonoApp().request('/undeclared')).status).toBe(200);
+      } finally {
+        await relaxed.close();
+      }
     }
   });
 });

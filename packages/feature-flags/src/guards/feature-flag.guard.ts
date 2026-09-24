@@ -7,6 +7,7 @@ import {
   Reflector,
   type CanActivate,
   type ExecutionContext,
+  type GuardPhase,
   type RequestContext,
 } from '@velajs/vela';
 import {
@@ -33,6 +34,9 @@ import { FEATURE_FLAG_TOKENS } from '../feature-flags.tokens';
  */
 @Injectable()
 export class FeatureFlagGuard implements CanActivate {
+  /** Flag gates evaluate after authentication, tenant admission and authorization. */
+  static readonly phase: GuardPhase = 'feature';
+
   constructor(
     @Inject(FEATURE_FLAG_TOKENS.Service) private readonly flags: FeatureFlagsService,
     @Inject(Reflector) private readonly reflector: Reflector,

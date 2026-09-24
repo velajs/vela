@@ -43,7 +43,7 @@ import { createCloudflareWorker } from '@velajs/cloudflare';
           }),
           // ...
         }),
-      isGlobal: true,
+      guard: 'global',
     }),
   ],
 })

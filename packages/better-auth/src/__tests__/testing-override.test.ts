@@ -52,7 +52,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
       // This test installs AuthGuard explicitly on the controller. Disable the
       // module-level global registration so a single request has one guard
       // invocation, matching the behavior under test.
-      imports: [BetterAuthModule.forRoot({ auth: real, isGlobal: false })],
+      imports: [BetterAuthModule.forRoot({ auth: real, guard: 'none' })],
       controllers: [MeController],
     })
       .overrideProvider(BetterAuthService)

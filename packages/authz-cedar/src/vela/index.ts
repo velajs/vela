@@ -4,11 +4,11 @@ import {
   Injectable,
   Reflector,
   ForbiddenException,
-  APP_GUARD,
   defineModule,
   defineProvider,
   type CanActivate,
   type ExecutionContext,
+  type GuardPhase,
   type Type,
 } from '@velajs/vela';
 import {
@@ -27,8 +27,19 @@ export const CedarPublic = () => declaration({ kind: 'public' });
 export const RequireResource = (requirement: ResourceRequirement) =>
   declaration({ kind: 'authorize', requirement: Object.freeze({ ...requirement }) });
 export interface CedarModuleOptions {
-  /** Default true. Disable to order CedarGuard after route authentication/tenant guards. */
-  globalGuard?: boolean;
+  /**
+   * `'global'` (default) installs `CedarGuard` as a global guard in the
+   * `authorize` phase: after authentication and tenant admission, whatever the
+   * import order. `'none'` leaves it to `@UseGuards(CedarGuard)`. With
+   * `forRootAsync`, pass it beside the factory.
+   */
+  guard?: 'global' | 'none';
+  /**
+   * Routes without `@RequireResource` or `@CedarPublic` in a module that can
+   * see this module: `'deny'` (default) rejects them with 403; `'allow'` lets
+   * them through.
+   */
+  undeclared?: 'deny' | 'allow';
   /** Resolve resources/grants from trusted application services; invoke engine.check here. */
   authorize(input: {
     requirement: ResourceRequirement;
@@ -59,17 +70,27 @@ export function auditCedarRoutes(modules: readonly Type[]): void {
   }
 }
 export class CedarGuard implements CanActivate {
+  /** Global guards authorize after authentication and tenant admission. */
+  static readonly phase: GuardPhase = 'authorize';
   readonly #reflector: Reflector;
   constructor(reflector: Reflector) {
     this.#reflector = reflector;
   }
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const declared = this.#reflector.getAllAndOverride(declaration, context);
-    if (!declared || declared.kind === 'public') return true;
+    if (declared?.kind === 'public') return true;
     const moduleId = context.getModuleId(),
       container = context.getContainer();
+    const candidates =
+      moduleId && container ? container.resolveAll(CEDAR_AUTHORIZER, moduleId) : [];
+    if (!declared) {
+      // A module that cannot see CedarModule is outside Cedar (the Better Auth
+      // handler, for example); inside it, undeclared routes fail closed.
+      if (candidates.length === 0) return true;
+      if (candidates.length === 1 && candidates[0]!.undeclared === 'allow') return true;
+      throw new ForbiddenException();
+    }
     if (!moduleId || !container) throw new ForbiddenException();
-    const candidates = container.resolveAll(CEDAR_AUTHORIZER, moduleId);
     if (candidates.length !== 1) throw new ForbiddenException('Cedar configuration is ambiguous');
     const options = candidates[0]!;
     const read = () =>
@@ -102,23 +123,29 @@ Injectable()(CedarGuard);
 Inject(Reflector)(CedarGuard, undefined, 0);
 const { ConfigurableModuleClass } = defineModule<CedarModuleOptions>({
   name: 'CedarAuthorization',
-  setup: ({ OPTIONS }) => ({
-    providers: [
-      defineProvider(CEDAR_AUTHORIZER, {
-        inject: [OPTIONS],
-        useFactory: (options) => {
-          auditCedarRoutes(options.auditModules ?? []);
-          return options;
-        },
-      }),
-      CedarGuard,
-      defineProvider(APP_GUARD, {
-        inject: [OPTIONS, CedarGuard],
-        useFactory: (options, guard) =>
-          options.globalGuard === false ? { canActivate: () => true } : guard,
-      }),
-    ],
-    exports: [CEDAR_AUTHORIZER, CedarGuard],
-  }),
+  setup: ({ OPTIONS, options }) => {
+    const guard = options.guard ?? 'global';
+    if (guard !== 'global' && guard !== 'none')
+      throw new TypeError("CedarModule guard must be 'global' or 'none'");
+    if (options.undeclared !== undefined && !['deny', 'allow'].includes(options.undeclared))
+      throw new TypeError("CedarModule undeclared must be 'deny' or 'allow'");
+    return {
+      providers: [
+        defineProvider(CEDAR_AUTHORIZER, {
+          inject: [OPTIONS],
+          useFactory: (resolved) => {
+            auditCedarRoutes(resolved.auditModules ?? []);
+            // The call-time policy wins; a factory cannot relax it later.
+            return options.undeclared === undefined
+              ? resolved
+              : { ...resolved, undeclared: options.undeclared };
+          },
+        }),
+        ...(guard === 'none' ? [CedarGuard] : []),
+      ],
+      exports: [CEDAR_AUTHORIZER, CedarGuard],
+      global: guard === 'global' ? { guards: [CedarGuard] } : {},
+    };
+  },
 });
 export class CedarModule extends ConfigurableModuleClass {}

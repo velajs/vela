@@ -12,6 +12,7 @@ import {
   BadRequestException,
   type CanActivate,
   type ExecutionContext,
+  type GuardPhase,
 } from '@velajs/vela';
 import {
   runInEntrypointScope,
@@ -80,6 +81,15 @@ export const TenantRequired = () => requirement('required');
 export const TenantOptional = () => requirement('optional');
 export const TenantIgnored = () => requirement('ignored');
 export interface TenantModuleOptions extends TenantServiceOptions {
+  /**
+   * `'global'` (default) installs `TenantGuard` as a global guard in the
+   * `tenant` phase: after authentication, before authorization, whatever the
+   * import order. It admits a tenant on every route declared in a module that
+   * can see this module; mark exceptions with `@TenantOptional()` or
+   * `@TenantIgnored()`. `'none'` leaves admission to `@UseGuards(TenantGuard)`.
+   * With `forRootAsync`, pass it beside the factory.
+   */
+  guard?: 'global' | 'none';
   selector?: TenantSelector;
   /** Non-HTTP transports supply verified credentials through their transport adapter. */
   resolve?: (
@@ -90,7 +100,8 @@ const OPTIONS = new InjectionToken<TenantModuleOptions>('vela.tenant.options');
 const { ConfigurableModuleClass } = defineModule<TenantModuleOptions>({
   name: 'Tenant',
   optionsToken: OPTIONS,
-  setup: ({ OPTIONS }) => ({
+  setup: ({ OPTIONS, options }) => ({
+    global: installGuard(options.guard) ? { guards: [TenantGuard] } : {},
     providers: [
       defineProvider(TENANT_SERVICE, {
         inject: [OPTIONS],
@@ -104,20 +115,32 @@ const { ConfigurableModuleClass } = defineModule<TenantModuleOptions>({
     exports: [TENANT_SERVICE, TENANT_CONTEXT_READER, OPTIONS],
   }),
 });
+function installGuard(guard: TenantModuleOptions['guard']): boolean {
+  if (guard !== undefined && guard !== 'global' && guard !== 'none') {
+    throw new TypeError("TenantModule guard must be 'global' or 'none'");
+  }
+  return guard !== 'none';
+}
 export class TenantModule extends ConfigurableModuleClass {}
 export class TenantGuard implements CanActivate {
+  /** Global guards admit tenants after authentication and before authorization. */
+  static readonly phase: GuardPhase = 'tenant';
   readonly #reflector: Reflector;
   constructor(reflector: Reflector) {
     this.#reflector = reflector;
   }
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (this.#reflector.getAllAndOverride(requirement, context) === 'ignored') return true;
+    const declared = this.#reflector.getAllAndOverride(requirement, context);
+    if (declared === 'ignored') return true;
     const container = context.getContainer();
     const owners = container?.getOwnerModuleIds(context.getClass()) ?? [];
     const moduleId = context.getModuleId() ?? (owners.length === 1 ? owners[0] : undefined);
     if (!container || !moduleId) throw new ForbiddenException('Tenant scope unavailable');
     const candidates = container.resolveAll(TENANT_SERVICE, moduleId);
     const options = container.resolveAll(OPTIONS, moduleId);
+    // A module that cannot see TenantModule is outside the tenant phase (the
+    // Better Auth handler, for example), unless the route declares a tenant.
+    if (candidates.length === 0 && options.length === 0 && declared === undefined) return true;
     if (candidates.length !== 1 || options.length !== 1)
       throw new ForbiddenException('Tenant configuration is ambiguous');
     const service = candidates[0]!,

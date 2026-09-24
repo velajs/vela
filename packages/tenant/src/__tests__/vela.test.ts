@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Controller, Get, Inject, Module, Reflector, UseGuards, VelaFactory } from '@velajs/vela';
+import { Controller, Get, Inject, Module, Reflector, VelaFactory } from '@velajs/vela';
 import { setTrustedRequestIdentity, clearTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { MemoryTenantRegistryStore, TenantRegistry, type TenantContextReader } from '../index';
 import {
@@ -7,6 +7,7 @@ import {
   TenantGuard,
   TenantOptional,
   TenantIgnored,
+  TenantRequired,
   TENANT_CONTEXT_READER,
   runInTenantScope,
 } from '../vela/index';
@@ -27,7 +28,6 @@ describe('Vela tenant admission', () => {
       }
     }
     Controller('/open')(Routes);
-    UseGuards(TenantGuard)(Routes);
     const open = Object.getOwnPropertyDescriptor(Routes.prototype, 'open')!;
     Get()(Routes.prototype, 'open', open);
     TenantIgnored()(Routes.prototype, 'open', open);
@@ -66,7 +66,6 @@ describe('Vela tenant admission', () => {
     }
     Inject(TENANT_CONTEXT_READER)(Routes, undefined, 0);
     Controller('/tenants')(Routes);
-    UseGuards(TenantGuard)(Routes);
     for (const name of ['handle', 'optional', 'ignored'] as const)
       Get(`/${name}`)(
         Routes.prototype,
@@ -189,6 +188,63 @@ describe('Vela tenant admission', () => {
       await app.close();
     }
   });
+  it('admits tenants from a global guard in the tenant phase within its modules', async () => {
+    expect(TenantGuard.phase).toBe('tenant');
+    const reply = (value: string) =>
+      class {
+        handle() {
+          return value;
+        }
+      };
+    const route = (target: new () => object, path: string) => {
+      Controller(path)(target);
+      Get()(
+        target.prototype,
+        'handle',
+        Object.getOwnPropertyDescriptor(target.prototype, 'handle')!,
+      );
+      return target;
+    };
+    const Tenanted = route(reply('tenanted'), '/tenanted');
+    const Elsewhere = route(reply('elsewhere'), '/elsewhere');
+    const Declared = route(reply('declared'), '/declared');
+    TenantRequired()(Declared);
+    class Outside {}
+    Module({ controllers: [Elsewhere, Declared] })(Outside);
+    const build = (guard?: 'global' | 'none') => {
+      class App {}
+      Module({
+        imports: [
+          TenantModule.forRoot({
+            lookup: new MemoryTenantRegistryStore([tenant('a')]),
+            authorize: () => true,
+            ...(guard === undefined ? {} : { guard }),
+          }),
+          Outside,
+        ],
+        controllers: [Tenanted],
+      })(App);
+      return VelaFactory.create(App);
+    };
+    const app = await build();
+    try {
+      const hono = app.getHonoApp();
+      expect((await hono.request('/tenanted')).status).toBe(400);
+      // A module that cannot see TenantModule is outside the tenant phase,
+      // unless its route declares the requirement explicitly.
+      expect((await hono.request('/elsewhere')).status).toBe(200);
+      expect((await hono.request('/declared')).status).toBe(403);
+    } finally {
+      await app.close();
+    }
+    const opted = await build('none');
+    try {
+      expect((await opted.getHonoApp().request('/tenanted')).status).toBe(200);
+    } finally {
+      await opted.close();
+    }
+  });
+
   it('does not publish authority if authentication is cleared during admission', async () => {
     let activeRequest: Request | undefined;
     class Routes {
@@ -198,7 +254,6 @@ describe('Vela tenant admission', () => {
     }
     Controller('/changed')(Routes);
     Get()(Routes.prototype, 'handle', Object.getOwnPropertyDescriptor(Routes.prototype, 'handle')!);
-    UseGuards(TenantGuard)(Routes);
     class App {}
     Module({
       controllers: [Routes],
