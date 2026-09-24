@@ -156,6 +156,12 @@ export class CloudflareApplication {
     return this.#app.entrypoints;
   }
 
+  /** Enable CORS for every route, as `VelaApplication.enableCors()`; no rebuild needed. */
+  enableCors(options?: CorsOptions): this {
+    this.#app.enableCors(options);
+    return this;
+  }
+
   /**
    * Serve a pre-built OpenAPI document (and optionally a Scalar UI) on the
    * underlying Hono app. Delegates verbatim to `VelaApplication.mountOpenApi`,
@@ -176,12 +182,6 @@ export class CloudflareApplication {
    * // GET /scalar       -> Scalar UI HTML
    * ```
    */
-  /** Enable CORS for every route, as `VelaApplication.enableCors()`; no rebuild needed. */
-  enableCors(options?: CorsOptions): this {
-    this.#app.enableCors(options);
-    return this;
-  }
-
   mountOpenApi(options: MountOpenApiOptions): this {
     this.#app.mountOpenApi(options);
     return this;
