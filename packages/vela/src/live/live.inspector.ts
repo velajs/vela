@@ -35,26 +35,29 @@ export class LiveInspector {
     if (!platform?.inspect) return withinRooms(this.engine.inspect(), wanted);
     const inspectRoom = platform.inspect.bind(platform);
     const snapshots = await Promise.all([...wanted].map((room) => inspectRoom(room)));
-    const subscriptions: LiveInspection['subscriptions'] = [];
-    // One object can also hold sockets that joined another named room.
-    const occupancy = new Map<string, LiveInspection['rooms'][number]>();
+    // One object can hold several named rooms (a gateway without roomParam
+    // keeps every room in one), and its sockets can join other named rooms:
+    // keep each subscription once by id and each room's members once.
+    const subscriptions = new Map<string, LiveInspection['subscriptions'][number]>();
+    const occupancy = new Map<string, Set<string>>();
     for (const snapshot of snapshots) {
       const scoped = withinRooms(snapshot, wanted);
-      subscriptions.push(...scoped.subscriptions);
+      for (const row of scoped.subscriptions) {
+        if (!subscriptions.has(row.id)) subscriptions.set(row.id, row);
+      }
       for (const row of scoped.rooms) {
-        const seen = occupancy.get(row.room);
-        occupancy.set(
-          row.room,
-          seen
-            ? {
-                room: row.room,
-                count: seen.count + row.count,
-                members: [...seen.members, ...row.members],
-              }
-            : { room: row.room, count: row.count, members: [...row.members] },
-        );
+        const members = occupancy.get(row.room) ?? new Set<string>();
+        for (const member of row.members) members.add(member);
+        occupancy.set(row.room, members);
       }
     }
-    return { subscriptions, rooms: [...occupancy.values()] };
+    return {
+      subscriptions: [...subscriptions.values()],
+      rooms: [...occupancy].map(([room, members]) => ({
+        room,
+        count: members.size,
+        members: [...members],
+      })),
+    };
   }
 }

@@ -364,7 +364,9 @@ sends invalidations to the room Durable
 Object of the single binding-backed gateway, reading the namespace from `ENV`
 when first needed; with several, the first invalidation reports the ambiguity,
 and `driver: () => durableObjectLive({ gatewayPath })` (or `{ binding }`)
-chooses. Inside the Durable Object, the gateway server broadcasts to its
+chooses. A gateway without `roomParam` has one room Durable Object, named by
+its path, so its invalidations and inspections go there whatever room they
+name. Inside the Durable Object, the gateway server broadcasts to its
 hibernatable sockets, invalidations apply locally, and the cursor log is a
 `DoCursorLog` in the object's SQLite storage (in memory when the class is not
 SQLite-backed). `LiveInspector` reads a named room through the same gateway

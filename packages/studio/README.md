@@ -21,7 +21,8 @@ inspection are enabled by `StudioLiveModule.forRoot({ rooms: ['default'] })`,
 which reads each named room through `LiveModule`'s `LiveInspector`: on
 Cloudflare the room's Durable Object, through the gateway binding the live
 driver delivers to; elsewhere the application's own engine. There is no global
-room list, so name each room. `forRoot({ source })` takes a custom source whose
+room list, so name each room; the sockets of a gateway without `roomParam`
+join its path, so name that path for them. `forRoot({ source })` takes a custom source whose
 `inspect()` returns explicitly scoped subscription and room snapshots instead.
 With neither, the features remain disabled.
 CRUD reads and single writes use the adapter's request scope. Bulk mutations require

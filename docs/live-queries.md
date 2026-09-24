@@ -8,8 +8,11 @@ The wire contract lives in **`@velajs/live-protocol`** (frames, the shared delta
 
 ```ts
 // server — resolvers are ordinary providers
+import { Module } from '@velajs/vela';
 import { LiveModule, LiveQuery, LiveResolver, defineLiveQuery } from '@velajs/vela/live';
 import type { LiveQueryContext } from '@velajs/vela/live';
+import { WebSocketModule } from '@velajs/vela/websocket';
+import { crudLiveTag } from '@velajs/crud';
 
 // Put this definition in a portable module imported by both server and browser.
 // It declares the query's wire name once.
@@ -139,9 +142,12 @@ it sends each invalidation to the room Durable Object of the application's singl
 gateway that names a `binding`, reading that namespace from `ENV` when an
 invalidation first needs it. Inside the Durable Object, delivery is local and the
 cursor log lives in the object's SQLite storage (an in-memory log when the class is
-not SQLite-backed). With several binding-backed gateways, the first Worker
-invalidation fails with an ambiguity error; name the gateway (or binding, and the
-room used when an invalidation names none):
+not SQLite-backed). A gateway without `roomParam` keeps every socket in one room
+Durable Object, named by its path, so every invalidation and inspection goes to
+that object whatever room it names, as upgrades and `Gateways` pushes do. With
+several binding-backed gateways, the first Worker invalidation fails with an
+ambiguity error; name the gateway (or binding, and the room used when an
+invalidation names none):
 
 ```ts
 LiveModule.forRoot({
@@ -168,7 +174,10 @@ rooms of the rooms you name, for an authenticated admin surface: there is no
 global room list. `inspect(rooms)` reads each room where its subscriptions
 live. A platform adapter reads it through `LIVE_PLATFORM.inspect(room)`: on
 Cloudflare the Worker calls the `inspectLive` RPC of the room's Durable Object,
-through the gateway binding the live driver delivers to. Without a platform
+through the gateway binding the live driver delivers to. A subscription's room
+is each room its socket joined; the sockets of a gateway without `roomParam`
+join its path, so name that path to inspect them. Each subscription and each
+room member is reported once, even when several named rooms live in one object. Without a platform
 reader, the application's own engine answers. Rows exclude query arguments,
 results and identity claims. Studio's `StudioLiveModule.forRoot({ rooms })`
 uses it.

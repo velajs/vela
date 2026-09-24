@@ -149,6 +149,41 @@ describe('LiveInspector', () => {
     }
   });
 
+  it('reports each row once when several named rooms live in one platform object', async () => {
+    const row = (id: string, room: string, clientId: string) => ({
+      id,
+      query: 'todos.count',
+      room,
+      clientId,
+      tags: ['todos'],
+      connectedAt: 1,
+    });
+    // One object holds every room: each read returns the whole object.
+    const platform: LivePlatform = {
+      liveDriver: () => localLive(),
+      async inspect(): Promise<LiveInspection> {
+        return {
+          subscriptions: [row('s1', 'a', 'c1'), row('s2', 'b', 'c2'), row('s3', 'b', 'c1')],
+          rooms: [
+            { room: 'a', count: 1, members: ['c1'] },
+            { room: 'b', count: 2, members: ['c1', 'c2'] },
+          ],
+        };
+      },
+    };
+    const app = await makeApp([platformAdapter(platform)]);
+    try {
+      const snapshot = await app.get(LiveInspector).inspect(['a', 'b']);
+      expect(snapshot.subscriptions.map(({ id }) => id)).toEqual(['s1', 's2', 's3']);
+      expect(snapshot.rooms).toEqual([
+        { room: 'a', count: 1, members: ['c1'] },
+        { room: 'b', count: 2, members: ['c1', 'c2'] },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('rejects a room id no gateway room can carry', async () => {
     const app = await makeApp();
     try {

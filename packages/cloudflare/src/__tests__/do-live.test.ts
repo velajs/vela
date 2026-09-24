@@ -143,7 +143,7 @@ describe('durableObjectLive driver', () => {
     const driver = durableObjectLive({ gatewayPath: '/rooms/:id/ws', defaultRoom: 'lobby' });
     driver._attach({
       env: { ROOMS: ns },
-      gateways: () => [{ path: '/rooms/:id/ws', binding: 'ROOMS' }],
+      gateways: () => [{ path: '/rooms/:id/ws', binding: 'ROOMS', oneRoom: false }],
     });
 
     const stamp = await driver.dispatch({ tags: ['crud:todos'] });

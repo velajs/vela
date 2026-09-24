@@ -456,6 +456,63 @@ describe('Cloudflare live platform wiring', () => {
     }
   });
 
+  it('invalidates and inspects the one room object of a gateway without roomParam', async () => {
+    const invalidated: Array<{ id: string; cmd: InvalidationCommand }> = [];
+    const inspected: string[] = [];
+    const row = (room: string, clientId: string) => ({
+      id: `${room}#${clientId}`,
+      query: 'todos.list',
+      room,
+      clientId,
+      tags: ['todos'],
+      connectedAt: 1,
+    });
+    const namespace = {
+      idFromName: (name: string) => ({ toString: () => name }),
+      get(id: { toString(): string }) {
+        return {
+          invalidate: async (cmd: InvalidationCommand): Promise<CommitStamp> => {
+            invalidated.push({ id: id.toString(), cmd });
+            return { cursor: 1, epoch: 'live' };
+          },
+          // The object holds every socket: the path room and a room they joined.
+          inspectLive: async (): Promise<LiveInspection> => {
+            inspected.push(id.toString());
+            return {
+              subscriptions: [row('/live', 'c1'), row('lobby', 'c2')],
+              rooms: [{ room: 'lobby', count: 1, members: ['c2'] }],
+            };
+          },
+        };
+      },
+    };
+    @WebSocketGateway({ path: '/live', binding: 'LIVE' })
+    class LiveGateway {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [LiveGateway],
+    })
+    class App {}
+
+    const app = await createCloudflareApp(App, { env: { LIVE: namespace } });
+    try {
+      const object = durableObjectRoomName('/live', '/live');
+      await app.get(LiveInvalidation).invalidate({ tags: ['todos'] });
+      await app.get(LiveInvalidation).invalidate({ tags: ['todos'], room: 'lobby' });
+      expect(invalidated).toEqual([
+        { id: object, cmd: { tags: ['todos'], room: 'default' } },
+        { id: object, cmd: { tags: ['todos'], room: 'lobby' } },
+      ]);
+
+      const snapshot = await app.get(LiveInspector).inspect(['/live', 'lobby']);
+      expect(inspected).toEqual([object, object]);
+      expect(snapshot.subscriptions.map(({ id }) => id)).toEqual(['/live#c1', 'lobby#c2']);
+      expect(snapshot.rooms).toEqual([{ room: 'lobby', count: 1, members: ['c2'] }]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('raises an ambiguity error only when it must choose between binding-backed gateways', async () => {
     const calls: Array<{ label: string; id: string; cmd: InvalidationCommand }> = [];
     @WebSocketGateway({ path: '/chat', binding: 'CHAT' })
@@ -490,7 +547,8 @@ describe('Cloudflare live platform wiring', () => {
       await byPath.get(LiveInvalidation).invalidate({ tags: ['t'] });
       expect(calls.map(({ label, id }) => ({ label, id }))).toEqual([
         { label: 'rooms', id: 'vela:ws:v2:%2Frooms%2F%3Aid%2Fws:default' },
-        { label: 'chat', id: 'vela:ws:v2:%2Fchat:default' },
+        // '/chat' declares no roomParam: its one room is its path.
+        { label: 'chat', id: 'vela:ws:v2:%2Fchat:%2Fchat' },
       ]);
     } finally {
       await Promise.all([ambiguous.close(), byBinding.close(), byPath.close()]);

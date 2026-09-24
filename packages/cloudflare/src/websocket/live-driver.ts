@@ -8,7 +8,7 @@ import type {
   LivePlatform,
 } from '@velajs/vela/live';
 import { bindingGateways, type BindingGateway } from './binding-gateways';
-import { gatewayRoomObject } from './worker-transport';
+import { gatewayRoomObject, type GatewayRoomObject } from './worker-transport';
 
 const DEFAULT_ROOM = 'default';
 
@@ -24,7 +24,11 @@ export interface DurableObjectLiveOptions {
    * Defaults to the single gateway backed by `binding` (or by any binding).
    */
   gatewayPath?: string;
-  /** Room used when an invalidation names none. Matches the client default. */
+  /**
+   * Room used when an invalidation names none. Matches the client default. A
+   * gateway without `roomParam` has one room, its path, which every
+   * invalidation reaches.
+   */
   defaultRoom?: string;
 }
 
@@ -41,7 +45,16 @@ export interface LiveNamespace {
 /** @internal What the Worker's live platform hands a driver. */
 interface WorkerLiveContext {
   env: VelaEnv;
-  gateways(): readonly Pick<BindingGateway, 'path' | 'binding'>[];
+  gateways(): readonly Pick<BindingGateway, 'path' | 'binding' | 'oneRoom'>[];
+}
+
+/** Where the Worker delivers invalidations: one gateway's room objects. */
+interface LiveTarget {
+  env: VelaEnv;
+  binding: string;
+  gatewayPath: string;
+  /** The gateway declares no roomParam: one object, named by its path, holds every room. */
+  oneRoom: boolean;
 }
 
 function describeFilter({ binding, gatewayPath }: DurableObjectLiveOptions): string {
@@ -75,7 +88,7 @@ export class CfLiveDriver implements LiveDriver {
   #sink: LiveInvalidationSink | undefined;
   #local = false;
   #context: WorkerLiveContext | undefined;
-  #target: { env: VelaEnv; binding: string; gatewayPath: string } | undefined;
+  #target: LiveTarget | undefined;
 
   constructor(private readonly options: DurableObjectLiveOptions = {}) {}
 
@@ -94,10 +107,14 @@ export class CfLiveDriver implements LiveDriver {
     this.#local = true;
   }
 
-  /** @internal The Durable Object that holds one room's subscriptions. */
-  _room(room: string): ReturnType<typeof gatewayRoomObject> {
-    const { env, binding, gatewayPath } = this.#resolveTarget();
-    return gatewayRoomObject(env, gatewayPath, binding, room);
+  /**
+   * @internal The Durable Object that holds one room's subscriptions. As for
+   * upgrades and `Gateways` pushes, a gateway without `roomParam` keeps every
+   * socket in one room, its path, so each of its rooms is in that object.
+   */
+  _room(room: string): GatewayRoomObject {
+    const { env, binding, gatewayPath, oneRoom } = this.#resolveTarget();
+    return gatewayRoomObject(env, gatewayPath, binding, oneRoom ? gatewayPath : room);
   }
 
   dispatch(cmd: InvalidationCommand): Promise<CommitStamp | undefined> | CommitStamp | undefined {
@@ -108,7 +125,7 @@ export class CfLiveDriver implements LiveDriver {
       .then(commitStamp);
   }
 
-  #resolveTarget(): { env: VelaEnv; binding: string; gatewayPath: string } {
+  #resolveTarget(): LiveTarget {
     if (this.#target) return this.#target;
     const context = this.#context;
     if (!context) {
@@ -118,14 +135,13 @@ export class CfLiveDriver implements LiveDriver {
       );
     }
     let { binding, gatewayPath } = this.options;
+    const gateways = context.gateways();
     if (binding === undefined || gatewayPath === undefined) {
-      const candidates = context
-        .gateways()
-        .filter(
-          (gateway) =>
-            (binding === undefined || gateway.binding === binding) &&
-            (gatewayPath === undefined || gateway.path === gatewayPath),
-        );
+      const candidates = gateways.filter(
+        (gateway) =>
+          (binding === undefined || gateway.binding === binding) &&
+          (gatewayPath === undefined || gateway.path === gatewayPath),
+      );
       const [chosen, ...others] = candidates;
       if (!chosen) {
         const filter = describeFilter(this.options);
@@ -149,7 +165,12 @@ export class CfLiveDriver implements LiveDriver {
       binding ??= chosen.binding;
       gatewayPath ??= chosen.path;
     }
-    const target = { env: context.env, binding, gatewayPath };
+    const target: LiveTarget = {
+      env: context.env,
+      binding,
+      gatewayPath,
+      oneRoom: gateways.some((gateway) => gateway.path === gatewayPath && gateway.oneRoom),
+    };
     this.#target = target;
     return target;
   }
