@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/__tests__/query.typecheck.ts", "src/__tests__/query.test.ts"],
+  "exclude": ["node_modules", "dist"]
+}

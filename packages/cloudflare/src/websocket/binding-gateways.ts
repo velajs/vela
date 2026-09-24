@@ -26,7 +26,11 @@ export function bindingGateways(discovery: DiscoveryService): BindingGateway[] {
   )) {
     const path = meta.path ?? '';
     if (typeof meta.binding !== 'string' || gateways.has(path)) continue;
-    gateways.set(path, { path, binding: meta.binding, name: metatype.name });
+    gateways.set(path, {
+      path,
+      binding: meta.binding,
+      name: metatype.name,
+    });
   }
   return [...gateways.values()];
 }

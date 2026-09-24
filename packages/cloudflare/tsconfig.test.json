@@ -21,6 +21,7 @@
     "src/__tests__/root-module.test.ts",
     "src/__tests__/platform-wiring.test.ts",
     "src/__tests__/env.test.ts",
+    "src/__tests__/worker-descriptor.test.ts",
     "src/__tests__/factory-options.test.ts",
     "src/__tests__/do-live.test.ts"
   ],

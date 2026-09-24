@@ -3,12 +3,15 @@ import './vela-env';
 export type { CloudflareRoot } from './root-module';
 export { durableObjectRoomName } from './websocket/room-id';
 export {
+  CLOUDFLARE_WORKER,
   cloudflareAdapter,
   createCloudflareApp,
   createCloudflareWorker,
 } from './cloudflare-factory';
 export type {
   CloudflareAppOptions,
+  CloudflareWorker,
+  CloudflareWorkerDescriptor,
   CloudflareWorkerOptions,
   CreateCloudflareAppOptions,
 } from './cloudflare-factory';
@@ -41,11 +44,6 @@ export { QueueConsumer } from './decorators/queue-consumer';
 // Cron triggers run core @Cron jobs; this request-scoped token exposes the trigger.
 export { CLOUDFLARE_SCHEDULED_EVENT } from './scheduled-event';
 export type { CloudflareScheduledEvent, ScheduledEvent } from './scheduled-event';
-
-// WebSocket: the adapter wires WebSocketModule to a Durable Object per gateway room;
-// this helper pushes to a room from the Worker.
-export { broadcastToRoom } from './websocket/index';
-export type { BroadcastNamespace } from './websocket/index';
 
 // Durable Object PITR (point-in-time recovery) — raw bookmark wrappers + the RPC
 // contract types. The WS Durable Object exposes `pitrCurrentBookmark`,

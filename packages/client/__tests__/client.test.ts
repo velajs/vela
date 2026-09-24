@@ -72,7 +72,7 @@ function makeHarness(): Harness {
   let nextResponse: Response = new Response('{}', { status: 200 });
 
   const client = new LiveClient({
-    queries: {},
+    queries: [],
     url: 'http://api.test',
     WebSocket: (url) => new FakeSocket(url),
     reconnect: { baseMs: 1, capMs: 2 },
@@ -120,7 +120,7 @@ describe('LiveClient subscriptions', () => {
   it('uses a socket ticket and never places the HTTP bearer token in the WebSocket URL', async () => {
     FakeSocket.instances = [];
     const client = new LiveClient({
-      queries: {},
+      queries: [],
       url: 'https://api.test',
       WebSocket: (url) => new FakeSocket(url),
       authToken: () => 'long-lived-bearer',
@@ -139,7 +139,7 @@ describe('LiveClient subscriptions', () => {
   it('rejects malformed socket tickets before constructing a WebSocket', async () => {
     FakeSocket.instances = [];
     const client = new LiveClient({
-      queries: {},
+      queries: [],
       url: 'https://api.test',
       WebSocket: (url) => new FakeSocket(url),
       socketTicket: () => 'contains whitespace',
@@ -155,7 +155,7 @@ describe('LiveClient subscriptions', () => {
 
   it('rejects preloaded bearer credentials in a WebSocket URL', () => {
     const client = new LiveClient({
-      queries: {},
+      queries: [],
       url: 'https://api.test',
       wsPath: '/rooms/:room/ws?access_token=long-lived-secret',
       WebSocket: (url) => new FakeSocket(url),

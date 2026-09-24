@@ -47,6 +47,7 @@ import type {
   LiveDriver,
   LiveEntrypointMeta,
   LiveIdentity,
+  LiveInspection,
   LiveInvalidationSink,
   LiveModuleOptions,
   LiveQueryContext,
@@ -55,7 +56,7 @@ import type {
   LiveResolverMetadata,
   SubscriptionRecord,
 } from './live.types';
-import { PresenceService } from './presence';
+import { PRESENCE_ROSTER_QUERY, PresenceService } from './presence';
 
 /** How many subscriptions refresh concurrently per flush (lunora's socket-pool default). */
 const REFRESH_POOL_SIZE = 8;
@@ -81,20 +82,6 @@ interface ConnectionEntry {
   path: string;
   connectedAt: number;
   subs: Map<string, SubscriptionRecord>;
-}
-
-/** Read-only operational metadata; excludes query arguments, results and identity claims. */
-export interface LiveInspection {
-  subscriptions: Array<{
-    id: string;
-    query: string;
-    room: string;
-    clientId: string;
-    tags: string[];
-    /** When this engine attached the connection, including after hibernation. */
-    connectedAt: number;
-  }>;
-  rooms: Array<{ room: string; count: number; members: string[] }>;
 }
 
 interface QueryExecution {
@@ -285,9 +272,25 @@ export class LiveEngine
     );
     this.maxTags = this.boundedOption(options.maxTags, DEFAULT_MAX_TAGS, 1_000, 'maxTags');
     driver.bind(this);
-    this.presence?.bindInvalidator((tags) => {
-      void driver.dispatch({ tags });
-    });
+    this.presence?.bindInvalidator((tags) => this.dispatchPresenceInvalidation(driver, tags));
+  }
+
+  /**
+   * Heartbeats and departures invalidate rosters without waiting for the
+   * driver: a dispatch that fails reaches the error reporter instead of
+   * becoming an unhandled rejection.
+   */
+  private dispatchPresenceInvalidation(driver: LiveDriver, tags: string[]): void {
+    const report = (err: unknown): void =>
+      resolveErrorReporter(this.container).report(err, {
+        edge: 'live',
+        source: PRESENCE_ROSTER_QUERY,
+      });
+    try {
+      void Promise.resolve(driver.dispatch({ tags })).catch(report);
+    } catch (err) {
+      report(err);
+    }
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -304,11 +307,14 @@ export class LiveEngine
       { metadataOnly: true },
     )) {
       for (const declared of getLiveQueries(found.metatype)) {
-        if (this.queries.has(declared.name)) {
-          const msg =
-            `[vela] duplicate @LiveQuery('${declared.name}') ` +
-            `(${found.metatype.name}, owner ${found.moduleId}); query names must be unique.`;
-          throw new Error(msg);
+        const existing = this.queries.get(declared.name);
+        if (existing) {
+          throw new Error(
+            `[vela] two live query definitions are named '${declared.name}' ` +
+              `(${existing.token.name}.${String(existing.methodName)} and ` +
+              `${found.metatype.name}.${String(declared.methodName)}, owner ${found.moduleId}); ` +
+              'give each defineLiveQuery({ name }) a unique name.',
+          );
         }
         this.queries.set(declared.name, {
           ...declared,
@@ -398,7 +404,7 @@ export class LiveEngine
             client.close(1008, 'presence room not joined');
             return;
           }
-          this.presence.beat(frame.room, client.id, frame.meta);
+          this.presence.beat(path, frame.room, client.id, frame.meta);
         }
         return;
     }
@@ -441,7 +447,7 @@ export class LiveEngine
       const registered = this.queries.get(record.query);
       if (!registered) throw new Error('unknown persisted live query');
       const prepared = registered.prepare(record.args);
-      const tags = prepared.tags();
+      const tags = prepared.tags(this.liveQueryContext(record, client, path));
       this.assertTags(tags, 'restored subscription');
       const restored: SubscriptionRecord = {
         sub: record.sub,
@@ -500,7 +506,7 @@ export class LiveEngine
         t: 'error',
         sub: frame.sub,
         code: LIVE_ERROR_CODES.UNKNOWN_QUERY,
-        message: `no @LiveQuery('${frame.query}') is registered`,
+        message: `no live query named '${frame.query}' is registered`,
         fatal: true,
       });
       return;
@@ -537,7 +543,7 @@ export class LiveEngine
     const identity = (this.options.identity ?? defaultIdentity)(client);
     let tags: string[];
     try {
-      tags = prepared.tags();
+      tags = prepared.tags(this.liveQueryContext({ identity }, client, path));
       this.assertTags(tags, `subscription '${frame.query}'`);
     } catch (err) {
       resolveErrorReporter(this.container).report(err, {
@@ -769,11 +775,16 @@ export class LiveEngine
     }
   }
 
-  private liveQueryContext(record: SubscriptionRecord, client: WsClient): LiveQueryContext {
+  private liveQueryContext(
+    record: Pick<SubscriptionRecord, 'identity'>,
+    client: WsClient,
+    path = this.connections.get(client.id)?.path ?? '',
+  ): LiveQueryContext {
     return {
       identity: record.identity,
       clientId: client.id,
       rooms: [...client.rooms],
+      path,
     };
   }
 

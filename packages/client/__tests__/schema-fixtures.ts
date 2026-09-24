@@ -1,3 +1,5 @@
+import { defineLiveQuery } from '@velajs/live-protocol';
+
 export function emptyArgs(value: unknown): Record<string, never> {
   if (
     typeof value !== 'object' ||
@@ -41,5 +43,18 @@ export function doneRows(value: unknown): { id: string; done: boolean }[] {
     return { id: row.id, done: row.done };
   });
 }
-export const emptyListSchema = { args: { parse: emptyArgs }, result: { parse: idRows } };
-export const todoSchema = { args: { parse: listArgs }, result: { parse: idRows } };
+export const emptyListSchema = defineLiveQuery({
+  name: 'todos.list',
+  args: { parse: emptyArgs },
+  result: { parse: idRows },
+});
+export const otherListSchema = defineLiveQuery({
+  name: 'other.list',
+  args: { parse: emptyArgs },
+  result: { parse: idRows },
+});
+export const todoSchema = defineLiveQuery({
+  name: 'todos.list',
+  args: { parse: listArgs },
+  result: { parse: idRows },
+});

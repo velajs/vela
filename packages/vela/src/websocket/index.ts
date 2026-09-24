@@ -16,6 +16,9 @@ export {
 export { WebSocketModule } from './websocket.module';
 export type { WebSocketModuleOptions } from './websocket.module';
 
+// Server-initiated pushes to a gateway's rooms
+export { Gateways } from './gateways';
+
 // Dispatcher (injected/called by transports) + the 'websocket' entrypoint meta
 export { WsDispatcher, readWsEntrypointMeta, type WsEntrypointMeta } from './ws-dispatcher';
 export {
@@ -99,6 +102,10 @@ export type {
   WebSocketUpgradeAuthenticationContext,
   UpgradeAuthenticator,
   ForwardedWebSocketUpgrade,
+  GatewayDelivery,
+  GatewayServer,
+  GatewayBroadcastOperator,
+  GatewayEventArgs,
   WebSocketTransport,
   SubscribeMessageMetadata,
   ReservedWsEventMetadata,

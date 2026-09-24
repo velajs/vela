@@ -76,6 +76,9 @@ function implementsNestModule(cls: Type): cls is Type<NestModule> {
   return typeof cls.prototype?.configure === 'function';
 }
 
+/** Test-time module substitutions: the imported module (class or DynamicModule) → its replacement. */
+export type ModuleOverrides = ReadonlyMap<Type | DynamicModule, Type | DynamicModule>;
+
 function tokenOfProvider(provider: Type | ProviderDefinition): Token | undefined {
   return typeof provider === 'function' ? provider : provider.provide;
 }
@@ -148,10 +151,23 @@ export class ModuleLoader {
   constructor(
     private container: Container,
     private router: RouteManager,
+    // Test-time substitutions (`overrideModule().useModule()`), keyed by the
+    // imported module class or DynamicModule; never written to metadata.
+    private readonly moduleOverrides?: ModuleOverrides,
   ) {}
 
+  /** The module an import resolves to after test-time substitution. */
+  private override(module: Type | DynamicModule): Type | DynamicModule {
+    const overrides = this.moduleOverrides;
+    return (
+      overrides?.get(module) ??
+      (isDynamicModule(module) ? overrides?.get(module.module) : undefined) ??
+      module
+    );
+  }
+
   load(rootModule: Type | DynamicModule): void {
-    this.processModule(rootModule);
+    this.processModule(this.override(rootModule));
     // After every module loaded, so visibility includes all global exports.
     this.registerEnhancers();
 
@@ -319,7 +335,7 @@ export class ModuleLoader {
       const keysByClassInImports = new Map<Type, Set<string>>();
 
       for (const entry of allImports) {
-        const importedModule = unwrapModuleImport(entry);
+        const importedModule = this.override(unwrapModuleImport(entry));
 
         const importedModuleClass = isDynamicModule(importedModule)
           ? importedModule.module
@@ -351,13 +367,15 @@ export class ModuleLoader {
 
       // `exports: [ImportedModule]` re-exports what that module exports.
       const moduleExports = allExports.flatMap((exported) => {
-        const keys = typeof exported === 'function' && keysByClassInImports.get(exported);
-        if (!keys) return [exported];
+        const replaced = typeof exported === 'function' && this.override(exported);
+        const reexported = isDynamicModule(replaced) ? replaced.module : replaced;
+        const keys = reexported && keysByClassInImports.get(reexported);
+        if (!reexported || !keys) return [exported];
         return [...keys].flatMap((key) => {
-          const tokens = this.getCachedExports(exported, key);
+          const tokens = this.getCachedExports(reexported, key);
           if (tokens) return [...tokens];
           throw new Error(
-            `${moduleName} re-exports ${exported.name}, which it imports through a forwardRef ` +
+            `${moduleName} re-exports ${reexported.name}, which it imports through a forwardRef ` +
               'cycle, so its exports are not known yet. Export those tokens directly.',
           );
         });

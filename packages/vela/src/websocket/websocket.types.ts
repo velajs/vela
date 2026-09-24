@@ -26,6 +26,13 @@ export interface WsResponse<T = unknown> {
  */
 export interface WsClient<TData = Record<string, unknown>> {
   readonly id: string;
+  /**
+   * The route path of the gateway this socket connected through. A `Gateways`
+   * push and a gateway's `@WebSocketServer()` broadcast reach only that
+   * gateway's sockets, so a socket without a path receives neither: a custom
+   * transport's client must set it.
+   */
+  readonly path?: string;
   readonly rooms: ReadonlySet<string>;
   /** Validated inbound/outbound ceiling for this gateway connection. */
   readonly maxFrameBytes?: number;
@@ -53,7 +60,12 @@ export interface BroadcastOperator {
   emit(event: string, data?: unknown): void | Promise<void>;
 }
 
-/** The server handle injected via `@WebSocketServer()`. Server-origin broadcasts never exclude anyone. */
+/**
+ * The server handle injected via `@WebSocketServer()`. Server-origin
+ * broadcasts never exclude anyone. A gateway's server reaches only the
+ * sockets connected through that gateway; `WS_SERVER` injected outside a
+ * gateway addresses every gateway's sockets.
+ */
 export interface WsServer {
   emit(event: string, data?: unknown): void | Promise<void>;
   to(room: string): BroadcastOperator;
@@ -61,6 +73,12 @@ export interface WsServer {
   except(room: string): BroadcastOperator;
   /** @internal Set by gateway discovery to bound cross-instance commands. */
   setOutboundFrameLimit?(maxFrameBytes: number): void;
+  /**
+   * The server one gateway injects: every push carries `gatewayPath` (see
+   * `BroadcastCommand.gatewayPath`) and is bounded by the gateway's
+   * `maxFrameBytes`. Without it, each gateway injects this server as is.
+   */
+  forGateway?(gatewayPath: string, maxFrameBytes: number): WsServer;
 }
 
 /** An `ExecutionContext` whose transport is a WebSocket gateway. `switchToWs()` is guaranteed present. */
@@ -221,6 +239,29 @@ export interface ForwardedWebSocketUpgrade {
 }
 
 /**
+ * One gateway room a `Gateways` push goes to, built from the gateway's
+ * `@WebSocketGateway` metadata.
+ */
+export interface GatewayDelivery {
+  /** The gateway's route path (`@WebSocketGateway({ path })`). */
+  gatewayPath: string;
+  /** The gateway's `binding`, when it names one. */
+  binding?: string;
+  /**
+   * The gateway room whose sockets receive the push: a `roomParam` value, or
+   * the gateway's path when it declares no `roomParam` (its upgrades all join
+   * that one room).
+   */
+  room: string;
+  /**
+   * The push, already bounded by the gateway's `maxFrameBytes`. Its `rooms`
+   * are every room the push names and its `gatewayPath` is the gateway's;
+   * deliver it to the gateway's sockets of `room` that belong to any of them.
+   */
+  command: BroadcastCommand;
+}
+
+/**
  * Platform wiring for `WebSocketModule`: a runtime adapter registers one as
  * the global `WS_TRANSPORT`. Without one, sockets live in this process and a
  * host serves them (`registerWebSocketGateways` on node, Bun and Deno).
@@ -229,9 +270,18 @@ export interface WebSocketTransport {
   /**
    * Build the server gateways inject with `@WebSocketServer()`. `driver` is
    * the module's sync driver; a transport that owns socket delivery may ignore
-   * it. Defaults to a server that broadcasts through `driver`.
+   * it. Defaults to a server that broadcasts through `driver`, or, when the
+   * transport `deliver`s pushes, to one that keeps no sockets and refuses each
+   * push with guidance to `Gateways`.
    */
   createServer?(driver: SyncDriver): WsServer;
+  /**
+   * Deliver a `Gateways` push to the isolate that holds one gateway room's
+   * sockets. `Gateways` calls it once per room; without it, pushes go through
+   * the module's sync driver to the gateway's sockets in this process (and,
+   * with `redis()`, on every instance).
+   */
+  deliver?(delivery: GatewayDelivery): Promise<void>;
   /**
    * Deliver an upgrade to the isolate that holds the room's sockets. When the
    * transport forwards, `WebSocketModule` mounts an upgrade route for each
@@ -247,6 +297,58 @@ export interface WebSocketTransport {
 }
 
 /**
+ * The payload arguments of one pushed event: optional when its payload type
+ * admits `undefined`, required otherwise.
+ */
+export type GatewayEventArgs<Events, Event extends keyof Events> = undefined extends Events[Event]
+  ? [data?: Events[Event]]
+  : [data: Events[Event]];
+
+/**
+ * Pushes to the gateway rooms it names, typed by the gateway's event map
+ * (event name → payload type).
+ */
+export interface GatewayBroadcastOperator<Events extends object = Record<string, unknown>> {
+  /** Also push to this room. */
+  to(room: string): GatewayBroadcastOperator<Events>;
+  /** Alias of {@link GatewayBroadcastOperator.to}. */
+  in(room: string): GatewayBroadcastOperator<Events>;
+  /**
+   * Not supported: a push reaches every socket in every room it names.
+   * Filter recipients in the gateway with `authorizeDelivery` instead.
+   */
+  except(room: string): never;
+  /** Frame `{ event, data }` and deliver it to the named rooms' sockets. */
+  emit<Event extends keyof Events & string>(
+    event: Event,
+    ...data: GatewayEventArgs<Events, Event>
+  ): Promise<void>;
+}
+
+/**
+ * The typed push handle of one gateway, from `Gateways.of(Gateway)`. A push
+ * names its rooms first: `to(room).emit(event, data)`.
+ */
+export interface GatewayServer<Events extends object = Record<string, unknown>> {
+  /** The gateway's route path. */
+  readonly path: string;
+  /** Push to this room of the gateway. */
+  to(room: string): GatewayBroadcastOperator<Events>;
+  /** Alias of {@link GatewayServer.to}. */
+  in(room: string): GatewayBroadcastOperator<Events>;
+  /**
+   * Not supported: sockets live in their room's isolate, so a push without a
+   * room would reach no one. Name the rooms with `to(room)`.
+   */
+  emit(...args: never[]): never;
+  /**
+   * Not supported: a push reaches every socket in every room it names.
+   * Filter recipients in the gateway with `authorizeDelivery` instead.
+   */
+  except(room: string): never;
+}
+
+/**
  * A fully serializable broadcast instruction. Crosses isolate / Durable-Object /
  * Redis boundaries as JSON, so every sync driver speaks the same command.
  */
@@ -255,6 +357,17 @@ export interface BroadcastCommand {
   rooms: string[];
   exceptRooms?: string[];
   exceptIds?: string[];
+  /**
+   * Deliver only to sockets that connected through this gateway path
+   * (`WsClient.path`). `Gateways` sets it on every push and a gateway's
+   * `@WebSocketServer()` on every broadcast, so rooms that share an id across
+   * gateways stay separate. A `RoomRegistry` must skip sockets of other paths
+   * (the in-memory and Durable Object registries do); one that ignores the
+   * field delivers the command to every gateway's sockets in its rooms. A
+   * command without it (`WS_SERVER` injected outside a gateway) addresses
+   * every gateway's sockets.
+   */
+  gatewayPath?: string;
   /** The exact bytes written to each socket: `JSON.stringify({ event, data })`. */
   frame: string;
   /** Origin instance/DO id — lets pub/sub drivers drop their own echo. */

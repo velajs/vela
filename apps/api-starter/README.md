@@ -80,9 +80,14 @@ the application's `ROOT_MODULE`. `pnpm types` regenerates
 `worker-configuration.d.ts` from `wrangler.jsonc` and the secret names in
 `.dev.vars.example`, so `VelaEnv` carries the typed bindings. Wrangler reads
 `main` (`src/worker.ts`), so `LIVE_ROOM` is typed with the `LiveRoom` class and
-the types never depend on a build. Studio's live source explicitly
-addresses the `default` room with `durableObjectRoomName`; Cloudflare has no
-global room enumeration API. Inspection excludes query arguments, results,
+the types never depend on a build. `src/contracts.ts` declares the
+`todos.list` live query once with `defineLiveQuery({ name, args, result })`:
+`TodoQueries` serves it with `@LiveQuery(todoList, { tags: [crudLiveTag('todos')] })`
+and returns its rows unparsed, since the engine validates each result, and the
+browser passes the same `queries` list to `createLiveClient`.
+`StudioLiveModule.forRoot({ rooms: ['default'] })` inspects the shared board's
+room in its Durable Object, reached through the gateway's `LIVE_ROOM` binding;
+Cloudflare has no global room enumeration API, so Studio names the room. Inspection excludes query arguments, results,
 authentication claims, and presence metadata. `connectedAt` describes when the
 current engine attached the connection, including after hibernation.
 

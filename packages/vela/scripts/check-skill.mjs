@@ -8,6 +8,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
+import { checkDocumentBlocks } from './doc-blocks.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '..');
@@ -95,6 +96,11 @@ for (const sp of [...subpaths].sort()) {
   }
 }
 
+// --- 4. TypeScript blocks of the package READMEs and the skill typecheck -----
+// Against the built workspace packages: run after `pnpm build`.
+const documentation = checkDocumentBlocks();
+for (const failure of documentation.failures) errors.push(`code block ${failure}`);
+
 // --- Report ------------------------------------------------------------------
 if (errors.length) {
   console.error('check-skill: FAILED:');
@@ -105,5 +111,6 @@ if (errors.length) {
 console.log(
   `check-skill: OK — version ${pkgVersion}; ` +
     `${docPaths.size} reference docs verified; ` +
-    `${subpaths.size} subpaths verified against package.json#exports.`,
+    `${subpaths.size} subpaths verified against package.json#exports; ` +
+    `${documentation.count} README and skill code blocks typechecked.`,
 );

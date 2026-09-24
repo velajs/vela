@@ -34,4 +34,10 @@ describe('@velajs/cloudflare public surface', () => {
       expect(name in websocket).toBe(true);
     }
   });
+
+  it('pushes to gateway rooms only through Gateways', () => {
+    expect('Gateways' in websocket).toBe(true);
+    expect('Gateways' in cloudflare).toBe(false);
+    expect('broadcastToRoom' in cloudflare).toBe(false);
+  });
 });

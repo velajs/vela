@@ -57,8 +57,12 @@ attachment. Direct sends, replies, Durable Object broadcasts, and live/sync
 delivery therefore keep the same outbound ceiling after eviction; oversized
 output closes that socket with 1009 without calling the native send method.
 
-Room Durable Object names include the declaring gateway path. Pass that
-exact path to `broadcastToRoom(namespace, gatewayPath, room, ...)`,
-`liveInvalidateToRoom(namespace, gatewayPath, room, tags)`, and
-`durableObjectLive({ gatewayPath, ... })`. The default live driver reads it,
-with the binding, from the application's single binding-backed gateway.
+Room Durable Object names include the declaring gateway path. `Gateways`
+pushes read the path, binding and room parameter from the gateway's
+`@WebSocketGateway` metadata, so they always reach the object that holds the
+room's sockets. Pass the exact path to
+`liveInvalidateToRoom(namespace, gatewayPath, room, tags)` and
+`durableObjectLive({ gatewayPath, ... })`; for a gateway without `roomParam`
+both reach its one object, named by the path. The default live driver reads
+the path, with the binding, from the application's single binding-backed
+gateway.

@@ -156,7 +156,7 @@ Every operation evaluates `model.policies.operation` before parsing/storage. Agg
 
 `live: true` (or `{ tags?: (c) => string[], room?: (c) => string }`) invalidates
 `crud:<tableName>` and stamps `Vela-Commit-Cursor`/`Epoch` headers after 2xx writes —
-post-commit, pre-flush. Pairs with `@LiveQuery('users.list', definition, { tags: ['crud:users'] })`. Degrades to
+post-commit, pre-flush. Pairs with `@LiveQuery(usersList, { tags: [crudLiveTag('users')] })`, where `usersList` is a `defineLiveQuery({ name: 'users.list', args, result })` definition. Degrades to
 a warn-once if `LiveModule` isn't imported.
 
 ## Adapters

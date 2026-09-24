@@ -68,7 +68,7 @@ interface QueueRegistrationRow {
 /** Compare literal dispatch keys; equivalent cron expressions are not interchangeable. */
 export function checkDeployment(
   rawConfig: unknown,
-  environment: string,
+  environment: string | undefined,
   snapshot: unknown,
 ): DeploymentPlan {
   const target = selectDeploymentTarget(rawConfig, environment);

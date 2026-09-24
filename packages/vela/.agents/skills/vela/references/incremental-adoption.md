@@ -34,9 +34,9 @@ NestJS compiles with `tsc`, which reads `emitDecoratorMetadata` from tsconfig. A
 - `vite.config.ts`: `defineConfig({ oxc, plugins: [cloudflare()] })`; `vitest.config.ts`: `defineConfig({ oxc, plugins: [cloudflareTest({ wrangler: { configPath: './wrangler.jsonc' } })] })`, sharing one exported `oxc = { decorator: { legacy: true, emitDecoratorMetadata: true } }`. Always pass it explicitly — tsconfig auto-detection skips files outside `include`, which then fail as TC39 decorators. Never add `cloudflare()` to the Vitest config.
 - `wrangler.jsonc` `main` is `src/worker.ts` with no `build` block. Deploy with `vite build && wrangler deploy` (no `--config`: an explicit config makes Wrangler bundle `src/` with esbuild, which drops decorator metadata).
 - Enable `verbatimModuleSyntax` + `isolatedModules`: Oxc compiles file by file, so a plain `import { SomeInterface }` in a decorated signature breaks at link time. Import injected classes as values, never `import type`.
-- In Workers tests, read the response body before `await waitOnExecutionContext(ctx)`.
+- In Workers tests that call a handler directly, read the response body before `await waitOnExecutionContext(ctx)` (`createTestingWorker` handles this).
 - If you turn on `build.minify`, set `build.rolldownOptions.output.keepNames: true`.
-- `vela.config.ts` can import `./src/...` directly: `@velajs/cli` loads it through a Vite module runner that stays open for the whole command, with the same Oxc options, when `vite` is installed.
+- `@velajs/cli` needs no config: it loads Wrangler's `main` (the `createCloudflareWorker(AppModule)` entry) through a Vite module runner with the same Oxc options, as it would an optional `vela.config.ts` importing `./src/...`. `vela generate` stands in for `nest g` (module, controller, service, resource, plus queue, cron and durable-object), and `createTestingWorker()` from `@velajs/cloudflare/testing` for `Test.createTestingModule()` when a spec drives the Worker handlers.
 - A Nest `UnknownDependenciesException` corresponds to Vela's `UnresolvedDependencyError`: `Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`.
 
 ## Embedding a Vela app inside an existing Hono app

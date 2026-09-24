@@ -1,10 +1,10 @@
 import { defineConfig, type UserConfig } from 'tsdown';
 
 const shared: UserConfig = {
-  entry: ['src/index.ts', 'src/durable-objects.ts', 'src/queues.ts'],
+  entry: ['src/index.ts', 'src/durable-objects.ts', 'src/queues.ts', 'src/testing.ts'],
   format: ['esm'],
   platform: 'neutral',
-  external: ['cloudflare:workers'],
+  external: ['cloudflare:workers', 'cloudflare:test'],
   target: 'es2024',
   fixedExtension: false,
 };

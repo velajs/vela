@@ -8,7 +8,8 @@ import type {
   LivePlatform,
 } from '@velajs/vela/live';
 import { bindingGateways, type BindingGateway } from './binding-gateways';
-import { roomToDurableId } from './room-id';
+import { gatewayObjectRoom } from './room-id';
+import { gatewayRoomObject, type GatewayRoomObject } from './worker-transport';
 
 const DEFAULT_ROOM = 'default';
 
@@ -24,7 +25,11 @@ export interface DurableObjectLiveOptions {
    * Defaults to the single gateway backed by `binding` (or by any binding).
    */
   gatewayPath?: string;
-  /** Room used when an invalidation names none. Matches the client default. */
+  /**
+   * Room used when an invalidation names none. Matches the client default. A
+   * gateway without `roomParam` has one room, its path, which every
+   * invalidation reaches.
+   */
   defaultRoom?: string;
 }
 
@@ -44,6 +49,13 @@ interface WorkerLiveContext {
   gateways(): readonly Pick<BindingGateway, 'path' | 'binding'>[];
 }
 
+/** Where the Worker delivers invalidations: one gateway's room objects. */
+interface LiveTarget {
+  env: VelaEnv;
+  binding: string;
+  gatewayPath: string;
+}
+
 function describeFilter({ binding, gatewayPath }: DurableObjectLiveOptions): string {
   const parts = [
     ...(binding === undefined ? [] : [`binding '${binding}'`]),
@@ -52,31 +64,17 @@ function describeFilter({ binding, gatewayPath }: DurableObjectLiveOptions): str
   return parts.join(' and ');
 }
 
-/** Read a namespace binding by name, validating the operations the driver calls. */
-function readNamespace(env: VelaEnv, binding: string): LiveNamespace {
-  const value: unknown = Reflect.get(env, binding);
-  const idFromName: unknown =
-    typeof value === 'object' && value !== null ? Reflect.get(value, 'idFromName') : undefined;
-  const get: unknown =
-    typeof value === 'object' && value !== null ? Reflect.get(value, 'get') : undefined;
-  if (typeof idFromName !== 'function' || typeof get !== 'function') {
-    throw new Error(
-      `Live invalidations target the Durable Object binding '${binding}', which this ` +
-        'environment does not provide. Declare it in the Wrangler configuration.',
-    );
+/** A commit stamp a room object returned, validated before it reaches headers. */
+function commitStamp(value: unknown): CommitStamp | undefined {
+  if (value === undefined) return undefined;
+  const cursor: unknown =
+    typeof value === 'object' && value !== null ? Reflect.get(value, 'cursor') : undefined;
+  const epoch: unknown =
+    typeof value === 'object' && value !== null ? Reflect.get(value, 'epoch') : undefined;
+  if (typeof cursor !== 'number' || typeof epoch !== 'string') {
+    throw new Error('Durable Object invalidate() returned an invalid commit stamp');
   }
-  return {
-    idFromName: (name) => Reflect.apply(idFromName, value, [name]),
-    get(id) {
-      const stub: unknown = Reflect.apply(get, value, [id]);
-      const invalidate: unknown =
-        typeof stub === 'object' && stub !== null ? Reflect.get(stub, 'invalidate') : undefined;
-      if (typeof invalidate !== 'function') {
-        throw new Error(`Durable Object binding '${binding}' has no invalidate() RPC method.`);
-      }
-      return { invalidate: (cmd) => Reflect.apply(invalidate, stub, [cmd]) };
-    },
-  };
+  return { cursor, epoch };
 }
 
 /**
@@ -89,7 +87,7 @@ export class CfLiveDriver implements LiveDriver {
   #sink: LiveInvalidationSink | undefined;
   #local = false;
   #context: WorkerLiveContext | undefined;
-  #target: { namespace: LiveNamespace; gatewayPath: string } | undefined;
+  #target: LiveTarget | undefined;
 
   constructor(private readonly options: DurableObjectLiveOptions = {}) {}
 
@@ -108,16 +106,25 @@ export class CfLiveDriver implements LiveDriver {
     this.#local = true;
   }
 
-  dispatch(cmd: InvalidationCommand): Promise<CommitStamp | undefined> | CommitStamp | undefined {
-    if (this.#local) return this.#sink?.applyInvalidation(cmd);
-    const { namespace, gatewayPath } = this.#resolveTarget();
-    const room = cmd.room ?? this.options.defaultRoom ?? DEFAULT_ROOM;
-    return namespace
-      .get(roomToDurableId(namespace, gatewayPath, room))
-      .invalidate({ ...cmd, room });
+  /**
+   * @internal The Durable Object that holds one room's subscriptions. As for
+   * upgrades and `Gateways` pushes, a gateway without `roomParam` keeps every
+   * socket in one room, its path, so each of its rooms is in that object.
+   */
+  _room(room: string): GatewayRoomObject {
+    const { env, binding, gatewayPath } = this.#resolveTarget();
+    return gatewayRoomObject(env, gatewayPath, binding, gatewayObjectRoom(gatewayPath, room));
   }
 
-  #resolveTarget(): { namespace: LiveNamespace; gatewayPath: string } {
+  dispatch(cmd: InvalidationCommand): Promise<CommitStamp | undefined> | CommitStamp | undefined {
+    if (this.#local) return this.#sink?.applyInvalidation(cmd);
+    const room = cmd.room ?? this.options.defaultRoom ?? DEFAULT_ROOM;
+    return this._room(room)
+      .call('invalidate', { ...cmd, room })
+      .then(commitStamp);
+  }
+
+  #resolveTarget(): LiveTarget {
     if (this.#target) return this.#target;
     const context = this.#context;
     if (!context) {
@@ -127,14 +134,13 @@ export class CfLiveDriver implements LiveDriver {
       );
     }
     let { binding, gatewayPath } = this.options;
+    const gateways = context.gateways();
     if (binding === undefined || gatewayPath === undefined) {
-      const candidates = context
-        .gateways()
-        .filter(
-          (gateway) =>
-            (binding === undefined || gateway.binding === binding) &&
-            (gatewayPath === undefined || gateway.path === gatewayPath),
-        );
+      const candidates = gateways.filter(
+        (gateway) =>
+          (binding === undefined || gateway.binding === binding) &&
+          (gatewayPath === undefined || gateway.path === gatewayPath),
+      );
       const [chosen, ...others] = candidates;
       if (!chosen) {
         const filter = describeFilter(this.options);
@@ -158,7 +164,7 @@ export class CfLiveDriver implements LiveDriver {
       binding ??= chosen.binding;
       gatewayPath ??= chosen.path;
     }
-    const target = { namespace: readNamespace(context.env, binding), gatewayPath };
+    const target: LiveTarget = { env: context.env, binding, gatewayPath };
     this.#target = target;
     return target;
   }
@@ -182,19 +188,36 @@ let workerLocalLiveWarned = false;
 /**
  * The Worker isolate's live platform: invalidations default to the room
  * Durable Object of the application's binding-backed gateway, chosen and read
- * from `ENV` when first needed. A configured local driver is warned about once
- * per isolate: subscriptions live in the Durable Object, so it would reach none.
+ * from `ENV` when first needed, and `LiveInspector` reads each room from that
+ * object. A configured local driver is warned about once per isolate:
+ * subscriptions live in the Durable Object, so it would reach none.
  */
 export function workerLivePlatform(env: VelaEnv, container: Container): LivePlatform {
   const context: WorkerLiveContext = {
     env,
     gateways: () => bindingGateways(container.resolve(DiscoveryService)),
   };
+  let bound: CfLiveDriver | undefined;
   return {
     liveDriver: () => durableObjectLive(),
+    async inspect(room) {
+      if (!bound) throw new Error('LiveModule delivers locally in this Worker: no room to inspect');
+      const value: unknown = await bound._room(room).call('inspectLive');
+      const subscriptions: unknown =
+        typeof value === 'object' && value !== null
+          ? Reflect.get(value, 'subscriptions')
+          : undefined;
+      const rooms: unknown =
+        typeof value === 'object' && value !== null ? Reflect.get(value, 'rooms') : undefined;
+      if (!Array.isArray(subscriptions) || !Array.isArray(rooms)) {
+        throw new Error('Durable Object inspectLive() returned an invalid snapshot');
+      }
+      return { subscriptions, rooms };
+    },
     bindDriver(driver) {
       if (driver instanceof CfLiveDriver) {
         driver._attach(context);
+        bound = driver;
         return;
       }
       if (driver.kind !== 'local' || workerLocalLiveWarned) return;

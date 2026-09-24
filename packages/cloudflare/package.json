@@ -47,6 +47,10 @@
     "./queues": {
       "types": "./dist/queues.d.ts",
       "import": "./dist/queues.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
     }
   },
   "publishConfig": {
@@ -88,11 +92,15 @@
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
     "@velajs/feature-flags": "workspace:^",
+    "@velajs/testing": "workspace:^",
     "@velajs/vela": "workspace:^",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {
     "@velajs/feature-flags": {
+      "optional": true
+    },
+    "@velajs/testing": {
       "optional": true
     }
   },

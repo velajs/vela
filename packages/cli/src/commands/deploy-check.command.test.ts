@@ -88,9 +88,47 @@ describe('read-only deploy check command', () => {
     ]);
   });
 
-  it('requires config, environment and snapshot explicitly', async () => {
-    expect((await run([], false)).code).not.toBe(0);
-    expect((await run(['--config', configPath, '--env', 'staging'], false)).code).not.toBe(0);
+  it('fails without a Wrangler file to check', async () => {
+    const empty = await mkdtemp(join(tmpdir(), 'vela-preflight-empty-'));
+    vi.spyOn(process, 'cwd').mockReturnValue(empty);
+    try {
+      const result = await run(['--entrypoints', snapshotPath, '--json'], false);
+      expect(result.code).toBe(1);
+      expect(JSON.parse(result.output).error).toContain('wrangler.jsonc');
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('checks the top-level configuration when no environment is named', async () => {
+    const report = JSON.parse(
+      (await run(['--config', configPath, '--entrypoints', snapshotPath, '--json'], false)).output,
+    );
+    expect(report.status).toBe('passed');
+    expect(report.target).toMatchObject({ environment: null, worker: 'api' });
+    expect(report.nextStep.args).toEqual([
+      'exec',
+      'wrangler',
+      'deploy',
+      '--config',
+      configPath,
+      '--dry-run',
+    ]);
+    await writeFile(join(directory, 'vite.config.ts'), VITE_CONFIG);
+    const result = await run(['--config', configPath, '--entrypoints', snapshotPath], false);
+    expect(result.output).toContain('Environment: (top level)');
+    expect(result.output).toContain(
+      `Next step (not executed): cd '${directory}' && pnpm build && pnpm exec wrangler deploy --dry-run\n`,
+    );
+  });
+
+  it('discovers the Wrangler file in the working directory', async () => {
+    vi.spyOn(process, 'cwd').mockReturnValue(directory);
+    const report = JSON.parse(
+      (await run(['--env', 'staging', '--entrypoints', snapshotPath, '--json'], false)).output,
+    );
+    expect(report.provenance.config.path).toBe(configPath);
+    expect(report.target.worker).toBe('api-staging');
   });
 
   it('reports read/parse failures as failing JSON without configuration contents', async () => {

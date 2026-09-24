@@ -31,6 +31,8 @@ Error edges answer only 400–599: as in Nest, `new HttpException(body, 302)` co
 Validation failures (`ValidationPipe`, `@Body(schema)`) render `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`. An unmatched route answers `{ error: { code: 'not_found', message: 'Not Found' } }` with 404; an oversized body answers 413 `payload_too_large`. These framework rejections are not reported; as in Nest, global exception filters receive them (`NotFoundException`, `PayloadTooLargeException`, `BadRequestException`), and a filter's plain result keeps their status.
 
 ```ts
+import { HttpException, type HttpErrorResponse } from '@velajs/vela';
+
 class LockedException extends HttpException {
   constructor(readonly until: Date) { super('Locked', 423); }
   override toResponse(): HttpErrorResponse {
@@ -137,6 +139,8 @@ class ReportsController {
   @CacheKey('reports:summary')
   @CacheTTL(30)
   summary() { return this.buildSummary(); }
+
+  private buildSummary() { return { total: 0 }; }
 
   @Get('/manual')
   manual() {

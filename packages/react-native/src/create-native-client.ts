@@ -1,10 +1,5 @@
 import { LiveClient } from '@velajs/client';
-import type {
-  InferLiveContract,
-  LiveContract,
-  LiveQuerySchemas,
-  MutationStore,
-} from '@velajs/client';
+import type { InferLiveContract, LiveQueryDefinition, MutationStore } from '@velajs/client';
 import { createAsyncStorageMutationStore } from './async-storage-store';
 import type { CreateNativeClientOptions } from './types';
 
@@ -28,9 +23,9 @@ export type { CreateNativeClientOptions } from './types';
  * No cross-tab coordination is defaulted: React Native is single-process and
  * has no `BroadcastChannel`.
  */
-export function createNativeClient<const S extends LiveQuerySchemas<LiveContract>>(
-  options: Omit<CreateNativeClientOptions, 'queries'> & { queries: S },
-): LiveClient<InferLiveContract<S>>;
+export function createNativeClient<const D extends readonly LiveQueryDefinition[]>(
+  options: Omit<CreateNativeClientOptions, 'queries'> & { queries: D },
+): LiveClient<InferLiveContract<D>>;
 export function createNativeClient(options: CreateNativeClientOptions): LiveClient {
   const { storage, mutationStoreKey, ...rest } = options;
 

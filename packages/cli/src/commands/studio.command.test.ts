@@ -1,8 +1,8 @@
-import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 /**
  * `vela studio` command tests. Spawns the BUILT CLI so the clipanion wiring +
@@ -12,16 +12,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const cliEntry = join(rootDir, 'dist', 'index.js');
-
-function ensureBuilt(): void {
-  if (!existsSync(cliEntry)) {
-    execFileSync('pnpm', ['build'], { cwd: rootDir, stdio: 'inherit' });
-  }
-}
-
-beforeAll(() => {
-  ensureBuilt();
-}, 120_000);
 
 interface RunResult {
   code: number | null;

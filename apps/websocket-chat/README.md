@@ -8,12 +8,25 @@ forwards each authenticated upgrade to the room's `ChatRoom`, where the same
 module broadcasts to the room's sockets. Every client in a room receives the others' messages, and
 the sender gets an `ack` frame.
 
+The Worker pushes to a room with `Gateways`: `POST /rooms/:id/announce` calls
+`gateways.of<ChatEvents>(ChatGateway).to(id).emit('system', { text })`, typed by
+the `ChatEvents` event map, and the push reaches that room's `ChatRoom` over its
+broadcast RPC. The route validates its body (400 unless `text` has 1 to 500
+characters) but, as a demo, has no guard: anyone who can reach it can push
+into any room, so a real application guards it with its own authorization. Try
+it while a tab is open on the `general` room:
+
+```sh
+curl -X POST localhost:5173/rooms/general/announce \
+  -H 'content-type: application/json' -d '{"text":"hello from the Worker"}'
+```
+
 From the repository root, after `pnpm install --frozen-lockfile` and
 `pnpm build`:
 
 ```sh
 pnpm --filter vela-ws-chat dev        # vite dev: the Worker and ChatRoom in workerd
-pnpm --filter vela-ws-chat test       # upgrade, greeting, chat broadcast and ack in workerd
+pnpm --filter vela-ws-chat test       # upgrade, greeting, chat broadcast, ack and a Worker push in workerd
 pnpm --filter vela-ws-chat typecheck
 pnpm --filter vela-ws-chat build      # the deployable Worker in dist/
 ```

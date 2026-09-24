@@ -38,14 +38,21 @@ export interface ReconnectOptions {
   capMs?: number;
 }
 
-export type LiveQueryParsers<Args, Result> = LiveQueryDefinition<Args, Result>;
-export type LiveQuerySchemas<C extends LiveContractShape<C>> = {
-  [Q in keyof C]: LiveQueryParsers<C[Q]['args'], C[Q]['result']>;
-};
+/**
+ * The shared `defineLiveQuery` definitions a client validates: each one names a
+ * query of the contract and parses its arguments and results.
+ */
+export type LiveQueryDefinitions<C extends LiveContractShape<C>> = ReadonlyArray<
+  { [Q in keyof C & string]: LiveQueryDefinition<Q, C[Q]['args'], C[Q]['result']> }[keyof C &
+    string]
+>;
 
 export interface LiveClientOptions<C extends LiveContractShape<C> = LiveContract> {
-  /** Runtime evidence for every typed query. Share these schemas with the server. */
-  queries: LiveQuerySchemas<C>;
+  /**
+   * Runtime evidence for every typed query: the `defineLiveQuery` definitions
+   * the server's `@LiveQuery` resolvers share, one per query name.
+   */
+  queries: LiveQueryDefinitions<C>;
   /** HTTP(S) base of the Vela app, e.g. `https://api.example.com`. */
   url: string;
   /** WS(S) base override; derived from `url` (http→ws) when omitted. */
@@ -275,10 +282,10 @@ export interface ClientQueryRef<T> {
   readonly observe: (owner: object, listener: () => void) => Unsubscribe;
 }
 
-/** Project the values produced by a schema map into the client's query contract. */
-export type InferLiveContract<S extends LiveQuerySchemas<LiveContract>> = {
-  [Q in keyof S]: {
-    args: ReturnType<S[Q]['args']['parse']>;
-    result: ReturnType<S[Q]['result']['parse']>;
+/** Project shared query definitions into the client's query contract, keyed by name. */
+export type InferLiveContract<D extends readonly LiveQueryDefinition[]> = {
+  [Query in D[number]['name']]: {
+    args: ReturnType<Extract<D[number], { name: Query }>['args']['parse']>;
+    result: ReturnType<Extract<D[number], { name: Query }>['result']['parse']>;
   };
 };

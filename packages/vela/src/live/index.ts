@@ -7,8 +7,10 @@ import '../metadata';
 export { LiveModule } from './live.module';
 export { LiveResolver, LiveQuery, getLiveQueries } from './live.decorators';
 export { LiveEngine, LIVE_SUBS_DATA_KEY, readPersistedLiveSubscriptions } from './live.engine';
-export type { LiveInspection } from './live.engine';
 export { LiveInvalidation, localLive, stampCommitHeaders } from './live.invalidation';
+export { LiveInvalidates } from './live.invalidates';
+export type { LiveInvalidatesOptions, LiveInvalidatesTags } from './live.invalidates';
+export { LiveInspector } from './live.inspector';
 export { InMemoryCursorLog } from './live.cursor';
 export { encodeSubscriptionUpdate } from './live.delta';
 export { PresenceService, PresenceResolver, presenceTag, PRESENCE_ROSTER_QUERY } from './presence';
@@ -28,6 +30,7 @@ export type {
   LiveDeliveryAuthorizationContext,
   LiveEntrypointMeta,
   LiveIdentity,
+  LiveInspection,
   LiveInvalidationSink,
   LiveModuleOptions,
   LivePlatform,

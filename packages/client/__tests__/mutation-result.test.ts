@@ -15,7 +15,7 @@ function parseUser(value: unknown): { id: string } {
 describe('mutation result evidence', () => {
   it('infers results from a parser and keeps raw responses unknown', async () => {
     const client = new LiveClient({
-      queries: {},
+      queries: [],
       url: 'https://api.test',
       fetch: async () => Response.json({ id: 'u1' }),
     });
@@ -36,7 +36,7 @@ describe('mutation result evidence', () => {
   it('does not replay a committed write when its result parser rejects', async () => {
     const fetch = vi.fn(async () => Response.json({ id: 42 }));
     const client = new LiveClient({
-      queries: {},
+      queries: [],
       url: 'https://api.test',
       fetch,
       identity: () => 'account:epoch',
@@ -53,7 +53,7 @@ describe('mutation result evidence', () => {
 
   it('parses the result of an offline replay for the original awaiter', async () => {
     const client = new LiveClient({
-      queries: {},
+      queries: [],
       url: 'https://api.test',
       identity: () => 'account:epoch',
       offline: { queueBeforeFirstConnect: true },

@@ -74,7 +74,7 @@ export type ClientLiveFrame =
       t: 'sub';
       /** Client-chosen subscription id, unique per socket. */
       sub: string;
-      /** The live-query identifier declared by `@LiveQuery(name)`. */
+      /** The live-query name its `defineLiveQuery({ name })` declares. */
       query: string;
       args?: unknown;
       /** Resume watermark: last observed cursor/epoch. Omitted = cold subscribe. */

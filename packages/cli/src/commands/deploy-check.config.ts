@@ -1,7 +1,5 @@
-import { extname } from 'node:path';
-import { parse, type ParseError } from 'jsonc-parser';
-import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
+import { parseWranglerText } from '../project/wrangler.js';
 
 const record = z.record(z.string(), z.unknown());
 const text = z
@@ -20,24 +18,7 @@ const date = z
 
 /** Decode only data; parser errors deliberately omit configuration values. */
 export function parseDeploymentConfig(source: string, path: string): unknown {
-  const extension = extname(path).toLowerCase();
-  if (extension === '.toml') {
-    try {
-      return parseToml(source);
-    } catch {
-      throw new Error('Invalid Wrangler TOML configuration.');
-    }
-  }
-  if (extension !== '.json' && extension !== '.jsonc') {
-    throw new Error('Wrangler configuration must be a .json, .jsonc or .toml file.');
-  }
-  const errors: ParseError[] = [];
-  const result: unknown = parse(source, errors, {
-    allowTrailingComma: extension === '.jsonc',
-    disallowComments: extension === '.json',
-  });
-  if (errors.length > 0) throw new Error('Invalid Wrangler JSON configuration.');
-  return result;
+  return parseWranglerText(source, path);
 }
 
 function checked<T>(schema: z.ZodType<T>, value: unknown, field: string): T {
@@ -58,7 +39,8 @@ export interface DeploymentQueueProducer {
 }
 
 export interface DeploymentTarget {
-  readonly environment: string;
+  /** The named Wrangler environment, or null for the top-level configuration. */
+  readonly environment: string | null;
   readonly worker: string;
   readonly main: string | null;
   readonly compatibilityDate: string;
@@ -70,24 +52,30 @@ export interface DeploymentTarget {
   readonly customBuild: boolean;
 }
 
-/** A projection, not a replacement for Wrangler's full configuration validator. */
-export function selectDeploymentTarget(raw: unknown, environment: string): DeploymentTarget {
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/u.test(environment)) {
+/**
+ * A projection, not a replacement for Wrangler's full configuration validator.
+ * Without `environment`, the top-level configuration is the target.
+ */
+export function selectDeploymentTarget(raw: unknown, environment?: string): DeploymentTarget {
+  if (environment !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_-]*$/u.test(environment)) {
     throw new Error(
-      'An explicit environment name using letters, digits, underscores or dashes is required.',
+      'An environment name uses letters, digits, underscores or dashes, starting with a letter or digit.',
     );
   }
   const root = checked(record, raw, 'configuration');
-  const environments = checked(record, root.env, 'env');
-  if (!Object.hasOwn(environments, environment))
-    throw new Error('The requested environment is not declared in Wrangler configuration.');
-  const selected = checked(record, environments[environment], `env.${environment}`);
+  let selected = root;
+  if (environment !== undefined) {
+    const environments = checked(record, root.env, 'env');
+    if (!Object.hasOwn(environments, environment))
+      throw new Error('The requested environment is not declared in Wrangler configuration.');
+    selected = checked(record, environments[environment], `env.${environment}`);
+  }
   const inherit = (key: string): unknown =>
     Object.hasOwn(selected, key) ? selected[key] : root[key];
   // Wrangler appends the environment when the named environment omits name.
   const worker = checked(
     workerName,
-    Object.hasOwn(selected, 'name')
+    environment === undefined || Object.hasOwn(selected, 'name')
       ? selected.name
       : `${checked(workerName, root.name, 'name')}-${environment}`,
     'name',
@@ -176,7 +164,7 @@ export function selectDeploymentTarget(raw: unknown, environment: string): Deplo
   if (new Set(queueConsumers).size !== queueConsumers.length)
     throw new Error('Duplicate queue consumer configuration.');
   return {
-    environment,
+    environment: environment ?? null,
     worker,
     main,
     compatibilityDate,

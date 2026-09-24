@@ -59,12 +59,15 @@ The consumer also runs the installed packed `vela new`
 outside the workspace, installs the generated project's dependencies with pnpm,
 checks that its committed binding types match `wrangler types`, typechecks,
 builds the Worker with `vite build`, runs the starter's workerd spec, lists its
-routes through the pinned CLI (which loads `vela.config.ts` through Vite),
-dry-runs the deployment, and verifies HTTP, constructor injection, and source
-reloads under `vite dev`. CLI argument and destination failure cases run
-against that same installed archive. The starter pins exact framework versions
-that track the workspace: `pnpm version-packages` updates them, and
-`pnpm check:workspace` rejects drift. Those pins install from the release
+routes through the pinned CLI (which loads the Worker entry Wrangler names
+through Vite, without a config), dry-runs the deployment, and verifies HTTP,
+constructor injection, and source reloads under `vite dev`. It then runs every
+generator on that project, applies `vela cf sync --write`, and typechecks, tests,
+checks (`vela deploy check`) and dry-runs it again; the `api` template is
+scaffolded, installed, typechecked, tested, synced and built the same way. CLI
+argument and destination failure cases run against that same installed archive.
+Both templates pin exact framework versions that track the workspace:
+`pnpm version-packages` updates them, and `pnpm check:workspace` rejects drift. Those pins install from the release
 archives, because they are published together with the CLI; every other
 starter dependency installs from npm. Its toolchain pins (Vite,
 `@cloudflare/vite-plugin`, Vitest, Wrangler, TypeScript) equal the workspace
