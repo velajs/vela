@@ -8,7 +8,7 @@
     "test": "pnpm -r --workspace-concurrency=1 run test",
     "test:workers": "pnpm -r --workspace-concurrency=1 --if-present run test:workers && pnpm --dir packages/vela run test:workers:als",
     "verify": "pnpm check:workspace && pnpm build && pnpm api:check && pnpm worker-size:check && pnpm typecheck && pnpm check:skill && pnpm test && pnpm test:release && pnpm test:conformance && pnpm test:workers",
-    "test:conformance": "vitest run --config tests/crud/vitest.config.ts",
+    "test:conformance": "vitest run --config tests/crud/vitest.config.ts && vitest run --config tests/modules/vitest.config.ts",
     "test:postgres": "node scripts/test-postgres.mjs",
     "check:workspace": "node scripts/check-workspace.mjs",
     "api:check": "pnpm --dir packages/vela api:check",

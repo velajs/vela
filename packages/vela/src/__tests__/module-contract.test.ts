@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ConfigurableModuleBuilder,
   Global,
-  Injectable,
   InjectionToken,
   Module,
   VelaFactory,
@@ -296,15 +295,12 @@ describe('module contract: ConfigurableModuleBuilder', () => {
 describe('module contract: global lives on @Global and DynamicModule', () => {
   it('keeps @Global in either decorator order', async () => {
     const SHARED = new InjectionToken<string>('module contract shared');
+    // Decorators apply bottom-up: @Global() runs before @Module() here.
     @Module({ providers: [defineProvider(SHARED, { useValue: 'x' })], exports: [SHARED] })
     @Global()
     class GlobalAfter {}
 
-    @Injectable()
-    class Reader {
-      constructor(readonly container: object) {}
-    }
-    @Module({ providers: [defineProvider(Reader, { useFactory: () => new Reader({}) })] })
+    @Module({})
     class Feature {}
 
     @Module({ imports: [GlobalAfter, Feature] })
