@@ -257,6 +257,31 @@ describe('vela cf sync plan', () => {
     ]`);
     });
 
+    it('appends after a block comment that runs over several lines', () => {
+      const text = `{
+  "name": "shop",
+  "main": "src/worker.ts",
+  "triggers": {
+    "crons": [
+      "0 3 * * *" /* nightly,
+         owned by ops */
+    ]
+  }
+}
+`;
+      expect(sync(text, crons('0 3 * * *', '0 4 * * *'))).toContain(`    "crons": [
+      "0 3 * * *", /* nightly,
+         owned by ops */
+      "0 4 * * *"
+    ]`);
+      const trailing = text.replace('"0 3 * * *" /* nightly', '"0 3 * * *", /* nightly');
+      expect(sync(trailing, crons('0 3 * * *', '0 4 * * *'))).toContain(`    "crons": [
+      "0 3 * * *", /* nightly,
+         owned by ops */
+      "0 4 * * *",
+    ]`);
+    });
+
     it('keeps a one-line Wrangler file on one line', () => {
       const text = `{ "name": "shop", "main": "src/worker.ts", "triggers": { "crons": ["0 3 * * *" /* nightly */] } }\n`;
       expect(sync(text, crons('0 3 * * *', '0 4 * * *'))).toBe(

@@ -468,6 +468,25 @@ function endOfLine(text: string, from: number): number {
   return text.charAt(newline - 1) === '\r' ? newline - 1 : newline;
 }
 
+/**
+ * The end of the comments trailing `from` on its line: through a line comment
+ * to the line break, through block comments (which may run over several
+ * lines) to their close.
+ */
+function trailEnd(text: string, from: number): number {
+  let offset = from;
+  let at = from;
+  for (;;) {
+    while (text.charAt(offset) === ' ' || text.charAt(offset) === '\t') offset++;
+    if (text.startsWith('//', offset)) return endOfLine(text, offset);
+    if (!text.startsWith('/*', offset)) return at;
+    const close = text.indexOf('*/', offset + 2);
+    if (close === -1) return at;
+    offset = close + 2;
+    at = offset;
+  }
+}
+
 /** `value` as JSON on one line: `{ "binding": "EMAILS", "queue": "jobs" }`. */
 function inlineJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(inlineJson).join(', ')}]`;
@@ -540,19 +559,14 @@ function appendTo(
   const indent = indentAt(text, last.offset);
   const line = `${layout.eol}${indent}${item(indent, layout)}`;
   const next = skipTrivia(text, end);
-  const closing = container.offset + container.length - 1;
   if (text.charAt(next) === ',') {
     // A trailing comma stays trailing: the new line goes after it and its comment.
-    const stop = endOfLine(text, next + 1);
-    if (stop > closing) return [{ offset: next + 1, length: 0, content: `${line},` }];
-    return [{ offset: stop, length: 0, content: `${line},` }];
+    return [{ offset: trailEnd(text, next + 1), length: 0, content: `${line},` }];
   }
-  const stop = endOfLine(text, end);
-  if (stop > closing) return [{ offset: end, length: 0, content: `,${line}` }];
   // The comma goes right after the last element, which keeps its own comment.
   return [
     { offset: end, length: 0, content: ',' },
-    { offset: stop, length: 0, content: line },
+    { offset: trailEnd(text, end), length: 0, content: line },
   ];
 }
 
