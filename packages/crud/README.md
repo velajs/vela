@@ -63,7 +63,9 @@ Each path belongs to one feature definition in an application. Two
 `forFeature()` registrations that mount one path with different definitions
 fail bootstrap with a message naming the path and both features, instead of
 letting import order pick which policy serves it; several modules may import
-the same `defineCrudFeature(...)` value.
+the same `defineCrudFeature(...)` value. Spellings that mount the same routes
+are one path: `'/notes'` and `'/notes/'`, or `'/orgs/:org/notes'` and
+`'/orgs/:tenant/notes'`.
 
 A feature's controller is generated, so declare its route metadata in the config:
 `decorators` apply to the controller class and `endpointDecorators` to each

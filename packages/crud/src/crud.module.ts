@@ -91,12 +91,22 @@ interface MountedFeature {
 }
 const mountedFeatures = new WeakMap<Type, MountedFeature>();
 
+// The routes a controller path mounts, however it is spelled: routes join the
+// path without its trailing slash, and a parameter segment matches whatever
+// it is named. Two paths with one canonical form mount the same routes.
+function canonicalPath(path: string): string {
+  const joined = (path.endsWith('/') ? path.slice(0, -1) : path) || '/';
+  return joined.replace(/(^|\/):[^/]*/g, '$1:param');
+}
+
 /**
  * One definition per CRUD path in an application. Two `forFeature()`
  * registrations that mount one path with different definitions (other
  * decorators, hooks or policies) would both mount, and import order would
  * decide which one serves; the identical `defineCrudFeature()` value, imported
- * by several modules, is one policy.
+ * by several modules, is one policy. Paths compare in canonical form, so
+ * spellings that mount the same routes (a trailing slash, other parameter
+ * names) are one path.
  */
 class CrudFeaturePaths {
   readonly #discovery: DiscoveryService;
@@ -152,13 +162,16 @@ export class CrudModule extends ConfigurableModuleClass {
     const controllers = resources.map((feature) => {
       const controller = synthesizeController(feature);
       const database = feature.config.database;
+      const mounted = MetadataRegistry.getControllerPath(controller) || '/';
+      const path = canonicalPath(mounted);
       mountedFeatures.set(controller, {
         definition: feature.definition,
         database,
-        path: MetadataRegistry.getControllerPath(controller) || '/',
+        path,
         label:
           `'${resourceNames(feature.config).singular}' (${controller.name}` +
-          `${database === undefined ? '' : `, database '${database}'`})`,
+          `${database === undefined ? '' : `, database '${database}'`}` +
+          `${mounted === path ? '' : `, as '${mounted}'`})`,
       });
       return controller;
     });

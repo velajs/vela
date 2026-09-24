@@ -781,6 +781,36 @@ describe('CrudModule', () => {
         "'note' (CrudNotesController) and 'memo' (CrudMemosController)",
     );
 
+    // Spellings that mount the same routes are one path: a trailing slash, or
+    // other parameter names.
+    const slashed = defineCrudFeature({
+      path: '/notes/',
+      model: makeModel({ name: 'note' }),
+      endpointDecorators: { list: [UseGuards(DenyGuard)] },
+    });
+    await expect(boot([open], [slashed])).rejects.toThrow(
+      "CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: " +
+        "'note' (CrudNotesController) and 'note' (CrudNotesController, as '/notes/')",
+    );
+    await expect(boot([slashed], [open])).rejects.toThrow(
+      "CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: " +
+        "'note' (CrudNotesController, as '/notes/') and 'note' (CrudNotesController)",
+    );
+    const byOrg = defineCrudFeature({
+      path: '/orgs/:org/notes',
+      model: makeModel({ name: 'note' }),
+    });
+    const byTenant = defineCrudFeature({
+      path: '/orgs/:tenant/notes',
+      model: makeModel({ name: 'note' }),
+      endpointDecorators: { list: [UseGuards(DenyGuard)] },
+    });
+    await expect(boot([byOrg], [byTenant])).rejects.toThrow(
+      "CRUD path '/orgs/:param/notes' is mounted by two different CrudModule.forFeature() " +
+        "features: 'note' (CrudNotesController, as '/orgs/:org/notes') and 'note' " +
+        "(CrudNotesController, as '/orgs/:tenant/notes')",
+    );
+
     // The identical definition, imported by two features, is one policy.
     const app = await boot([open], [things, open]);
     try {
