@@ -62,10 +62,12 @@ export interface RuntimeCrudConfig {
   guards?: Partial<Record<CrudEndpointName, GuardType[]>>;
   /**
    * Decorators for the controller, applied as if written above the class in
-   * this order. They declare route metadata the application cannot write on a
-   * headless resource's generated controller, such as its authorization
-   * policy (`[RequireResource({ ... })]` or `[CedarPublic()]`). A decorator
-   * that returns a replacement class is rejected.
+   * this order, after its methods and the generated handlers exist, so one
+   * that decorates or wraps each method reaches every endpoint. They declare
+   * route metadata the application cannot write on a headless resource's
+   * generated controller, such as its authorization policy
+   * (`[RequireResource({ ... })]` or `[CedarPublic()]`). A decorator that
+   * returns a replacement class is rejected.
    */
   decorators?: readonly ClassDecorator[];
   /**

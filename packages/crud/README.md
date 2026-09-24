@@ -79,7 +79,9 @@ defineCrudFeature({
 
 A method decorator that changes or returns the descriptor wraps the handler the
 route calls, as it would written above a method, `@Override()` handlers included.
-A class decorator that returns a replacement class is rejected.
+Class decorators apply after the generated handlers exist, as TypeScript applies
+them after the methods, so one that decorates or wraps each method reaches every
+endpoint. A class decorator that returns a replacement class is rejected.
 
 `CrudConfig<Shape>` and `ResourceConfig<Shape>` take the Zod object's **schema
 shape**, such as `typeof itemSchema.shape`. Inline hooks in `@Crud()`,

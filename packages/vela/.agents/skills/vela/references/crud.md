@@ -99,8 +99,9 @@ defineCrudFeature({
 ```
 
 A method decorator that changes or returns the descriptor wraps the handler the route
-calls, `@Override` handlers included; a class decorator returning a replacement class is
-rejected.
+calls, `@Override` handlers included. Class decorators apply after the generated
+handlers exist, so one that decorates or wraps each method reaches every endpoint; a
+class decorator returning a replacement class is rejected.
 
 Use `defineCrudDatabase(name, { handle, resources })` and the application-owned
 database registry for multiple connections. Select the database explicitly with

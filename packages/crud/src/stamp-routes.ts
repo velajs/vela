@@ -152,15 +152,6 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
   registerCrudConfig(controller, config);
   defineMetadata(METADATA_KEYS.CRUD, config, controller);
   ApiTags(...(config.tags ?? [names.plural]))(controller);
-  // Decorators apply as if written above the class: the last one first.
-  for (const decorator of (config.decorators ?? []).toReversed()) {
-    const replacement: unknown = decorator(controller);
-    if (replacement !== undefined && replacement !== controller) {
-      throw new ConfigurationException(
-        `${controller.name}: CRUD decorators cannot replace the controller class`,
-      );
-    }
-  }
 
   for (const [endpoint, method, subPath] of CRUD_ROUTES) {
     if (!stamped.includes(endpoint)) continue;
@@ -261,6 +252,18 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
         );
       }
       Object.defineProperty(proto, handlerName, decorated);
+    }
+  }
+
+  // Class decorators apply as if written above the class: the last one first,
+  // and, as in TypeScript, after the methods exist, so one that decorates or
+  // wraps each method reaches the generated handlers too.
+  for (const decorator of (config.decorators ?? []).toReversed()) {
+    const replacement: unknown = decorator(controller);
+    if (replacement !== undefined && replacement !== controller) {
+      throw new ConfigurationException(
+        `${controller.name}: CRUD decorators cannot replace the controller class`,
+      );
     }
   }
 }
