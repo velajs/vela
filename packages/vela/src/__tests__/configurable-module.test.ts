@@ -6,7 +6,6 @@ import {
   Injectable,
   Inject,
   ConfigurableModuleBuilder,
-  type DynamicModule,
   type ProviderOptions,
 } from '../index.js';
 
@@ -16,7 +15,7 @@ interface WidgetOptions {
 }
 
 describe('ConfigurableModuleBuilder', () => {
-  describe('forRoot (sync)', () => {
+  describe('register (sync)', () => {
     it('emits a DynamicModule referencing the subclass with an options provider and a stable key', () => {
       const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
         new ConfigurableModuleBuilder<WidgetOptions>({
@@ -25,7 +24,7 @@ describe('ConfigurableModuleBuilder', () => {
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
-      const dyn = WidgetModule.forRoot({ color: 'red' });
+      const dyn = WidgetModule.register({ color: 'red' });
       expect(dyn.module).toBe(WidgetModule);
       expect(typeof dyn.key).toBe('string');
       expect(dyn.global).toBeUndefined();
@@ -34,18 +33,20 @@ describe('ConfigurableModuleBuilder', () => {
       ]);
     });
 
-    it('dedups by options (same → same key, different → different key)', () => {
+    it('keys one instance per class: a different configuration reuses the key', () => {
       const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({
         moduleName: 'Widget',
       }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
-      const a = WidgetModule.forRoot({ color: 'red' });
-      const b = WidgetModule.forRoot({ color: 'red' });
-      const c = WidgetModule.forRoot({ color: 'blue' });
+      const a = WidgetModule.register({ color: 'red' });
+      const b = WidgetModule.register({ color: 'red' });
+      const c = WidgetModule.register({ color: 'blue' });
       expect(a.key).toBe(b.key);
-      expect(a.key).not.toBe(c.key);
+      // No structural fields: a second configuration needs an explicit key.
+      expect(c.key).toBe(a.key);
+      expect(WidgetModule.register({ color: 'blue', key: 'blue' }).key).toBe('blue');
     });
 
     it('honors an explicit key and does not leak it into the options bag', () => {
@@ -55,23 +56,27 @@ describe('ConfigurableModuleBuilder', () => {
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
-      const dyn = WidgetModule.forRoot({ color: 'red', key: 'custom' });
+      const dyn = WidgetModule.register({ color: 'red', key: 'custom' });
       expect(dyn.key).toBe('custom');
       expect(dyn.providers?.[0]).toMatchObject({ useValue: { color: 'red' } });
     });
 
-    it('default isGlobal extra toggles DynamicModule.global and changes identity', () => {
-      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({
-        moduleName: 'Widget',
-      }).build();
+    it('default isGlobal extra toggles DynamicModule.global without changing the key', () => {
+      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+        new ConfigurableModuleBuilder<WidgetOptions>({
+          moduleName: 'Widget',
+        }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
-      const off = WidgetModule.forRoot({ color: 'red' });
-      const on = WidgetModule.forRoot({ color: 'red', isGlobal: true });
+      const off = WidgetModule.register({ color: 'red' });
+      const on = WidgetModule.register({ color: 'red', isGlobal: true });
       expect(off.global).toBeUndefined();
       expect(on.global).toBe(true);
-      expect(off.key).not.toBe(on.key);
+      expect(off.key).toBe(on.key);
+      expect(on.providers).toEqual([
+        defineProvider(MODULE_OPTIONS_TOKEN, { useValue: { color: 'red' } }),
+      ]);
     });
 
     it('applies a custom extras transform', () => {
@@ -86,12 +91,12 @@ describe('ConfigurableModuleBuilder', () => {
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
-      const dyn = WidgetModule.forRoot({ color: 'red', tag: 'x' });
+      const dyn = WidgetModule.register({ color: 'red', tag: 'x' });
       expect(dyn.key?.endsWith(':x')).toBe(true);
     });
   });
 
-  describe('forRootAsync', () => {
+  describe('registerAsync', () => {
     it('lowers useFactory into an options provider and passes imports through', () => {
       const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
         new ConfigurableModuleBuilder<WidgetOptions>({
@@ -101,7 +106,7 @@ describe('ConfigurableModuleBuilder', () => {
       class WidgetModule extends ConfigurableModuleClass {}
 
       const fn = () => ({ color: 'red' });
-      const dyn = WidgetModule.forRootAsync({ useFactory: fn, inject: [], imports: [] });
+      const dyn = WidgetModule.registerAsync({ useFactory: fn, inject: [], imports: [] });
       expect(dyn.module).toBe(WidgetModule);
       expect(dyn.providers).toEqual([
         defineProvider(MODULE_OPTIONS_TOKEN, { useFactory: fn, inject: [] }),
@@ -122,7 +127,7 @@ describe('ConfigurableModuleBuilder', () => {
           return { color: 'green' };
         }
       }
-      const dyn = WidgetModule.forRootAsync({ useClass: WidgetOptionsFactory });
+      const dyn = WidgetModule.registerAsync({ useClass: WidgetOptionsFactory });
       expect(dyn.providers?.[0]).toBe(WidgetOptionsFactory);
       const optionsProvider = dyn.providers?.[1] as ProviderOptions;
       expect(optionsProvider.provide).toBe(MODULE_OPTIONS_TOKEN);
@@ -143,7 +148,7 @@ describe('ConfigurableModuleBuilder', () => {
           return { color: 'blue' };
         }
       }
-      const dyn = WidgetModule.forRootAsync({ useExisting: ExistingFactory });
+      const dyn = WidgetModule.registerAsync({ useExisting: ExistingFactory });
       const optionsProvider = dyn.providers?.[0] as ProviderOptions;
       expect(optionsProvider.provide).toBe(MODULE_OPTIONS_TOKEN);
       expect(optionsProvider.inject).toEqual([ExistingFactory]);
@@ -151,7 +156,7 @@ describe('ConfigurableModuleBuilder', () => {
   });
 
   describe('end-to-end DI', () => {
-    it('resolves options + a derived service through the container (forRoot)', async () => {
+    it('resolves options + a derived service through the container (register)', async () => {
       const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
         new ConfigurableModuleBuilder<WidgetOptions>({
           moduleName: 'Widget',
@@ -168,14 +173,14 @@ describe('ConfigurableModuleBuilder', () => {
       @Module({ providers: [WidgetService], exports: [WidgetService] })
       class WidgetModule extends ConfigurableModuleClass {}
 
-      @Module({ imports: [WidgetModule.forRoot({ color: 'red', size: 3 })] })
+      @Module({ imports: [WidgetModule.register({ color: 'red', size: 3 })] })
       class AppModule {}
 
       const app = await VelaFactory.create(AppModule);
       expect(app.get(WidgetService).describe()).toBe('red:3');
     });
 
-    it('resolves options via forRootAsync useFactory with injected deps', async () => {
+    it('resolves options via registerAsync useFactory with injected deps', async () => {
       const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
         new ConfigurableModuleBuilder<WidgetOptions>({
           moduleName: 'Widget',
@@ -201,7 +206,7 @@ describe('ConfigurableModuleBuilder', () => {
 
       @Module({
         imports: [
-          WidgetModule.forRootAsync({
+          WidgetModule.registerAsync({
             imports: [ColorModule],
             inject: [ColorProvider],
             useFactory: (cp: ColorProvider) => ({ color: cp.get() }),
@@ -214,7 +219,7 @@ describe('ConfigurableModuleBuilder', () => {
       expect(app.get(WidgetService).options.color).toBe('purple');
     });
 
-    it('supports multiple instances of the same builder module via distinct keys', async () => {
+    it('supports multiple instances of the same builder module via explicit keys', async () => {
       const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
         new ConfigurableModuleBuilder<WidgetOptions>({
           moduleName: 'Widget',
@@ -228,16 +233,20 @@ describe('ConfigurableModuleBuilder', () => {
       @Module({ providers: [WidgetService], exports: [WidgetService] })
       class WidgetModule extends ConfigurableModuleClass {}
 
-      const red = WidgetModule.forRoot({ color: 'red' });
-      const blue = WidgetModule.forRoot({ color: 'blue' });
-      // Distinct options → distinct keys → two coexisting instances.
+      const red = WidgetModule.register({ color: 'red', key: 'red' });
+      const blue = WidgetModule.register({ color: 'blue', key: 'blue' });
       expect(red.key).not.toBe(blue.key);
 
       @Module({ imports: [red] })
+      class RedFeature {}
+      @Module({ imports: [blue] })
+      class BlueFeature {}
+      @Module({ imports: [RedFeature, BlueFeature, red] })
       class AppModule {}
 
-      const app = await VelaFactory.create(AppModule);
+      const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
       expect(app.get(WidgetService).options.color).toBe('red');
+      expect(app.getContainer().getOwnerModuleIds(MODULE_OPTIONS_TOKEN)).toHaveLength(2);
     });
   });
 });

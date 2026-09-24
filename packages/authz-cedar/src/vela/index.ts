@@ -38,7 +38,8 @@ export interface CedarModuleOptions {
   guard?: 'global' | 'none';
   /**
    * Routes without `@RequireResource` or `@CedarPublic`: `'deny'` (default)
-   * rejects them with 403; `'allow'` lets them through.
+   * rejects them with 403; `'allow'` lets them through. With `forRootAsync`,
+   * pass it beside the factory.
    */
   undeclared?: 'deny' | 'allow';
   /** Resolve resources/grants from trusted application services; invoke engine.check here. */
@@ -141,13 +142,18 @@ class InstalledCedarGuard extends CedarGuard {
 Injectable()(InstalledCedarGuard);
 Inject(Reflector)(InstalledCedarGuard, undefined, 0);
 Inject(ModuleRef)(InstalledCedarGuard, undefined, 1);
-const { ConfigurableModuleClass } = defineModule<CedarModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<CedarModuleOptions, 'guard' | 'undeclared'>({
   name: 'CedarAuthorization',
+  // Both shape the module at declaration: `forRootAsync` takes them beside the
+  // factory, so a factory cannot relax the policy later.
+  structural: ['guard', 'undeclared'],
+  defaults: { guard: 'global', undeclared: 'deny' },
   setup: ({ OPTIONS, options }) => {
-    const guard = options.guard ?? 'global';
+    const guard = options.guard;
     if (guard !== 'global' && guard !== 'none')
       throw new TypeError("CedarModule guard must be 'global' or 'none'");
-    if (options.undeclared !== undefined && !['deny', 'allow'].includes(options.undeclared))
+    const undeclared = options.undeclared;
+    if (undeclared !== 'deny' && undeclared !== 'allow')
       throw new TypeError("CedarModule undeclared must be 'deny' or 'allow'");
     return {
       providers: [
@@ -155,10 +161,7 @@ const { ConfigurableModuleClass } = defineModule<CedarModuleOptions>({
           inject: [OPTIONS],
           useFactory: (resolved) => {
             auditCedarRoutes(resolved.auditModules ?? []);
-            // The call-time policy wins; a factory cannot relax it later.
-            return options.undeclared === undefined
-              ? resolved
-              : { ...resolved, undeclared: options.undeclared };
+            return { ...resolved, undeclared };
           },
         }),
         // The installed guard answers to CedarGuard, so testing overrides reach it.

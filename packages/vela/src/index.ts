@@ -129,6 +129,7 @@ export type {
   AsyncModuleOptions,
   ModuleImport,
   ModuleRegistrationOptions,
+  ModuleFactoryOptions,
   ConfigurableModuleAsyncOptions,
   ConfigurableModuleBuilderOptions,
   ConfigurableModuleClassType,

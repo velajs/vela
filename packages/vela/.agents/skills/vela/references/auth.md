@@ -4,9 +4,9 @@
 
 ## Better Auth setup
 
-Construct a Better Auth instance and pass it to `BetterAuthModule.forRoot({ auth, issuer, basePath?, guard?, mountHandler? })`. The default `/api/auth/*` catch-all is explicitly public and the authentication guard is global by default (`guard: 'global'`; `'none'` only when the application installs an equivalent guard). Keep the Better Auth and Vela base paths aligned. Custom paths must be canonical absolute paths without wildcards, trailing slashes, or dot segments.
+Construct a Better Auth instance and pass it to `BetterAuthModule.forRoot({ auth, issuer, basePath?, guard?, mountHandler? })`. The default `/api/auth/*` catch-all is explicitly public and the authentication guard is global by default (`guard: 'global'`, in the `authenticate` phase; `'none'` only when the application installs an equivalent guard). `isGlobal: true` separately makes `BetterAuthService` visible to every module. Keep the Better Auth and Vela base paths aligned. Custom paths must be canonical absolute paths without wildcards, trailing slashes, or dot segments.
 
-For Workers, use `forRootAsync({ inject: [ENV], issuer, useFactory: env => betterAuth(...) })` in a module declared once at module scope; the factory returns the auth instance directly, and structural options (`issuer`, `basePath`, `guard`, `mountHandler`) sit next to it. A factory without parameters may omit `inject`. Native environment bindings are available before factories run; each application builds its own auth instance on first use, so instances are isolated per environment.
+For Workers, use `forRootAsync({ inject: [ENV], useFactory: env => ({ issuer, auth: () => betterAuth(...) }) })` in a module declared once at module scope. The factory returns the module options; `auth` may be a function, which runs on the first authentication rather than at bootstrap. The structural options (`basePath`, `guard`, `mountHandler`) sit next to the factory. A factory without parameters may omit `inject`. Native environment bindings are available before factories run; each application builds its own auth instance on first use, so instances are isolated per environment.
 
 ```ts
 import { Controller, Get, Module } from '@velajs/vela';

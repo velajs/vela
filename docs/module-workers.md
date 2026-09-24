@@ -87,7 +87,7 @@ See [scheduling](scheduling.md#workers-cron-triggers).
 
 `RpcModule.forRoot({ authorize })` and `forRootAsync` serve registered `@Rpc`
 procedures through the existing schema-validated HTTP dispatcher. Named clients
-use `RpcClientModule.register/registerAsync` and `rpcClientToken(name)`; supply a
+use `RpcClientModule.forRoot/forRootAsync` and `rpcClientToken(name)`; supply a
 native service binding as the client's `fetch` transport. `binding` records its
 Wrangler name for deployment checks. Contracts and browser clients stay free of
 server imports. The server module applies the global and scoped pipeline once.

@@ -244,7 +244,7 @@ async function getApp(): Promise<VelaApplication> {
   const doc = createOpenApiDocument(SmokeAppModule, {
     info: { title: 'vela smoke', version: '0.0.0' },
   });
-  app.mountOpenApi({ document: doc, path: '/docs.json' });
+  app.mountOpenApi({ document: doc, specPath: '/docs.json' });
   cached = app;
   return app;
 }

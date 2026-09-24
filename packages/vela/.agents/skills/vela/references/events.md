@@ -4,7 +4,7 @@ An in-process event bus with decorator-based listeners, on the subpath `@velajs/
 
 ## Setup
 
-`EventEmitterModule` is a plain module (no `forRoot`, no options). Import it and list your listener providers:
+`EventEmitterModule` takes no options. Import it bare or through `EventEmitterModule.forRoot()`, the uniform entry: both forms are one instance (one emitter), so a library importing one form and the app the other share it. List your listener providers:
 
 ```ts
 import { EventEmitterModule, EventEmitter, OnEvent } from '@velajs/vela/events';

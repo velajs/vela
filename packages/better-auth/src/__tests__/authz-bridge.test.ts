@@ -10,7 +10,6 @@ describe('identityFromUser', () => {
       issuer: 'better-auth',
       subject: 'u1',
       principalType: 'user',
-      userId: 'u1',
       roles: ['admin'],
     });
   });
@@ -21,19 +20,18 @@ describe('identityFromUser', () => {
       issuer: 'better-auth',
       subject: 'u2',
       principalType: 'user',
-      userId: 'u2',
       roles: ['admin', 'editor', 'viewer'],
     });
   });
 
   it('accepts a role array as-is', () => {
     const id = identityFromUser({ id: 'u3', role: ['admin', 'editor'] });
-    expect(id).toMatchObject({ userId: 'u3', roles: ['admin', 'editor'] });
+    expect(id).toMatchObject({ subject: 'u3', roles: ['admin', 'editor'] });
   });
 
   it('yields empty roles when the user has no role field', () => {
     const id = identityFromUser({ id: 'u4' });
-    expect(id).toMatchObject({ userId: 'u4', roles: [] });
+    expect(id).toMatchObject({ subject: 'u4', roles: [] });
   });
 
   it('accepts an application-specific stable issuer namespace', () => {

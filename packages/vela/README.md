@@ -183,7 +183,9 @@ come from outside the program, so validate what you read.
 
 ## Dynamic modules
 
-Configurable modules use `forRoot` (sync) and `forRootAsync` (DI-resolved):
+Every configurable module exposes `forRoot` (sync) and `forRootAsync`
+(DI-resolved). `forRootAsync` takes the module's structural options next to the
+factory; the factory returns the rest:
 
 ```ts
 @Module({
@@ -191,8 +193,8 @@ Configurable modules use `forRoot` (sync) and `forRootAsync` (DI-resolved):
     CacheModule.forRoot({ ttl: 60 }),
     HttpModule.forRoot({ baseURL: 'https://api.example.com' }),
     ConfigModule.forRootAsync({
-      useFactory: async (loader: ConfigLoader) => loader.load(),
       inject: [ConfigLoader],
+      useFactory: async (loader: ConfigLoader) => ({ config: await loader.load() }),
     }),
   ],
 })
@@ -201,42 +203,37 @@ class AppModule {}
 
 ### Identity model
 
-Each `DynamicModule` has an optional `key?: string` that discriminates one instance from another. First-party modules derive `key: stableHash(options)` automatically inside `forRoot` — so the same options always dedup, and distinct options register as distinct instances:
+Each `DynamicModule` has an optional `key?: string`; the same `(class, key)` is
+one instance, and different keys coexist. `defineModule` derives the key from a
+module's structural options only, so most modules have one instance per class:
 
 ```ts
-// Same options → dedup (one CacheModule instance, ttl: 60)
-imports: [
-  CacheModule.forRoot({ ttl: 60 }),
-  CacheModule.forRoot({ ttl: 60 }),
-]
+// The same configuration imported twice → one instance
+imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 60 })]
 
-// Different options → two distinct instances coexist
+// A second configuration under the same key → bootstrap fails, whatever the
+// diagnostics policy: neither import may run on the other's options
+imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 120 })]
+
+// Two instances: give each its own key
 imports: [
-  CacheModule.forRoot({ ttl: 60 }),
-  CacheModule.forRoot({ ttl: 120 }),
+  CacheModule.forRoot({ ttl: 60, key: 'fast' }),
+  CacheModule.forRoot({ ttl: 120, key: 'slow' }),
 ]
 ```
 
-When a consumer module imports two instances both exporting the same logical token, the resolver throws `MultipleProvidersFoundError` with both candidate ids — resolve the ambiguity by importing only one, or use a per-instance accessor exposed by the module. Most apps with a single instance never hit this.
+When a consumer module imports two instances that export the same token, the
+resolver throws `MultipleProvidersFoundError` with both candidate ids. Import
+only one, or use a per-instance accessor exposed by the module.
 
-Custom modules can use the same pattern via the public helpers:
-
-```ts
-import { defineDynamicModule, stableHash } from '@velajs/vela/module-kit';
-
-class MyModule {
-  static forRoot(options: MyOptions): DynamicModule {
-    return defineDynamicModule({
-      module: MyModule,
-      key: stableHash(options),    // or pass an explicit key
-      providers: [/* ... */],
-      exports: [/* ... */],
-    });
-  }
-}
-```
-
-`forRootAsync` callers should pass `key` explicitly when the same module needs multiple async instances — factories aren't structurally hashable.
+The same applies to per-feature clients: two features that each import
+`HttpModule.forRoot({ baseURL })` with different settings give each its own
+`key`. `key`, `lazy` and `isGlobal` never change the key or reach the options
+token. A repeat with other options fails bootstrap even when its `global`
+flag differs too; one with the same options and another `global` flag is
+reported through the diagnostics policy. Build your own
+modules the same way with `defineModule`; see the [module authoring guide](https://github.com/velajs/vela/blob/main/docs/modules.md)
+for structural options, `referenceKey`, and the rest of the authoring contract.
 
 ## Custom parameter decorators with deferred resolution
 

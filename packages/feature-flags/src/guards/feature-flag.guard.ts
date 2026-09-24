@@ -22,9 +22,9 @@ import { FEATURE_FLAG_TOKENS } from '../feature-flags.tokens';
  * `getBooleanDetails(key)`; only an explicit `true` without an evaluation
  * error opens the route. Disabled, malformed, or failed evaluations throw
  * `NotFoundException` (route hidden) or `ForbiddenException` per the decorator.
- * Handlers with no `@FeatureFlag()` metadata pass through untouched, so the
- * guard is safe to register app-wide (`FeatureFlagsModule.forRoot({ isGlobal:
- * true })`) or per-route via `@UseGuards(FeatureFlagGuard)`.
+ * Handlers with no `@FeatureFlag()` metadata pass through untouched, so
+ * `FeatureFlagsModule` registers the guard app-wide by default; with
+ * `globalGuard: false`, apply it per route via `@UseGuards(FeatureFlagGuard)`.
  *
  * It does NOT inject `REQUEST_CONTEXT` — that would make the guard request-
  * scoped and break lazy-module materialization (which constructs every provider

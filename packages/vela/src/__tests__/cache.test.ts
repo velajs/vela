@@ -204,7 +204,7 @@ describe('CacheModule', () => {
     expect(callCount).toBe(1);
   });
 
-  it('should cache only explicitly @Cacheable routes when isGlobal: true', async () => {
+  it('should cache only explicitly @Cacheable routes when globalInterceptor: true', async () => {
     let cacheableCalls = 0;
     let plainCalls = 0;
 
@@ -225,7 +225,7 @@ describe('CacheModule', () => {
     }
 
     @Module({
-      imports: [CacheModule.forRoot({ isGlobal: true })],
+      imports: [CacheModule.forRoot({ globalInterceptor: true })],
       controllers: [TestController],
     })
     class AppModule {}

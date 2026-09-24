@@ -69,7 +69,7 @@ describe('cache value boundaries', () => {
         }
       }
       @Module({
-        imports: [CacheModule.forRoot({ store, isGlobal: true })],
+        imports: [CacheModule.forRoot({ store, globalInterceptor: true })],
         controllers: [SafeController],
       })
       class App {}

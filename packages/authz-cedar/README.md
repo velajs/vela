@@ -90,7 +90,8 @@ to handlers/classes. The callback receives verified identity and execution
 context, resolves authoritative resource entities, and calls the engine.
 
 Application routes that carry neither declaration are denied (403) by
-default; `undeclared: 'allow'` lets them through. The global guard covers
+default; `undeclared: 'allow'` lets them through. `undeclared` and `guard` shape
+the module, so `forRootAsync` takes them beside its factory. The global guard covers
 every application route, including routes in modules that do not import
 `CedarModule` (they use the installing module's policy) and whether or not it
 is registered with `isGlobal`. An integration package's own controller opts out

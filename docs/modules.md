@@ -3,18 +3,19 @@
 The contract for building a Vela feature module — first-party or third-party.
 Everything here is public API: the application kit from `@velajs/vela` and the
 module-author seams (discovery, entrypoint kinds, execution scopes, the
-pipeline runner, `stableHash` and the other helpers) from
+pipeline runner, `referenceKey`, `stableHash` and the other helpers) from
 `@velajs/vela/module-kit`. A module never needs `@velajs/vela/internal`.
 
 ## Configurable modules with `defineModule`
 
-`defineModule` generates `forRoot` and `forRootAsync`, derives an instance key,
-and registers providers from the module's options. Use `defineProvider` to check
-each provider against its token and infer factory dependencies:
+`defineModule` is the one module-authoring engine. Every first-party
+configurable module is built on it and exposes `forRoot` and `forRootAsync`.
+It keys each instance from the module's **structural** options and registers
+providers from them. Use `defineProvider` to check each provider against its
+token and infer factory dependencies:
 
 ```ts
 import { defineModule, defineProvider, InjectionToken } from '@velajs/vela';
-import { stableHash } from '@velajs/vela/module-kit';
 
 export interface StorageDriver {
   read(key: string): Promise<string | undefined>;
@@ -28,15 +29,17 @@ export interface StorageOptions {
 export const STORAGE_OPTIONS = new InjectionToken<StorageOptions>('STORAGE_OPTIONS');
 export const DRIVER = new InjectionToken<StorageDriver>('STORAGE_DRIVER');
 
-const { ConfigurableModuleClass } = defineModule<StorageOptions>({
+const { ConfigurableModuleClass } = defineModule<StorageOptions, 'name'>({
   name: 'Storage',
   optionsToken: STORAGE_OPTIONS,
-  key: (options) => stableHash({ name: options.name }),
-  setup: ({ OPTIONS }) => ({
-    providers: [defineProvider(DRIVER, {
-      inject: [OPTIONS],
-      useFactory: (options) => options.driver(),
-    })],
+  structural: ['name'],
+  setup: ({ OPTIONS, options }) => ({
+    providers: [
+      defineProvider(DRIVER, {
+        inject: [OPTIONS],
+        useFactory: (resolved) => resolved.driver(),
+      }),
+    ],
     exports: [DRIVER],
   }),
 });
@@ -44,14 +47,44 @@ const { ConfigurableModuleClass } = defineModule<StorageOptions>({
 export class StorageModule extends ConfigurableModuleClass {}
 ```
 
-Consumers import `StorageModule.forRoot({ name, driver })` into their application
-module. A factory with parameters declares `inject`; a factory without parameters
-may omit it. For `forRootAsync`, read resolved options through the `OPTIONS` token:
-the `setup` callback only sees structural options supplied at the call site.
+Consumers import `StorageModule.forRoot({ name, driver })`, or
+`StorageModule.forRootAsync({ name, inject: [ENV], useFactory: (env) => ({ driver }) })`.
 
-`setup` may also return Nest provider literals such as
+### Structural options
+
+The second type argument lists the options that shape the module graph, and
+`structural` repeats them at runtime. They are what `setup` and `key` receive:
+
+- `forRoot(options)` passes `setup` only the structural fields; every other
+  option exists only once DI resolves `OPTIONS`, so providers read it there.
+- `forRootAsync` takes the structural fields at the call site (`Pick<Opts, S>`)
+  and its factory returns the rest (`Omit<Opts, S>`). A factory that returns a
+  structural field fails to compile, and fails the bootstrap when a type
+  assertion hides it: the module was already built without it. A call-site
+  option that is neither in the spec's `structural` list, an extra nor a
+  registration control throws when `forRootAsync` is called instead of being
+  dropped, so list every member of `S`.
+- A module without structural fields (`S` defaults to `never`) has a factory
+  that returns the complete options.
+- `defaults` gives structural options their values when a call site leaves
+  them out: `defaults: { globalGuard: true }` makes `forRoot({})` and
+  `forRoot({ globalGuard: true })` one configuration with one key, and
+  `setup` receives `globalGuard: true` for both. The options token still
+  receives the options as given. Only options in `structural` may have a
+  default; any other throws when `defineModule` runs.
+
+`key`, `lazy` and the extras (`isGlobal`, or a spec's own `extras`) are
+registration controls: they never reach the options token and never change the
+key. `isGlobal: true` makes the instance's exports visible to every module;
+it means nothing else on any first-party module. Modules that register an
+application-wide component name that option after it (`globalGuard`,
+`globalInterceptor`, or `guard: 'global' | 'none'` on the authentication,
+tenant and authorization integrations).
+
+A factory with parameters declares `inject`; a factory without parameters may
+omit it. `setup` may also return Nest provider literals such as
 `{ provide: LABEL, useValue: options.label }`, and so may a hand-written
-`DynamicModule` (`providers` in what `forRoot()` returns) or a `Provider[]` list
+`DynamicModule` (`providers` in what a static returns) or a `Provider[]` list
 handed to `@Module`. These literals are validated at runtime only: nothing ties
 their value to their token at compile time, so the loader checks each literal's
 shape when the module loads and a value of the wrong type is not caught (see
@@ -59,72 +92,116 @@ shape when the module loads and a value of the wrong type is not caught (see
 provider whose value type matters; it is checked against its token wherever it
 is listed.
 
-- `forRootAsync({ inject, useFactory })` comes free, with typed factory
-  params inferred from the `inject` tuple. Structural fields passed alongside
-  the factory merge **under** the resolved options (factory wins). Their types
-  come from `Partial<Options>`; DI wiring keys are reserved. The factory must
-  still return the complete required options. `lazy?: boolean` is accepted
-  by both registration methods, alongside the explicit `key`.
 - A module that wraps the generated `forRootAsync` in its own static method
-  types its options as `{ useFactory: (...deps: InferTokens<Inject>) => Result }
-  & FactoryInject<Inject>`, so a factory without parameters may omit `inject`,
-  and forwards the caller's object whole, replacing only what it wraps:
-  `ConfigurableModuleClass.forRootAsync<Inject>({ ...options, useFactory: async
-  (...deps: InferTokens<Inject>) => check(await options.useFactory(...deps)) })`.
-  Destructuring `inject` out of the options separates it from `useFactory`, and
-  the forwarded pair no longer type-checks. The wrapper's rest parameters hide
-  the caller's arity, so call `assertFactoryInject('FeatureModule.forRootAsync',
-  options.useFactory, options.inject)` before wrapping: a caller's factory that
-  declares parameters without `inject` then throws, as the generated
-  `forRootAsync` would.
-- `ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over
-  `defineModule` — same engine, either entry.
-- `defineConfigurableModule` remains the low-level engine for
-  runtime-generated module classes. Workers bindings come from the framework
-  `ENV` (`inject: [ENV]` in `forRootAsync`); see the
-  [Cloudflare integration](../packages/cloudflare/README.md).
+  forwards the caller's object whole, replacing only what it wraps:
+  `super.forRootAsync({ ...options, key })`. Destructuring `inject` out of the
+  options separates it from `useFactory`, and the forwarded pair no longer
+  type-checks.
+- `ConfigurableModuleBuilder` is the NestJS-shaped facade over the same
+  engine. It generates Nest's `register`/`registerAsync` (rename them with
+  `setClassMethodName('forRoot')`), has no structural fields, and keys one
+  instance per class unless the caller passes `key`.
+- Workers bindings come from the framework `ENV` (`inject: [ENV]` in
+  `forRootAsync`); see the [Cloudflare integration](../packages/cloudflare/README.md).
 
-### Keys (multi-instance dedup)
+### Keys (instance identity)
 
-`DynamicModule.key` decides instance identity: same `(class, key)` dedups
-(while the constructor identity is retained), different keys coexist. A display
-name is not identity: distinct classes with the same name remain independent.
-The loader and OpenAPI metadata walker use the same class/key distinction.
-An HTTP controller class can be mounted by only one module owner: registering
-its identical routes through two owners now fails with a clear diagnostic.
-Use distinct controller classes when keyed instances need separate HTTP routes.
-A class registered only as another module's provider does not change the actual
-HTTP owner. Middleware configured through `configure()` also retains its owner.
+`DynamicModule.key` decides instance identity: the same `(class, key)` is one
+instance, different keys coexist. The default key is `stableHash` of the
+structural options over the spec's `defaults`, so a module without structural
+fields has one instance per class. A field set to `undefined` counts as not
+given at every depth, in the key as in the comparison of repeated imports:
+`forRoot({ presence: {} })` and `forRoot({ presence: { ttlMs: undefined } })`
+are one instance. A module that takes no options and can also be imported bare
+(an `@Module` class with its own providers, such as `ScheduleNodeModule`,
+`EventEmitterModule` and `HealthModule`) declares `key: () => 'default'`, the
+bare import's key, so `forRoot()` and the class are one instance. A display
+name is not identity: distinct classes with the same name
+remain independent. The loader and OpenAPI metadata walker use the same
+class/key distinction. An HTTP controller class can be mounted by only one
+module owner: registering its identical routes through two owners fails with a
+clear diagnostic. Use distinct controller classes when keyed instances need
+separate HTTP routes. A class registered only as another module's provider does
+not change the actual HTTP owner. Middleware configured through `configure()`
+also retains its owner.
 
 Rules:
 
-1. Default `stableHash(options)` is right for value-shaped options.
-2. Options carrying **stateful instances** (drivers, registries, sockets)
-   must use `key: (o) => ...` over the stable identifying subset — never a
-   counter (non-deterministic keys break HMR dedup), and never rely on
-   `stableHash` of closures (identical source hashes collide).
-3. Always honor the caller's explicit `key` (`defineModule` does).
+1. Declare as structural only what shapes the graph (a bucket name, an HTTP
+   mount, a queue declaration). Never put a secret in a key: keys appear in
+   module ids and diagnostics.
+2. A second instance of the same module needs its own `key`
+   (`MailModule.forRoot({ ..., key: 'marketing' })`), or distinct structural
+   options (`StorageModule.forRoot({ name: 'backups', ... })`).
+3. `key: (options) => ...` overrides the default from the structural options.
+   `referenceKey(...values)` keys stateful values (drivers, clients, closures)
+   by reference and plain values by value, so two equal-looking instances stay
+   two instances. It holds its references weakly.
+4. The caller's explicit `key` always wins; it must be a non-empty string
+   without surrounding whitespace.
 
 A repeated `(class, key)` keeps only its first definition. `defineModule`,
-`sideEffectModule` and `defineConfigurableModule` record the inputs each
-definition was built from, and the loader compares a repeat against the first:
-plain values compare structurally, while functions and class instances (such
-as an `InjectionToken`) compare by reference. Source text cannot see what a
-closure captured, so two closures with the same source are different inputs: a
-helper such as `database('PRIMARY_URL')` and `database('ANALYTICS_URL')` that
-builds a `forRootAsync` config from its argument is reported instead of
-silently keeping the first configuration. A repeat built from different inputs
-is reported through the container's diagnostics policy (`'log'` warns,
-`'throw'` fails bootstrap) instead of silently dropping its providers. A helper
-that rebuilds the same configuration on every call is reported as well; import
-one shared definition (export a const of the `DynamicModule`), or give each
-configuration its own `key`. Identical repeats still deduplicate. The reference
-ids belong to one module loader and are released with it.
+`sideEffectModule` and `ConfigModule` record the inputs each definition was
+built from, and the loader compares a repeat against the first: plain values
+compare structurally, while functions and class instances (such as an
+`InjectionToken`) compare by reference. Source text cannot see what a closure
+captured, so two closures with the same source are different inputs: a helper
+such as `database('PRIMARY_URL')` and `database('ANALYTICS_URL')` that builds a
+`forRootAsync` config from its argument is rejected instead of silently
+keeping the first configuration. A repeat built from different inputs fails
+the bootstrap whatever the diagnostics policy: keeping either configuration
+would run the other import's consumers on options they never asked for, such
+as another base URL, credentials, driver or authorizer. Two features that each
+configure `HttpModule.forRoot({ baseURL })`, for example, give each client its
+own `key`. A helper that builds a fresh closure or class instance on every
+call, such as a new `useFactory` or a new token each time, is rejected as
+well, even when every call configures the same thing; import one shared
+definition (export a const of the `DynamicModule`), or give each
+configuration its own `key`. A helper that builds its configuration from plain
+values only deduplicates, because those values compare structurally.
+
+A bare class import configures nothing. A configured import under the same
+key, such as `HttpModule.forRoot({ key: 'default', baseURL })` next to
+`imports: [HttpModule]`, fails the bootstrap in either order instead of
+leaving one of them on the class's own defaults. A definition under the bare
+key that adds nothing to its class, such as
+`HttpModule.forRoot({ key: 'default' })`, is the bare import. `forRoot()`
+alone is the bare import only on a module whose `key` returns `'default'`
+(`EventEmitterModule`, `HealthModule`, `ScheduleNodeModule`); elsewhere it
+keys by the hash of its structural options. `HttpModule.forRoot()` is
+therefore a second instance (`HttpModule#<hash>`) beside
+`imports: [HttpModule]`, and a module that imports both forms is reported as
+mixing bare and keyed imports (`'throw'` fails the bootstrap). Laziness is
+compared as the instance gets it: the spec's `lazy`, the class's
+`@Module({ lazy: true })` and a call site's `lazy: true` all count, so
+`lazy: true` on a module that is already lazy changes nothing, while
+`lazy: true` on one import of an eager module is a different configuration.
+
+The options are compared before the `global` flag, so a repeat that also asks
+for `isGlobal: true` still fails. A repeat with the same options and a
+different `global` flag, including a global instance after a bare import of
+its class, is reported through the container's diagnostics policy (`'log'`
+warns, `'throw'` fails bootstrap) and ignored. An extra at its default, a
+structural option at the spec's default and an option passed as `undefined`
+(at any depth) count as not given, so `forRoot({ driver })`,
+`forRoot({ driver, isGlobal: false })` and `forRoot({ driver, prefix: undefined })`
+are one configuration. A spec with its own `transform` may read any extra for
+more than visibility, so every extra it receives, `isGlobal` included, is
+compared as an option. Identical repeats still deduplicate, and a repeat never
+adds a generated module's controllers to the instance a second time. The
+reference ids belong to one module loader and are released with it.
 
 An `undefined` or `null` entry in a module's `imports`, `providers`,
 `controllers` or `exports` fails the load with `UndefinedModuleError`, naming
 the list and index (for example `AppModule.imports[2]`). The usual cause is a
 circular file import; use `forwardRef(() => OtherModule)` for imports.
+
+### Global modules
+
+`global` lives in two places only: `@Global()` on a module class, and
+`DynamicModule.global` on one instance (which the `isGlobal` extra sets).
+`@Module` has no global option. Only exported tokens become visible
+application-wide.
 
 ### Re-exporting modules
 
@@ -148,9 +225,9 @@ import it. Its constructor can inject anything the module can see, and
 
 ### Tokens
 
-Mint with `moduleToken<T>('pkg:area:thing')` (an `InjectionToken`) — never
-raw strings. Pass existing tokens via `optionsToken` when migrating so
-downstream `@Inject(...)` keeps working.
+Mint tokens with `new InjectionToken<T>('pkg:area:thing')`, never raw strings.
+Pass existing tokens via `optionsToken` when migrating so downstream
+`@Inject(...)` keeps working.
 
 ### Companion primitives
 
@@ -158,12 +235,14 @@ downstream `@Inject(...)` keeps working.
   memoized thunk `() => T` whose factory runs on first use; `inject` may be
   omitted when the factory takes no parameters. Workers bindings are
   available before provider initialization; lazy construction does not create an I/O context.
-- `provideGlobal(kind, component)` — spread into `providers:` to register an
-  app-wide guard/pipe/interceptor/filter/middleware outside `defineModule`.
+- The `global:` contribution slot — `setup` returns
+  `global: { guards: [AuthGuard] }` to register app-wide guards, pipes,
+  interceptors, filters or middleware. Outside `defineModule`, list
+  `{ provide: APP_GUARD, useClass: AuthGuard }`.
 - `sideEffectModule(OwnerClass, contributions)` — a contribution-only dynamic
   module. Declare the owner class once in the library; repeated calls with the
   same owner and content-derived key deduplicate. Different keys coexist.
-  The legacy `sideEffectModule(name, contributions)` form creates a fresh,
+  The `sideEffectModule(name, contributions)` form creates a fresh,
   isolated class each call, even when names and keys match. It does not deduplicate.
 
 ```ts
@@ -180,11 +259,11 @@ export function registerMessages(messages: string[]) {
 
 Keep deployment choices in the integration's own options. For example, an
 optional HTTP layer can compute `controllers` and companion `imports` in
-`setup` only when `options.http === true`. Pass this structural flag directly
-alongside `forRootAsync`'s factory, because resolved options arrive after graph
-construction. Runtime providers should inject `OPTIONS` for the resolved bag.
-This controls registration; excluding code from a bundle requires separate
-imports/entrypoints. There is no global mutable module configuration.
+`setup` only when `options.http === true`. Declare `http` structural so it is
+passed alongside `forRootAsync`'s factory, because resolved options arrive
+after graph construction. Runtime providers inject `OPTIONS` for the resolved
+bag. This controls registration; excluding code from a bundle requires
+separate imports/entrypoints. There is no global mutable module configuration.
 
 ### Global component aliases
 
@@ -440,7 +519,7 @@ fully sync, or don't mark them lazy.
   state in the live phase — same as bootstrap-phase semantics today; do
   side-effecting work in hooks, not constructors.
 
-In-core lazy modules: `EventEmitterModule`, `ScheduleModule`, `SeederModule`,
+In-core lazy modules: `EventEmitterModule`, the schedule registry, `SeederModule`,
 `I18nModule`. `WebSocketModule` stays eager (its gateways are user providers
 whose `@WebSocketServer()` injection drags the chain in anyway; transports
 read gateway instances at wiring time).
@@ -459,12 +538,14 @@ read gateway instances at wiring time).
 
 ## Checklist
 
-- [ ] Module built on `defineModule` (or plain `@Module` when zero-config).
+- [ ] Module built on `defineModule`, exposing `forRoot`/`forRootAsync` (a
+      zero-config module passes no options), with every structural option declared.
 - [ ] Classes declared at module scope; runtime values arrive through
       `forRootAsync({ inject: [ENV] })`, providers or injectable classes.
-- [ ] `key` deterministic; explicit `key` passthrough honored.
-- [ ] Tokens are `InjectionToken`s (`moduleToken`), options token stable.
-- [ ] Global components via the `global:` slot, `provideGlobal` or an
+- [ ] Key from structural options (or `referenceKey`), never a secret; explicit
+      `key` passthrough honored.
+- [ ] Tokens are `InjectionToken`s, options token stable.
+- [ ] Global components via the `global:` slot or an
       `{ provide: APP_GUARD, useClass }` provider.
 - [ ] Discovery via `DiscoveryService` / `createDiscoverableDecorator`.
 - [ ] Non-HTTP surface exposed as entrypoints (`registerEntrypointKind` or

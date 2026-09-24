@@ -1,12 +1,18 @@
 import type { CheckedProviders, Provider, ProviderDefinition, Type } from '../container/types';
 import { MetadataRegistry } from '../registry/metadata.registry';
-import type { Constructor, DynamicModule, ModuleMetadata, ModuleOptions } from '../registry/types';
+import type { Constructor, ModuleMetadata, ModuleOptions } from '../registry/types';
 
+/**
+ * Make a module class global: its exported tokens are visible to every
+ * module. Applies in any order relative to `@Module()`. A single instance is
+ * made global through `DynamicModule.global` (the `isGlobal` extra of
+ * generated `forRoot`/`forRootAsync`).
+ */
 export function Global(): ClassDecorator {
   return (target) => {
     const ctor = target as unknown as Constructor;
     const existing = MetadataRegistry.getModuleOptions(ctor);
-    MetadataRegistry.setModuleOptions(ctor, { ...existing, isGlobal: true });
+    MetadataRegistry.setModuleOptions(ctor, { ...existing, global: true });
   };
 }
 
@@ -36,27 +42,22 @@ export function Module<const P extends readonly unknown[] = readonly Provider[]>
 ): ClassDecorator;
 export function Module(options: ModuleOptions = {}): ClassDecorator {
   return (target) => {
-    MetadataRegistry.setModuleOptions(target as unknown as Constructor, {
+    const ctor = target as unknown as Constructor;
+    // `@Global()` may have run first (decorators apply bottom-up).
+    const global = MetadataRegistry.getModuleOptions(ctor)?.global;
+    MetadataRegistry.setModuleOptions(ctor, {
       imports: options.imports,
       providers: options.providers,
       controllers: options.controllers,
       exports: options.exports,
-      isGlobal: options.isGlobal,
       lazy: options.lazy,
+      ...(global === true ? { global } : {}),
     });
   };
 }
 
 export function isModule(target: Constructor): boolean {
   return MetadataRegistry.getModuleOptions(target) !== undefined;
-}
-
-/**
- * Normalize a DynamicModule, defaulting `key` to `"default"`. Module authors
- * call this from `forRoot()` so the loader always sees an explicit key.
- */
-export function defineDynamicModule(input: DynamicModule): DynamicModule {
-  return { ...input, key: input.key ?? 'default' };
 }
 
 export function getModuleMetadata(target: Constructor): ModuleMetadata | undefined {
@@ -68,7 +69,7 @@ export function getModuleMetadata(target: Constructor): ModuleMetadata | undefin
     controllers: options.controllers ?? [],
     imports: options.imports ?? [],
     exports: options.exports ?? [],
-    isGlobal: options.isGlobal === true,
+    global: options.global === true,
     lazy: options.lazy === true,
   };
 }

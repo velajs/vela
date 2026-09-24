@@ -68,7 +68,7 @@ The claim schema is a [Standard Schema v1](https://standardschema.dev) validator
 
 ### Resolvers
 
-- **`createAccessResolver({ preset, aud, mapClaims?, groupRoles?, identity?, onError?, clockToleranceSec?, keySet? })`** — returns a fail-closed `ResolveIdentity`. It requires a finite `exp`, derives stable `{ issuer, subject, principalType }`, exposes the verified expiry only as epoch-millisecond `expiresAtMs`, and retains `userId` as a compatibility alias for `subject`. `mapClaims` may add application fields but cannot replace verified identity, expiry, groups, claims, or local roles.
+- **`createAccessResolver({ preset, aud, mapClaims?, groupRoles?, identity?, onError?, clockToleranceSec?, keySet? })`** — returns a fail-closed `ResolveIdentity`. It requires a finite `exp`, derives stable `{ issuer, subject, principalType }` and exposes the verified expiry only as epoch-millisecond `expiresAtMs`. `mapClaims` may add application fields but cannot replace verified identity, expiry, groups, claims, or local roles.
 - **External groups are not roles.** `groupRoles` is an explicit own-property allowlist such as `{ 'idp-editors': ['editor'] }`; unmapped groups grant nothing.
 - **`composeResolvers(...resolvers)`** — ordered fallback: each resolver is tried in order, the first non-null identity wins, and all-null resolves to anonymous (`null`). The sequential await is intentional.
 
@@ -79,8 +79,6 @@ interface ResolvedIdentity {
   issuer: string;
   subject: string;
   principalType: 'user' | 'service';
-  /** @deprecated compatibility alias for subject */
-  userId: string;
   expiresAtMs: number;
   email?: string;
   commonName?: string;

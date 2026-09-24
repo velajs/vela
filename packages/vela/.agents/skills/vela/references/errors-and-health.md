@@ -61,7 +61,7 @@ Filters run closest-first (handler → controller → global) — see `pipeline.
 
 ## Health checks — `HealthModule`
 
-Import `HealthModule` (plain module, no options) and write your own endpoint injecting `HealthCheckService` + `HealthIndicatorService`:
+Import `HealthModule` bare or through `HealthModule.forRoot()` (no options; both forms are one instance) and write your own endpoint injecting `HealthCheckService` + `HealthIndicatorService`:
 
 ```ts
 import { HealthModule, HealthCheckService, HealthIndicatorService } from '@velajs/vela/health';
@@ -130,7 +130,7 @@ class ReportsController {
   constructor(private readonly cache: CacheService) {}
 
   @Get('/summary')
-  @UseInterceptors(CacheInterceptor)   // opt-in per route (or CacheModule.forRoot({ isGlobal: true }))
+  @UseInterceptors(CacheInterceptor)   // opt-in per route (or CacheModule.forRoot({ globalInterceptor: true }))
   @Cacheable()
   @CacheKey('reports:summary')
   @CacheTTL(30)
@@ -146,7 +146,7 @@ class ReportsController {
 }
 ```
 
-`CacheModuleOptions`: `ttl` (seconds, default 5), `max` (default 100), `isGlobal?`, `store?` (synchronous only), `varyBy?` (trusted principal/tenant partition). Routes require `@Cacheable()`. Custom keys are suffixes beneath host/path/canonical query. Credentialed requests need an explicit trusted variation. `CacheService` stays synchronous with unknown raw reads and parser-inferred `getParsed`.
+`CacheModuleOptions`: `ttl` (seconds, default 5), `max` (default 100), `globalInterceptor?` (registers `CacheInterceptor` app-wide; structural), `store?` (synchronous only), `varyBy?` (trusted principal/tenant partition). Routes require `@Cacheable()`. Custom keys are suffixes beneath host/path/canonical query. Credentialed requests need an explicit trusted variation. `CacheService` stays synchronous with unknown raw reads and parser-inferred `getParsed`.
 
 For asynchronous stores, use `ResponseCacheModule.forRoot({ namespace, store, scope, invalidation? })` and `@CacheResponse({ ttl, tags, key })`. This module installs its opt-in interceptor automatically. `scope(context)` runs after guards and returns `{ visibility: 'public' | 'private', partition }` from trusted identity/tenant data, or undefined to bypass. Guards authorize every hit. Never mix `@Cacheable` and `@CacheResponse` on one route.
 

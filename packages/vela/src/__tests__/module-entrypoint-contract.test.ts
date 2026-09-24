@@ -19,24 +19,24 @@ function invalidContracts(registry: EntrypointRegistry): void {
   // @ts-expect-error A method-name type cannot replace the runtime transition.
   new ConfigurableModuleBuilder<{ color: string }, 'register'>();
   const original = new ConfigurableModuleBuilder<{ color: string }>();
-  const renamed = original.setClassMethodName('register');
-  // @ts-expect-error The original branch still exposes forRoot.
-  original.build().ConfigurableModuleClass.register({ color: 'red' });
-  // @ts-expect-error The renamed branch exposes register, not forRoot.
-  renamed.build().ConfigurableModuleClass.forRoot({ color: 'red' });
+  const renamed = original.setClassMethodName('forRoot');
+  // @ts-expect-error The original branch exposes Nest's register, not forRoot.
+  original.build().ConfigurableModuleClass.forRoot({ color: 'red' });
+  // @ts-expect-error The renamed branch exposes forRoot, not register.
+  renamed.build().ConfigurableModuleClass.register({ color: 'red' });
 }
 void invalidContracts;
 
 describe('immutable configurable module builder', () => {
   it('preserves every retained method-name branch', () => {
     const original = new ConfigurableModuleBuilder<{ color: string }>({ moduleName: 'Widget' });
-    const renamed = original.setClassMethodName('register');
+    const renamed = original.setClassMethodName('forRoot');
     const sibling = original.setClassMethodName('configure');
     expect(renamed).not.toBe(original);
-    expect(original.build().ConfigurableModuleClass.forRoot({ color: 'red' }).module).toBeTypeOf(
+    expect(original.build().ConfigurableModuleClass.register({ color: 'red' }).module).toBeTypeOf(
       'function',
     );
-    expect(renamed.build().ConfigurableModuleClass.register({ color: 'blue' }).module).toBeTypeOf(
+    expect(renamed.build().ConfigurableModuleClass.forRoot({ color: 'blue' }).module).toBeTypeOf(
       'function',
     );
     expect(sibling.build().ConfigurableModuleClass.configure({ color: 'green' }).module).toBeTypeOf(
@@ -61,8 +61,8 @@ describe('immutable configurable module builder', () => {
     const second = changed.build();
     @Module({
       imports: [
-        first.ConfigurableModuleClass.forRootAsync({ useClass: DefaultFactory }),
-        second.ConfigurableModuleClass.forRootAsync({ useClass: ChangedFactory }),
+        first.ConfigurableModuleClass.registerAsync({ useClass: DefaultFactory }),
+        second.ConfigurableModuleClass.registerAsync({ useClass: ChangedFactory }),
       ],
     })
     class OptionsHost {}
@@ -82,8 +82,8 @@ describe('immutable configurable module builder', () => {
     defaults.tag = 'mutated';
     const oldResult = original
       .build()
-      .ConfigurableModuleClass.forRoot({ color: 'red', isGlobal: true });
-    const newResult = changed.build().ConfigurableModuleClass.forRoot({ color: 'red' });
+      .ConfigurableModuleClass.register({ color: 'red', isGlobal: true });
+    const newResult = changed.build().ConfigurableModuleClass.register({ color: 'red' });
     expect(oldResult.global).toBe(true);
     expect(newResult.key).toBe('original');
     expect(newResult.global).toBeUndefined();
@@ -131,7 +131,10 @@ function configurableAuthoringTypes(): void {
     ConfigurableModuleClass: Feature,
     OPTIONS_TYPE,
     ASYNC_OPTIONS_TYPE,
-  } = defineModule<{ color: string; size?: number }>({ name: 'TypedFeature' });
+  } = defineModule<{ color: string; size?: number }, 'size'>({
+    name: 'TypedFeature',
+    structural: ['size'],
+  });
   Feature.forRoot({ color: 'red', lazy: true });
   Feature.forRootAsync({
     inject: [COUNT],
@@ -157,8 +160,10 @@ function configurableAuthoringTypes(): void {
   Feature.forRootAsync({ inject: [], size: 'big', useFactory: () => ({ color: 'red' }) });
   // @ts-expect-error Misspelled structural fields are rejected.
   Feature.forRootAsync({ inject: [], colour: 'red', useFactory: () => ({ color: 'red' }) });
-  // @ts-expect-error Factory results still satisfy all required options.
-  Feature.forRootAsync({ inject: [], color: 'red', useFactory: () => ({ size: 3 }) });
+  // @ts-expect-error Factory results still satisfy all required non-structural options.
+  Feature.forRootAsync({ inject: [], useFactory: () => ({}) });
+  // @ts-expect-error Non-structural options come from the factory, not the call site.
+  Feature.forRootAsync({ inject: [], color: 'red', useFactory: () => ({ color: 'red' }) });
   // @ts-expect-error Factory choices remain exclusive.
   Feature.forRootAsync({
     inject: [],

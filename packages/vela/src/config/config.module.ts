@@ -1,6 +1,7 @@
 import { Container } from '../container/container';
 import { defineProvider, InjectionToken } from '../container/types';
 import type { DynamicModule } from '../module/types';
+import type { ModuleRegistrationOptions } from '../module/configurable-module.types';
 import { defineModule } from '../module/define-module';
 import { attachModuleIdentity } from '../module/module-fingerprints';
 import { ConfigService } from './config.service';
@@ -26,7 +27,7 @@ class ConfigFeatureModule {}
  * ConfigModule instance) and `forFeature()` of the same namespace collapse
  * into one `(class, key)` instance: the KEY has a single owner, whatever the
  * import path, and its factory runs once. Another namespace object under the
- * same name is reported as a module identity collision.
+ * same name fails bootstrap as a module identity collision.
  */
 function namespaceSubModule(namespace: AnyConfigNamespace): DynamicModule {
   return attachModuleIdentity(
@@ -55,11 +56,12 @@ function namespaceSubModule(namespace: AnyConfigNamespace): DynamicModule {
 // factories are synchronous, so the sync seam is safe). `resolveAllInstances`
 // treats the KEY tokens as lazy-only (they belong solely to the lazy
 // sub-module) and skips them at bootstrap.
-const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions, 'load'>({
   name: 'Config',
+  structural: ['load'],
+  defaults: { load: [] },
   setup: ({ OPTIONS, options }) => {
     const load = options.load ?? [];
-    const { validateSchema } = options;
     return {
       // Lazy sub-modules carry the KEY providers; re-exported below so direct
       // `@Inject(ns.KEY)` and `ConfigStore`'s container lookup both reach them.
@@ -73,11 +75,11 @@ const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
           inject: [OPTIONS],
         }),
         defineProvider(ConfigStore, {
-          // Factory-provided so the store closes over the namespace list +
-          // schema; it resolves each namespace's KEY lazily via the container.
-          useFactory: (container, config) =>
-            new ConfigStore(container, config, load, validateSchema),
-          inject: [Container, CONFIG_OPTIONS],
+          // Factory-provided so the store closes over the namespace list; it
+          // resolves each namespace's KEY lazily via the container.
+          useFactory: (container, config, opts) =>
+            new ConfigStore(container, config, load, opts.validateSchema),
+          inject: [Container, CONFIG_OPTIONS, OPTIONS],
         }),
         ConfigService,
       ],
@@ -93,8 +95,8 @@ export class ConfigModule extends ConfigurableModuleClass {
    * provider is a passthrough (no double validation). `validateSchema` (the
    * merged-config schema) is deferred to first read — its input needs env.
    */
-  static forRoot(
-    options: ConfigModuleOptions & { isGlobal?: boolean; key?: string } = {},
+  static override forRoot(
+    options: ConfigModuleOptions & { isGlobal?: boolean } & ModuleRegistrationOptions = {},
   ): DynamicModule {
     const validatedConfig = options.validate
       ? options.validate(options.config ?? {})
@@ -112,7 +114,7 @@ export class ConfigModule extends ConfigurableModuleClass {
   static forFeature(namespace: AnyConfigNamespace): DynamicModule {
     const registration = new InjectionToken<string>(`vela:config-feature:${namespace.namespace}`);
     // Repeating the same namespace dedupes; another namespace object under the
-    // same name is reported as a module identity collision.
+    // same name fails bootstrap as a module identity collision.
     return attachModuleIdentity(
       {
         module: ConfigFeatureModule,

@@ -27,7 +27,7 @@ describe('Better Auth public type contracts', () => {
       inject: [SECRET],
       useFactory: (secret) => {
         expectTypeOf(secret).toEqualTypeOf<string>();
-        return betterAuth({ secret });
+        return { auth: () => betterAuth({ secret }) };
       },
     });
   });
@@ -37,7 +37,7 @@ describe('Better Auth public type contracts', () => {
     const invalidRegistration = () => {
       // @ts-expect-error a generic annotation cannot stand in for an actual inject tuple.
       BetterAuthModule.forRootAsync<readonly [typeof SECRET]>({
-        useFactory: (secret) => betterAuth({ secret }),
+        useFactory: (secret) => ({ auth: betterAuth({ secret }) }),
       });
     };
     // Compile-only rejection fixture; never execute the invalid registration.

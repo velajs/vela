@@ -170,14 +170,13 @@ describe('identityFromAccess', () => {
       issuer: preset.issuer,
       subject: 'user-1',
       principalType: 'user',
-      userId: 'user-1',
       expiresAtMs: Date.now() + 60_000,
       groups: ['editor'],
       roles: ['editor'],
       claims: { sub: 'user-1', groups: ['editor'] },
     };
     const mapped = identityFromAccess(identity);
-    expect(mapped.userId).toBe('user-1');
+    expect(mapped.subject).toBe('user-1');
     expect(mapped.issuer).toBe(preset.issuer);
     expect(mapped.roles).toEqual(['editor']);
     expect(mapped.claims).toEqual({ sub: 'user-1', groups: ['editor'] });
@@ -192,7 +191,6 @@ describe('identityFromAccess', () => {
       issuer: preset.issuer,
       subject: 'svc',
       principalType: 'service',
-      userId: 'svc',
       expiresAtMs: Date.now() + 60_000,
       groups: ['admin'],
       claims: {},
@@ -215,7 +213,7 @@ describe('PermissionGuard', () => {
 
     @Module({
       imports: [
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({
           preset,
           aud: AUD,
@@ -248,7 +246,7 @@ describe('PermissionGuard', () => {
 
     @Module({
       imports: [
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
       ],
       controllers: [PostsController],
@@ -275,7 +273,7 @@ describe('PermissionGuard', () => {
 
     @Module({
       imports: [
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
       ],
       controllers: [PostsController],
@@ -326,7 +324,7 @@ describe('PermissionGuard', () => {
 
     @Module({
       imports: [
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
       ],
       controllers: [OpenController],
@@ -353,7 +351,7 @@ describe('PermissionGuard', () => {
 
     @Module({
       imports: [
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({
           preset,
           aud: AUD,
@@ -394,8 +392,8 @@ describe('PermissionGuard', () => {
 
     @Module({
       imports: [
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:*'])] }),
+        AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ key: 'secondary', roles: [defineRole('editor', ['posts:*'])] }),
         CloudflareAccessModule.forRoot({
           preset,
           aud: AUD,
@@ -528,7 +526,7 @@ describe('shared identity enforcement across Access, authz and core', () => {
     @Module({
       imports: [
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks, mode: 'optional' }),
-        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
       ],
       controllers: [ForgedController],
     })

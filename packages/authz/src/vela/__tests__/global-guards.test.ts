@@ -8,8 +8,10 @@ import {
   VelaFactory,
   defineProvider,
   type CanActivate,
+  type DynamicModule,
   type ExecutionContext,
   type GuardPhase,
+  type VelaApplication,
 } from '@velajs/vela';
 import { orderGuardsByPhase, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { defineRole } from '../../index';
@@ -57,16 +59,15 @@ Roles(['reviewer'])(
   Object.getOwnPropertyDescriptor(Posts.prototype, 'review')!,
 );
 
-async function application(guard?: 'global' | 'none') {
+const editor = defineRole('editor', ['posts:write']);
+
+async function application(
+  authz: DynamicModule = AuthzModule.forRoot({ roles: [editor] }),
+): Promise<VelaApplication> {
   class App {}
   Module({
     // Authorization is imported first; its guards still run after authentication.
-    imports: [
-      AuthzModule.forRoot({
-        roles: [defineRole('editor', ['posts:write'])],
-        ...(guard === undefined ? {} : { guard }),
-      }),
-    ],
+    imports: [authz],
     controllers: [Posts],
     providers: [
       HeaderAuthentication,
@@ -114,11 +115,30 @@ describe('AuthzModule global guards', () => {
   });
 
   it("leaves routes to explicit guards with guard: 'none'", async () => {
-    const app = await application('none');
+    const app = await application(AuthzModule.forRoot({ roles: [editor], guard: 'none' }));
     try {
       expect((await app.getHonoApp().request('/posts/write')).status).toBe(200);
     } finally {
       await app.close();
     }
+  });
+
+  it('takes guard beside a forRootAsync factory, defaulting to one global install', async () => {
+    // A spelled-out default is the same instance as leaving it out.
+    expect(AuthzModule.forRoot({ roles: [editor], guard: 'global' }).key).toBe(
+      AuthzModule.forRoot({ roles: [editor] }).key,
+    );
+    const statuses: number[] = [];
+    for (const guard of ['global', 'none'] as const) {
+      const app = await application(
+        AuthzModule.forRootAsync({ guard, useFactory: () => ({ roles: [editor] }) }),
+      );
+      try {
+        statuses.push((await app.getHonoApp().request('/posts/write')).status);
+      } finally {
+        await app.close();
+      }
+    }
+    expect(statuses).toEqual([403, 200]);
   });
 });

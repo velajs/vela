@@ -1,6 +1,7 @@
 import { InjectionToken } from '@velajs/vela';
 import type { StorageDriver } from './storage.types';
 import type { StorageService } from './storage.service';
+import type { StorageControllerOptions } from './storage.controller';
 
 /** Bucket name used when a registration omits `name`. */
 export const DEFAULT_STORAGE_NAME = 'default';
@@ -31,6 +32,18 @@ export function storageToken(name: string): InjectionToken<StorageService> {
   if (!token) {
     token = new InjectionToken<StorageService>(`vela.storage.Service:${name}`);
     serviceTokens.set(name, token);
+  }
+  return token;
+}
+
+const controllerOptionTokens = new Map<string, InjectionToken<StorageControllerOptions>>();
+
+/** Internal token for the per-application values a bucket's HTTP controller reads. */
+export function storageControllerOptions(name: string): InjectionToken<StorageControllerOptions> {
+  let token = controllerOptionTokens.get(name);
+  if (!token) {
+    token = new InjectionToken<StorageControllerOptions>(`vela.storage.ControllerOptions:${name}`);
+    controllerOptionTokens.set(name, token);
   }
   return token;
 }

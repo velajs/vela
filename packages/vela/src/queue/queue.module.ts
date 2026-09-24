@@ -4,11 +4,8 @@ import { defineProvider } from '../container/types';
 import { DiscoveryService } from '../discovery/discovery.service';
 import { ENV } from '../env';
 import { Inject, Injectable } from '../container/decorators';
-import { stableHash } from '../module/stable-hash';
-import type {
-  ConfigurableModuleAsyncOptions,
-  ModuleRegistrationOptions,
-} from '../module/configurable-module.types';
+import { referenceKey } from '../module/reference-key';
+import type { ConfigurableModuleAsyncOptions } from '../module/configurable-module.types';
 import type { DynamicModule } from '../registry/types';
 import type { Token } from '../container/types';
 import { inline } from './inline.driver';
@@ -19,40 +16,28 @@ import { QueueRegistrationRecord, QueueRegistry, readQueueRegistration } from '.
 import { QUEUE_DRIVER, queueToken } from './queue.tokens';
 import type { QueueDriver, QueueModuleOptions, QueueRegistration } from './queue.types';
 
-// Stateful transport objects, factories and signed dispatch policies must not
-// dedup by their kind or source: a helper that builds `target: () => ({ path })`
-// per call yields closures with one source but different captures. Each such
-// object keys by reference, so a different one becomes a second owner of
-// QUEUE_DRIVER, which QueueDispatchBinding rejects, while re-importing the same
-// object deduplicates. Default inline, direct configuration keeps a stable key.
-const referenceIds = new WeakMap<object, number>();
-let nextReferenceId = 0;
-function referenceId(value: object): number {
-  const existing = referenceIds.get(value);
-  if (existing !== undefined) return existing;
-  const id = ++nextReferenceId;
-  referenceIds.set(value, id);
-  return id;
-}
-
-function driverIdentity(driver: QueueModuleOptions['driver']): string | number {
-  return driver === undefined ? 'default-inline' : referenceId(driver);
-}
-
-function dispatchIdentity(dispatch: QueueModuleOptions['dispatch']): string | number {
-  return dispatch === undefined || dispatch.kind === 'direct' ? 'direct' : referenceId(dispatch);
+/**
+ * Stateful transports, driver factories and signed dispatch policies key by
+ * reference: a helper that builds `target: () => ({ path })` per call yields
+ * closures with one source but different captures. A different object is then
+ * a second owner of QUEUE_DRIVER, which QueueDispatchBinding rejects whatever
+ * the diagnostics policy, while re-importing the same object deduplicates. The
+ * default inline, direct configuration keeps one key.
+ */
+function queueKey(options: QueueModuleOptions): string {
+  const { driver, dispatch } = options;
+  return referenceKey(
+    driver ?? 'inline',
+    dispatch === undefined || dispatch.kind === 'direct' ? 'direct' : dispatch,
+  );
 }
 
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
   QueueModuleOptions,
+  never,
   Record<never, never>
 >({
   name: 'Queue',
-  key: (o) =>
-    stableHash({
-      driver: driverIdentity(o.driver),
-      dispatch: dispatchIdentity(o.dispatch),
-    }),
   extras: {},
   // One driver per application, visible to every registerQueue() module.
   transform: (definition) => ({ ...definition, global: true }),
@@ -169,7 +154,7 @@ export class QueueModule extends ConfigurableModuleClass {
    * instance or signed policy object fails bootstrap.
    */
   static override forRoot(options: QueueModuleOptions = {}): DynamicModule {
-    return super.forRoot(options);
+    return super.forRoot({ ...options, key: queueKey(options) });
   }
 
   /**
@@ -181,12 +166,9 @@ export class QueueModule extends ConfigurableModuleClass {
    * different dispatch policies.
    */
   static override forRootAsync<const Inject extends readonly Token[]>(
-    options: ConfigurableModuleAsyncOptions<QueueModuleOptions, 'create', Inject> &
-      ModuleRegistrationOptions,
+    options: ConfigurableModuleAsyncOptions<QueueModuleOptions, never, 'create', Inject>,
   ): DynamicModule {
-    const identity = `async:${referenceId(options)}`;
-    const key = options.key === undefined ? identity : `${options.key}:${identity}`;
-    return super.forRootAsync({ ...options, key });
+    return super.forRootAsync({ ...options, key: referenceKey(options.key, options) });
   }
 
   /**

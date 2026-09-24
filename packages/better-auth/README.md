@@ -49,15 +49,18 @@ export default app; // edge-compatible (.fetch)
 
 ```ts
 BetterAuthModule.forRoot({
-  auth,                          // pre-constructed betterAuth({ ... }) instance
+  auth,                          // betterAuth({ ... }) instance, or () => betterAuth({ ... })
   issuer: 'my-app:better-auth',  // stable namespace paired with user ids
   basePath: '/api/auth',         // default — must match your better-auth config
   guard: 'global',               // default — AuthGuard runs globally in the authenticate phase
   mountHandler: true,            // mount /api/auth/* catch-all controller
+  isGlobal: false,               // default — true makes BetterAuthService visible to every module
 });
 ```
 
 Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `guard: 'none'` is intended only for applications that install an equivalent global authentication guard themselves.
+
+`basePath`, `mountHandler` and `guard` are structural: `forRootAsync` takes them next to its factory, which returns the other options. An `auth` function runs on the first authentication, not while the application initializes.
 
 Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity. The mounted auth handler is `@Public(true)` and marked `SkipGuardPhases(['tenant', 'authorize'])`, so the tenant admission and authorization guards integrations install globally never block sign-in; throttling and the application's own global guards still apply.
 
@@ -69,7 +72,6 @@ Global guards run in deterministic phases whatever the import order: `authentica
 imports: [
   BetterAuthModule.forRoot({
     auth: betterAuth({ database, plugins: [magicLink({ sendMagicLink }), apiKey()] }),
-    guard: 'global',
   }),
 ]
 ```
@@ -82,15 +84,18 @@ imports: [
 imports: [
   BetterAuthModule.forRootAsync({
     inject: [ENV, EmailService],
-    useFactory: (env, email) => betterAuth({
-        database: drizzleAdapter(drizzle(env.DB), { provider: 'sqlite' }),
-        plugins: [
-          magicLink({ sendMagicLink: (data) => email.send(data) }), // DI'd EmailService
-          apiKey(),
-          twoFactor(),
-        ],
+    useFactory: (env, email) => ({
+      // Built on the first authentication, not while the application initializes.
+      auth: () =>
+        betterAuth({
+          database: drizzleAdapter(drizzle(env.DB), { provider: 'sqlite' }),
+          plugins: [
+            magicLink({ sendMagicLink: (data) => email.send(data) }), // DI'd EmailService
+            apiKey(),
+            twoFactor(),
+          ],
+        }),
     }),
-    guard: 'global',
   }),
 ]
 ```
@@ -132,8 +137,9 @@ export class MagicLinkAuthModule {}
     BetterAuthModule.forRootAsync({
       imports: [MagicLinkAuthModule, OAuthAuthModule],
       inject: [MAGIC_LINK_PLUGIN, OAUTH_PLUGIN],
-      useFactory: (magicLink, oauth) => betterAuth({ database, plugins: [magicLink, oauth] }),
-      guard: 'global',
+      useFactory: (magicLink, oauth) => ({
+        auth: () => betterAuth({ database, plugins: [magicLink, oauth] }),
+      }),
     }),
   ],
 })
@@ -161,7 +167,7 @@ class AdminUserService {
 }
 ```
 
-Under `forRootAsync`, the underlying `betterAuth({...})` instance is constructed lazily on first `.auth` / `.api` / `.handler` access. The Workers adapter supplies the typed environment before DI and owns a separate application for each environment, so a cached auth instance never crosses environments.
+When `auth` is a function (`auth: () => betterAuth({...})`), the instance is constructed on first `.auth` / `.api` / `.handler` access and cached. The Workers adapter supplies the typed environment before DI and owns a separate application for each environment, so a cached auth instance never crosses environments.
 
 ## Decorators
 

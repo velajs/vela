@@ -44,9 +44,8 @@ class CheckoutService {
 ## Hiding routes behind a flag
 
 ```ts
-import { FeatureFlag, FeatureFlagGuard } from '@velajs/feature-flags';
+import { FeatureFlag } from '@velajs/feature-flags';
 
-@UseGuards(FeatureFlagGuard)
 @Controller('/checkout')
 class CheckoutController {
   @FeatureFlag('new-checkout')                       // 404 when off (route looks hidden)
@@ -57,7 +56,12 @@ class CheckoutController {
 }
 ```
 
-Or gate every `@FeatureFlag()` route app-wide with `FeatureFlagsModule.forRoot({ isGlobal: true })`.
+`FeatureFlagsModule` registers `FeatureFlagGuard` app-wide by default, so every
+`@FeatureFlag()` route is gated without `@UseGuards`: a flagged route is never
+reachable ungated. To gate per route instead, pass `globalGuard: false` and add
+`@UseGuards(FeatureFlagGuard)` to each gated controller or handler (not both, or
+the flag is evaluated twice per request). `isGlobal: true` separately makes the
+service visible to every module.
 
 The route guard opens only when the driver returns the literal boolean `true`
 and evaluation completed without error. Non-boolean driver output, a missing

@@ -34,22 +34,23 @@ class HealthController {
   imports: [
     BetterAuthModule.forRootAsync({
       inject: [ENV],
-      useFactory: (env) =>
-        betterAuth({
-          secret: 'auth-lab-d1-demo-secret-32-bytes-please-rotate',
-          baseURL: 'http://localhost',
-          // Pass the drizzle `schema` so the adapter maps better-auth's models
-          // to typed tables — required on D1 so Date columns are encoded via
-          // drizzle's `{ mode: 'timestamp' }` (a bare adapter throws
-          // D1_TYPE_ERROR when better-auth writes a Date).
-          database: drizzleAdapter(drizzle(env.DB, { schema }), {
-            provider: 'sqlite',
-            schema,
+      useFactory: (env) => ({
+        auth: () =>
+          betterAuth({
+            secret: 'auth-lab-d1-demo-secret-32-bytes-please-rotate',
+            baseURL: 'http://localhost',
+            // Pass the drizzle `schema` so the adapter maps better-auth's models
+            // to typed tables — required on D1 so Date columns are encoded via
+            // drizzle's `{ mode: 'timestamp' }` (a bare adapter throws
+            // D1_TYPE_ERROR when better-auth writes a Date).
+            database: drizzleAdapter(drizzle(env.DB, { schema }), {
+              provider: 'sqlite',
+              schema,
+            }),
+            emailAndPassword: { enabled: true, autoSignIn: true },
+            trustedOrigins: ['http://localhost:8789', 'http://localhost'],
           }),
-          emailAndPassword: { enabled: true, autoSignIn: true },
-          trustedOrigins: ['http://localhost:8789', 'http://localhost'],
-        }),
-      guard: 'global',
+      }),
     }),
   ],
   controllers: [MeController, HealthController],

@@ -119,29 +119,6 @@ describe('VelaApplication.mountOpenApi — hono-crud docs convention', () => {
     expect(sw).toContain('SwaggerUIBundle({ url: "/spec.json"');
   });
 
-  it('back-compat: deprecated path + ui:"scalar" + uiPath aliases still work', async () => {
-    const { app, document } = await buildApp();
-    app.mountOpenApi({
-      document,
-      ui: 'scalar',
-      uiPath: '/legacy',
-      path: '/legacy.json',
-    });
-
-    const spec = await app.getHonoApp().request('/legacy.json');
-    expect(spec.status).toBe(200);
-    expect(spec.headers.get('content-type')).toMatch(/application\/json/);
-
-    const ui = await app.getHonoApp().request('/legacy');
-    expect(ui.status).toBe(200);
-    const html = await ui.text();
-    expect(html).toContain('data-url="/legacy.json"');
-
-    // New defaults are NOT mounted when the deprecated aliases drive paths.
-    expect((await app.getHonoApp().request('/scalar')).status).toBe(404);
-    expect((await app.getHonoApp().request('/openapi.json')).status).toBe(404);
-  });
-
   it('title appears in each UI HTML <title>', async () => {
     const { app, document } = await buildApp();
     app.mountOpenApi({ document, ui: 'all', title: 'My API Docs' });

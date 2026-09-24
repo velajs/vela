@@ -101,9 +101,12 @@ export interface TenantModuleOptions extends TenantServiceOptions {
   ) => TenantRunOptions | undefined | Promise<TenantRunOptions | undefined>;
 }
 const OPTIONS = new InjectionToken<TenantModuleOptions>('vela.tenant.options');
-const { ConfigurableModuleClass } = defineModule<TenantModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<TenantModuleOptions, 'guard'>({
   name: 'Tenant',
   optionsToken: OPTIONS,
+  // `guard` shapes the module graph: `forRootAsync` takes it beside the factory.
+  structural: ['guard'],
+  defaults: { guard: 'global' },
   setup: ({ OPTIONS, options }) => ({
     providers: [
       // The installed guard answers to TenantGuard, so testing overrides reach it.

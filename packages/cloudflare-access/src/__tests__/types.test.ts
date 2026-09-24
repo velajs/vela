@@ -57,7 +57,6 @@ describe('exported type signatures', () => {
 
   it('ResolvedIdentity exposes a required canonical millisecond expiry', () => {
     expectTypeOf<ResolvedIdentity['expiresAtMs']>().toEqualTypeOf<number>();
-    expectTypeOf<ResolvedIdentity['userId']>().toEqualTypeOf<string>();
     expectTypeOf<ResolvedIdentity['issuer']>().toEqualTypeOf<string>();
     expectTypeOf<ResolvedIdentity['subject']>().toEqualTypeOf<string>();
   });

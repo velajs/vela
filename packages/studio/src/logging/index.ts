@@ -109,8 +109,9 @@ export class StudioTimingInterceptor implements NestInterceptor {
   }
 }
 
-const { ConfigurableModuleClass } = defineModule<StudioLoggingModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<StudioLoggingModuleOptions, 'imports'>({
   name: 'StudioLogging',
+  structural: ['imports'],
   key: () => 'application',
   setup: ({ OPTIONS, options }) => ({
     imports: options.imports,

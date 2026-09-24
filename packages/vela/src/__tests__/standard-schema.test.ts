@@ -94,13 +94,6 @@ it('normalizes Standard issue paths and does not downgrade unexpected errors car
   };
   expect(() => new ValidationPipe(broken).transform({}, { type: 'body' })).toThrow(failure);
 });
-it('does not retain validation authority across boundaries', async () => {
-  const schema = v.object({ amount: v.pipe(v.string(), v.transform(Number)) });
-  const value = await new ValidationPipe(schema).transform({ amount: '5' }, { type: 'body' });
-  expect(ValidationPipe.consumeValidated(value, schema)).toBe(false);
-  expect(ValidationPipe.consumeValidated(value, schema)).toBe(false);
-});
-
 it('lets generated handlers own validation while retaining explicit pipe behavior', async () => {
   const schema = v.object({ amount: v.pipe(v.string(), v.transform(Number)) });
   const metatype = { ...defineDto(schema), validationOwner: 'handler' };

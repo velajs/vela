@@ -47,7 +47,7 @@ module or adapter for a given endpoint, not both.
 Named clients are registered and exported as ordinary providers:
 
 ```ts
-RpcClientModule.registerAsync({
+RpcClientModule.forRootAsync({
   name: 'catalog',
   binding: 'CATALOG',
   inject: [ENV],
@@ -56,7 +56,7 @@ RpcClientModule.registerAsync({
 // constructor(@Inject(rpcClientToken('catalog')) private catalog: RpcClient) {}
 ```
 
-`register({ name, ...clientOptions })` accepts synchronous options. `binding` is
+`forRoot({ name, ...clientOptions })` accepts synchronous options; `name` and `binding` are structural, so `forRootAsync` takes them next to its factory. `binding` is
 optional deployment metadata; when declared, a fetch transport is required and
 `vela deploy check` checks that service binding in the selected environment.
 The browser entrypoint remains independent of the framework. See the

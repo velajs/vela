@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   Controller,
   Get,
@@ -12,12 +12,11 @@ import {
 import {
   MultipleProvidersFoundError,
   UnresolvedDependencyError,
-  defineDynamicModule,
   stableHash,
 } from '../module-kit.js';
 import { CacheModule, CACHE_MODULE_OPTIONS } from '../cache/index.js';
-import { HttpModule, HTTP_MODULE_OPTIONS } from '../fetch/index.js';
-import type { DynamicModule } from '../index.js';
+import { HttpModule, HttpService, HTTP_MODULE_OPTIONS } from '../fetch/index.js';
+import type { DynamicModule, Type } from '../index.js';
 
 describe('Dynamic module identity', () => {
   // -------------------------------------------------------------------------
@@ -90,11 +89,11 @@ describe('Dynamic module identity', () => {
   // Case D — different forRoot options → BOTH register; consumer importing
   // both → MultipleProvidersFoundError; consumer importing one → that one wins
   // -------------------------------------------------------------------------
-  it('D: different forRoot options register as distinct instances; consumer ambiguity throws', async () => {
-    @Module({ imports: [CacheModule.forRoot({ ttl: 60 })] })
+  it('D: distinct keys register distinct instances; each consumer sees its own', async () => {
+    @Module({ imports: [CacheModule.forRoot({ ttl: 60, key: 'fast' })] })
     class FastFeatureModule {}
 
-    @Module({ imports: [CacheModule.forRoot({ ttl: 120 })] })
+    @Module({ imports: [CacheModule.forRoot({ ttl: 120, key: 'slow' })] })
     class SlowFeatureModule {}
 
     @Module({ imports: [FastFeatureModule, SlowFeatureModule] })
@@ -139,14 +138,17 @@ describe('Dynamic module identity', () => {
     expect(await slowRes.json()).toEqual({ ttl: 120 });
   });
 
-  it('D: importing two distinct CacheModule instances directly throws MultipleProvidersFoundError on resolve', async () => {
+  it('D: importing two keyed CacheModule instances directly throws MultipleProvidersFoundError on resolve', async () => {
     @Injectable()
     class Consumer {
       constructor(@Inject(CACHE_MODULE_OPTIONS) public opts: unknown) {}
     }
 
     @Module({
-      imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 120 })],
+      imports: [
+        CacheModule.forRoot({ ttl: 60, key: 'fast' }),
+        CacheModule.forRoot({ ttl: 120, key: 'slow' }),
+      ],
       providers: [Consumer],
     })
     class App {}
@@ -174,7 +176,7 @@ describe('Dynamic module identity', () => {
   // -------------------------------------------------------------------------
   // Case F — different HttpModule.forRoot options → both register
   // -------------------------------------------------------------------------
-  it('F: HttpModule.forRoot({a}) and HttpModule.forRoot({b}) → both register', async () => {
+  it('F: keyed HttpModule.forRoot({a}) and HttpModule.forRoot({b}) → both register', async () => {
     @Injectable()
     class FeatureA {
       constructor(@Inject(HTTP_MODULE_OPTIONS) public opts: { baseURL?: string }) {}
@@ -185,14 +187,14 @@ describe('Dynamic module identity', () => {
     }
 
     @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://a.test' })],
+      imports: [HttpModule.forRoot({ baseURL: 'https://a.test', key: 'a' })],
       providers: [FeatureA],
       exports: [FeatureA],
     })
     class ModA {}
 
     @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://b.test' })],
+      imports: [HttpModule.forRoot({ baseURL: 'https://b.test', key: 'b' })],
       providers: [FeatureB],
       exports: [FeatureB],
     })
@@ -234,17 +236,176 @@ describe('Dynamic module identity', () => {
   });
 
   // -------------------------------------------------------------------------
-  // defineDynamicModule + stableHash sanity
+  // Unkeyed configurations share one instance and are reported, never dropped
+  // silently (the pre-1.11 loader swallowed the second one)
   // -------------------------------------------------------------------------
-  it('defineDynamicModule defaults the key to "default" when absent', () => {
-    class MyModule {}
-    const result = defineDynamicModule({ module: MyModule, providers: [] });
-    expect(result.key).toBe('default');
+  it('fails bootstrap on a second unkeyed HttpModule configuration', async () => {
+    @Module({
+      imports: [
+        HttpModule.forRoot({
+          baseURL: 'https://first.test',
+          headers: { authorization: 'Bearer FIRST' },
+        }),
+      ],
+    })
+    class FirstModule {}
+
+    @Module({ imports: [HttpModule.forRoot({ baseURL: 'https://second.test' })] })
+    class SecondModule {}
+
+    @Module({ imports: [FirstModule, SecondModule] })
+    class App {}
+
+    await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
+      /HttpModule#\w+ was imported again with different options/,
+    );
+    // Under the default policy too: SecondModule's client must never send its
+    // requests to the first base URL with the first credentials.
+    await expect(VelaFactory.create(App)).rejects.toThrow(
+      /HttpModule#\w+ was imported again with different options.*own key/,
+    );
+
+    // A key per configuration keeps both clients.
+    @Module({
+      imports: [HttpModule.forRoot({ baseURL: 'https://second.test', key: 'second' })],
+    })
+    class KeyedSecondModule {}
+    @Module({ imports: [FirstModule, KeyedSecondModule] })
+    class KeyedApp {}
+    const app = await VelaFactory.create(KeyedApp, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(HttpService)).toHaveLength(2);
+    await app.close();
   });
 
+  it('fails bootstrap on a second HttpModule configuration that also asks to be global', async () => {
+    const privateClient = HttpModule.forRoot({
+      baseURL: 'https://private.test',
+      headers: { authorization: 'Bearer PRIVATE' },
+    });
+    const publicClient = HttpModule.forRoot({ baseURL: 'https://public.test', isGlobal: true });
+    // Either import order: the global flag never decides which client a feature gets.
+    for (const [first, second] of [
+      [privateClient, publicClient],
+      [publicClient, privateClient],
+    ]) {
+      @Module({ imports: [first] })
+      class FeatureA {}
+      @Module({ imports: [second] })
+      class FeatureB {}
+      @Module({ imports: [FeatureA, FeatureB] })
+      class App {}
+      for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+        await expect(VelaFactory.create(App, { diagnostics })).rejects.toThrow(
+          /HttpModule#\w+ was imported again with different options/,
+        );
+      }
+    }
+  });
+
+  it('reports an HttpModule repeat that differs only in its global flag', async () => {
+    const local = HttpModule.forRoot({ baseURL: 'https://shared.test' });
+    const shared = HttpModule.forRoot({ baseURL: 'https://shared.test', isGlobal: true });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const [first, second] of [
+        [local, shared],
+        [shared, local],
+      ]) {
+        @Module({ imports: [first, second] })
+        class App {}
+        await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
+          /HttpModule#\w+ was imported again with a different global flag/,
+        );
+        warn.mockClear();
+        const app = await VelaFactory.create(App);
+        expect(warn).toHaveBeenCalledWith(expect.stringMatching(/different global flag/));
+        expect(app.getContainer().resolve(HTTP_MODULE_OPTIONS)).toEqual({
+          baseURL: 'https://shared.test',
+        });
+        await app.close();
+      }
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // A bare import configures nothing: a configured import under its key is a
+  // second configuration, never silently replaced by the class's defaults
+  // -------------------------------------------------------------------------
+  it('fails bootstrap on a configured HttpModule under the bare key, in either order', async () => {
+    const configured = HttpModule.forRoot({ key: 'default', baseURL: 'https://configured.test' });
+    const deferred = HttpModule.forRootAsync({
+      key: 'default',
+      useFactory: () => ({ baseURL: 'https://configured.test' }),
+    });
+    const cases: Array<Array<Type | DynamicModule>> = [
+      [HttpModule, configured],
+      [configured, HttpModule],
+      [HttpModule, deferred],
+      [deferred, HttpModule],
+    ];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const imports of cases) {
+        @Module({ imports })
+        class App {}
+        for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+          await expect(VelaFactory.create(App, { diagnostics })).rejects.toThrow(
+            /HttpModule#default was imported again with different options/,
+          );
+        }
+      }
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('keeps an unconfigured HttpModule forRoot under the bare key as the bare import', async () => {
+    const cases: Array<Array<Type | DynamicModule>> = [
+      [HttpModule, HttpModule.forRoot({ key: 'default' })],
+      [HttpModule.forRoot({ key: 'default', baseURL: undefined }), HttpModule],
+    ];
+    for (const imports of cases) {
+      @Module({ imports })
+      class App {}
+      const app = await VelaFactory.create(App, { diagnostics: 'throw' });
+      expect(app.getContainer().getOwnerModuleIds(HttpService)).toEqual(['HttpModule#default']);
+      expect(app.getContainer().resolve(HTTP_MODULE_OPTIONS)).toEqual({});
+      await app.close();
+    }
+  });
+
+  it('reports a second unkeyed CacheModule configuration instead of swallowing it', async () => {
+    @Module({ imports: [CacheModule.forRoot({ ttl: 60 })] })
+    class FastSide {}
+
+    @Module({ imports: [CacheModule.forRoot({ ttl: 120 })] })
+    class SlowSide {}
+
+    @Module({ imports: [FastSide, SlowSide] })
+    class App {}
+
+    await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
+      /CacheModule#\w+ was imported again with different options/,
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // stableHash sanity
+  // -------------------------------------------------------------------------
   it('stableHash is deterministic for plain objects regardless of key order', () => {
     expect(stableHash({ a: 1, b: 2 })).toBe(stableHash({ b: 2, a: 1 }));
     expect(stableHash({ a: 1, b: 2 })).not.toBe(stableHash({ a: 1, b: 3 }));
+  });
+
+  it('stableHash omits undefined properties at every depth, like the repeat comparison', () => {
+    expect(stableHash({ a: 1, b: undefined })).toBe(stableHash({ a: 1 }));
+    expect(stableHash({ presence: { ttlMs: undefined } })).toBe(stableHash({ presence: {} }));
+    expect(stableHash({ presence: { ttlMs: 1 } })).not.toBe(stableHash({ presence: {} }));
+    // Array positions still count.
+    expect(stableHash([undefined])).not.toBe(stableHash([]));
   });
 
   it('stableHash tolerates functions (hashes by source fingerprint)', () => {
@@ -254,77 +415,6 @@ describe('Dynamic module identity', () => {
     // Same source → same hash. Different source → different hash.
     expect(stableHash(fa)).toBe(stableHash(fb));
     expect(stableHash(fa)).not.toBe(stableHash(fc));
-  });
-
-  // -------------------------------------------------------------------------
-  // Hidden-bug regression: provider-level swallow at container.has() guard
-  // -------------------------------------------------------------------------
-  it('regression: two HttpModule.forRoot() with distinct options no longer swallow each other', async () => {
-    @Injectable()
-    class ConsumerA {
-      constructor(@Inject(HTTP_MODULE_OPTIONS) public opts: { baseURL?: string }) {}
-    }
-    @Injectable()
-    class ConsumerB {
-      constructor(@Inject(HTTP_MODULE_OPTIONS) public opts: { baseURL?: string }) {}
-    }
-
-    @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://first.test' })],
-      providers: [ConsumerA],
-      exports: [ConsumerA],
-    })
-    class FirstModule {}
-
-    @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://second.test' })],
-      providers: [ConsumerB],
-      exports: [ConsumerB],
-    })
-    class SecondModule {}
-
-    @Module({ imports: [FirstModule, SecondModule] })
-    class App {}
-
-    const app = await VelaFactory.create(App);
-    // Pre-fix: both would see {baseURL: 'first.test'} because the second
-    // registration was silently dropped at container.has().
-    expect(app.get(ConsumerA).opts).toEqual({ baseURL: 'https://first.test' });
-    expect(app.get(ConsumerB).opts).toEqual({ baseURL: 'https://second.test' });
-  });
-
-  it('regression: two CacheModule.forRoot() with distinct options no longer swallow at processedModules', async () => {
-    @Injectable()
-    class ConsumerFast {
-      constructor(@Inject(CACHE_MODULE_OPTIONS) public opts: { ttl?: number }) {}
-    }
-    @Injectable()
-    class ConsumerSlow {
-      constructor(@Inject(CACHE_MODULE_OPTIONS) public opts: { ttl?: number }) {}
-    }
-
-    @Module({
-      imports: [CacheModule.forRoot({ ttl: 60 })],
-      providers: [ConsumerFast],
-      exports: [ConsumerFast],
-    })
-    class FastSide {}
-
-    @Module({
-      imports: [CacheModule.forRoot({ ttl: 120 })],
-      providers: [ConsumerSlow],
-      exports: [ConsumerSlow],
-    })
-    class SlowSide {}
-
-    @Module({ imports: [FastSide, SlowSide] })
-    class App {}
-
-    const app = await VelaFactory.create(App);
-    // Pre-fix: SlowSide would inject ttl:60 because the second forRoot was
-    // silently dropped at the processedModules.has(class) check.
-    expect(app.get(ConsumerFast).opts).toEqual({ ttl: 60 });
-    expect(app.get(ConsumerSlow).opts).toEqual({ ttl: 120 });
   });
 
   // -------------------------------------------------------------------------

@@ -120,6 +120,7 @@ const MODULE_KIT = [
   'setTrustedRequestIdentity',
   'resolveErrorReporter',
   'lazyProvider',
+  'referenceKey',
   'stableHash',
 ];
 

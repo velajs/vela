@@ -34,8 +34,10 @@ let trace: string[] = [];
 // Each integration installs its guard through the defineModule `global:` slot,
 // and declares it skippable on the routes of integrations that enforce the phase.
 function guardModule(name: string, guard: ReturnType<typeof phasedGuard>) {
-  const { ConfigurableModuleClass } = defineModule<{ guard?: 'global' | 'none' }>({
+  const { ConfigurableModuleClass } = defineModule<{ guard?: 'global' | 'none' }, 'guard'>({
     name,
+    structural: ['guard'],
+    defaults: { guard: 'global' },
     setup: ({ options }) => ({
       global: options.guard === 'none' ? {} : { guards: [guard] },
     }),

@@ -36,32 +36,14 @@ export type {
 
 // Module authoring
 export {
-  defineDynamicModule,
-  defineConfigurableModule,
-  moduleKey,
-  moduleToken,
-  provideGlobal,
   sideEffectModule,
   lazyProvider,
+  referenceKey,
   stableHash,
   UndefinedModuleError,
   ROOT_MODULE,
 } from './module/index';
-export type {
-  DefineConfigurableModuleSpec,
-  LazyProviderSpec,
-  ModuleEntryList,
-} from './module/index';
-
-// Plugin manifest + composer
-export {
-  definePlugin,
-  composePlugins,
-  PluginRegistry,
-  PluginRootModule,
-  PLUGIN_REGISTRY_TOKEN,
-} from './plugin/plugin';
-export type { Plugin } from './plugin/plugin';
+export type { LazyProviderSpec, ModuleEntryList } from './module/index';
 
 // Discovery — decorator-driven provider discovery
 export { DiscoveryService, createDiscoverableDecorator } from './discovery/index';

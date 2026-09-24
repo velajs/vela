@@ -9,7 +9,7 @@ export type { FileHandle } from './storage.facade';
 // --- DI: module / service / tokens / decorator ----------------------------
 export { StorageModule } from './storage.module';
 export type {
-  StorageAsyncResult,
+  StorageStructuralOption,
   StorageModuleOptions,
   StorageModuleAsyncOptions,
 } from './storage.module';

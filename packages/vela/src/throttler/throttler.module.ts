@@ -1,17 +1,16 @@
 import { Module } from '../module/decorators';
 import { defineProvider } from '../container/types';
-import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
+import { defineModule } from '../module/define-module';
 import { APP_GUARD } from '../pipeline/tokens';
 import { ThrottlerGuard } from './throttler.guard';
 import { ThrottlerStorage } from './throttler.storage';
 import { THROTTLER_OPTIONS, THROTTLER_STORAGE } from './throttler.tokens';
 import type { ThrottlerModuleOptions } from './throttler.types';
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
-  new ConfigurableModuleBuilder<ThrottlerModuleOptions>({
-    moduleName: 'Throttler',
-    optionsInjectionToken: THROTTLER_OPTIONS,
-  }).build();
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<ThrottlerModuleOptions>({
+  name: 'Throttler',
+  optionsToken: THROTTLER_OPTIONS,
+});
 
 @Module({
   providers: [

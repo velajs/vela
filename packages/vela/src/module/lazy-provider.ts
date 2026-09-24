@@ -1,7 +1,6 @@
 import {
-  InjectionToken,
+  type InjectionToken,
   assertFactoryInject,
-  defineProvider,
   toProviderDefinition,
   type InferTokens,
   type ProviderDefinition,
@@ -10,14 +9,7 @@ import {
   type FactoryInject,
 } from '../container/types';
 import { Module } from './decorators';
-import type { ComponentType, ComponentTypeMap, DynamicModule } from '../registry/types';
-import {
-  APP_FILTER,
-  APP_GUARD,
-  APP_INTERCEPTOR,
-  APP_MIDDLEWARE,
-  APP_PIPE,
-} from '../pipeline/tokens';
+import type { DynamicModule } from '../registry/types';
 import type { ModuleContributions } from './define-module';
 import { attachModuleIdentity } from './module-fingerprints';
 import { stableHash } from './stable-hash';
@@ -65,50 +57,6 @@ export function lazyProvider<T, const Inject extends readonly Token[] = readonly
 }
 
 /**
- * Register an app-wide component from a module's providers. Returns
- * registrations to spread:
- *
- * ```ts
- * providers: [MyService, ...provideGlobal('guard', AuthGuard)]
- * ```
- *
- * Class components are registered as providers and wired via `useExisting`
- * (so DI constructs them with their dependencies); instances via `useValue`.
- * The literal `{ provide: APP_GUARD, useClass: AuthGuard }` registers the same
- * guard without exposing the class as a provider. Inside `defineModule`, prefer
- * the equivalent `global:` contribution slot.
- */
-function componentProviders<T>(
-  token: InjectionToken<T>,
-  component: Type<T> | T,
-): Array<Type | ProviderDefinition> {
-  if (typeof component === 'function') {
-    const componentClass = component as Type<T>;
-    return [componentClass, defineProvider(token, { useExisting: componentClass })];
-  }
-  return [defineProvider(token, { useValue: component })];
-}
-
-export function provideGlobal(
-  ...[kind, component]: {
-    [K in ComponentType]: [kind: K, component: ComponentTypeMap[K]];
-  }[ComponentType]
-): Array<Type | ProviderDefinition> {
-  switch (kind) {
-    case 'guard':
-      return componentProviders(APP_GUARD, component);
-    case 'pipe':
-      return componentProviders(APP_PIPE, component);
-    case 'interceptor':
-      return componentProviders(APP_INTERCEPTOR, component);
-    case 'filter':
-      return componentProviders(APP_FILTER, component);
-    case 'middleware':
-      return componentProviders(APP_MIDDLEWARE, component);
-  }
-}
-
-/**
  * A side-effect-only module: contributes providers/exports without being a
  * configurable module, such as a message catalog registered next to the module
  * that reads it. Pass a stable module class to deduplicate identical
@@ -146,12 +94,4 @@ export function sideEffectModule(
     },
     rest,
   );
-}
-
-/**
- * Blessed token-minting convention: always an `InjectionToken` (never a raw
- * string), named for diagnostics. Namespace it `'<pkg>:<area>:<thing>'`.
- */
-export function moduleToken<T>(name: string): InjectionToken<T> {
-  return new InjectionToken<T>(name);
 }

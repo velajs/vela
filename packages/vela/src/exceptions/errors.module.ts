@@ -29,8 +29,10 @@ const handlerProvider = (handler: Type<ExceptionHandler> | ExceptionHandler): Pr
     ? defineProvider(APP_EXCEPTION_HANDLER, { useClass: handler })
     : defineProvider(APP_EXCEPTION_HANDLER, { useValue: handler });
 
-const { ConfigurableModuleClass } = defineModule<ErrorsModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<ErrorsModuleOptions, 'catalogs' | 'handler'>({
   name: 'Errors',
+  structural: ['catalogs', 'handler'],
+  defaults: { catalogs: [] },
   setup: ({ options }) => {
     const providers: ProviderDefinition[] = [
       defineProvider(ERROR_CATALOG, {

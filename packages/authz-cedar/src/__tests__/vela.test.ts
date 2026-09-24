@@ -200,6 +200,42 @@ describe('resource authorization declarations', () => {
       }
     }
   });
+  it('takes guard and undeclared beside a forRootAsync factory', async () => {
+    const authorize = async () => true;
+    // Spelled-out defaults are the same instance as leaving them out.
+    expect(CedarModule.forRoot({ authorize, guard: 'global', undeclared: 'deny' }).key).toBe(
+      CedarModule.forRoot({ authorize }).key,
+    );
+    const Undeclared = route('/undeclared');
+    const statuses: number[] = [];
+    for (const options of [{}, { undeclared: 'allow' as const }, { guard: 'none' as const }]) {
+      class App {}
+      Module({
+        controllers: [Undeclared],
+        imports: [CedarModule.forRootAsync({ ...options, useFactory: () => ({ authorize }) })],
+      })(App);
+      const app = await VelaFactory.create(App);
+      try {
+        statuses.push((await app.getHonoApp().request('/undeclared')).status);
+      } finally {
+        await app.close();
+      }
+    }
+    expect(statuses).toEqual([403, 200, 200]);
+    // The factory cannot relax the policy the call site declared.
+    class Relaxing {}
+    Module({
+      imports: [
+        CedarModule.forRootAsync({
+          // @ts-expect-error The policy is structural: the factory cannot return it.
+          useFactory: () => ({ authorize, undeclared: 'allow' }),
+        }),
+      ],
+    })(Relaxing);
+    await expect(VelaFactory.create(Relaxing)).rejects.toThrow(
+      /the factory returned the structural option 'undeclared'/,
+    );
+  });
   it('authorizes routes in modules without CedarModule through the installing module', async () => {
     let allowed = true;
     const Declared = route('/declared');

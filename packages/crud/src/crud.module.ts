@@ -12,7 +12,7 @@
  */
 
 import { defineModule, defineProvider } from '@velajs/vela';
-import { Container, stableHash } from '@velajs/vela/module-kit';
+import { Container } from '@velajs/vela/module-kit';
 import type { DynamicModule } from '@velajs/vela';
 import type { CrudAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
@@ -46,7 +46,6 @@ export interface CrudModuleOptions {
 
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModuleOptions>({
   name: 'Crud',
-  key: () => stableHash({ module: 'crud-root' }),
   setup: ({ OPTIONS }) => ({
     providers: [
       defineProvider(CRUD_DATABASES, {

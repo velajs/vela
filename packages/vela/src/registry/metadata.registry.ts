@@ -10,7 +10,7 @@ import type {
   HttpHandlerMeta,
   InterceptorType,
   MiddlewareType,
-  ModuleOptions,
+  ModuleRecord,
   ParameterMetadata,
   PipeType,
   RouteDefinition,
@@ -52,7 +52,7 @@ interface RegistryState {
   routes: Map<Constructor, RouteDefinition[]>;
   controllers: Map<Constructor, string>;
   controllerOptions: Map<Constructor, ControllerOptions>;
-  modules: Map<Constructor, ModuleOptions>;
+  modules: Map<Constructor, ModuleRecord>;
   parameters: Map<Constructor, Map<string | symbol, ParameterMetadata[]>>;
   injectables: Set<Constructor>;
   scopes: Map<Constructor, Scope>;
@@ -261,11 +261,11 @@ export class MetadataRegistry {
 
   // Modules
 
-  static getModuleOptions(module: Constructor): ModuleOptions | undefined {
+  static getModuleOptions(module: Constructor): ModuleRecord | undefined {
     return this.modules.get(module);
   }
 
-  static setModuleOptions(module: Constructor, options: ModuleOptions): void {
+  static setModuleOptions(module: Constructor, options: ModuleRecord): void {
     this.modules.set(module, options);
   }
 
