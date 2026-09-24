@@ -79,6 +79,9 @@ class AppModule {}
 
 `crudResourceToken(name)` injects the compiled engine (`resource.execute(verb, req)`)
 for programmatic dispatch. `forRoot` also takes `versioningStore`/`auditStore` defaults.
+One path has one feature definition per application: two `forFeature()` registrations
+that mount one path with different definitions fail bootstrap (naming the path and both
+features); share one `defineCrudFeature(...)` value between modules instead.
 
 A headless resource's controller is generated, so declare its route metadata in the
 config: `decorators` apply to the controller class and `endpointDecorators` to each
