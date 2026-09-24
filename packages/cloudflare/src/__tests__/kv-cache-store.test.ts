@@ -1,5 +1,13 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { Controller, Get, Module } from '@velajs/vela';
+import {
+  APP_EXCEPTION_HANDLER,
+  Controller,
+  Get,
+  Module,
+  defineProvider,
+  type ErrorReportContext,
+  type ExceptionHandler,
+} from '@velajs/vela';
 import { CacheModule, CacheResponse, CacheService } from '@velajs/vela/cache';
 import { createCloudflareApp, kvCache, kvCacheInvalidation } from '../index';
 import { KVCacheStore, KVCacheInvalidationStore } from '../services/kv-cache.store';
@@ -163,6 +171,28 @@ describe('kvCache({ binding }) and kvCacheInvalidation({ binding })', () => {
     const service = app.get(CacheService);
     await service.options.store.get('any').catch((error: unknown) => errors.push(error));
     expect(String(errors[0])).toContain(
+      "ENV.CACHE is not set: declare the KV namespace binding 'CACHE' under kv_namespaces",
+    );
+    await app.close();
+  });
+
+  it('report a missing namespace to the application error reporter, not only onError', async () => {
+    const reports: Array<{ error: unknown; context: ErrorReportContext }> = [];
+    const handler: ExceptionHandler = {
+      report: (error, context) => void reports.push({ error, context }),
+    };
+    @Module({
+      imports: [App],
+      providers: [defineProvider(APP_EXCEPTION_HANDLER, { useValue: handler })],
+    })
+    class Reported {}
+    const env = { GENERATIONS: fakeKVService().service };
+    const app = await createCloudflareApp(Reported, { env });
+    const response = await app.fetch(new Request('https://app.test/kv'), env);
+    // The handler still answers: an unusable cache is a miss, and it is reported.
+    expect(await response.json()).toEqual({ calls: 1 });
+    expect(reports.map(({ context }) => context.edge)).toContain('cache');
+    expect(reports.map(({ error }) => String(error)).join('\n')).toContain(
       "ENV.CACHE is not set: declare the KV namespace binding 'CACHE' under kv_namespaces",
     );
     await app.close();

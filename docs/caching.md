@@ -121,10 +121,14 @@ secret. Use `shouldCache(value)` for an additional domain allowlist, or omit
 
 Store or generation-read failure means a miss; a read failure bypasses filling
 for that request. Cache write failure returns the original handler result. Loader
-errors propagate. An optional `onError(operation, error)` callback can report
-failures; exceptions from this callback are ignored. No cache key, partition or
-payload is added to that callback. Store error objects may contain vendor details,
-so redact them before external logging.
+errors propagate. Each absorbed failure goes to the application's error reporter
+with edge `'cache'` and the operation (`read`, `write`, `invalidate` or `scope`)
+as its source, so an unreachable store or a missing KV binding is logged, or
+reaches an `ExceptionHandler`, instead of silently disabling the cache. An
+optional `onError(operation, error)` callback then receives it too; exceptions
+from this callback are ignored. No cache key, partition or payload is added to
+either. Store error objects may contain vendor details, so redact them before
+external logging.
 
 ## Expiry, concurrency, and distributed stores
 
@@ -156,7 +160,8 @@ fence. No tier can extend the response envelope's logical deadline.
 On Workers, name the KV namespaces instead of holding them. `kvCache` and
 `kvCacheInvalidation` from `@velajs/cloudflare` read each application's `ENV`
 when an operation needs the namespace, so one static registration serves every
-environment:
+environment. A binding missing from `ENV` fails that operation with an error
+naming the binding and `kv_namespaces`, which the cache reports as above:
 
 ```ts
 import { CacheModule } from '@velajs/vela/cache';

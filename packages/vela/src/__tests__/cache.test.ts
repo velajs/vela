@@ -10,6 +10,7 @@ import {
   Module,
   UseGuards,
   VelaFactory,
+  type ErrorReportContext,
   type ExecutionContext,
   type VelaEnv,
 } from '../index';
@@ -197,6 +198,43 @@ describe('scoped asynchronous cache', () => {
         throw Error('application failed');
       }),
     ).rejects.toThrow('application failed');
+  });
+
+  it('reports swallowed cache failures to the application error reporter as well as onError', async () => {
+    const onError = vi.fn();
+    const failing = new AsyncStore();
+    failing.get = async () => {
+      throw Error('store unavailable');
+    };
+    @Controller('/reported')
+    class Reported {
+      calls = 0;
+      @Get() @CacheResponse() read() {
+        return { calls: ++this.calls };
+      }
+    }
+    @Module({
+      imports: [
+        CacheModule.forRoot({
+          namespace: 'reported',
+          scope: () => publicScope,
+          store: failing,
+          onError,
+        }),
+      ],
+      controllers: [Reported],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    const reports: Array<{ error: unknown; context: ErrorReportContext }> = [];
+    app.useGlobalExceptionHandler({
+      report: (error, context) => void reports.push({ error, context }),
+    });
+    const response = await app.getHonoApp().request('/reported');
+    expect(await response.json()).toEqual({ calls: 1 });
+    expect(reports[0]?.context).toMatchObject({ edge: 'cache', source: 'read' });
+    expect(String(reports[0]?.error)).toContain('store unavailable');
+    expect(onError).toHaveBeenCalledWith('read', reports[0]?.error);
   });
 
   it('does not cache with a failed generation read or accept malformed stored values', async () => {

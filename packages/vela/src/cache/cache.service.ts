@@ -1,6 +1,8 @@
+import { Container } from '../container/container';
 import { Injectable, Inject, Optional } from '../container/decorators';
 import { sha256Base64Url } from '../crypto/hmac';
 import { InjectEnv, type VelaEnv } from '../env';
+import { resolveErrorReporter } from '../exceptions/reporter';
 import { MemoryCacheStore } from './cache.store';
 import { CACHE_MODULE_OPTIONS } from './cache.tokens';
 import type {
@@ -60,6 +62,7 @@ export class CacheService {
   constructor(
     @Inject(CACHE_MODULE_OPTIONS) options: CacheModuleOptions,
     @Optional() @InjectEnv() env?: VelaEnv,
+    @Optional() @Inject(Container) private readonly container?: Container,
   ) {
     validateLabel(options.namespace, 'Cache namespace');
     const resolved = resolveOptions(options, env ?? EMPTY_ENV);
@@ -229,8 +232,19 @@ export class CacheService {
     return Object.freeze(api);
   }
 
-  /** @internal */
+  /**
+   * @internal A failure the cache absorbs as a miss or a false outcome still
+   * reaches the application's error reporter, so a missing store binding or
+   * an unreachable store is never silent, and then `onError`.
+   */
   report(operation: 'read' | 'write' | 'invalidate' | 'scope', error: unknown): void {
+    try {
+      if (this.container) {
+        resolveErrorReporter(this.container).report(error, { edge: 'cache', source: operation });
+      }
+    } catch {
+      /* Diagnostics never change response/write outcomes. */
+    }
     try {
       this.options.onError?.(operation, error);
     } catch {

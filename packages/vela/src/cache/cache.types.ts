@@ -75,7 +75,11 @@ export interface CacheModuleOptions {
   maxBytes?: number;
   /** Optional additional domain check. Never allow secrets merely because a scope is private. */
   shouldCache?: (value: unknown) => boolean;
-  /** Observability only. Callback failures are ignored; no raw keys or values are supplied. */
+  /**
+   * Observability only, called after the application's error reporter (edge
+   * `'cache'`) receives the same failure. Callback failures are ignored; no
+   * raw keys or values are supplied.
+   */
   onError?: (operation: 'read' | 'write' | 'invalidate' | 'scope', error: unknown) => void;
 }
 
