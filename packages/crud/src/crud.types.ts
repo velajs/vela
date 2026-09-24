@@ -60,6 +60,22 @@ export interface RuntimeCrudConfig {
    * Programmatic `resource.execute` dispatch bypasses HTTP guards by design.
    */
   guards?: Partial<Record<CrudEndpointName, GuardType[]>>;
+  /**
+   * Decorators for the controller, applied as if written above the class in
+   * this order. They declare route metadata the application cannot write on a
+   * headless resource's generated controller, such as its authorization
+   * policy (`[RequireResource({ ... })]` or `[CedarPublic()]`). A decorator
+   * that returns a replacement class is rejected.
+   */
+  decorators?: readonly ClassDecorator[];
+  /**
+   * Decorators for each endpoint's handler, applied as if written above that
+   * method in this order, so handler metadata overrides the class's. An
+   * `@Override`'d endpoint keeps them; keys of disabled verbs are inert. A
+   * decorator that returns a replacement descriptor is rejected: supply a
+   * custom handler with `@Override` instead.
+   */
+  endpointDecorators?: Partial<Record<CrudEndpointName, readonly MethodDecorator[]>>;
   hooks?: CrudHooks<Record<string, unknown>> & HookModeConfig;
   filterFields?: string[];
   filterConfig?: FilterConfig;

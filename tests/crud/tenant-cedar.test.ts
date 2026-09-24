@@ -1,4 +1,7 @@
 import { expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { CrudModule, defineCrudFeature, defineModel } from '@velajs/crud';
+import { MemoryStore, memoryAdapter } from '@velajs/crud-memory';
 import {
   APP_GUARD,
   Controller,
@@ -21,6 +24,7 @@ import {
 import {
   CedarGuard,
   CedarModule,
+  CedarPublic,
   RequireResource,
 } from '../../packages/authz-cedar/src/vela/index';
 
@@ -162,6 +166,74 @@ it('orders global authentication, tenant admission and Cedar authorization by ph
       ).status,
     ).toBe(403);
     expect(authorized).toHaveBeenCalledOnce();
+  } finally {
+    await app.close();
+  }
+});
+
+it('declares Cedar policy on headless CRUD resources under default deny', async () => {
+  const principal = { issuer: 'test', subject: 'alice', principalType: 'user' } as const;
+  const checked: string[] = [];
+  class AuthenticationGuard implements CanActivate {
+    static readonly phase: GuardPhase = 'authenticate';
+    canActivate(context: ExecutionContext): boolean {
+      if (context.getRequest().headers.get('x-auth') === 'verified')
+        setTrustedRequestIdentity(context.getRequest(), { principal });
+      return true;
+    }
+  }
+  const schema = z.object({ id: z.string(), title: z.string() });
+  const model = (name: string) =>
+    defineModel({ name, tableName: `${name}s`, schema, id: 'client', timestamps: false });
+  const store = new MemoryStore();
+  store.table('notes').set('n1', { id: 'n1', title: 'First' });
+  class App {}
+  Module({
+    imports: [
+      // CedarModule's global guard denies routes without a declaration.
+      CedarModule.forRoot({
+        authorize: async ({ requirement }) => {
+          checked.push(`${requirement.action} ${requirement.resourceType}`);
+          return requirement.action === 'note:read';
+        },
+      }),
+      CrudModule.forFeature([
+        defineCrudFeature({
+          path: '/notes',
+          model: model('note'),
+          adapter: memoryAdapter({ tableName: 'notes', store }),
+          decorators: [RequireResource({ action: 'note:write', resourceType: 'Note' })],
+          endpointDecorators: {
+            list: [CedarPublic()],
+            read: [RequireResource({ action: 'note:read', resourceType: 'Note', idParam: 'id' })],
+          },
+        }),
+        defineCrudFeature({
+          path: '/drafts',
+          model: model('draft'),
+          adapter: memoryAdapter({ tableName: 'drafts' }),
+        }),
+      ]),
+    ],
+    providers: [
+      AuthenticationGuard,
+      defineProvider(APP_GUARD, { useExisting: AuthenticationGuard }),
+    ],
+  })(App);
+  const app = await VelaFactory.create(App);
+  const hono = app.getHonoApp();
+  const headers = { 'x-auth': 'verified', 'content-type': 'application/json' };
+  try {
+    // The list endpoint is public; reading authorizes against its own requirement.
+    expect((await hono.request('/notes')).status).toBe(200);
+    expect((await hono.request('/notes/n1', { headers })).status).toBe(200);
+    expect((await hono.request('/notes/n1')).status).toBe(403);
+    // Other endpoints use the resource's requirement, which the policy denies.
+    const create = { method: 'POST', headers, body: JSON.stringify({ id: 'n2', title: 'x' }) };
+    expect((await hono.request('/notes', create)).status).toBe(403);
+    // A resource without declarations stays denied.
+    expect((await hono.request('/drafts', { headers })).status).toBe(403);
+    expect(checked).toEqual(['note:read Note', 'note:write Note']);
   } finally {
     await app.close();
   }

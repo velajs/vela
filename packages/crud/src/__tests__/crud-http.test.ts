@@ -2,12 +2,17 @@ import { defineCrudFeature } from '../synthesize-controller';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+  APP_GUARD,
   Controller,
   Get,
+  Inject,
+  Injectable,
   Module,
+  Reflector,
   UseGuards,
   UrlGeneratorService,
   VelaFactory,
+  defineProvider,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
@@ -17,7 +22,7 @@ import { Override } from '../override.decorator';
 import { CrudCtx, type CrudRequestContext } from '../crud-context.decorator';
 import { CrudModule } from '../crud.module';
 import { crudResourceToken } from '../crud.tokens';
-import { MissingTenantResolverError } from '../crud.types';
+import { MissingTenantResolverError, type CrudConfig } from '../crud.types';
 import { defineModel } from '../model/define-model';
 import { testAdapter } from './test-adapter';
 
@@ -58,6 +63,10 @@ class AllowGuard implements CanActivate {
     return true;
   }
 }
+// Decorators that replace what they decorate instead of declaring metadata.
+const replaceClass: ClassDecorator = (target) =>
+  Object.setPrototypeOf(function Replacement() {}, target);
+const replaceHandler: MethodDecorator = (_target, _key, descriptor) => ({ ...descriptor });
 
 describe('@Crud over HTTP (decorated controller)', () => {
   async function makeApp(seed: Row[] = []) {
@@ -405,6 +414,99 @@ describe('@Override', () => {
 
     const route = app.describeRoutes().find((r) => r.name === 'item.list');
     expect(route?.handler).toBe('customList');
+  });
+});
+
+describe('route metadata (config.decorators, config.endpointDecorators)', () => {
+  // Application policy metadata, read the way an authorization guard reads it.
+  const Access = Reflector.createDecorator<string>();
+  function accessGuard(seen: Array<string | undefined>) {
+    @Injectable()
+    class AccessGuard implements CanActivate {
+      constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+      canActivate(context: ExecutionContext): boolean {
+        const access = this.reflector.getAllAndOverride(Access, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        seen.push(access);
+        return access === 'public';
+      }
+    }
+    return AccessGuard;
+  }
+
+  it('declares metadata on headless controllers and each endpoint', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    const seen: Array<string | undefined> = [];
+    const AccessGuard = accessGuard(seen);
+    @Module({
+      imports: [
+        CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
+        CrudModule.forFeature([
+          defineCrudFeature({
+            path: '/things',
+            model: makeModel({ name: 'thing' }),
+            decorators: [Access('private')],
+            endpointDecorators: { list: [Access('public')] },
+          }),
+          defineCrudFeature({ path: '/others', model: makeModel({ name: 'other' }) }),
+        ]),
+      ],
+      providers: [AccessGuard, defineProvider(APP_GUARD, { useExisting: AccessGuard })],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/things')).status).toBe(200);
+    expect((await hono.request('/things/a')).status).toBe(403);
+    expect((await hono.request('/others')).status).toBe(403);
+    // Endpoint metadata overrides the resource's; undecorated resources carry none.
+    expect(seen).toEqual(['public', 'private', undefined]);
+  });
+
+  it('applies decorators as if written in order above the class or method', async () => {
+    const store = new Map<string, Row>();
+    const seen: Array<string | undefined> = [];
+    const AccessGuard = accessGuard(seen);
+    @Controller('/items')
+    @UseGuards(AccessGuard)
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      // The first decorator is applied last, so its metadata wins.
+      endpointDecorators: { list: [Access('public'), Access('private')] },
+    })
+    class ItemsController {
+      @Override('list')
+      customList() {
+        return { custom: true };
+      }
+    }
+
+    @Module({ controllers: [ItemsController], providers: [AccessGuard] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    // An @Override'd endpoint keeps its configured metadata.
+    expect((await app.getHonoApp().request('/items')).status).toBe(200);
+    expect(seen).toEqual(['public']);
+  });
+
+  it('rejects decorators that replace the generated controller or a handler', () => {
+    const feature = (config: Pick<CrudConfig, 'decorators' | 'endpointDecorators'>) =>
+      CrudModule.forFeature([
+        defineCrudFeature({ path: '/things', model: makeModel({ name: 'thing' }), ...config }),
+      ]);
+    expect(() => feature({ decorators: [replaceClass] })).toThrow(
+      'CrudThingsController: CRUD decorators cannot replace the controller class',
+    );
+    expect(() => feature({ endpointDecorators: { list: [replaceHandler] } })).toThrow(
+      "CrudThingsController: CRUD decorators cannot replace the 'list' handler; use @Override",
+    );
   });
 });
 
