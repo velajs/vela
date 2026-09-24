@@ -1,7 +1,9 @@
 export { Test } from './test.js';
 export { TestingModule } from './testing-module.js';
 export type { ActingAsResolver, TestPrincipal, TestRequestInit } from './testing-module.js';
-export { TestingModuleBuilder, OverrideBy, OverrideModule } from './testing-module.builder.js';
+export { TestingModuleBuilder, OverrideBy } from './testing-module.builder.js';
+// A builder step, not a module: exported for annotations only.
+export type { OverrideModule } from './testing-module.builder.js';
 export type { MockFactory, TestingModuleOptions } from './testing-module.builder.js';
 
 // HTTP
