@@ -305,7 +305,7 @@ describe('WebSocket invocation ownership', () => {
     @UseGuards(Guard)
     class Resolver {
       constructor(@Inject(State) readonly state: State) {}
-      @LiveQuery('state', defineLiveQuery({ args: z.unknown(), result: z.boolean() }), {
+      @LiveQuery(defineLiveQuery({ name: 'state', args: z.unknown(), result: z.boolean() }), {
         tags: ['state'],
       })
       stateQuery() {

@@ -1,3 +1,4 @@
+import { InjectionToken, type Constructor } from '../container/types';
 import type { SyncDriver } from './ws-sync';
 import { assertBroadcastCommandFits } from './ws-sync';
 import { DEFAULT_WS_MAX_FRAME_BYTES, resolveMaxFrameBytes } from './gateway-routing';
@@ -6,7 +7,8 @@ import type { BroadcastCommand, BroadcastOperator, WsServer } from './websocket.
 /**
  * Accumulates `{ rooms, exceptRooms, exceptIds }` across a fluent chain and, on
  * `.emit()`, produces a serializable `BroadcastCommand` handed to the active
- * `SyncDriver`. The driver decides local-vs-remote delivery.
+ * `SyncDriver`. The driver decides local-vs-remote delivery. A gateway's
+ * server passes its `gatewayPath`, which every command then carries.
  */
 export class BroadcastOperatorImpl implements BroadcastOperator {
   constructor(
@@ -15,6 +17,7 @@ export class BroadcastOperatorImpl implements BroadcastOperator {
     private readonly rooms = new Set<string>(),
     private readonly exceptRooms = new Set<string>(),
     private readonly exceptIds = new Set<string>(),
+    private readonly gatewayPath?: string,
   ) {}
 
   to(room: string): this {
@@ -36,6 +39,7 @@ export class BroadcastOperatorImpl implements BroadcastOperator {
       rooms: [...this.rooms],
       exceptRooms: this.exceptRooms.size ? [...this.exceptRooms] : undefined,
       exceptIds: this.exceptIds.size ? [...this.exceptIds] : undefined,
+      ...(this.gatewayPath === undefined ? {} : { gatewayPath: this.gatewayPath }),
       frame: JSON.stringify({ event, data }),
     };
     assertBroadcastCommandFits(cmd, this.maxFrameBytes());
@@ -44,34 +48,54 @@ export class BroadcastOperatorImpl implements BroadcastOperator {
 }
 
 /**
- * The `@WebSocketServer()`-injected handle. Server-origin broadcasts never
- * pre-exclude anyone (a client-origin `client.to()` seeds `exceptIds` with the
- * sender — that lives in the transport's client, not here).
+ * The in-process server. Server-origin broadcasts never pre-exclude anyone (a
+ * client-origin `client.to()` seeds `exceptIds` with the sender — that lives
+ * in the transport's client, not here). Injected outside a gateway it
+ * addresses every gateway's sockets; each gateway's `@WebSocketServer()` is
+ * its {@link WsServerImpl.forGateway} view.
  */
 export class WsServerImpl implements WsServer {
   private maxFrameBytes = DEFAULT_WS_MAX_FRAME_BYTES;
   private hasGatewayLimit = false;
 
-  constructor(private readonly driver: SyncDriver) {
-    this.driver.setMaxFrameBytes?.(this.maxFrameBytes);
+  /**
+   * `gatewayPath` builds one gateway's view: each push carries it, and the
+   * module's driver keeps the ceiling the module server gave it.
+   */
+  constructor(
+    private readonly driver: SyncDriver,
+    private readonly gatewayPath?: string,
+  ) {
+    if (gatewayPath === undefined) this.driver.setMaxFrameBytes?.(this.maxFrameBytes);
   }
 
   setOutboundFrameLimit(maxFrameBytes: number): void {
+    if (this.gatewayPath !== undefined) return; // a gateway's view keeps its own ceiling
     const resolved = resolveMaxFrameBytes({ maxFrameBytes });
     this.maxFrameBytes = this.hasGatewayLimit ? Math.max(this.maxFrameBytes, resolved) : resolved;
     this.hasGatewayLimit = true;
     this.driver.setMaxFrameBytes?.(this.maxFrameBytes);
   }
 
+  forGateway(gatewayPath: string, maxFrameBytes: number): WsServer {
+    const server = new WsServerImpl(this.driver, gatewayPath);
+    server.maxFrameBytes = maxFrameBytes;
+    return server;
+  }
+
   emit(event: string, data?: unknown): void | Promise<void> {
     // Empty `rooms` means GLOBAL.
-    const command: BroadcastCommand = { rooms: [], frame: JSON.stringify({ event, data }) };
+    const command: BroadcastCommand = {
+      rooms: [],
+      ...(this.gatewayPath === undefined ? {} : { gatewayPath: this.gatewayPath }),
+      frame: JSON.stringify({ event, data }),
+    };
     assertBroadcastCommandFits(command, this.maxFrameBytes);
     return this.driver.dispatch(command);
   }
 
   to(room: string): BroadcastOperator {
-    return new BroadcastOperatorImpl(this.driver, () => this.maxFrameBytes).to(room);
+    return this.operator().to(room);
   }
 
   in(room: string): BroadcastOperator {
@@ -79,6 +103,107 @@ export class WsServerImpl implements WsServer {
   }
 
   except(room: string): BroadcastOperator {
-    return new BroadcastOperatorImpl(this.driver, () => this.maxFrameBytes).except(room);
+    return this.operator().except(room);
+  }
+
+  private operator(): BroadcastOperatorImpl {
+    return new BroadcastOperatorImpl(
+      this.driver,
+      () => this.maxFrameBytes,
+      undefined,
+      undefined,
+      undefined,
+      this.gatewayPath,
+    );
+  }
+}
+
+/**
+ * What a gateway's `@WebSocketServer()` injects. `WsDispatcher` connects it to
+ * the gateway's own server ({@link WsServer.forGateway}) when it discovers the
+ * gateway, so the gateway's pushes reach only the sockets connected through it.
+ */
+export class GatewayServerHandle implements WsServer {
+  #server?: WsServer;
+
+  constructor(private readonly gatewayName: string) {}
+
+  /** Connect the gateway's server; the first connection wins. */
+  connect(server: WsServer): void {
+    this.#server ??= server;
+  }
+
+  emit(event: string, data?: unknown): void | Promise<void> {
+    return this.#target().emit(event, data);
+  }
+
+  to(room: string): BroadcastOperator {
+    return this.#target().to(room);
+  }
+
+  in(room: string): BroadcastOperator {
+    return this.#target().in(room);
+  }
+
+  except(room: string): BroadcastOperator {
+    return this.#target().except(room);
+  }
+
+  #target(): WsServer {
+    if (this.#server) return this.#server;
+    throw new Error(
+      `${this.gatewayName}'s @WebSocketServer() is not connected: WebSocketModule connects ` +
+        'the server of each gateway it discovers while the application starts. Import ' +
+        "WebSocketModule.forRoot() in the gateway's application. To substitute a test " +
+        "double, provide WS_SERVER in the gateway's module next to that import, or " +
+        'override WS_SERVER in the testing module.',
+    );
+  }
+}
+
+const gatewayServerTokens = new WeakMap<Constructor, InjectionToken<GatewayServerHandle>>();
+const gatewayServerTokenSet = new WeakSet<object>();
+
+/** The token of the server one gateway class injects (a {@link GatewayServerHandle}). */
+export function gatewayServerToken(gateway: Constructor): InjectionToken<GatewayServerHandle> {
+  let token = gatewayServerTokens.get(gateway);
+  if (!token) {
+    const name = gateway.name;
+    token = new InjectionToken(`WS_SERVER(${name})`, {
+      factory: () => new GatewayServerHandle(name),
+    });
+    gatewayServerTokens.set(gateway, token);
+    gatewayServerTokenSet.add(token);
+  }
+  return token;
+}
+
+/** Whether `token` is the server token of some gateway class. */
+export function isGatewayServerToken(token: unknown): boolean {
+  return typeof token === 'object' && token !== null && gatewayServerTokenSet.has(token);
+}
+
+const REMOTE_SOCKETS =
+  "This isolate holds none of the gateways' sockets: the platform keeps each room's " +
+  'sockets elsewhere. Push with Gateways from @velajs/vela/websocket: ' +
+  'gateways.of(Gateway).to(room).emit(event, data).';
+
+/**
+ * The server gateways inject where a platform transport keeps every socket in
+ * another isolate: each push fails with guidance to `Gateways`, which
+ * addresses a gateway room, instead of reaching no one.
+ */
+export class RemoteSocketsWsServer implements WsServer {
+  emit(): never {
+    throw new Error(REMOTE_SOCKETS);
+  }
+  to(): never {
+    throw new Error(REMOTE_SOCKETS);
+  }
+  in(): never {
+    throw new Error(REMOTE_SOCKETS);
+  }
+  except(): never {
+    throw new Error(REMOTE_SOCKETS);
   }
 }

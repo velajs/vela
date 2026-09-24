@@ -45,11 +45,6 @@ export { QueueConsumer } from './decorators/queue-consumer';
 export { CLOUDFLARE_SCHEDULED_EVENT } from './scheduled-event';
 export type { CloudflareScheduledEvent, ScheduledEvent } from './scheduled-event';
 
-// WebSocket: the adapter wires WebSocketModule to a Durable Object per gateway room;
-// this helper pushes to a room from the Worker.
-export { broadcastToRoom } from './websocket/index';
-export type { BroadcastNamespace } from './websocket/index';
-
 // Durable Object PITR (point-in-time recovery) — raw bookmark wrappers + the RPC
 // contract types. The WS Durable Object exposes `pitrCurrentBookmark`,
 // `pitrBookmarkForTime`, `pitrArmRestore` (intra-worker-only RPC); studio's

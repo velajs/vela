@@ -14,7 +14,7 @@ const hooks = createLiveHooks<AppLive>();
 
 it('creates an application-specific provider and hooks without erasing its contract', () => {
   const client = new LiveClient<AppLive>({
-    queries: { 'todos.list': todoSchema },
+    queries: [todoSchema],
     url: 'https://api.test',
   });
   expect(createElement(hooks.LiveProvider, { client }).props.client).toBe(client);
@@ -33,9 +33,13 @@ function checkedComponent(): void {
   hooks.useLiveClient<OtherLive>();
   const other = new LiveClient<OtherLive>({
     url: 'https://api.test',
-    queries: {
-      'orders.list': { args: { parse: () => ({ account: 1 }) }, result: { parse: () => [1] } },
-    },
+    queries: [
+      {
+        name: 'orders.list',
+        args: { parse: () => ({ account: 1 }) },
+        result: { parse: () => [1] },
+      },
+    ],
   });
   // @ts-expect-error incompatible provider client
   createElement(hooks.LiveProvider, { client: other });

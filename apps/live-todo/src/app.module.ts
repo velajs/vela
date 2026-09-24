@@ -1,4 +1,3 @@
-import type { Context } from 'hono';
 import {
   Body,
   Controller,
@@ -13,18 +12,11 @@ import {
   Optional,
   Param,
   Post,
-  Res,
   type VelaEnv,
 } from '@velajs/vela';
 import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
 import type { UpgradeAuthenticator, WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
-import {
-  LiveInvalidation,
-  LiveModule,
-  LiveQuery,
-  LiveResolver,
-  stampCommitHeaders,
-} from '@velajs/vela/live';
+import { LiveInvalidates, LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
 import { todoListDefinition } from './live-contract.js';
 import type { Todo } from './live-contract.js';
 
@@ -165,24 +157,21 @@ export class TodosService {
 export class TodoLive {
   constructor(private readonly todos: TodosService) {}
 
-  @LiveQuery('todos.list', todoListDefinition, { tags: ['todos'] })
+  @LiveQuery(todoListDefinition, { tags: ['todos'] })
   list(): Promise<Todo[]> {
     return this.todos.all();
   }
 }
 
 /**
- * Plain HTTP mutations. `invalidate()` re-runs every affected subscription;
- * with `ambientContainer: true` (node) it also stamps Vela-Commit-Cursor /
- * Vela-Commit-Epoch on this response — what the client's optimistic layers
- * gate their drop on.
+ * Plain HTTP mutations. `@LiveInvalidates` re-runs every subscription tagged
+ * `todos` once the handler succeeds, and stamps Vela-Commit-Cursor /
+ * Vela-Commit-Epoch on this response: what the client's optimistic layers gate
+ * their drop on. It works the same on node and in the Worker.
  */
 @Controller('/todos')
 export class TodosController {
-  constructor(
-    private readonly todos: TodosService,
-    private readonly live: LiveInvalidation,
-  ) {}
+  constructor(private readonly todos: TodosService) {}
 
   @Get()
   list(): Promise<Todo[]> {
@@ -190,24 +179,15 @@ export class TodosController {
   }
 
   @Post()
-  async create(@Body() body: { text?: string }, @Res() c: Context): Promise<Todo> {
-    const todo = await this.todos.add(body.text ?? '(empty)');
-    const stamp = await this.live.invalidate({ tags: ['todos'] });
-    // Explicit stamping works on every runtime. (ambientContainer stamps
-    // automatically on node, but hono's ALS contextStorage middleware hangs
-    // responses under workerd when a Durable Object RPC is awaited inside it.)
-    if (stamp) stampCommitHeaders(c, stamp);
-    return todo;
+  @LiveInvalidates(['todos'])
+  create(@Body() body: { text?: string }): Promise<Todo> {
+    return this.todos.add(body.text ?? '(empty)');
   }
 
   @Delete('/:id')
-  async remove(@Param('id') id: string, @Res() c: Context): Promise<{ removed: boolean }> {
-    const removed = await this.todos.remove(id);
-    if (removed) {
-      const stamp = await this.live.invalidate({ tags: ['todos'] });
-      if (stamp) stampCommitHeaders(c, stamp);
-    }
-    return { removed };
+  @LiveInvalidates((result: { removed: boolean }) => (result.removed ? ['todos'] : []))
+  async remove(@Param('id') id: string): Promise<{ removed: boolean }> {
+    return { removed: await this.todos.remove(id) };
   }
 }
 

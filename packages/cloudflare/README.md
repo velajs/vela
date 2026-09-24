@@ -363,15 +363,24 @@ export default createCloudflareWorker(RoomModule);
 `LIVE_PLATFORM` tokens before modules load; it never replaces module providers.
 In the Worker, `WebSocketModule` serves an upgrade route for each gateway that
 names a `binding` and forwards the authenticated upgrade to that room's Durable
-Object, and a gateway's `@WebSocketServer()` has no sockets to push to (use
-`broadcastToRoom`). `LiveModule` sends invalidations to the room Durable
+Object. The Worker keeps no sockets, so a gateway's `@WebSocketServer()`
+refuses pushes there; `Gateways` from `@velajs/vela/websocket`
+(`gateways.of(ChatGateway).to(room).emit(event, data)`) calls the `broadcast`
+RPC of the gateway + room Durable Object, read by the gateway's `binding` from
+`ENV`. Inside a Durable Object, a `Gateways` push to its own room reaches its
+sockets and a push to another room goes to that room's object. `LiveModule`
+sends invalidations to the room Durable
 Object of the single binding-backed gateway, reading the namespace from `ENV`
 when first needed; with several, the first invalidation reports the ambiguity,
 and `driver: () => durableObjectLive({ gatewayPath })` (or `{ binding }`)
-chooses. Inside the Durable Object, the gateway server broadcasts to its
+chooses. A gateway without `roomParam` has one room Durable Object, named by
+its path, so its invalidations and inspections go there whatever room they
+name. Inside the Durable Object, the gateway server broadcasts to its
 hibernatable sockets, invalidations apply locally, and the cursor log is a
 `DoCursorLog` in the object's SQLite storage (in memory when the class is not
-SQLite-backed). The same `RoomModule` serves the Worker, every Durable Object
+SQLite-backed). `LiveInspector` reads a named room through the same gateway
+binding with the object's `inspectLive` RPC, which
+`StudioLiveModule.forRoot({ rooms })` uses. The same `RoomModule` serves the Worker, every Durable Object
 and a node host. Without `WebSocketModule`, the Worker mounts no upgrade route,
 and the adapter reports each binding-backed gateway through the diagnostics
 policy.
@@ -389,10 +398,10 @@ routing consumes the core trusted request identity, checks conflicts with the
 upgrade credential, and forwards issuer, subject, tenant, and expiry to the DO.
 Client-supplied internal identity headers are stripped before authorization.
 
-Declare live query argument and result schemas once with `defineLiveQuery({ args,
-result })` from `@velajs/vela/live`. Both entries accept a parser object such as a
-Zod schema. Use `@LiveQuery('todos.list', definition, { tags: ['todos'] })` on the
-resolver and share the definition with its client. Restored hibernation arguments
+Declare each live query once with `defineLiveQuery({ name, args, result })` from
+`@velajs/vela/live`. Both schemas accept a parser object such as a Zod schema.
+Use `@LiveQuery(definition, { tags: ['todos'] })` on the resolver and share the
+definition with its client. Restored hibernation arguments
 and final query results use the same validation boundary.
 
 Each application constructs its own driver and cursor log. Workers send
@@ -402,8 +411,8 @@ retain cursor/epoch state across hibernation. Hibernated subscriptions are
 restored on wake; the shared live protocol handles resume or snapshot fallback.
 
 The DO class preserves its RPC types, so `DurableObjectNamespace<Room>` exposes
-`invalidate`, `broadcast`, and PITR methods without assertions. `broadcastToRoom`,
-`liveInvalidateToRoom`, and the PITR helpers remain available from the root
+`invalidate`, `broadcast`, `inspectLive`, and PITR methods without assertions.
+`liveInvalidateToRoom` and the PITR helpers remain available from the root
 package. `VelaNonceDurableObject` is exported from `/durable-objects`; its
 `durableObjectNonceStore` factory remains on the root entrypoint.
 

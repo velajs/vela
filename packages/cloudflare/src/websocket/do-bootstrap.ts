@@ -3,13 +3,14 @@ import { bootstrap } from '@velajs/vela/internal';
 import type { DynamicModule, Type, VelaEnv } from '@velajs/vela';
 import type { Container } from '@velajs/vela/module-kit';
 import { local, readWsEntrypointMeta, WsDispatcher, WsServerImpl } from '@velajs/vela/websocket';
-import type { WsServer } from '@velajs/vela/websocket';
+import type { GatewayDelivery, WsServer } from '@velajs/vela/websocket';
 import type { LiveEngine } from '@velajs/vela/live';
 import { registerCloudflarePlatform } from '../platform';
 import { CfWsClient } from './cf-ws-client';
 import { CfRoomRegistry } from './cf-room-registry';
 import { durableObjectLivePlatform, initDoLive } from './do-live';
 import type { DoStateLike } from './do-state';
+import { gatewayRoomObject } from './worker-transport';
 
 export interface DoRuntime {
   /** The Durable Object application's container. */
@@ -25,14 +26,39 @@ export interface DoRuntime {
   close(signal?: string): Promise<void>;
 }
 
+/** Whether a Durable Object id names this object. */
+function isThisObject(id: unknown, ctx: DoStateLike): boolean {
+  const equals: unknown =
+    typeof id === 'object' && id !== null ? Reflect.get(id, 'equals') : undefined;
+  if (typeof equals === 'function') return Reflect.apply(equals, id, [ctx.id]) === true;
+  return String(id) === ctx.id.toString();
+}
+
+/**
+ * A `Gateways` push from inside a WebSocket Durable Object: this object's own
+ * gateway room is delivered to its sockets; any other room goes to that
+ * room's object over its broadcast RPC, as from the Worker.
+ */
+async function deliverFromDurableObject(
+  ctx: DoStateLike,
+  env: VelaEnv,
+  registry: CfRoomRegistry,
+  { gatewayPath, binding, room, command }: GatewayDelivery,
+): Promise<void> {
+  const target = gatewayRoomObject(env, gatewayPath, binding, room);
+  if (isThisObject(target.id, ctx)) await registry.deliverLocal(command);
+  else await target.call('broadcast', command);
+}
+
 /**
  * Slim DI bootstrap for the Durable Object isolate: wires the container and runs
  * `OnModuleInit`/`OnApplicationBootstrap` (so `WsDispatcher` discovers gateways)
  * WITHOUT building the Hono app/routes the DO never serves. The DO's `env` is
  * seeded as the global ENV before providers construct, next to this object's
  * platform: `WebSocketModule` builds its server over this object's sockets,
- * and `LiveModule` delivers locally with a SQLite cursor log when the class is
- * SQLite-backed.
+ * `Gateways` pushes to this object's room locally and forwards other rooms to
+ * their objects, and `LiveModule` delivers locally with a SQLite cursor log
+ * when the class is SQLite-backed.
  */
 export async function buildDoRuntime(
   rootModule: Type | DynamicModule,
@@ -47,7 +73,10 @@ export async function buildDoRuntime(
   const { container, routeManager, loader } = await bootstrap(rootModule, {
     configureContainer: (target) => {
       registerCloudflarePlatform(target, options.env, {
-        websocket: { createServer: () => server },
+        websocket: {
+          createServer: () => server,
+          deliver: (delivery) => deliverFromDurableObject(ctx, options.env, registry, delivery),
+        },
         live: durableObjectLivePlatform(ctx),
       });
     },

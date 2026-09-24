@@ -31,8 +31,20 @@ describe('live-todo Worker compiled by Oxc under workerd', () => {
     expect(created.response.headers.get('Vela-Commit-Cursor')).toBeTruthy();
 
     const listed = await call('/todos');
-    expect(todoListDefinition.result.parse(listed.body).map((todo) => todo.text)).toContain(
-      'Write the spec',
+    const todos = todoListDefinition.result.parse(listed.body);
+    expect(todos.map((todo) => todo.text)).toContain('Write the spec');
+
+    // @LiveInvalidates derives the delete's tags from its result: a missing
+    // todo invalidates nothing, so its response carries no commit stamp.
+    const missing = await call('/todos/missing', { method: 'DELETE' });
+    expect(missing.body).toEqual({ removed: false });
+    expect(missing.response.headers.get('Vela-Commit-Cursor')).toBeNull();
+    const written = todos.find((todo) => todo.text === 'Write the spec');
+    if (!written) throw new Error('the created todo is missing');
+    const removed = await call(`/todos/${written.id}`, { method: 'DELETE' });
+    expect(removed.body).toEqual({ removed: true });
+    expect(Number(removed.response.headers.get('Vela-Commit-Cursor'))).toBeGreaterThan(
+      Number(created.response.headers.get('Vela-Commit-Cursor')),
     );
   });
 

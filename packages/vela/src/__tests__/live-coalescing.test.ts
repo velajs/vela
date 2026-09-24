@@ -15,22 +15,27 @@ import {
 import type { LiveQueryContext, ServerLiveFrame } from '../live/index.js';
 
 const versionQuery = defineLiveQuery({
+  name: 'shared.list',
   args: z.unknown(),
   result: z.object({ version: z.number() }),
 });
 const rowsQuery = defineLiveQuery({
+  name: 'shared.list',
   args: z.unknown(),
   result: z.array(z.object({ id: z.string(), uuid: z.string(), text: z.string() })),
 });
 const tenantQuery = defineLiveQuery({
+  name: 'shared.list',
   args: z.unknown(),
   result: z.object({ tenantId: z.unknown(), version: z.number() }),
 });
 const executionsQuery = defineLiveQuery({
+  name: 'shared.list',
   args: z.unknown(),
   result: z.object({ executions: z.number() }),
 });
 const idQuery = defineLiveQuery({
+  name: 'shared.list',
   args: z.object({ id: z.number() }),
   result: z.object({ id: z.number() }),
 });
@@ -106,7 +111,7 @@ describe('LiveEngine refresh execution coalescing', () => {
 
     @LiveResolver()
     class SharedList {
-      @LiveQuery('shared.list', versionQuery, { tags: ['rows'] })
+      @LiveQuery(versionQuery, { tags: ['rows'] })
       list() {
         executions += 1;
         return { version };
@@ -147,7 +152,7 @@ describe('LiveEngine refresh execution coalescing', () => {
 
     @LiveResolver()
     class SharedList {
-      @LiveQuery('shared.list', rowsQuery, {
+      @LiveQuery(rowsQuery, {
         tags: ['rows'],
         coalesceBy: tenantPartition,
       })
@@ -244,7 +249,7 @@ describe('LiveEngine refresh execution coalescing', () => {
 
     @LiveResolver()
     class SharedList {
-      @LiveQuery('shared.list', tenantQuery, { tags: ['rows'], coalesceBy: tenantPartition })
+      @LiveQuery(tenantQuery, { tags: ['rows'], coalesceBy: tenantPartition })
       list(_args: unknown, context: LiveQueryContext) {
         executions += 1;
         return { tenantId: context.identity?.tenantId, version };
@@ -295,7 +300,7 @@ describe('LiveEngine refresh execution coalescing', () => {
 
     @LiveResolver()
     class SharedList {
-      @LiveQuery('shared.list', versionQuery, {
+      @LiveQuery(versionQuery, {
         tags: ['rows'],
         coalesceBy: (_args, context) => {
           partitionedClients.push(context.clientId);
@@ -350,7 +355,7 @@ describe('LiveEngine refresh execution coalescing', () => {
 
     @LiveResolver()
     class SharedList {
-      @LiveQuery('shared.list', executionsQuery, {
+      @LiveQuery(executionsQuery, {
         tags: ['rows'],
         coalesceBy: (_args, context) => {
           const tenantId = context.identity?.tenantId;
@@ -412,7 +417,7 @@ describe('LiveEngine refresh execution coalescing', () => {
 
     @LiveResolver()
     class SharedList {
-      @LiveQuery('shared.list', idQuery, {
+      @LiveQuery(idQuery, {
         tags: ['rows'],
         coalesceBy: () => 'same-result-partition',
       })
