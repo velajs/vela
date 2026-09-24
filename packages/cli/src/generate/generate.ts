@@ -273,12 +273,14 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
     return current;
   };
   const display = (path: string) => relative(cwd, path).split(sep).join('/');
+  // With --skip-import: what to register by hand, listed before the next steps.
+  const manual: string[] = [];
 
   if (exported) {
     const entry = await workerEntry(cwd);
     const from = specifier(entry, exported.file, ext);
     if (options.skipImport) {
-      notes.unshift(
+      manual.push(
         `Export it from the Worker entry ${display(entry)}: export { ${exported.name} } from '${from}';`,
       );
     } else {
@@ -303,10 +305,8 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
           : named,
       );
       if (options.skipImport) {
-        const lines = imports
-          .filter((named) => named.from.startsWith('.'))
-          .map((named) => `import { ${named.name} } from '${named.from}';`);
-        notes.unshift(
+        const lines = imports.map((named) => `import { ${named.name} } from '${named.from}';`);
+        manual.push(
           `Register it in ${display(host)}: add ${registration.entry} to @Module({ ${registration.key} })` +
             (lines.length > 0 ? ` after ${lines.join(' ')}` : '.'),
         );
@@ -324,7 +324,7 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
   return {
     creates,
     updates: [...updates].map(([path, content]) => ({ path, content })),
-    notes,
+    notes: [...manual, ...notes],
   };
 }
 

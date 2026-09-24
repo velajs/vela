@@ -191,6 +191,22 @@ export default createCloudflareWorker(AppModule);
     );
   });
 
+  it('prints every registration and import of a queue with --skip-import', async () => {
+    await scaffold('minimal');
+    const before = await read('src/app.module.ts');
+    const skipped = await generate('g', 'queue', 'emails', '--skip-import');
+    expect(skipped.code).toBe(0);
+    const lines = skipped.output.trim().split('\n');
+    expect(lines).toEqual([
+      'CREATE src/emails/emails.processor.ts',
+      "Register it in src/app.module.ts: add QueueModule.registerQueue({ name: EMAILS_QUEUE, binding: 'EMAILS' }) to @Module({ imports }) after import { QueueModule } from '@velajs/vela/queue'; import { EMAILS_QUEUE } from './emails/emails.processor.js';",
+      "Register it in src/app.module.ts: add EmailsProcessor to @Module({ providers }) after import { EmailsProcessor } from './emails/emails.processor.js';",
+      "Register it in src/app.module.ts: add QueueModule.forRoot({ driver: cloudflareQueues() }) to @Module({ imports }) after import { QueueModule } from '@velajs/vela/queue'; import { cloudflareQueues } from '@velajs/cloudflare/queues';",
+      'Next: vela cf sync --write adds the EMAILS producer and its consumer, and your types script types ENV.EMAILS.',
+    ]);
+    expect(await read('src/app.module.ts')).toBe(before);
+  });
+
   it('prints the registration with --skip-import and writes nothing with --dry-run', async () => {
     await scaffold('minimal');
     const before = await read('src/app.module.ts');
