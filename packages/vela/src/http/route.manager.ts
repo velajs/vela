@@ -17,7 +17,7 @@ import {
   PayloadTooLargeException,
 } from '../errors/http-exception';
 import { createExecutionScope, finishExecutionScope } from '../entrypoint/execution-scope';
-import { resolveErrorReporter } from '../exceptions/reporter';
+import { resolveErrorReporter, type ErrorReporter } from '../exceptions/reporter';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
 import { reportDiagnostic } from '../container/diagnostics';
@@ -602,40 +602,52 @@ export class RouteManager {
 
   private async mapMiddlewareError(c: Context, error: unknown): Promise<Response> {
     const requestContainer = this.getRequestContainer(c);
-    const host = buildMiddlewareExecutionContext(c);
     const reporter = resolveErrorReporter(requestContainer);
-    const source = `${c.req.method} ${c.req.path}`;
-    reporter.report(error, { edge: 'http', source, note: 'middleware failed' });
+    reporter.report(error, {
+      edge: 'http',
+      source: `${c.req.method} ${c.req.path}`,
+      note: 'middleware failed',
+    });
+    return this.filterOrRender(c, error, requestContainer, reporter);
+  }
 
+  // Framework rejections (request limits, unmatched routes) are expected
+  // client faults: never reported, but offered to global exception filters and
+  // then the application's render hook, as Nest's router does with its 404.
+  private rejectRequest(c: Context, error: unknown): Promise<Response> {
+    const container = findRequestContainer(c) ?? this.container;
+    return this.filterOrRender(c, error, container, resolveErrorReporter(container));
+  }
+
+  // Global filters are the only scope reachable outside a controller call
+  // frame: the first matching filter decides, and `undefined` falls through
+  // to the render hook and the shared renderer.
+  private async filterOrRender(
+    c: Context,
+    error: unknown,
+    container: Container,
+    reporter: ErrorReporter,
+  ): Promise<Response> {
+    const host = buildMiddlewareExecutionContext(c);
     for (const entry of this.globalFilters) {
       try {
-        const filter = await instantiateAsync<ExceptionFilter>(entry, requestContainer);
+        const filter = await instantiateAsync<ExceptionFilter>(entry, container);
         if (shouldFilterCatch(filter, error)) {
           const filtered = mapFilterResult(c, await filter.catch(error, host), error);
           if (filtered) return filtered;
           break;
         }
       } catch (filterError) {
-        reporter.report(filterError, { edge: 'http', source, note: 'middleware filter failed' });
+        reporter.report(filterError, {
+          edge: 'http',
+          source: `${c.req.method} ${c.req.path}`,
+          note: 'middleware filter failed',
+        });
         break;
       }
     }
 
     return sendHttpError(c, error, reporter, host);
-  }
-
-  // Framework rejections (request limits, unmatched routes) are expected
-  // client faults: rendered through the application's render hook and the
-  // shared renderer, but never reported or offered to exception filters, so
-  // a catch-all filter cannot turn them into a success.
-  private rejectRequest(c: Context, error: unknown): Response {
-    const container = findRequestContainer(c) ?? this.container;
-    return sendHttpError(
-      c,
-      error,
-      resolveErrorReporter(container),
-      buildMiddlewareExecutionContext(c),
-    );
   }
 
   registerController(controller: Type, moduleId?: string): this {

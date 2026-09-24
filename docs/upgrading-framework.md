@@ -96,6 +96,10 @@ Every HTTP failure renders through `renderHttpError`. Clients see these changes:
   instead of `{ statusCode, message, errors }`.
 - Unmatched routes answer a JSON 404, `{ error: { code: 'not_found', message: 'Not Found' } }`,
   and oversized bodies a JSON 413 (`payload_too_large`), instead of Hono's plain text.
+  Global exception filters receive these rejections, as in Nest, so a catch-all filter that
+  wraps every error also shapes the 404; they are still not reported.
+- A Hono `HTTPException` below 500 answers `{ error: { code, message } }` instead of its
+  plain-text response, unless it was built with its own `res`.
 - An exception filter's plain result is sent with the exception's status
   (`getErrorStatus`: `HttpException.getStatus()`, `VelaError.status`, else 500)
   instead of 200. Return `{ status, body }` to choose the status. A filter that

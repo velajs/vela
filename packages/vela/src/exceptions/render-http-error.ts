@@ -80,7 +80,8 @@ function ownedResponse(error: unknown): HttpErrorResponse | undefined {
  * 4. Anything else through `toErrorBody`: branded `VelaError`s render their
  *    code, message and data; unbranded and internal errors are redacted.
  *
- * The application's `ExceptionHandler.render` hook runs before this.
+ * Exception filters and the application's `ExceptionHandler.render` hook run
+ * before this.
  */
 export function renderHttpError(
   error: unknown,

@@ -147,12 +147,18 @@ request limits (a JSON 404, 413 and query-limit 400s) are not reported.
 
 The response a client saw comes from the first of these that applies:
 
-1. the application's `ExceptionHandler.render` hook;
-2. the first matching exception filter: a `Response`, an explicit
-   `{ status, body }`, or any other value sent with the exception's status;
-   a filter returning `undefined` falls through;
-3. the exception's own `toResponse()`;
-4. the canonical `{ error: { code, message, details? } }` body.
+1. the first matching exception filter, closest first: handler, controller and
+   module filters, then global filters. Errors from Vela middleware and the
+   framework's own rejections (the unmatched-route 404, request limits) reach
+   only global filters; errors thrown by raw Hono middleware reach none. A
+   filter's `Response` is sent as is, an explicit `{ status, body }` sets the
+   status, and any other value is sent with the exception's status; a filter
+   returning `undefined` falls through;
+2. the application's `ExceptionHandler.render` hook;
+3. a Hono `HTTPException` below 500 built with its own `res`, which keeps that
+   response (an auth challenge with its headers);
+4. the exception's own `toResponse()`;
+5. the canonical `{ error: { code, message, details? } }` body.
 
 Reproduce a body without a request with `renderHttpError(error)`, which returns
 `{ status, body, redacted }`; `redacted: true` means the client never saw the

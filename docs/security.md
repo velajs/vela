@@ -223,11 +223,11 @@ middleware off the path the target named.
 
 ## Error responses
 
-Every HTTP failure renders through one function, `renderHttpError`, after the
-application's `ExceptionHandler.render` hook: controller handlers, Vela
-middleware, the last-resort Hono `onError`, unmatched routes (a JSON 404),
-request limits (413 and 400), RPC and GraphQL. Errors are reported before they
-are rendered, and redaction holds on every edge:
+Every HTTP failure renders through one function, `renderHttpError`, after
+exception filters and the application's `ExceptionHandler.render` hook:
+controller handlers, Vela middleware, the last-resort Hono `onError`, unmatched
+routes (a JSON 404), request limits (413 and 400), RPC and GraphQL. Errors are
+reported before they are rendered, and redaction holds on every edge:
 
 - A string `HttpException` renders `{ error: { code, message, details? } }`.
   Only a 4xx echoes its message and `details`; a 5xx sends only the status title.
@@ -238,9 +238,13 @@ are rendered, and redaction holds on every edge:
   frames do the same.
 - Branded `VelaError`s render their code, message and data unless the code is
   internal; any other error is a redacted 500.
+- A Hono `HTTPException` below 500 renders its message in that body; one built
+  with its own `res`, such as an auth challenge, keeps that response and its
+  headers. From 500 it is redacted like any server fault.
 - Framework rejections (unmatched routes, oversized bodies, query limits) are
-  not reported and skip exception filters, so a catch-all filter cannot turn
-  them into a success.
+  not reported. As in Nest, global exception filters receive them
+  (`NotFoundException`, `PayloadTooLargeException`, `BadRequestException`), and
+  a filter's plain result keeps their status.
 
 An exception filter's plain result takes the exception's status rather than
 200, and a filter that returns `undefined` leaves the error to the renderer.

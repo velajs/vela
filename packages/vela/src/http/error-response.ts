@@ -7,8 +7,9 @@ import { mapResponse } from './response-mapper';
 
 /**
  * The HTTP response for a failure: the application's `ExceptionHandler.render`
- * hook, then {@link renderHttpError}. A Hono `HTTPException` below 500 keeps
- * the response it carries (for example an auth challenge with its headers).
+ * hook, then {@link renderHttpError}. A Hono `HTTPException` below 500 built
+ * with its own `res` keeps that response (for example an auth challenge with
+ * its headers); one with only a message renders as JSON like any other error.
  */
 export function sendHttpError(
   c: Context,
@@ -20,7 +21,9 @@ export function sendHttpError(
   const rendered = reporter.render(error, host);
   if (rendered instanceof Response) return rendered;
   if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
-  if (error instanceof HTTPException && error.status < 500) return error.getResponse();
+  if (error instanceof HTTPException && error.status < 500 && error.res) {
+    return error.getResponse();
+  }
   const { body, status } = renderHttpError(error, {
     catalog: reporter.catalog,
     redactServerBodies,

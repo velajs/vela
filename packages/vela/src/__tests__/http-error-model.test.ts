@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
@@ -13,6 +14,7 @@ import {
   InternalServerErrorException,
   Module,
   NotFoundException,
+  PayloadTooLargeException,
   Post,
   UseFilters,
   VelaError,
@@ -215,6 +217,38 @@ describe('HTTP edges share one renderer', () => {
     expect(await response.json()).toEqual({ error: { code: 'nope', message: 'Nothing here' } });
   });
 
+  it('renders a Hono HTTPException as JSON unless it carries its own Response', async () => {
+    @Controller('/hono')
+    class HonoController {
+      @Get('/message')
+      message() {
+        throw new HTTPException(403, { message: 'nope' });
+      }
+
+      @Get('/challenge')
+      challenge() {
+        throw new HTTPException(401, {
+          res: new Response('sign in', {
+            status: 401,
+            headers: { 'www-authenticate': 'Bearer realm="api"' },
+          }),
+        });
+      }
+    }
+    const app = await appWith([HonoController]);
+    const message = await app.getHonoApp().request('/hono/message');
+    expect(message.status).toBe(403);
+    expect(message.headers.get('content-type')).toContain('application/json');
+    expect(await message.json()).toEqual({ error: { code: 'forbidden', message: 'nope' } });
+
+    // An auth challenge keeps its own Response and headers.
+    const challenge = await app.getHonoApp().request('/hono/challenge');
+    expect(challenge.status).toBe(401);
+    expect(challenge.headers.get('www-authenticate')).toBe('Bearer realm="api"');
+    expect(await challenge.text()).toBe('sign in');
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   it('renders oversized bodies as a JSON 413', async () => {
     @Controller('/upload')
     class UploadController {
@@ -389,6 +423,52 @@ describe('exception filter results', () => {
     expect(await response.json()).toEqual({
       error: { code: 'not_found', message: 'missing thing' },
     });
+  });
+
+  it('offers unmatched routes and request limits to global filters without reporting them', async () => {
+    const caught: unknown[] = [];
+    @Catch()
+    class EnvelopeFilter implements ExceptionFilter {
+      catch(exception: unknown) {
+        caught.push(exception);
+        return { success: false, status: getErrorStatus(exception) };
+      }
+    }
+
+    @Controller('/upload')
+    class UploadController {
+      @Post()
+      handle() {
+        return { ok: true };
+      }
+    }
+    @Module({ controllers: [UploadController] })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, {
+      security: { body: { maxBytes: 8 }, query: { maxParameters: 1 } },
+    });
+    app.useGlobalFilters(new EnvelopeFilter());
+    const hono = app.getHonoApp();
+
+    const missing = await hono.request('/missing');
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ success: false, status: 404 });
+    const oversized = await hono.request('/upload', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ payload: 'far more than eight bytes' }),
+    });
+    expect(oversized.status).toBe(413);
+    expect(await oversized.json()).toEqual({ success: false, status: 413 });
+    const query = await hono.request('/upload?a=1&b=2', { method: 'POST' });
+    expect(query.status).toBe(400);
+    expect(await query.json()).toEqual({ success: false, status: 400 });
+    expect(caught.map((error) => error?.constructor)).toEqual([
+      NotFoundException,
+      PayloadTooLargeException,
+      BadRequestException,
+    ]);
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('applies the same result rules to middleware failures', async () => {
