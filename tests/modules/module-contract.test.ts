@@ -39,11 +39,13 @@ interface ExportedModule {
 }
 
 /**
- * Workers-only entries Node cannot evaluate (`cloudflare:workers`, bundled
- * WASM). Neither exports a module; any other unloadable entry fails the census.
+ * Workers-only entries Node cannot evaluate (`cloudflare:workers`,
+ * `cloudflare:test`, bundled WASM). None exports a module; any other
+ * unloadable entry fails the census.
  */
 const WORKERS_ONLY = new Set([
   '@velajs/cloudflare/durable-objects',
+  '@velajs/cloudflare/testing',
   '@velajs/authz-cedar/cloudflare',
 ]);
 

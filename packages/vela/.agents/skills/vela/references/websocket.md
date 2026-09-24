@@ -53,6 +53,10 @@ Throw `WsException(errorOrObject)` to send an `{ event: 'exception', data }` fra
 ## Server push: `Gateways`
 
 ```ts
+import { Body, Controller, Param, Post, UseGuards } from '@velajs/vela';
+import { Gateways } from '@velajs/vela/websocket';
+import { z } from 'zod';
+
 interface ChatEvents { message: { from: string; text: string } } // event → payload
 const Announcement = z.object({ text: z.string().min(1).max(500) });
 

@@ -18,8 +18,8 @@ const engine = createCedarEngine({ vocabulary, binding: cloudflareCedar(), store
 const scope = { application: 'files', environment: 'production', tenantId: tenant.requireTenantId() };
 const decision = await engine.check({
   scope, principal: { type: 'User', id: userId }, action: 'read',
-  resource: { type: 'Document', id: document.id }, context: {},
-  entities: [entity(vocabulary, 'Document', document.id, { attrs: { owner: document.owner } })],
+  resource: { type: 'Document', id: file.id }, context: {},
+  entities: [entity(vocabulary, 'Document', file.id, { attrs: { owner: file.owner } })],
 });
 if (!decision.allowed) throw new Error('Forbidden');
 ```

@@ -2,10 +2,12 @@
 // workspace's versions, so a CLI release scaffolds projects against the
 // framework packages released with it, never an older registry API.
 
-/** The starter manifest shipped in the CLI package. */
-export const starterManifest = new URL(
-  '../packages/cli/templates/worker/package.json',
-  import.meta.url,
+/** The `vela new` templates shipped in the CLI package, each with its own manifest. */
+export const starterTemplates = ['minimal', 'api'];
+
+/** The starter manifests, one per template. */
+export const starterManifests = starterTemplates.map(
+  (template) => new URL(`../packages/cli/templates/${template}/package.json`, import.meta.url),
 );
 
 const fields = ['dependencies', 'devDependencies'];

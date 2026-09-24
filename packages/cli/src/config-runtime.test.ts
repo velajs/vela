@@ -58,13 +58,14 @@ afterAll(() => {
   if (temporary) rmSync(temporary, { recursive: true, force: true });
 });
 
-describe('generated config workflow in Node', () => {
-  it('runs the generated TypeScript config and its decorated sources through the real CLI', () => {
+describe('generated project workflow in Node', () => {
+  it('loads the Worker entry Wrangler names and its decorated sources through the real CLI', () => {
     expect(existsSync(join(project, 'dist'))).toBe(false);
+    expect(existsSync(join(project, 'vela.config.ts'))).toBe(false);
     const result = run([cli, 'doctor', '--app', '--json']);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
-      config: { path: join(project, 'vela.config.ts') },
+      config: { path: join(project, 'wrangler.jsonc'), source: 'wrangler' },
     });
     expect(JSON.parse(result.stdout).application.routes).toContainEqual(
       expect.objectContaining({ method: 'GET', path: '/' }),
@@ -79,18 +80,24 @@ describe('generated config workflow in Node', () => {
       '--input-type=module',
       '--eval',
       `
+      import { ENV } from '@velajs/vela';
       import { loadConfig } from ${JSON.stringify(configModule)};
-      const { config, dispose } = await loadConfig();
+      const { config, dispose, source } = await loadConfig();
       const app = await config.createApp();
       try {
-        const response = await app.getHonoApp().request('http://localhost/');
+        // The Cloudflare adapter accepts requests carrying the environment it was built for.
+        const response = await app.fetch(new Request('http://localhost/'), app.get(ENV));
         if (response.status !== 200) throw new Error(await response.text());
-        console.log(JSON.stringify(await response.json()));
+        console.log(JSON.stringify({ source, root: config.rootModule.name, ...(await response.json()) }));
       } finally { await app.dispose(); await dispose(); }
     `,
     ]);
     expect(response.status, response.stdout + response.stderr).toBe(0);
-    expect(JSON.parse(response.stdout)).toEqual({ message: 'Hello from Vela!' });
+    expect(JSON.parse(response.stdout)).toEqual({
+      source: 'wrangler',
+      root: 'AppModule',
+      message: 'Hello from Vela!',
+    });
     const wrangler = readFileSync(join(project, 'wrangler.jsonc'), 'utf8');
     expect(wrangler).toContain('"main": "src/worker.ts"');
     expect(existsSync(join(project, 'dist'))).toBe(false);
@@ -109,6 +116,29 @@ describe('generated config workflow in Node', () => {
     const result = run([cli, 'route', 'list', '--config', 'typed.config.ts', '--json']);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toContainEqual(expect.objectContaining({ path: '/typed/' }));
+  });
+
+  it('sends console output of the files it loads to stderr, keeping stdout for the command', () => {
+    writeFileSync(
+      join(project, 'noisy.config.ts'),
+      `
+      import { VelaFactory } from '@velajs/vela';
+      import { AppModule } from './src/app.module.js';
+      console.log('config module loaded');
+      console.info('config module ready');
+      export default { rootModule: AppModule, createApp: () => VelaFactory.create(AppModule) };
+    `,
+    );
+    for (const args of [
+      ['route', 'list', '--json'],
+      ['entrypoint', 'list', '--json'],
+      ['doctor', '--app', '--json'],
+    ]) {
+      const result = run([cli, ...args, '--config', 'noisy.config.ts']);
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(() => JSON.parse(result.stdout), result.stdout).not.toThrow();
+      expect(result.stderr).toContain('config module loaded\nconfig module ready\n');
+    }
   });
 
   it('keeps the module runner open for application files the config imports lazily', () => {

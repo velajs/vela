@@ -102,6 +102,7 @@ Augment `FeatureFlagRegistry` (the flag-name analog of `VelaRouteMap`) to type t
 declare module '@velajs/feature-flags' {
   interface FeatureFlagRegistry {
     'new-checkout': boolean;
+    beta: boolean;
     layout: string;
   }
 }

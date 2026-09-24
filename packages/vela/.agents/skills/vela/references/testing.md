@@ -15,7 +15,7 @@ const service = moduleRef.get(CatsService);   // resolve from the root container
 const session = await moduleRef.resolveInRequest(SessionState, { url: 'http://localhost/cats' }); // request-scoped
 ```
 
-`Test.createTestingModule(metadata, { env?, adapters? })` takes the same `ModuleOptions` as `@Module` (`imports/controllers/providers/exports`) and returns a builder; `env` seeds the framework `ENV` and `adapters` bind `RuntimeAdapter`s through the production bootstrap (`overrideProvider(ENV)` also works). Override methods each return an `OverrideBy` with `.useValue(value)`, `.useClass(cls)`, and `.useFactory({ factory, inject })`:
+`Test.createTestingModule(metadata, options?)` takes the same `ModuleOptions` as `@Module` (`imports/controllers/providers/exports`) and returns a builder; `options` are exactly `VelaFactory.create`'s (`env` seeds the framework `ENV`, `adapters` bind `RuntimeAdapter`s, `globalPrefix`, `security`, `middleware`) through the production bootstrap (`overrideProvider(ENV)` also works). Override methods each return an `OverrideBy` with `.useValue(value)`, `.useClass(cls)`, and `.useFactory({ factory, inject })`:
 
 | Override | Targets |
 |---|---|
@@ -24,10 +24,48 @@ const session = await moduleRef.resolveInRequest(SessionState, { url: 'http://lo
 | `overridePipe(Pipe)` | a pipe class |
 | `overrideInterceptor(Interceptor)` | an interceptor class |
 | `overrideFilter(Filter)` | an exception-filter class |
+| `overrideModule(Module).useModule(Replacement)` | every import of a module class (or of that exact `DynamicModule`), replaced by a class or `DynamicModule`; the metadata is untouched |
+| `useMocker((token) => mock)` | every non-optional dependency no provider satisfies, called once per token before anything is constructed; a falsy result leaves the dependency unresolved, so `compile()` rejects with `UnresolvedDependencyError` |
 
 Overrides infer their value/class/result contract from the token. A factory override types its parameters from its `inject` tuple, which a factory without parameters may omit (`useFactory({ factory: () => fake })`); erased runtime identities cannot authorize typed replacements.
 
 `.compile()` returns `Promise<TestingModule>`. (There is no `overrideMiddleware`.)
+
+```ts
+import { Module } from '@velajs/vela';
+import { Test } from '@velajs/testing';
+
+@Module({})
+class NoMail {}
+
+const moduleRef = await Test.createTestingModule({ imports: [SignupModule] })
+  .overrideModule(MailModule)
+  .useModule(NoMail)
+  .useMocker((token) => (token === MailService ? { send: async () => {} } : undefined))
+  .compile();
+```
+
+## Workers handlers — `@velajs/cloudflare/testing`
+
+Inside the Workers Vitest pool, `createTestingWorker(AppModule, { env?, overrides?, ...workerOptions })` builds the module exactly as `createCloudflareWorker(AppModule, workerOptions)` does, through this builder, and drives the Worker handlers (it needs `@velajs/testing` installed):
+
+```ts
+import { env } from 'cloudflare:workers';
+import { createTestingWorker, queueJob } from '@velajs/cloudflare/testing';
+
+const worker = await createTestingWorker(AppModule, {
+  env, // default: the pool's env from cloudflare:workers
+  overrides: (module) => module.overrideProvider(Clock).useValue(fixedClock),
+});
+const response = await worker.fetch('/todos');                  // paths resolve against http://localhost
+const result = await worker.queue('todo-events', [queueJob('todo-events', todoCreated, { id: '1' })]);
+result.outcome;       // 'ok' | 'exception' (the handler rejected: unacknowledged messages retry)
+result.explicitAcks;  // message ids acknowledged one by one
+await worker.scheduled('0 3 * * *'); // rejects when no @Cron job declares the expression
+await worker.close();                // waits for waitUntil work; cancels unread response bodies
+```
+
+`queue()` uses `createMessageBatch`/`getQueueResult` and `scheduled()` `createScheduledController` from `cloudflare:test`; `queueJob(queue, jobOrName, data, { id?, attempts? })` builds the job envelope `QueueClient.add()` sends. `worker.module` is the `TestingModule` (`get`, `http`, `resolveInRequest`).
 
 Compilation shares production finalization and recomputes effective scopes after
 overrides. Always await `close()` to run shutdown hooks and dispose owned
@@ -62,10 +100,10 @@ is unnecessary. Remote tests exercise the target server's authentication and
 cannot inject trusted identity through client-side flags. Response validation
 uses the shared async schema parser, preserving transformation output types.
 
-## HTTP client — `module.http` + `TestResponse`
+## HTTP client — `moduleRef.http` + `TestResponse`
 
 ```ts
-const res = await module.http.post('/items').withBody({ name: 'A' }).send();
+const res = await moduleRef.http.post('/items').withBody({ name: 'A' }).send();
 res.assertCreated();
 await res.assertJsonPath('name', 'A');
 ```
@@ -81,18 +119,18 @@ await res.assertJsonPath('name', 'A');
 ## SSE & WebSocket
 
 ```ts
-const sse = await module.sse('/stream/events').connect();
+const sse = await moduleRef.sse('/stream/events').connect();
 await sse.assertEvent({ event: 'message', data: 'ping', id: '1' });
 ```
 
-`module.sse(path)` → `TestSseRequest` (`withHeaders`, `actingAs`, `connect()` — which asserts `200` + `text/event-stream`). `TestSseConnection`: `waitForEvent`, `waitForEnd`, `collectEvents`, `assertEvent`, `assertEventData`, `assertJsonEventData` (each takes an optional `timeout`, default 5000ms). `TestSseEvent` = `{ data, event?, id?, retry? }`.
+`moduleRef.sse(path)` → `TestSseRequest` (`withHeaders`, `actingAs`, `connect()` — which asserts `200` + `text/event-stream`). `TestSseConnection`: `waitForEvent`, `waitForEnd`, `collectEvents`, `assertEvent`, `assertEventData`, `assertJsonEventData` (each takes an optional `timeout`, default 5000ms). `TestSseEvent` = `{ data, event?, id?, retry? }`.
 
 WebSocket testing needs a transport adapter — on Node, **side-effect import `@velajs/testing/websocket-node`** (it calls `registerWsConnector` for you); without it `connect()` throws:
 
 ```ts
 import '@velajs/testing/websocket-node';   // registers the Node WS connector
 
-const ws = await module.ws('/rooms/room1/ws').connect();
+const ws = await moduleRef.ws('/rooms/room1/ws').connect();
 ws.send(JSON.stringify({ event: 'echo', data: { text: 'hi' } }));
 await ws.assertMessage(/* expected */);
 ```
@@ -102,13 +140,13 @@ await ws.assertMessage(/* expected */);
 ## Request scope, seeding & database assertions
 
 ```ts
-const id = await module.runInRequestScope(async (container) => container.resolve(RequestScopedProbe).requestId());
+const id = await moduleRef.runInRequestScope(async (container) => container.resolve(RequestScopedProbe).requestId());
 
-await module.seed(SecondSeeder, FirstSeeder);        // runs in @Seeder order, each in its own request scope
+await moduleRef.seed(SecondSeeder, FirstSeeder);        // runs in @Seeder order, each in its own request scope
 
-await module.assertDatabaseHas(db, 'user', { email: 'a@b.com' });
-await module.assertDatabaseMissing(db, 'user', { email: 'x@y.com' });
-await module.assertDatabaseCount(db, 'user', 2);
+await moduleRef.assertDatabaseHas(db, 'user', { email: 'a@b.com' });
+await moduleRef.assertDatabaseMissing(db, 'user', { email: 'x@y.com' });
+await moduleRef.assertDatabaseCount(db, 'user', 2);
 ```
 
 `seed(...classes)` resolves `SeederRegistry` (from `@velajs/vela/seeder`) and throws if a class isn't registered. `TestDatabase` is a **consumer-implemented** contract the harness ships no driver for:
@@ -123,10 +161,10 @@ interface TestDatabase {
 
 ## Authenticating requests — `actingAs`
 
-`actingAs` seams an auth principal onto a request. The resolver contract is `ActingAsResolver = (module, principal) => Promise<Headers>`; `TestPrincipal = Record<string, unknown>`. Set a module default with `module.setAuthResolver(resolver)`, or pass one per request:
+`actingAs` seams an auth principal onto a request. The resolver contract is `ActingAsResolver = (module, principal) => Promise<Headers>`; `TestPrincipal = Record<string, unknown>`. Set a module default with `moduleRef.setAuthResolver(resolver)`, or pass one per request:
 
 ```ts
-const res = await module.http.get('/items/whoami')
+const res = await moduleRef.http.get('/items/whoami')
   .actingAs({ id: 'u-1' }, async (_m, principal) => new Headers({ Authorization: `Bearer session-for-${principal.id}` }))
   .send();
 ```

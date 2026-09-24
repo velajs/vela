@@ -12,21 +12,27 @@ import {
   renderModuleTree,
 } from '../introspect.js';
 
-/** Shared shell: load config → createApp → run → best-effort dispose. */
+/**
+ * Shared shell: load the app (vela.config, or the Worker entry Wrangler names,
+ * built with its `vars` only) → createApp → run → best-effort dispose.
+ */
 abstract class AppCommand extends Command {
   config = Option.String('--config', { description: 'Path to the vela config file.' });
+  environment = Option.String('--env', {
+    description: 'Wrangler environment whose main and vars apply without a config.',
+  });
   json = Option.Boolean('--json', false, { description: 'Emit machine-readable JSON.' });
 
   protected abstract run(app: VelaApplication): Promise<number>;
 
   async execute(): Promise<number> {
-    const loaded = await loadConfig(process.cwd(), this.config);
     return withApp(
-      loaded,
+      () => loadConfig(process.cwd(), this.config, { environment: this.environment }),
       (app) => this.run(app),
       (message) => {
         this.context.stderr.write(`${message}\n`);
       },
+      this.context.stderr,
     );
   }
 
@@ -131,8 +137,9 @@ export class OpenApiDumpCommand extends Command {
     category: 'Introspection',
     description: 'Emit the OpenAPI document for the Vela app.',
     details:
-      'Requires `rootModule` in vela.config (createOpenApiDocument works from the module ' +
-      "class). The app's global prefix is applied automatically; --global-prefix overrides.",
+      'Works from the root module: the one the Worker entry passes to createCloudflareWorker(), or ' +
+      "`rootModule` in vela.config. The app's global prefix is applied automatically; " +
+      '--global-prefix overrides.',
     examples: [
       ['Print to stdout', 'vela openapi dump'],
       ['Write to a file', 'vela openapi dump --out openapi.json'],
@@ -140,6 +147,9 @@ export class OpenApiDumpCommand extends Command {
   });
 
   config = Option.String('--config', { description: 'Path to the vela config file.' });
+  environment = Option.String('--env', {
+    description: 'Wrangler environment whose main and vars apply without a config.',
+  });
   out = Option.String('--out', {
     description: 'Write the document to this file instead of stdout.',
   });
@@ -150,23 +160,19 @@ export class OpenApiDumpCommand extends Command {
   });
 
   async execute(): Promise<number> {
-    const loaded = await loadConfig(process.cwd(), this.config);
-    const rootModule = loaded.config.rootModule;
-    if (!rootModule) {
-      await loaded.dispose();
-      this.context.stderr.write(
-        'openapi dump needs the root module. Add it to your vela.config:\n\n' +
-          '  export default defineVelaConfig({\n' +
-          '    rootModule: AppModule,\n' +
-          '    async createApp() { ... },\n' +
-          '  });\n',
-      );
-      return 1;
-    }
-
     return withApp(
-      loaded,
-      async (app) => {
+      () => loadConfig(process.cwd(), this.config, { environment: this.environment }),
+      async (app, { config: { rootModule } }) => {
+        if (!rootModule) {
+          this.context.stderr.write(
+            'openapi dump needs the root module. Add it to your vela.config:\n\n' +
+              '  export default defineVelaConfig({\n' +
+              '    rootModule: AppModule,\n' +
+              '    async createApp() { ... },\n' +
+              '  });\n',
+          );
+          return 1;
+        }
         const info: Record<string, string> = {};
         if (this.title) info.title = this.title;
         if (this.apiVersion) info.version = this.apiVersion;
@@ -187,6 +193,7 @@ export class OpenApiDumpCommand extends Command {
         return 0;
       },
       (message) => this.context.stderr.write(`${message}\n`),
+      this.context.stderr,
     );
   }
 }
