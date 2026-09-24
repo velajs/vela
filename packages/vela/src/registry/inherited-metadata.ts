@@ -15,6 +15,21 @@ function parentClass(type: unknown): Constructor | undefined {
     : undefined;
 }
 
+// The value `prototype` has, own or inherited, as data property `name`. An
+// accessor reads as undefined and is never invoked: on a prototype it may
+// throw, as Map.prototype.size does for any receiver that is not a Map.
+function methodOf(prototype: unknown, name: string | symbol): unknown {
+  for (
+    let current = prototype;
+    typeof current === 'object' && current !== null;
+    current = Object.getPrototypeOf(current)
+  ) {
+    const descriptor = Object.getOwnPropertyDescriptor(current, name);
+    if (descriptor) return descriptor.value;
+  }
+  return undefined;
+}
+
 /**
  * `type`, then each class it extends, nearest first: the classes whose
  * class-level declarations apply to it.
@@ -35,14 +50,10 @@ export function classLineage(type: Constructor): Constructor[] {
  */
 export function methodLineage(type: Constructor, name: string | symbol): Constructor[] {
   const lineage = [type];
-  const prototype: unknown = type.prototype;
-  const handler: unknown =
-    typeof prototype === 'object' && prototype !== null ? Reflect.get(prototype, name) : undefined;
+  const handler = methodOf(type.prototype, name);
   if (typeof handler !== 'function') return lineage;
   for (let current = parentClass(type); current; current = parentClass(current)) {
-    const ancestor: unknown = current.prototype;
-    if (typeof ancestor !== 'object' || ancestor === null) break;
-    if (Reflect.get(ancestor, name) !== handler) break;
+    if (methodOf(current.prototype, name) !== handler) break;
     lineage.push(current);
   }
   return lineage;

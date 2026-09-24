@@ -355,6 +355,40 @@ describe('declarations inherited from an ancestor class', () => {
     }
   });
 
+  it('reads inherited declarations without invoking an ancestor accessor', async () => {
+    // Map.prototype.size throws for any receiver that is not a Map instance.
+    @Injectable()
+    class Registry extends Map<string, number> {}
+    class Accessors {
+      get current(): string {
+        throw new Error('accessor invoked');
+      }
+      @UseGuards(tracedGuard('refuse', false))
+      list() {
+        return ['listed'];
+      }
+    }
+    @Controller('/accessors')
+    class AccessorReports extends Accessors {}
+    Get()(
+      AccessorReports.prototype,
+      'list',
+      Object.getOwnPropertyDescriptor(Accessors.prototype, 'list')!,
+    );
+
+    @Module({ controllers: [AccessorReports], providers: [Registry] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      expect(app.get(Registry).size).toBe(0);
+      expect((await app.getHonoApp().request('/accessors')).status).toBe(403);
+      expect(trace).toEqual(['refuse']);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('skips the guard phases an ancestor class or inherited method leaves to its integration', async () => {
     class PolicyGuard implements CanActivate {
       static readonly phase = 'authorize';
