@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { SourceEditError, addExport, addToModule, workerRootImport } from './source-editor.js';
+import {
+  SourceEditError,
+  addExport,
+  addToModule,
+  moduleExport,
+  workerRootImport,
+} from './source-editor.js';
 
 const APP = `import { Module } from '@velajs/vela';
 import { AppController } from './app.controller.js';
@@ -159,6 +165,37 @@ export class AppModule {}
     );
   });
 
+  it('edits the class a default export names, else the only module class', () => {
+    const declared = `import { Module } from '@velajs/vela';
+
+@Module({ providers: [] })
+class AppModule {}
+
+export default AppModule;
+`;
+    expect(
+      addToModule('app.module.ts', declared, 'providers', 'X', { module: 'default' }).source,
+    ).toContain('@Module({ providers: [X] })\nclass AppModule {}');
+    const helper = `@Module({})\nclass Helper {}\n@Module({})\nclass Root {}\n`;
+    for (const exported of ['export default Root;\n', 'export { Root as default };\n']) {
+      const edited = addToModule('app.module.ts', `${helper}${exported}`, 'providers', 'X', {
+        module: 'default',
+      }).source;
+      expect(edited).toContain('@Module({})\nclass Helper {}');
+      expect(edited).toContain('@Module({ providers: [X] })\nclass Root {}');
+    }
+    // Exported in a way the file does not spell out: its only module class.
+    const assigned = `@Module({})\nclass Root {}\nexport const AppModule = Root;\n`;
+    expect(
+      addToModule('app.module.ts', assigned, 'providers', 'X', { module: 'AppModule' }).source,
+    ).toContain('@Module({ providers: [X] })\nclass Root {}');
+    expect(() =>
+      addToModule('app.module.ts', `${helper}export const AppModule = Root;\n`, 'providers', 'X', {
+        module: 'AppModule',
+      }),
+    ).toThrow(/no @Module\(\) class AppModule/);
+  });
+
   it('turns a type-only import of a name it registers into a value import', () => {
     const declared = addToModule(
       'app.module.ts',
@@ -213,6 +250,72 @@ export class AppModule {}
     expect(() => addToModule('a.ts', `@Module({ providers: [ }\n`, 'providers', 'X')).toThrow(
       /Cannot parse a.ts/,
     );
+  });
+});
+
+describe('moduleExport', () => {
+  it('finds a class the file declares, under its name or the one it exports', () => {
+    expect(moduleExport('app.module.ts', APP, 'AppModule')).toEqual({ kind: 'declared' });
+    expect(
+      moduleExport(
+        'app.module.ts',
+        '@Module({})\nclass Root {}\nexport default Root;\n',
+        'default',
+      ),
+    ).toEqual({ kind: 'declared' });
+  });
+
+  it('follows a re-export to the relative file it names', () => {
+    expect(
+      moduleExport(
+        'app.module.ts',
+        "export { AppModule } from './core/root.module.js';\n",
+        'AppModule',
+      ),
+    ).toEqual({ kind: 'reexported', from: { name: 'AppModule', from: './core/root.module.js' } });
+    expect(
+      moduleExport(
+        'app.module.ts',
+        "export { default as AppModule } from './root.module.js';\n",
+        'AppModule',
+      ),
+    ).toEqual({ kind: 'reexported', from: { name: 'default', from: './root.module.js' } });
+    expect(
+      moduleExport(
+        'app.module.ts',
+        "import { Root } from './root.module.js';\nexport { Root as AppModule };\n",
+        'AppModule',
+      ),
+    ).toEqual({ kind: 'reexported', from: { name: 'Root', from: './root.module.js' } });
+    expect(
+      moduleExport(
+        'app.module.ts',
+        "import Root from './root.module.js';\nexport default Root;\n",
+        'default',
+      ),
+    ).toEqual({ kind: 'reexported', from: { name: 'default', from: './root.module.js' } });
+  });
+
+  it('lists the export-star sources when the file names the class nowhere', () => {
+    const barrel =
+      "export * from './a.module.js';\nexport * from '@velajs/vela';\nexport * as b from './b.module.js';\n";
+    expect(moduleExport('index.ts', barrel, 'AppModule')).toEqual({
+      kind: 'unknown',
+      only: false,
+      stars: [{ name: 'AppModule', from: './a.module.js' }],
+    });
+    expect(moduleExport('index.ts', barrel, 'default')).toEqual({
+      kind: 'unknown',
+      only: false,
+      stars: [],
+    });
+    expect(
+      moduleExport(
+        'app.module.ts',
+        '@Module({})\nclass Root {}\nexport const AppModule = Root;\n',
+        'AppModule',
+      ),
+    ).toEqual({ kind: 'unknown', only: true, stars: [] });
   });
 });
 

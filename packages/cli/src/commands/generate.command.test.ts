@@ -209,6 +209,48 @@ export class InfraModule {}
     expect(edited).toContain('providers: [AppService, BillingService],');
   });
 
+  it('registers in a root module the file exports by default', async () => {
+    await scaffold('minimal');
+    const app = await read('src/app.module.ts');
+    await writeFile(
+      join(project, 'src/app.module.ts'),
+      `${app.replace('export class AppModule', 'class AppModule')}\nexport default AppModule;\n`,
+    );
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      (await read('src/worker.ts')).replace('{ AppModule }', 'AppModule'),
+    );
+    const result = await generate('g', 'service', 'billing');
+    expect(result.code, result.output).toBe(0);
+    expect(await read('src/app.module.ts')).toContain('providers: [AppService, BillingService],');
+  });
+
+  it.each([
+    ['a named re-export', "export { AppModule } from './core/root.module.js';\n"],
+    ['an export-star barrel', "export * from './core/root.module.js';\n"],
+  ])('registers in the root module the entry reaches through %s', async (_case, barrel) => {
+    await scaffold('minimal');
+    const app = (await read('src/app.module.ts')).replaceAll("from './app.", "from '../app.");
+    await mkdir(join(project, 'src/core'), { recursive: true });
+    await writeFile(join(project, 'src/core/root.module.ts'), app);
+    await writeFile(join(project, 'src/app.module.ts'), barrel);
+    const service = await generate('g', 'service', 'billing');
+    expect(service.code, service.output).toBe(0);
+    expect(service.output).toContain('UPDATE src/core/root.module.ts');
+    expect(await read('src/core/root.module.ts')).toContain(
+      "import { BillingService } from '../billing/billing.service.js';",
+    );
+    expect(await read('src/core/root.module.ts')).toContain(
+      'providers: [AppService, BillingService],',
+    );
+    const queue = await generate('g', 'queue', 'emails');
+    expect(queue.code, queue.output).toBe(0);
+    expect(await read('src/core/root.module.ts')).toContain(
+      'QueueModule.forRoot({ driver: cloudflareQueues() })',
+    );
+    expect(await read('src/app.module.ts')).toBe(barrel);
+  });
+
   it('adds a cron job with a validated Cloudflare schedule', async () => {
     await scaffold('minimal');
     const result = await generate('g', 'cron', 'digest', '--schedule', '30 6 * * MON');

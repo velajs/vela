@@ -3,8 +3,9 @@ import { readFile, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { applyCloudflareSync, kebabCase, type SyncChange } from './cf-sync.js';
-import { configuresQueueDriver } from './generate/generate.js';
+import { configuresQueueDriver, importedSource, resolveModuleClass } from './generate/generate.js';
 import {
+  SourceEditError,
   addDeclaration,
   addToModule,
   workerRootImport,
@@ -144,7 +145,11 @@ async function refreshTypes(
   const scripts = isRecord(manifest) && isRecord(manifest.scripts) ? manifest.scripts : {};
   const configArgs = config === undefined ? [] : ['--config', config];
   if (typeof scripts.types !== 'string') {
-    wrangler(project, ['types', '--include-runtime=false', ...configArgs]);
+    try {
+      wrangler(project, ['types', '--include-runtime=false', ...configArgs]);
+    } catch {
+      log('Warning: wrangler types failed; run it yourself to type the new binding.');
+    }
     return;
   }
   if (config !== undefined) {
@@ -166,7 +171,11 @@ async function refreshTypes(
   }
 }
 
-/** The root module: the file and class the Worker entry passes to createCloudflareWorker(), with its source. */
+/**
+ * The root module: the file declaring the class the Worker entry passes to
+ * createCloudflareWorker() (through the files re-exporting it), the name that
+ * file exports it under, and its source.
+ */
 async function rootModule(entry: string): Promise<NamedImport & { readonly source: string }> {
   const root = workerRootImport(entry, await readFile(entry, 'utf8'));
   if (!root) {
@@ -174,9 +183,13 @@ async function rootModule(entry: string): Promise<NamedImport & { readonly sourc
       `${entry} does not export createCloudflareWorker(AppModule); register the binding yourself or pass --skip-import.`,
     );
   }
-  const target = resolve(dirname(entry), root.from);
-  const from = target.endsWith('.ts') ? target : `${target.replace(/\.(?:js|mjs)$/, '')}.ts`;
-  return { name: root.name, from, source: await readFile(from, 'utf8') };
+  const resolved = await resolveModuleClass(await importedSource(entry, root.from), root.name);
+  if (resolved === undefined) {
+    throw new Error(
+      `${entry} imports its root module from ${root.from}, which does not exist; register the binding yourself or pass --skip-import.`,
+    );
+  }
+  return { name: resolved.name, from: resolved.file, source: resolved.source };
 }
 
 function importSpecifier(from: string, to: string, like: string): string {
@@ -206,10 +219,127 @@ export const ${binding} = new InjectionToken<${type}>('${binding}');
 export class BindingsModule {}
 `;
 
+/** The files a registration writes and what to tell people, planned before anything is created. */
+interface RegistrationPlan {
+  readonly writes: readonly { readonly path: string; readonly content: string }[];
+  readonly notes: readonly string[];
+}
+
+/**
+ * Plan the registration of `binding` on the current sources: every module
+ * edit runs here, so a module the CLI cannot edit (computed `@Module()`
+ * metadata, a root re-exported from another file, a bindings module that does
+ * not parse) fails before Wrangler creates anything.
+ */
+async function planRegistration(
+  resource: Resource,
+  binding: string,
+  root: (NamedImport & { readonly source: string }) | undefined,
+  entry: string,
+  cwd: string,
+): Promise<RegistrationPlan> {
+  const writes: { path: string; content: string }[] = [];
+  const notes: string[] = [];
+  if (resource === 'queue') {
+    const queueName = kebabCase(binding).replace(/-queue$/, '') || kebabCase(binding);
+    const registration = `QueueModule.registerQueue({ name: '${queueName}', binding: '${binding}' })`;
+    // The driver is configured once, in whichever module already does it.
+    const driver = await configuresQueueDriver([dirname(entry)]);
+    if (!root) {
+      notes.push(
+        `Register it in the root module: ${driver ? '' : 'QueueModule.forRoot({ driver: cloudflareQueues() }) (once) and '}${registration}.`,
+      );
+    } else {
+      const withDriver = driver
+        ? { source: root.source, changed: false }
+        : addToModule(
+            root.from,
+            root.source,
+            'imports',
+            'QueueModule.forRoot({ driver: cloudflareQueues() })',
+            {
+              imports: [
+                { name: 'QueueModule', from: '@velajs/vela/queue' },
+                { name: 'cloudflareQueues', from: '@velajs/cloudflare/queues' },
+              ],
+              unless: /^QueueModule\.forRoot(?:Async)?\(/,
+              module: root.name,
+            },
+          );
+      const registered = addToModule(root.from, withDriver.source, 'imports', registration, {
+        imports: [{ name: 'QueueModule', from: '@velajs/vela/queue' }],
+        module: root.name,
+      });
+      if (registered.changed || withDriver.changed) {
+        writes.push({ path: root.from, content: registered.source });
+      }
+    }
+    notes.push(
+      `Inject its client with @InjectQueue('${queueName}') client: QueueClient, and process its jobs with @Processor('${queueName}').`,
+    );
+    return { writes, notes };
+  }
+
+  const type = TYPES[resource];
+  if (!root) {
+    notes.push(
+      `Provide it yourself: export const ${binding} = new InjectionToken<${type}>('${binding}'), ` +
+        `provided by defineProvider(${binding}, { useFactory: (env) => env.${binding}, inject: [ENV] }).`,
+    );
+    return { writes, notes };
+  }
+  const bindingsFile = join(dirname(root.from), 'bindings.module.ts');
+  let current: string | undefined;
+  try {
+    current = await readFile(bindingsFile, 'utf8');
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) throw error;
+  }
+  if (current === undefined) {
+    writes.push({ path: bindingsFile, content: BINDINGS_MODULE(binding, type) });
+  } else {
+    const declared = addDeclaration(
+      bindingsFile,
+      current,
+      binding,
+      `export const ${binding} = new InjectionToken<${type}>('${binding}');`,
+    ).source;
+    const provided = addToModule(
+      bindingsFile,
+      declared,
+      'providers',
+      `defineProvider(${binding}, { useFactory: (env) => env.${binding}, inject: [ENV] })`,
+      {
+        imports: [
+          { name: 'ENV', from: '@velajs/vela' },
+          { name: 'InjectionToken', from: '@velajs/vela' },
+          { name: 'defineProvider', from: '@velajs/vela' },
+        ],
+      },
+    ).source;
+    writes.push({
+      path: bindingsFile,
+      content: addToModule(bindingsFile, provided, 'exports', binding).source,
+    });
+  }
+  const imported = addToModule(root.from, root.source, 'imports', 'BindingsModule', {
+    imports: [
+      { name: 'BindingsModule', from: importSpecifier(root.from, bindingsFile, root.source) },
+    ],
+    module: root.name,
+  });
+  if (imported.changed) writes.push({ path: root.from, content: imported.source });
+  notes.push(
+    `Inject it anywhere with @Inject(${binding}) ${binding.toLowerCase()}: ${type} (import ${binding} from ${relative(cwd, bindingsFile).split(sep).join('/')}), or read ENV.${binding}.`,
+  );
+  return { writes, notes };
+}
+
 /**
  * `vela add <d1|kv|r2|queue> <BINDING>`: create the resource with the
- * project's Wrangler (which adds the binding to the Wrangler file), refresh
- * the binding types, and register it in the application.
+ * project's Wrangler (which adds the binding to the Wrangler file), register
+ * it in the application, and refresh the binding types. The module edits are
+ * planned first: when one cannot be made, nothing is created or written.
  */
 export async function addResource(options: AddOptions): Promise<void> {
   const { resource, binding, log } = options;
@@ -236,8 +366,17 @@ export async function addResource(options: AddOptions): Promise<void> {
   const configArgs = options.config === undefined ? [] : ['--config', configPath];
   const defaultConfig = (await findWranglerConfig(project)).path;
   const entry = wranglerMain(config, options.environment);
-  // Find the module to register in before creating anything.
-  const root = options.skipImport ? undefined : await rootModule(entry);
+  let registration: RegistrationPlan;
+  try {
+    const root = options.skipImport ? undefined : await rootModule(entry);
+    registration = await planRegistration(resource, binding, root, entry, options.cwd);
+  } catch (error) {
+    if (!(error instanceof SourceEditError)) throw error;
+    throw new Error(
+      `${error.message}\nNothing was created; register the binding yourself or pass --skip-import.`,
+      { cause: error },
+    );
+  }
 
   if (resource === 'queue') {
     wrangler(project, ['queues', 'create', name, ...configArgs]);
@@ -269,92 +408,10 @@ export async function addResource(options: AddOptions): Promise<void> {
       ...configArgs,
     ]);
   }
+  for (const { path, content } of registration.writes) {
+    // eslint-disable-next-line no-await-in-loop -- One file after the other.
+    await writeFile(path, content, 'utf8');
+  }
   await refreshTypes(project, configPath === defaultConfig ? undefined : configPath, log);
-
-  if (resource === 'queue') {
-    const queueName = kebabCase(binding).replace(/-queue$/, '') || kebabCase(binding);
-    const registration = `QueueModule.registerQueue({ name: '${queueName}', binding: '${binding}' })`;
-    // The driver is configured once, in whichever module already does it.
-    const driver = await configuresQueueDriver([dirname(entry)]);
-    if (!root) {
-      log(
-        `Register it in the root module: ${driver ? '' : 'QueueModule.forRoot({ driver: cloudflareQueues() }) (once) and '}${registration}.`,
-      );
-    } else {
-      const withDriver = driver
-        ? { source: root.source, changed: false }
-        : addToModule(
-            root.from,
-            root.source,
-            'imports',
-            'QueueModule.forRoot({ driver: cloudflareQueues() })',
-            {
-              imports: [
-                { name: 'QueueModule', from: '@velajs/vela/queue' },
-                { name: 'cloudflareQueues', from: '@velajs/cloudflare/queues' },
-              ],
-              unless: /^QueueModule\.forRoot(?:Async)?\(/,
-              module: root.name,
-            },
-          );
-      const registered = addToModule(root.from, withDriver.source, 'imports', registration, {
-        imports: [{ name: 'QueueModule', from: '@velajs/vela/queue' }],
-        module: root.name,
-      });
-      if (registered.changed || withDriver.changed)
-        await writeFile(root.from, registered.source, 'utf8');
-    }
-    log(
-      `Inject its client with @InjectQueue('${queueName}') client: QueueClient, and process its jobs with @Processor('${queueName}').`,
-    );
-    return;
-  }
-
-  const type = TYPES[resource];
-  if (!root) {
-    log(
-      `Provide it yourself: export const ${binding} = new InjectionToken<${type}>('${binding}'), ` +
-        `provided by defineProvider(${binding}, { useFactory: (env) => env.${binding}, inject: [ENV] }).`,
-    );
-    return;
-  }
-  const bindingsFile = join(dirname(root.from), 'bindings.module.ts');
-  let bindings: string;
-  try {
-    const current = await readFile(bindingsFile, 'utf8');
-    const declared = addDeclaration(
-      bindingsFile,
-      current,
-      binding,
-      `export const ${binding} = new InjectionToken<${type}>('${binding}');`,
-    ).source;
-    const provided = addToModule(
-      bindingsFile,
-      declared,
-      'providers',
-      `defineProvider(${binding}, { useFactory: (env) => env.${binding}, inject: [ENV] })`,
-      {
-        imports: [
-          { name: 'ENV', from: '@velajs/vela' },
-          { name: 'InjectionToken', from: '@velajs/vela' },
-          { name: 'defineProvider', from: '@velajs/vela' },
-        ],
-      },
-    ).source;
-    bindings = addToModule(bindingsFile, provided, 'exports', binding).source;
-  } catch (error) {
-    if (!hasErrorCode(error, 'ENOENT')) throw error;
-    bindings = BINDINGS_MODULE(binding, type);
-  }
-  await writeFile(bindingsFile, bindings, 'utf8');
-  const imported = addToModule(root.from, root.source, 'imports', 'BindingsModule', {
-    imports: [
-      { name: 'BindingsModule', from: importSpecifier(root.from, bindingsFile, root.source) },
-    ],
-    module: root.name,
-  });
-  if (imported.changed) await writeFile(root.from, imported.source, 'utf8');
-  log(
-    `Inject it anywhere with @Inject(${binding}) ${binding.toLowerCase()}: ${type} (import ${binding} from ${relative(options.cwd, bindingsFile).split(sep).join('/')}), or read ENV.${binding}.`,
-  );
+  for (const note of registration.notes) log(note);
 }

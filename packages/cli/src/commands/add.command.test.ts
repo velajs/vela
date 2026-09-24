@@ -199,6 +199,94 @@ export default createCloudflareWorker({ module: AppModule });
     expect(await read('wrangler.jsonc')).toBe(before);
   });
 
+  it('registers in a root module the file exports by default', async () => {
+    const app = await read('src/app.module.ts');
+    await writeFile(
+      join(project, 'src/app.module.ts'),
+      `${app.replace('export class AppModule', 'class AppModule')}\nexport default AppModule;\n`,
+    );
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      (await read('src/worker.ts')).replace('{ AppModule }', 'AppModule'),
+    );
+    const kv = await add('kv', 'CACHE');
+    expect(kv.code, kv.output).toBe(0);
+    expect(await read('src/app.module.ts')).toContain('imports: [BindingsModule],');
+    const queue = await add('queue', 'EMAILS');
+    expect(queue.code, queue.output).toBe(0);
+    expect(await read('src/app.module.ts')).toContain(
+      "QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' })",
+    );
+  });
+
+  it('registers in the root module a barrel re-exports', async () => {
+    const app = (await read('src/app.module.ts')).replaceAll("from './", "from '../");
+    await mkdir(join(project, 'src/core'), { recursive: true });
+    await writeFile(join(project, 'src/core/root.module.ts'), app);
+    await writeFile(join(project, 'src/app.module.ts'), "export * from './core/root.module.js';\n");
+    const kv = await add('kv', 'CACHE');
+    expect(kv.code, kv.output).toBe(0);
+    expect(await read('src/core/bindings.module.ts')).toContain('exports: [CACHE]');
+    expect(await read('src/core/root.module.ts')).toContain(
+      "import { BindingsModule } from './bindings.module.js';",
+    );
+    const queue = await add('queue', 'EMAILS');
+    expect(queue.code, queue.output).toBe(0);
+    expect(await read('src/core/root.module.ts')).toContain(
+      "QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' })",
+    );
+    expect(await read('src/app.module.ts')).toBe("export * from './core/root.module.js';\n");
+    await expect(read('src/bindings.module.ts')).rejects.toThrow();
+  });
+
+  it.each([
+    [
+      'a root module with computed metadata',
+      'src/app.module.ts',
+      `import { Module } from '@velajs/vela';
+
+const metadata = { providers: [] };
+
+@Module(metadata)
+export class AppModule {}
+`,
+      'takes a computed argument',
+    ],
+    [
+      'a root module re-exported from a missing file',
+      'src/app.module.ts',
+      `export { AppModule } from './root.module.js';\n`,
+      "re-exports AppModule from './root.module.js', which does not exist",
+    ],
+    [
+      'a barrel that exports no module class',
+      'src/app.module.ts',
+      `export * from './missing.module.js';\n`,
+      'declares no @Module() class AppModule',
+    ],
+    [
+      'a bindings module it cannot parse',
+      'src/bindings.module.ts',
+      `import { Module } from '@velajs/vela';\n\n@Module({ providers: [ })\nexport class BindingsModule {}\n`,
+      'Cannot parse',
+    ],
+  ])('creates nothing for %s', async (_case, file, content, message) => {
+    await writeFile(join(project, file), content);
+    const before = await read('wrangler.jsonc');
+    for (const kind of file.endsWith('bindings.module.ts') ? ['kv'] : ['kv', 'queue']) {
+      const result = await add(kind, 'CACHE');
+      expect(result.code, result.output).toBe(1);
+      expect(result.output).toContain(message);
+      expect(result.output).toContain('Nothing was created');
+    }
+    await expect(read('wrangler-calls.log')).rejects.toThrow();
+    expect(await read('wrangler.jsonc')).toBe(before);
+    expect(await read(file)).toBe(content);
+    if (!file.endsWith('bindings.module.ts')) {
+      await expect(read('src/bindings.module.ts')).rejects.toThrow();
+    }
+  });
+
   it('runs Wrangler against the Wrangler file --config names', async () => {
     await writeFile(join(project, 'wrangler.staging.jsonc'), await read('wrangler.jsonc'));
     const staging = join(project, 'wrangler.staging.jsonc');
@@ -247,6 +335,15 @@ export default createCloudflareWorker({ module: AppModule });
     );
     expect(await read('src/app.module.ts')).toBe(before);
     await expect(read('src/bindings.module.ts')).rejects.toThrow();
+  });
+
+  it('registers a created resource when only the type refresh fails', async () => {
+    vi.stubEnv('WRANGLER_STUB_FAIL', 'types');
+    const result = await add('kv', 'CACHE');
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain('Warning: wrangler types failed');
+    expect(await read('src/bindings.module.ts')).toContain('exports: [CACHE]');
+    expect(await read('src/app.module.ts')).toContain('imports: [BindingsModule],');
   });
 
   it('rejects an unknown kind, an invalid or taken binding', async () => {

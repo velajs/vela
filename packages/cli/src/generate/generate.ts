@@ -19,6 +19,7 @@ import {
   addExport,
   addToModule,
   callsMethod,
+  moduleExport,
   workerRootImport,
   type NamedImport,
 } from './source-editor.js';
@@ -111,19 +112,93 @@ function sourceFile(from: string, specifierText: string): string {
   return target.endsWith('.ts') ? target : `${target.replace(/\.(?:js|mjs)$/, '')}.ts`;
 }
 
+/** The TypeScript source an import specifier of `from` names; `./dir` may name `./dir/index.ts`. */
+export async function importedSource(from: string, specifierText: string): Promise<string> {
+  const file = sourceFile(from, specifierText);
+  if (/\.[cm]?[jt]s$/.test(specifierText) || (await readText(file)) !== undefined) return file;
+  const index = join(resolve(dirname(from), specifierText), 'index.ts');
+  return (await readText(index)) === undefined ? file : index;
+}
+
+/** A `@Module()` class a file exports, found where it is declared. */
+export interface ResolvedModule {
+  /** The file declaring the class: the one asked for when none on the way does. */
+  readonly file: string;
+  /** The name `file` exports the class under. */
+  readonly name: string;
+  readonly source: string;
+  /** The files that re-export the class on the way, the one asked for first. */
+  readonly via: readonly string[];
+}
+
+/**
+ * Follow the export `name` of the module file `file` to the file declaring
+ * the class, through `export { … } from`, exported imports and `export *`
+ * barrels. A file naming no such class stands for itself (its only
+ * `@Module()` class, else editing it reports the missing class); a re-export
+ * of a file that does not exist throws. Undefined when `file` does not exist.
+ */
+export async function resolveModuleClass(
+  file: string,
+  name: string,
+): Promise<ResolvedModule | undefined> {
+  const via: string[] = [];
+  // `strict`: an `export *` source, which counts only when it names the class.
+  const visit = async (
+    current: string,
+    wanted: string,
+    strict: boolean,
+  ): Promise<ResolvedModule | undefined> => {
+    if (via.includes(current)) return undefined;
+    const source = await readText(current);
+    if (source === undefined) return undefined;
+    const here: ResolvedModule = { file: current, name: wanted, source, via: [...via] };
+    const found = moduleExport(current, source, wanted);
+    if (found.kind === 'declared') return here;
+    via.push(current);
+    try {
+      if (found.kind === 'reexported') {
+        const target = await importedSource(current, found.from.from);
+        const resolved = await visit(target, found.from.name, false);
+        if (resolved !== undefined || strict) return resolved;
+        if ((await readText(target)) === undefined) {
+          throw new SourceEditError(
+            `${current} re-exports ${wanted} from '${found.from.from}', which does not exist.`,
+          );
+        }
+        return here;
+      }
+      for (const star of found.stars) {
+        // eslint-disable-next-line no-await-in-loop -- The first source declaring it wins.
+        const resolved = await visit(await importedSource(current, star.from), star.name, true);
+        if (resolved !== undefined) return resolved;
+      }
+      return strict ? undefined : here;
+    } finally {
+      via.pop();
+    }
+  };
+  return visit(file, name, false);
+}
+
 /** The root module: the file, and the class, the Worker entry passes to createCloudflareWorker(). */
 interface RootModule {
   readonly file: string;
   /** The name the file exports the class under, when the Worker entry names it. */
   readonly name?: string;
+  /** The files re-exporting it between the Worker entry and `file`. */
+  readonly via: readonly string[];
 }
 
 async function rootModule(entry: string, sourceRoot: string): Promise<RootModule | undefined> {
   const text = await readText(entry);
   const root = text === undefined ? undefined : workerRootImport(entry, text);
-  if (root) return { file: sourceFile(entry, root.from), name: root.name };
+  if (root) {
+    const file = await importedSource(entry, root.from);
+    return (await resolveModuleClass(file, root.name)) ?? { file, name: root.name, via: [] };
+  }
   const fallback = join(sourceRoot, 'app.module.ts');
-  return (await readText(fallback)) === undefined ? undefined : { file: fallback };
+  return (await readText(fallback)) === undefined ? undefined : { file: fallback, via: [] };
 }
 
 const SOURCE_FILE = /\.(?:[cm]?ts|tsx|[cm]?js)$/;
@@ -365,7 +440,9 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
       (options.schematic === 'module' || options.schematic === 'resource') && !options.flat
         ? dirname(directory)
         : directory;
-    const parent = explicit ?? (await nearestModule(start, sourceRoot, root?.file, target));
+    const found = explicit ?? (await nearestModule(start, sourceRoot, root?.file, target));
+    // A file re-exporting the root module stands for the file declaring it.
+    const parent = root?.via.includes(found) ? root.file : found;
     for (const registration of registrations) {
       const host = registration.root ? (root?.file ?? parent) : parent;
       const imports = registration.imports.map((named) =>

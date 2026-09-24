@@ -187,10 +187,16 @@ interface ModuleClass {
   readonly call: CallExpression;
 }
 
-/** Every `@Module()` class of the file, with the names it is exported under. */
+/**
+ * Every `@Module()` class of the file, with the names it is exported under:
+ * `export class`, `export default class`, `export default AppModule;` and
+ * local `export { AppModule as default }` lists.
+ */
 function moduleClasses(program: Program): ModuleClass[] {
   const exportedAs = new Map<string, string[]>();
   const exportedClasses = new Map<Class, string[]>();
+  const exportAs = (local: string, exported: string) =>
+    exportedAs.set(local, [...(exportedAs.get(local) ?? []), exported]);
   for (const statement of program.body) {
     if (statement.type === 'ExportNamedDeclaration') {
       if (statement.declaration?.type === 'ClassDeclaration' && statement.declaration.id) {
@@ -198,14 +204,14 @@ function moduleClasses(program: Program): ModuleClass[] {
       }
       if (statement.source !== null) continue;
       for (const specifier of statement.specifiers) {
-        const local = exportName(specifier.local);
-        exportedAs.set(local, [...(exportedAs.get(local) ?? []), exportName(specifier.exported)]);
+        exportAs(exportName(specifier.local), exportName(specifier.exported));
       }
-    } else if (
-      statement.type === 'ExportDefaultDeclaration' &&
-      statement.declaration.type === 'ClassDeclaration'
-    ) {
-      exportedClasses.set(statement.declaration, ['default']);
+    } else if (statement.type === 'ExportDefaultDeclaration') {
+      if (statement.declaration.type === 'ClassDeclaration') {
+        exportedClasses.set(statement.declaration, ['default']);
+      } else if (statement.declaration.type === 'Identifier') {
+        exportAs(statement.declaration.name, 'default');
+      }
     }
   }
   const classes: ModuleClass[] = [];
@@ -233,8 +239,74 @@ function moduleClasses(program: Program): ModuleClass[] {
 }
 
 /**
+ * How `file` exports the `@Module()` class `name`: it declares it (under that
+ * name, or exports it so), it re-exports it from a relative file
+ * (`export { AppModule } from './root.module.js'`, or an imported binding it
+ * exports), or neither: then `only` tells whether the file declares a single
+ * module class, and `stars` lists the relative `export * from` sources that may
+ * provide it.
+ */
+export type ModuleExport =
+  | { readonly kind: 'declared' }
+  | { readonly kind: 'reexported'; readonly from: NamedImport }
+  | { readonly kind: 'unknown'; readonly only: boolean; readonly stars: readonly NamedImport[] };
+
+export function moduleExport(file: string, source: string, name: string): ModuleExport {
+  const program = parse(file, source);
+  const classes = moduleClasses(program);
+  if (classes.some((candidate) => candidate.name === name || candidate.exported.includes(name))) {
+    return { kind: 'declared' };
+  }
+  const imported = new Map<string, NamedImport>();
+  for (const declaration of importDeclarations(program)) {
+    if (declaration.importKind === 'type' || !declaration.source.value.startsWith('.')) continue;
+    for (const specifier of declaration.specifiers) {
+      if (specifier.type === 'ImportNamespaceSpecifier') continue;
+      imported.set(specifier.local.name, {
+        name: specifier.type === 'ImportSpecifier' ? exportName(specifier.imported) : 'default',
+        from: declaration.source.value,
+      });
+    }
+  }
+  const stars: NamedImport[] = [];
+  for (const statement of program.body) {
+    if (statement.type === 'ExportNamedDeclaration' && statement.exportKind !== 'type') {
+      const specifier = statement.specifiers.find(
+        (candidate) => exportName(candidate.exported) === name,
+      );
+      if (specifier === undefined) continue;
+      const local = exportName(specifier.local);
+      const from =
+        statement.source === null
+          ? imported.get(local)
+          : statement.source.value.startsWith('.')
+            ? { name: local, from: statement.source.value }
+            : undefined;
+      if (from !== undefined) return { kind: 'reexported', from };
+    } else if (
+      statement.type === 'ExportDefaultDeclaration' &&
+      name === 'default' &&
+      statement.declaration.type === 'Identifier'
+    ) {
+      const from = imported.get(statement.declaration.name);
+      if (from !== undefined) return { kind: 'reexported', from };
+    } else if (
+      statement.type === 'ExportAllDeclaration' &&
+      statement.exported === null &&
+      statement.exportKind !== 'type' &&
+      name !== 'default' &&
+      statement.source.value.startsWith('.')
+    ) {
+      stars.push({ name, from: statement.source.value });
+    }
+  }
+  return { kind: 'unknown', only: classes.length === 1, stars };
+}
+
+/**
  * The `@Module(...)` call to edit: of the class named `name` (declared or
- * exported under it), else of the file's only module class, else of the only
+ * exported under it) or, when the file names none so, of its only module
+ * class; without `name`, of the file's only module class, else of the only
  * exported one.
  */
 function moduleDecorator(
@@ -244,15 +316,16 @@ function moduleDecorator(
   entry: string,
 ): CallExpression {
   const classes = moduleClasses(program);
+  const [only] = classes;
   if (name !== undefined) {
     const named = classes.find(
       (candidate) => candidate.name === name || candidate.exported.includes(name),
     );
-    if (named === undefined)
-      throw new SourceEditError(`${file} declares no @Module() class ${name}.`);
-    return named.call;
+    if (named !== undefined) return named.call;
+    // Exported some other way (`export const AppModule = Root`): the only candidate.
+    if (classes.length === 1 && only !== undefined) return only.call;
+    throw new SourceEditError(`${file} declares no @Module() class ${name}.`);
   }
-  const [only] = classes;
   if (only === undefined) throw new SourceEditError(`${file} declares no @Module() class.`);
   if (classes.length === 1) return only.call;
   const exported = classes.filter((candidate) => candidate.exported.length > 0);

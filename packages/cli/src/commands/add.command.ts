@@ -10,10 +10,12 @@ export class AddCommand extends Command {
     details:
       "Runs the project's Wrangler to create the resource (d1/kv/r2 with --binding and --update-config, " +
       'which adds it to the Wrangler file; a queue with `wrangler queues create`, then its producer and ' +
-      'consumer are added to wrangler.json(c) in place), regenerates the binding types, and registers ' +
-      'it: a d1/kv/r2 binding as an injection token of a global BindingsModule next to the root module, ' +
-      'a queue as QueueModule.registerQueue({ name, binding }) with the cloudflareQueues() driver in ' +
-      'the root module. Creating a resource uses your Cloudflare account; log in with `wrangler login` first.',
+      'consumer are added to wrangler.json(c) in place), registers it, and regenerates the binding ' +
+      'types: a d1/kv/r2 binding as an injection token of a global BindingsModule next to the root ' +
+      'module, a queue as QueueModule.registerQueue({ name, binding }) with the cloudflareQueues() ' +
+      'driver in the root module. The module edits are computed first: when one cannot be made, ' +
+      'nothing is created. Creating a resource uses your Cloudflare account; log in with ' +
+      '`wrangler login` first.',
     examples: [
       ['A D1 database bound as DB', 'vela add d1 DB'],
       ['A KV namespace with a chosen name', 'vela add kv CACHE --name shop-cache'],
