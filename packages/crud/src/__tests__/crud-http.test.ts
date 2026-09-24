@@ -648,6 +648,60 @@ describe('route metadata (config.decorators, config.endpointDecorators)', () => 
     ]);
   });
 
+  it('lets a class decorator that writes method metadata override endpoint metadata', async () => {
+    const store = new Map<string, Row>();
+    const seen: Array<string | undefined> = [];
+    // Reads the handler's metadata only, as a guard honoring method-level marks does.
+    @Injectable()
+    class HandlerAccessGuard implements CanActivate {
+      constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+      canActivate(context: ExecutionContext): boolean {
+        const access = this.reflector.get(Access, context);
+        seen.push(access);
+        return access === 'public';
+      }
+    }
+    const markEveryMethod = everyMethod(Access('private'));
+
+    @Controller('/items')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      decorators: [markEveryMethod],
+      endpointDecorators: { list: [Access('public')] },
+    })
+    class ItemsController {}
+
+    @Module({
+      imports: [
+        CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
+        CrudModule.forFeature([
+          defineCrudFeature({
+            path: '/things',
+            model: makeModel({ name: 'thing' }),
+            decorators: [markEveryMethod],
+            endpointDecorators: { list: [Access('public')] },
+          }),
+        ]),
+      ],
+      controllers: [ItemsController],
+      providers: [
+        HandlerAccessGuard,
+        defineProvider(APP_GUARD, { useExisting: HandlerAccessGuard }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    // Class decorators apply last, as written in TypeScript, so the method mark wins.
+    for (const path of ['/items', '/things']) {
+      expect((await hono.request(path)).status, path).toBe(403);
+    }
+    expect(seen).toEqual(['private', 'private']);
+  });
+
   it('rejects decorators that replace the generated controller or leave no handler', () => {
     const feature = (config: Pick<CrudConfig, 'decorators' | 'endpointDecorators'>) =>
       CrudModule.forFeature([
