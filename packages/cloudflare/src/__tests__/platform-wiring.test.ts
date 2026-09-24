@@ -217,11 +217,19 @@ describe('Cloudflare WebSocket platform wiring', () => {
       expect(calls).toEqual([
         {
           id: durableObjectRoomName('/rooms/:id/ws', 'general'),
-          cmd: { rooms: ['general', 'random'], frame: envelope('hello', 1) },
+          cmd: {
+            rooms: ['general', 'random'],
+            gatewayPath: '/rooms/:id/ws',
+            frame: envelope('hello', 1),
+          },
         },
         {
           id: durableObjectRoomName('/rooms/:id/ws', 'random'),
-          cmd: { rooms: ['general', 'random'], frame: envelope('hello', 1) },
+          cmd: {
+            rooms: ['general', 'random'],
+            gatewayPath: '/rooms/:id/ws',
+            frame: envelope('hello', 1),
+          },
         },
       ]);
       await expect(gateways.of(LocalGateway).to('/local').emit('hello')).rejects.toThrow(
@@ -273,7 +281,7 @@ describe('Cloudflare WebSocket platform wiring', () => {
       expect(calls).toEqual([
         {
           id: durableObjectRoomName('/rooms/:id/ws', 'room-2'),
-          cmd: { rooms: ['room-2'], frame: envelope('remote', 2) },
+          cmd: { rooms: ['room-2'], gatewayPath: '/rooms/:id/ws', frame: envelope('remote', 2) },
         },
       ]);
     } finally {

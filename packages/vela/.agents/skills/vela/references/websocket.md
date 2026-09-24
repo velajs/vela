@@ -44,7 +44,7 @@ Gateway lifecycle interfaces: `OnGatewayInit` (`afterInit(server)`), `OnGatewayC
 
 `WsServer` (from `@WebSocketServer()`): `emit(event, data?)` broadcasts to everyone; `to(room)` / `in(room)` / `except(room)` return a chainable `BroadcastOperator` whose terminal `emit(event, data?)` targets rooms.
 
-`WsClient`: `readonly rooms`, `join(room)` / `leave(room)`, `send(event, data?, id?)`, `close(code?, reason?)`, `commit()` (persist data/room changes — required for Cloudflare hibernation), `readonly raw`.
+`WsClient`: `readonly path?` (the gateway route it connected through), `readonly rooms`, `join(room)` / `leave(room)`, `send(event, data?, id?)`, `close(code?, reason?)`, `commit()` (persist data/room changes — required for Cloudflare hibernation), `readonly raw`.
 
 Throw `WsException(errorOrObject)` to send an `{ event: 'exception', data }` frame instead of crashing the socket.
 
@@ -52,19 +52,21 @@ Throw `WsException(errorOrObject)` to send an `{ event: 'exception', data }` fra
 
 ```ts
 interface ChatEvents { message: { from: string; text: string } } // event → payload
+const Announcement = z.object({ text: z.string().min(1).max(500) });
 
 @Controller('/rooms')
+@UseGuards(StaffGuard) // the app's own authorization: this route pushes into any room it names
 class RoomsController {
   constructor(private readonly gateways: Gateways) {} // from @velajs/vela/websocket
 
   @Post('/:id/announce')
-  announce(@Param('id') id: string) {
-    return this.gateways.of<ChatEvents>(ChatGateway).to(id).emit('message', { from: 'system', text: 'hi' });
+  announce(@Param('id') id: string, @Body(Announcement) body: z.infer<typeof Announcement>) {
+    return this.gateways.of<ChatEvents>(ChatGateway).to(id).emit('message', { from: 'system', text: body.text });
   }
 }
 ```
 
-`gateways.of<Events>(Gateway)` returns a `GatewayServer<Events>` built from the gateway's metadata (`path`, `binding`, `roomParam`); `to(room)`/`in(room)` chain rooms and `emit(event, data)` is typed by the event map and bounded by the gateway's `maxFrameBytes`. `emit()` without a room and `except()` throw with guidance. Without a delivering transport, pushes go through the injected `WsServer` (in-process hosts: the sync driver); on Cloudflare the Worker calls the gateway + room Durable Object's `broadcast` RPC (namespace read by `binding` from `ENV`), and inside a Durable Object its own room is local while other rooms are forwarded. A gateway without `roomParam` has one room: its path.
+`gateways.of<Events>(Gateway)` returns a `GatewayServer<Events>` built from the gateway's metadata (`path`, `binding`, `roomParam`); `to(room)`/`in(room)` chain rooms and `emit(event, data)` is typed by the event map and bounded by the gateway's `maxFrameBytes`. `emit()` without a room and `except()` throw with guidance. A push reaches only that gateway's sockets on every runtime, even when another gateway uses the same room id: the command carries the gateway path and registries skip sockets whose `WsClient.path` differs. Without a delivering transport, pushes go through the module's sync driver (in-process hosts; `redis()` across instances); on Cloudflare the Worker calls the gateway + room Durable Object's `broadcast` RPC (namespace read by `binding` from `ENV`), and inside a Durable Object its own room is local while other rooms are forwarded. A gateway without `roomParam` has one room: its path.
 
 ## Module & sync driver
 
@@ -99,6 +101,6 @@ The gateway + module are identical across runtimes; you only choose the wiring:
 | Node / Bun / Deno | `@velajs/vela/websocket-node` → `registerWebSocketGateways(app, upgradeWebSocket)` | `redis()` for multi-process |
 | Cloudflare Workers | the same `WebSocketModule.forRoot()`; `createCloudflareWorker` and a `VelaWebSocketDurableObject(AppModule)` from `@velajs/cloudflare/durable-objects` register the platform (`WS_TRANSPORT`), and each seeds its own `ENV` | native per-room Durable Object |
 
-On Node/Bun/Deno, pass the runtime's Hono `upgradeWebSocket` factory (`@hono/node-ws`, `hono/bun`, or `hono/deno`); `registerWebSocketGateways` iterates `app.entrypoints.ofKind('websocket')` and mounts each gateway route (auto-joining the room from a `:id` path param). On Cloudflare, the Worker mounts an upgrade route for each gateway naming a `binding`, authenticates the upgrade, and forwards it to the gateway + room Durable Object, which owns the raw socket via `WebSocketPair` + hibernation (`ctx.acceptWebSocket`), which Hono's `upgradeWebSocket` cannot bridge — one DO per room gives native horizontal scale. The Worker's `@WebSocketServer()` has no sockets and throws on push with guidance to `Gateways`. Other runtime adapters wire a platform the same way: register a `WebSocketTransport` as the global `WS_TRANSPORT` (`createServer(driver)`; `deliver(delivery)` for `Gateways` pushes to another isolate — without `createServer` the injected server then refuses pushes; `forwardUpgrade` + `forwardingHeaders` when sockets live in another isolate).
+On Node/Bun/Deno, pass the runtime's Hono `upgradeWebSocket` factory (`@hono/node-ws`, `hono/bun`, or `hono/deno`); `registerWebSocketGateways` iterates `app.entrypoints.ofKind('websocket')` and mounts each gateway route (auto-joining the room from a `:id` path param). On Cloudflare, the Worker mounts an upgrade route for each gateway naming a `binding`, authenticates the upgrade, and forwards it to the gateway + room Durable Object, which owns the raw socket via `WebSocketPair` + hibernation (`ctx.acceptWebSocket`), which Hono's `upgradeWebSocket` cannot bridge — one DO per room gives native horizontal scale. The Worker's `@WebSocketServer()` has no sockets and throws on push with guidance to `Gateways`. Other runtime adapters wire a platform the same way: register a `WebSocketTransport` as the global `WS_TRANSPORT` (`createServer(driver)`; `deliver(delivery)` for `Gateways` pushes to another isolate, each to the gateway's sockets — without `createServer` the injected server then refuses pushes; `forwardUpgrade` + `forwardingHeaders` when sockets live in another isolate).
 
 For the full transport walkthrough, read the repo's `docs/websockets.md`.

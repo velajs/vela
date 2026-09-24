@@ -3540,8 +3540,8 @@ declare class WebSocketPlatform {
 
 declare class Gateways {
   private readonly platform;
-  private readonly server;
-  constructor(platform: WebSocketPlatform, server: WsServer);
+  private readonly driver;
+  constructor(platform: WebSocketPlatform, driver: SyncDriver);
 
   of<Events extends object = Record<string, unknown>>(gateway: Type): GatewayServer<Events>;
   private push;
@@ -5136,6 +5136,8 @@ interface WsResponse<T = unknown> {
 
 interface WsClient<TData = Record<string, unknown>> {
   readonly id: string;
+
+  readonly path?: string;
   readonly rooms: ReadonlySet<string>;
 
   readonly maxFrameBytes?: number;
@@ -5316,6 +5318,8 @@ interface BroadcastCommand {
   rooms: string[];
   exceptRooms?: string[];
   exceptIds?: string[];
+
+  gatewayPath?: string;
 
   frame: string;
 

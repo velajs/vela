@@ -7,7 +7,7 @@ import {
   resolveMaxFrameBytes,
 } from './gateway-routing';
 import { WebSocketPlatform } from './upgrade-routes';
-import { WS_GATEWAY_METADATA, WS_SERVER } from './websocket.tokens';
+import { WS_GATEWAY_METADATA, WS_SYNC_DRIVER } from './websocket.tokens';
 import type {
   BroadcastCommand,
   GatewayBroadcastOperator,
@@ -15,9 +15,8 @@ import type {
   GatewayEventArgs,
   GatewayServer,
   WebSocketGatewayOptions,
-  WsServer,
 } from './websocket.types';
-import { assertBroadcastCommandFits } from './ws-sync';
+import { assertBroadcastCommandFits, type SyncDriver } from './ws-sync';
 
 /** What a push needs from one gateway's `@WebSocketGateway` metadata. */
 interface GatewayTarget {
@@ -143,17 +142,18 @@ class GatewayServerImpl<Events extends object> implements GatewayServer<Events> 
  *
  * The explicit event map types each push. The target comes from the
  * gateway's `@WebSocketGateway` metadata (`path`, `binding`, `roomParam`),
- * and each push is bounded by its `maxFrameBytes`. A platform transport that
- * delivers pushes receives one `GatewayDelivery` per room (on Cloudflare, a
- * broadcast RPC to that gateway room's Durable Object); otherwise the push
- * goes through the server gateways inject, which in-process hosts back with
- * the module's sync driver.
+ * each push is bounded by its `maxFrameBytes`, and it reaches only that
+ * gateway's sockets, even where another gateway has a room with the same id.
+ * A platform transport that delivers pushes receives one `GatewayDelivery`
+ * per room (on Cloudflare, a broadcast RPC to that gateway room's Durable
+ * Object); otherwise the push goes through the module's sync driver to this
+ * process's sockets (and, with `redis()`, to every instance's).
  */
 @Injectable()
 export class Gateways {
   constructor(
     @Inject(WebSocketPlatform) private readonly platform: WebSocketPlatform,
-    @Inject(WS_SERVER) private readonly server: WsServer,
+    @Inject(WS_SYNC_DRIVER) private readonly driver: SyncDriver,
   ) {}
 
   /** The typed push handle of one `@WebSocketGateway` class. */
@@ -170,15 +170,16 @@ export class Gateways {
     event: string,
     data: unknown,
   ): Promise<void> {
-    const command: BroadcastCommand = { rooms: [...rooms], frame: JSON.stringify({ event, data }) };
+    if (rooms.length === 0) return;
+    const command: BroadcastCommand = {
+      rooms: [...rooms],
+      gatewayPath: target.path,
+      frame: JSON.stringify({ event, data }),
+    };
     assertBroadcastCommandFits(command, target.maxFrameBytes);
     const transport = this.platform.transport;
     if (!transport?.deliver) {
-      const [first, ...others] = command.rooms;
-      if (first === undefined) return;
-      let operator = this.server.to(first);
-      for (const room of others) operator = operator.to(room);
-      await operator.emit(event, data);
+      await this.driver.dispatch(command);
       return;
     }
     const deliver = transport.deliver.bind(transport);

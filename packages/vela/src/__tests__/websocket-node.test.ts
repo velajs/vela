@@ -10,6 +10,7 @@ import {
   WsDispatcher,
   WS_ROOM_REGISTRY,
   InMemoryRoomRegistry,
+  Gateways,
 } from '../websocket/index.js';
 import type {
   WsClient,
@@ -243,6 +244,56 @@ describe('registerWebSocketGateways', () => {
     expect(registry.localIdsInRoom('/rooms/:roomId/ws')).toHaveLength(0);
   });
 
+  it("scopes a Gateways push to the named gateway's sockets when gateways share a room id", async () => {
+    @WebSocketGateway({
+      path: '/admin/:org/ws',
+      roomParam: 'org',
+      authenticator: TestUpgradeAuthenticator,
+    })
+    class AdminGateway {}
+    @WebSocketGateway({
+      path: '/chat/:org/ws',
+      roomParam: 'org',
+      authenticator: TestUpgradeAuthenticator,
+    })
+    class ChatGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [AdminGateway, ChatGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+    const orgContext = (path: string) => ({
+      req: {
+        raw: new Request(`http://localhost${path}`),
+        param: (name: string) => (name === 'org' ? 'org-1' : undefined),
+      },
+    });
+    const adminWs = new FakeWSContext();
+    const chatWs = new FakeWSContext();
+    const adminEvents = await captured[0](orgContext('/admin/org-1/ws'));
+    const chatEvents = await captured[1](orgContext('/chat/org-1/ws'));
+    adminEvents.onOpen?.(new Event('open'), adminWs as unknown as WSContext);
+    chatEvents.onOpen?.(new Event('open'), chatWs as unknown as WSContext);
+    await tick();
+
+    const registry = app.get(WS_ROOM_REGISTRY);
+    expect(registry.localIdsInRoom('org-1')).toHaveLength(2);
+
+    await app.get(Gateways).of(AdminGateway).to('org-1').emit('audit', { action: 'granted' });
+    expect(adminWs.sent.map((frame) => JSON.parse(frame))).toEqual([
+      { event: 'audit', data: { action: 'granted' } },
+    ]);
+    expect(chatWs.sent).toEqual([]);
+
+    await app.get(Gateways).of(ChatGateway).to('org-1').emit('message', 'hi');
+    expect(chatWs.sent.map((frame) => JSON.parse(frame))).toEqual([
+      { event: 'message', data: 'hi' },
+    ]);
+    expect(adminWs.sent).toHaveLength(1);
+    await app.close();
+  });
+
   it('rejects every parameterized room route unless roomParam is explicit', async () => {
     @WebSocketGateway({ path: '/tenants/:tenant/rooms/:room/ws' })
     class AmbiguousGateway {}
@@ -283,10 +334,11 @@ describe('redis() sync driver', () => {
     }
   }
 
-  function sink(id: string) {
+  function sink(id: string, path?: string) {
     const received: Array<{ event: string; data: unknown }> = [];
     const client: WsClient = {
       id,
+      ...(path === undefined ? {} : { path }),
       rooms: new Set(),
       data: {},
       raw: null,
@@ -321,6 +373,64 @@ describe('redis() sync driver', () => {
     expect(a.received).toEqual([{ event: 'x', data: 1 }]); // local, once (no echo dupe)
     expect(b.received).toEqual([{ event: 'x', data: 1 }]); // via redis fan-out
     expect(c.received).toEqual([]); // filtered out — not in room1
+  });
+
+  it("fans a gateway-scoped command out to that gateway's sockets on every instance", () => {
+    const bus = new Bus();
+    const regA = new InMemoryRoomRegistry();
+    const driverA = redis({ pub: bus.client(), sub: bus.client() });
+    driverA.bind(regA);
+    const regB = new InMemoryRoomRegistry();
+    const driverB = redis({ pub: bus.client(), sub: bus.client() });
+    driverB.bind(regB);
+
+    const localAdmin = sink('a', '/admin/:org/ws');
+    regA.join(localAdmin, 'org-1');
+    const localChat = sink('b', '/chat/:org/ws');
+    regA.join(localChat, 'org-1');
+    const peerAdmin = sink('c', '/admin/:org/ws');
+    regB.join(peerAdmin, 'org-1');
+    const peerChat = sink('d', '/chat/:org/ws');
+    regB.join(peerChat, 'org-1');
+    const unscoped = sink('e');
+    regB.join(unscoped, 'org-1');
+
+    driverA.dispatch({
+      rooms: ['org-1'],
+      gatewayPath: '/admin/:org/ws',
+      frame: JSON.stringify({ event: 'audit', data: 1 }),
+    });
+
+    expect(localAdmin.received).toEqual([{ event: 'audit', data: 1 }]);
+    expect(peerAdmin.received).toEqual([{ event: 'audit', data: 1 }]);
+    expect(localChat.received).toEqual([]);
+    expect(peerChat.received).toEqual([]);
+    // A socket that names no gateway belongs to none: a scoped push skips it.
+    expect(unscoped.received).toEqual([]);
+  });
+
+  it('drops a synchronized command whose gateway path is malformed', () => {
+    let listener: ((channel: string, message: string) => void) | undefined;
+    const sub: RedisPubSubClient = {
+      publish() {},
+      subscribe() {},
+      on(_event, next) {
+        listener = next;
+      },
+    };
+    const driver = redis({ pub: { publish() {}, subscribe() {}, on() {} }, sub });
+    const registry = new InMemoryRoomRegistry();
+    driver.bind(registry);
+    const member = sink('a', '/chat');
+    registry.join(member, 'r1');
+    const frame = JSON.stringify({ event: 'x', data: 1 });
+
+    for (const gatewayPath of [42, 'x'.repeat(600)]) {
+      listener?.('vela:ws:broadcast', JSON.stringify({ rooms: ['r1'], gatewayPath, frame }));
+    }
+    expect(member.received).toEqual([]);
+    listener?.('vela:ws:broadcast', JSON.stringify({ rooms: ['r1'], gatewayPath: '/chat', frame }));
+    expect(member.received).toEqual([{ event: 'x', data: 1 }]);
   });
 
   it('never publishes an oversized command and allows only an explicit raised ceiling', () => {

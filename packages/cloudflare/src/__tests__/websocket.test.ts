@@ -310,6 +310,25 @@ describe('CfRoomRegistry.deliverLocal', () => {
     expect(b.sent).toHaveLength(2); // b excluded via 'muted'
   });
 
+  it("delivers a gateway-scoped push only to that gateway's sockets", () => {
+    const ctx = new FakeDoState();
+    const chat = socket({ connId: 'a', state: 'active', rooms: ['r1'] }, [roomTag('r1')], ctx);
+    const admin = socket(
+      { connId: 'b', state: 'active', path: '/admin', rooms: ['r1'] },
+      [roomTag('r1')],
+      ctx,
+    );
+    const registry = new CfRoomRegistry(ctx);
+
+    registry.deliverLocal({ rooms: ['r1'], gatewayPath: '/admin', frame: frame('audit', 1) });
+    expect(chat.sent).toEqual([]);
+    expect(admin.sent).toHaveLength(1);
+
+    registry.deliverLocal({ rooms: ['r1'], gatewayPath: '/chat', frame: frame('x', 1) });
+    expect(chat.sent).toHaveLength(1);
+    expect(admin.sent).toHaveLength(1);
+  });
+
   it('closes expired or rejected sockets instead of delivering a push', () => {
     const ctx = new FakeDoState();
     const expired = socket(

@@ -24,6 +24,11 @@ class ChatGateway {}
 @WebSocketGateway({ path: '/lobby' })
 class LobbyGateway {}
 
+@WebSocketGateway({ path: '/admin/:id/ws', roomParam: 'id' })
+class AdminGateway {}
+
+const CHAT = '/rooms/:id/ws';
+
 class NotAGateway {}
 
 class RoomClient implements WsClient {
@@ -31,7 +36,10 @@ class RoomClient implements WsClient {
   data: Record<string, unknown> = {};
   readonly raw = null;
   readonly frames: unknown[] = [];
-  constructor(readonly id: string) {}
+  constructor(
+    readonly id: string,
+    readonly path: string,
+  ) {}
   send(): void {}
   sendRaw(payload: string): void {
     this.frames.push(JSON.parse(payload));
@@ -57,13 +65,22 @@ function transportAdapter(transport: WebSocketTransport): RuntimeAdapter {
 }
 
 async function makeApp(adapters: RuntimeAdapter[] = []): Promise<VelaApplication> {
-  @Module({ imports: [WebSocketModule.forRoot()], providers: [ChatGateway, LobbyGateway] })
+  @Module({
+    imports: [WebSocketModule.forRoot()],
+    providers: [ChatGateway, LobbyGateway, AdminGateway],
+  })
   class AppModule {}
   return VelaFactory.create(AppModule, { adapters });
 }
 
-async function joined(app: VelaApplication, id: string, ...rooms: string[]): Promise<RoomClient> {
-  const client = new RoomClient(id);
+/** A socket of the gateway served on `path`, joined to `rooms` in this process. */
+async function joined(
+  app: VelaApplication,
+  id: string,
+  path: string,
+  ...rooms: string[]
+): Promise<RoomClient> {
+  const client = new RoomClient(id, path);
   const registry = app.get(WS_ROOM_REGISTRY);
   for (const room of rooms) {
     client.join(room);
@@ -76,9 +93,9 @@ describe('Gateways', () => {
   it("pushes to a gateway room's sockets in this process", async () => {
     const app = await makeApp();
     try {
-      const inRoom = await joined(app, 'c1', 'general');
-      const inBoth = await joined(app, 'c2', 'general', 'random');
-      const elsewhere = await joined(app, 'c3', 'random');
+      const inRoom = await joined(app, 'c1', CHAT, 'general');
+      const inBoth = await joined(app, 'c2', CHAT, 'general', 'random');
+      const elsewhere = await joined(app, 'c3', CHAT, 'random');
       const chat = app.get(Gateways).of<ChatEvents>(ChatGateway);
 
       await chat.to('general').emit('message', { text: 'hello' });
@@ -89,6 +106,28 @@ describe('Gateways', () => {
       await chat.to('general').in('random').emit('typing');
       expect(inBoth.frames).toHaveLength(2);
       expect(elsewhere.frames).toEqual([{ event: 'typing' }]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("reaches only the named gateway's sockets when gateways share a room id", async () => {
+    const app = await makeApp();
+    try {
+      const chatMember = await joined(app, 'c1', CHAT, 'org-1');
+      const admin = await joined(app, 'c2', '/admin/:id/ws', 'org-1');
+      const lobbyMember = await joined(app, 'c3', '/lobby', 'org-1');
+      const gateways = app.get(Gateways);
+
+      await gateways.of(AdminGateway).to('org-1').emit('audit', { action: 'role.granted' });
+      expect(admin.frames).toEqual([{ event: 'audit', data: { action: 'role.granted' } }]);
+      expect(chatMember.frames).toEqual([]);
+      expect(lobbyMember.frames).toEqual([]);
+
+      await gateways.of<ChatEvents>(ChatGateway).to('org-1').emit('typing');
+      expect(chatMember.frames).toEqual([{ event: 'typing' }]);
+      expect(admin.frames).toHaveLength(1);
+      expect(lobbyMember.frames).toEqual([]);
     } finally {
       await app.close();
     }
@@ -113,16 +152,18 @@ describe('Gateways', () => {
   it("bounds each push by the gateway's own frame limit", async () => {
     const app = await makeApp();
     try {
-      const client = await joined(app, 'c1', 'general');
+      const chatMember = await joined(app, 'c1', CHAT, 'general');
+      const lobbyMember = await joined(app, 'c2', '/lobby', 'general');
       const text = 'x'.repeat(300);
       const gateways = app.get(Gateways);
       await expect(
         gateways.of<ChatEvents>(ChatGateway).to('general').emit('message', { text }),
       ).rejects.toThrow(/256 frame bytes/);
-      expect(client.frames).toEqual([]);
+      expect(chatMember.frames).toEqual([]);
 
       await gateways.of<ChatEvents>(LobbyGateway).to('general').emit('message', { text });
-      expect(client.frames).toEqual([{ event: 'message', data: { text } }]);
+      expect(lobbyMember.frames).toEqual([{ event: 'message', data: { text } }]);
+      expect(chatMember.frames).toEqual([]);
     } finally {
       await app.close();
     }
@@ -137,31 +178,25 @@ describe('Gateways', () => {
     };
     const app = await makeApp([transportAdapter(transport)]);
     try {
-      const client = await joined(app, 'c1', 'general');
+      const client = await joined(app, 'c1', CHAT, 'general');
       const gateways = app.get(Gateways);
       await gateways.of<ChatEvents>(ChatGateway).to('general').to('random').emit('typing');
       await gateways.of<ChatEvents>(LobbyGateway).to('a').to('b').emit('message', { text: 'hi' });
 
-      const typing = JSON.stringify({ event: 'typing' });
+      const typing = {
+        rooms: ['general', 'random'],
+        gatewayPath: CHAT,
+        frame: '{"event":"typing"}',
+      };
       const message = JSON.stringify({ event: 'message', data: { text: 'hi' } });
       expect(deliveries).toEqual([
-        {
-          gatewayPath: '/rooms/:id/ws',
-          binding: 'ROOMS',
-          room: 'general',
-          command: { rooms: ['general', 'random'], frame: typing },
-        },
-        {
-          gatewayPath: '/rooms/:id/ws',
-          binding: 'ROOMS',
-          room: 'random',
-          command: { rooms: ['general', 'random'], frame: typing },
-        },
+        { gatewayPath: CHAT, binding: 'ROOMS', room: 'general', command: typing },
+        { gatewayPath: CHAT, binding: 'ROOMS', room: 'random', command: typing },
         // A gateway without roomParam holds every socket in the room its path names.
         {
           gatewayPath: '/lobby',
           room: '/lobby',
-          command: { rooms: ['a', 'b'], frame: message },
+          command: { rooms: ['a', 'b'], gatewayPath: '/lobby', frame: message },
         },
       ]);
       // The transport owns delivery: nothing reached this process's registry.

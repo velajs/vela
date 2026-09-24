@@ -150,6 +150,7 @@ Lifecycle interfaces: `OnGatewayInit` (`afterInit(server)`), `OnGatewayConnectio
 ```ts
 interface WsClient<TData = Record<string, unknown>> {
   readonly id: string;                       // stable per-connection id
+  readonly path?: string;                    // the gateway route path it connected through
   readonly rooms: ReadonlySet<string>;
   data: TData;                               // per-connection state (persisted on CF; call commit() after mutating)
   send(event: string, data?: unknown, id?: string): void;
@@ -170,7 +171,7 @@ interface WsServer {                         // injected via @WebSocketServer()
 // BroadcastOperator: .to(room).in(room).except(room).emit(event, data)
 ```
 
-Broadcasting builds a serializable `BroadcastCommand` (`{ rooms, exceptRooms?, exceptIds?, frame }`) handed to the active sync driver — so the same gateway code runs single-instance, on Cloudflare (Durable Object), or on Node with Redis, unchanged.
+Broadcasting builds a serializable `BroadcastCommand` (`{ rooms, exceptRooms?, exceptIds?, gatewayPath?, frame }`) handed to the active sync driver — so the same gateway code runs single-instance, on Cloudflare (Durable Object), or on Node with Redis, unchanged.
 
 ---
 
@@ -183,9 +184,11 @@ another gateway, inject `Gateways` (provided and exported by
 each push:
 
 ```ts
-import { Body, Controller, Param, Post } from '@velajs/vela';
+import { z } from 'zod';
+import { Body, Controller, Param, Post, UseGuards } from '@velajs/vela';
 import { Gateways } from '@velajs/vela/websocket';
 import { ChatGateway } from './chat.gateway.js';
+import { StaffGuard } from './staff.guard.js';
 
 /** Each event the chat's rooms receive, and its payload. */
 interface ChatEvents {
@@ -193,12 +196,20 @@ interface ChatEvents {
   system: { text: string };
 }
 
+const Announcement = z.object({ text: z.string().min(1).max(500) });
+
+// The route pushes into any room its URL names: guard it with the
+// application's own authorization, and validate the body before sending it on.
 @Controller('/rooms')
+@UseGuards(StaffGuard)
 export class AnnouncementController {
   constructor(private readonly gateways: Gateways) {}
 
   @Post('/:id/announce')
-  async announce(@Param('id') room: string, @Body() body: { text: string }) {
+  async announce(
+    @Param('id') room: string,
+    @Body(Announcement) body: z.infer<typeof Announcement>,
+  ) {
     await this.gateways.of<ChatEvents>(ChatGateway).to(room).emit('system', { text: body.text });
     return { announced: room };
   }
@@ -213,16 +224,21 @@ omit it). Without a type argument, any event and payload are accepted.
 - The target comes from the gateway's `@WebSocketGateway` metadata: `path`,
   `binding` and `roomParam`. A room is a `roomParam` value; a gateway without
   `roomParam` admits every upgrade into one room, its path.
+- A push reaches only that gateway's sockets, on every runtime. Two gateways
+  may use the same room id, such as an organization id: a push to one
+  gateway's room never reaches the other gateway's sockets. The push's
+  `BroadcastCommand` carries the gateway path, and each room registry skips
+  sockets whose `WsClient.path` differs.
 - Each push is bounded by that gateway's `maxFrameBytes` (default 64 KiB)
   before anything is resolved or sent.
 - `emit()` without a room and `except()` throw with guidance: sockets live
   with their room, and a push reaches every socket in every room it names.
   Filter recipients with the gateway's `authorizeDelivery` option, which runs
   for each recipient before delivery.
-- Without a platform transport that delivers pushes, `Gateways` pushes through
-  the server gateways inject: in-process hosts (node, Bun, Deno) broadcast it
-  through the module's sync driver, so `redis()` fans pushes out across
-  instances.
+- Without a platform transport that delivers pushes, `Gateways` dispatches
+  each push through the module's sync driver: in-process hosts (node, Bun,
+  Deno) deliver it to the gateway's sockets in this process, and `redis()`
+  fans it out to the gateway's sockets on every instance.
 - On Cloudflare, each room is a Durable Object. From the Worker, a push is a
   `broadcast` RPC to the gateway + room object, whose namespace is read by the
   gateway's `binding` from `ENV` when the push needs it. Inside a Durable
@@ -232,7 +248,8 @@ omit it). Without a type argument, any event and payload are accepted.
 
 A platform adapter supplies the delivery through the `WS_TRANSPORT` token:
 `deliver(delivery)` receives one `GatewayDelivery` (`{ gatewayPath, binding?,
-room, command }`) per room. A transport that delivers pushes but builds no
+room, command }`) per room, and delivers the command to that gateway's
+sockets. A transport that delivers pushes but builds no
 server gives gateways a `@WebSocketServer()` that keeps no sockets and refuses
 each push with guidance to `Gateways`.
 

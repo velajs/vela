@@ -26,6 +26,12 @@ export interface WsResponse<T = unknown> {
  */
 export interface WsClient<TData = Record<string, unknown>> {
   readonly id: string;
+  /**
+   * The route path of the gateway this socket connected through. A `Gateways`
+   * push reaches only its gateway's sockets, so a socket without a path
+   * receives none.
+   */
+  readonly path?: string;
   readonly rooms: ReadonlySet<string>;
   /** Validated inbound/outbound ceiling for this gateway connection. */
   readonly maxFrameBytes?: number;
@@ -237,8 +243,8 @@ export interface GatewayDelivery {
   room: string;
   /**
    * The push, already bounded by the gateway's `maxFrameBytes`. Its `rooms`
-   * are every room the push names; deliver it to the sockets of `room` that
-   * belong to any of them.
+   * are every room the push names and its `gatewayPath` is the gateway's;
+   * deliver it to the gateway's sockets of `room` that belong to any of them.
    */
   command: BroadcastCommand;
 }
@@ -260,7 +266,8 @@ export interface WebSocketTransport {
   /**
    * Deliver a `Gateways` push to the isolate that holds one gateway room's
    * sockets. `Gateways` calls it once per room; without it, pushes go through
-   * the server gateways inject.
+   * the module's sync driver to the gateway's sockets in this process (and,
+   * with `redis()`, on every instance).
    */
   deliver?(delivery: GatewayDelivery): Promise<void>;
   /**
@@ -338,6 +345,12 @@ export interface BroadcastCommand {
   rooms: string[];
   exceptRooms?: string[];
   exceptIds?: string[];
+  /**
+   * Deliver only to sockets that connected through this gateway path
+   * (`WsClient.path`). `Gateways` sets it on every push, so rooms that share
+   * an id across gateways stay separate on every runtime.
+   */
+  gatewayPath?: string;
   /** The exact bytes written to each socket: `JSON.stringify({ event, data })`. */
   frame: string;
   /** Origin instance/DO id — lets pub/sub drivers drop their own echo. */
