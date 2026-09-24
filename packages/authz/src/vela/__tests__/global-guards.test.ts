@@ -11,7 +11,7 @@ import {
   type ExecutionContext,
   type GuardPhase,
 } from '@velajs/vela';
-import { setTrustedRequestIdentity } from '@velajs/vela/module-kit';
+import { orderGuardsByPhase, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { defineRole } from '../../index';
 import { AuthzModule, PermissionGuard, RequirePermission, Roles, RolesGuard } from '../index';
 
@@ -83,6 +83,18 @@ describe('AuthzModule global guards', () => {
     // Integration routes that authorize themselves (SkipGuardPhases) skip them.
     expect(PermissionGuard.skippable).toBe(true);
     expect(RolesGuard.skippable).toBe(true);
+    // An application subclass redeclares it to run on those routes too.
+    class StrictPermissionGuard extends PermissionGuard {
+      static override readonly skippable = false;
+    }
+    class StrictRolesGuard extends RolesGuard {
+      static override readonly skippable = false;
+    }
+    const guards = [PermissionGuard, StrictPermissionGuard, RolesGuard, StrictRolesGuard];
+    expect(orderGuardsByPhase(guards, new Set<GuardPhase>(['authorize']))).toEqual([
+      StrictPermissionGuard,
+      StrictRolesGuard,
+    ]);
     const app = await application();
     const hono = app.getHonoApp();
     try {

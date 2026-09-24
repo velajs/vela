@@ -16,11 +16,13 @@ import {
  *
  * Only global guards that declare `static readonly skippable = true` are
  * skipped: the policy guards integrations install, such as `TenantGuard`,
- * `PermissionGuard`, `RolesGuard` and `CedarGuard`. The application's own
- * global guards run in every phase, as do authentication and feature guards
- * (throttling, flags) and the route's own `@UseGuards` guards. Applications
- * mark their own routes with each phase's marker instead (`@TenantIgnored()`,
- * `@CedarPublic()`).
+ * `PermissionGuard`, `RolesGuard` and `CedarGuard`. Other global guards run
+ * in every phase, as do authentication and feature guards (throttling, flags)
+ * and the route's own `@UseGuards` guards. `skippable` belongs to the class,
+ * whoever registers it: an application guard that extends an integration
+ * guard inherits it, and declares `static readonly skippable = false` to run
+ * on these routes too. Applications mark their own routes with each phase's
+ * marker instead (`@TenantIgnored()`, `@CedarPublic()`).
  */
 export const SkipGuardPhases = Reflector.createDecorator<
   readonly SkippableGuardPhase[],

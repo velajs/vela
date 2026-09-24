@@ -200,6 +200,42 @@ describe('deterministic global guard phases', () => {
     expect(trace).toEqual(['app-tenant', 'app-authorize']);
   });
 
+  it('skips an application guard built on an integration guard unless it opts out', async () => {
+    const IntegrationTenant = phasedGuard('integration-tenant', 'tenant', true);
+    // Extending an integration's guard inherits its `skippable`.
+    class ExtendedTenant extends IntegrationTenant {
+      override canActivate(): boolean {
+        trace.push('extended-tenant');
+        return true;
+      }
+    }
+    class StrictTenant extends IntegrationTenant {
+      static override readonly skippable = false;
+      override canActivate(): boolean {
+        trace.push('strict-tenant');
+        return true;
+      }
+    }
+    @Controller('/integration')
+    @SkipGuardPhases(['tenant'])
+    class IntegrationController {
+      @Get()
+      get() {
+        return trace;
+      }
+    }
+
+    @Module({ controllers: [IntegrationController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalGuards(new ExtendedTenant(), new StrictTenant(), new IntegrationTenant());
+    trace = [];
+    expect(await (await app.getHonoApp().request('/integration')).json()).toEqual([
+      'strict-tenant',
+    ]);
+  });
+
   it('lets integration routes skip only the tenant and authorize phases', () => {
     // @ts-expect-error: authentication and feature guards cover every route.
     expect(() => SkipGuardPhases(['authenticate'])).toThrow(

@@ -76,8 +76,11 @@ const installedHosts = new WeakMap<CedarGuard, ModuleRef>();
 export class CedarGuard implements CanActivate {
   /** Global guards authorize after authentication and tenant admission. */
   static readonly phase: GuardPhase = 'authorize';
-  /** Integration routes marked `SkipGuardPhases(['authorize'])` authorize themselves. */
-  static readonly skippable = true;
+  /**
+   * Integration routes marked `SkipGuardPhases(['authorize'])` authorize
+   * themselves. A subclass declares `false` to run on them too.
+   */
+  static readonly skippable: boolean = true;
   readonly #reflector: Reflector;
   constructor(reflector: Reflector) {
     this.#reflector = reflector;

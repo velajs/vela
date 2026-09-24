@@ -8,7 +8,8 @@
  * A policy guard an integration installs (tenant admission, authorization)
  * also declares `static readonly skippable = true`, so the routes of another
  * integration that enforces the phase itself (`SkipGuardPhases`) skip it.
- * Guards without it, such as the application's own, run on every route.
+ * Guards without it run on every route; a subclass inherits it, and declares
+ * `static readonly skippable = false` to opt out.
  */
 export type GuardPhase = 'authenticate' | 'tenant' | 'authorize' | 'feature';
 
@@ -53,7 +54,7 @@ export function guardPhaseRank(value: unknown): number | undefined {
  * factory declares its phase only on the instance it builds. `skip` drops the
  * guards of the phases an integration's route leaves to the integration, but
  * only guards that declare `skippable: true` (the policy guards integrations
- * install); the application's own guards always run.
+ * install, and subclasses that do not redeclare it); the others always run.
  */
 export function orderGuardsByPhase<T>(guards: readonly T[], skip?: ReadonlySet<GuardPhase>): T[] {
   return guards

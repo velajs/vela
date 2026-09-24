@@ -1,8 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Controller, Get, Module, Reflector, UseGuards, VelaFactory } from '@velajs/vela';
+import {
+  Controller,
+  Get,
+  Module,
+  Reflector,
+  UseGuards,
+  VelaFactory,
+  type GuardPhase,
+} from '@velajs/vela';
 import {
   setTrustedRequestIdentity,
   clearTrustedRequestIdentity,
+  orderGuardsByPhase,
   SkipGuardPhases,
 } from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
@@ -142,6 +151,13 @@ describe('resource authorization declarations', () => {
   });
   it('denies undeclared routes on every application route by default', async () => {
     expect(CedarGuard.phase).toBe('authorize');
+    // An application subclass redeclares `skippable` to run on integration routes too.
+    class StrictCedarGuard extends CedarGuard {
+      static override readonly skippable = false;
+    }
+    expect(
+      orderGuardsByPhase([CedarGuard, StrictCedarGuard], new Set<GuardPhase>(['authorize'])),
+    ).toEqual([StrictCedarGuard]);
     const Undeclared = route('/undeclared');
     const Elsewhere = route('/elsewhere');
     // An integration's own controller leaves authorization to the integration.

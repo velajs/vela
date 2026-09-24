@@ -9,11 +9,13 @@ import {
   Req,
   UseGuards,
   VelaFactory,
+  type GuardPhase,
 } from '@velajs/vela';
 import {
   setTrustedRequestIdentity,
   clearTrustedRequestIdentity,
   getTrustedRequestIdentity,
+  orderGuardsByPhase,
   SkipGuardPhases,
 } from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
@@ -217,6 +219,13 @@ describe('Vela tenant admission', () => {
   });
   it('admits tenants from the global guard on every application route', async () => {
     expect(TenantGuard.phase).toBe('tenant');
+    // An application subclass redeclares `skippable` to run on integration routes too.
+    class StrictTenantGuard extends TenantGuard {
+      static override readonly skippable = false;
+    }
+    expect(
+      orderGuardsByPhase([TenantGuard, StrictTenantGuard], new Set<GuardPhase>(['tenant'])),
+    ).toEqual([StrictTenantGuard]);
     const Tenanted = route(reply('tenanted'), '/tenanted');
     const Elsewhere = route(reply('elsewhere'), '/elsewhere');
     const Declared = route(reply('declared'), '/declared');
