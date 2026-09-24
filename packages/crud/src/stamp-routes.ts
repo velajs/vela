@@ -244,17 +244,32 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
       UseGuards(...endpointGuards)(proto, handlerName);
     }
 
-    // Endpoint metadata, as if written above the method (the last one first);
-    // like the guards, it is endpoint policy an override keeps.
-    for (const decorator of (config.endpointDecorators?.[endpoint] ?? []).toReversed()) {
-      const replacement: unknown = decorator(proto, handlerName, descriptor);
-      if (replacement !== undefined && replacement !== descriptor) {
+    // Endpoint decorators, as if written above the method (the last one first);
+    // like the guards, they are endpoint policy an override keeps. As in
+    // TypeScript's own decorator application, one that changes or returns the
+    // descriptor wraps the handler, and the result is what the route calls.
+    const endpointDecorators = config.endpointDecorators?.[endpoint] ?? [];
+    if (endpointDecorators.length > 0) {
+      let decorated: unknown = descriptor;
+      for (const decorator of endpointDecorators.toReversed()) {
+        if (!isMethodDescriptor(decorated)) break;
+        decorated = decorator(proto, handlerName, decorated) ?? decorated;
+      }
+      if (!isMethodDescriptor(decorated)) {
         throw new ConfigurationException(
-          `${controller.name}: CRUD decorators cannot replace the '${endpoint}' handler; use @Override`,
+          `${controller.name}: CRUD decorators must leave the '${endpoint}' handler a method`,
         );
       }
+      Object.defineProperty(proto, handlerName, decorated);
     }
   }
+}
+
+// A method's descriptor: a function value, or a getter that returns one.
+function isMethodDescriptor(value: unknown): value is PropertyDescriptor {
+  if (typeof value !== 'object' || value === null) return false;
+  const { value: method, get } = value as PropertyDescriptor;
+  return typeof method === 'function' || typeof get === 'function';
 }
 
 function defineHandler(

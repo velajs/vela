@@ -77,8 +77,9 @@ defineCrudFeature({
 });
 ```
 
-These decorators declare metadata; one that returns a replacement class or
-descriptor is rejected, so supply a custom handler with `@Override()` instead.
+A method decorator that changes or returns the descriptor wraps the handler the
+route calls, as it would written above a method, `@Override()` handlers included.
+A class decorator that returns a replacement class is rejected.
 
 `CrudConfig<Shape>` and `ResourceConfig<Shape>` take the Zod object's **schema
 shape**, such as `typeof itemSchema.shape`. Inline hooks in `@Crud()`,

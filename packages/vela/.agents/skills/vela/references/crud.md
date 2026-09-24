@@ -98,8 +98,9 @@ defineCrudFeature({
 });
 ```
 
-Decorators declare metadata; one that returns a replacement class or descriptor is
-rejected (use `@Override` for a custom handler).
+A method decorator that changes or returns the descriptor wraps the handler the route
+calls, `@Override` handlers included; a class decorator returning a replacement class is
+rejected.
 
 Use `defineCrudDatabase(name, { handle, resources })` and the application-owned
 database registry for multiple connections. Select the database explicitly with

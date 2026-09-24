@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   APP_GUARD,
   Controller,
+  ForbiddenException,
   Get,
   Inject,
   Injectable,
@@ -63,10 +64,26 @@ class AllowGuard implements CanActivate {
     return true;
   }
 }
-// Decorators that replace what they decorate instead of declaring metadata.
+// A class decorator that replaces the class instead of declaring metadata.
 const replaceClass: ClassDecorator = (target) =>
   Object.setPrototypeOf(function Replacement() {}, target);
-const replaceHandler: MethodDecorator = (_target, _key, descriptor) => ({ ...descriptor });
+// Method decorators that swap the handler for one that denies: in place, as a
+// wrapping decorator does, or by returning a new descriptor.
+const denied = (): never => {
+  throw new ForbiddenException('Wrapped');
+};
+const denyInPlace = (_target: object, _key: string | symbol, descriptor: PropertyDescriptor) => {
+  descriptor.value = denied;
+};
+const denyByReturn = (
+  _target: object,
+  _key: string | symbol,
+  descriptor: PropertyDescriptor,
+): PropertyDescriptor => ({ ...descriptor, value: denied });
+// A method decorator whose descriptor is no longer a method.
+const returnsName = (_target: object, key: string | symbol): PropertyDescriptor => ({
+  value: String(key),
+});
 
 describe('@Crud over HTTP (decorated controller)', () => {
   async function makeApp(seed: Row[] = []) {
@@ -496,7 +513,51 @@ describe('route metadata (config.decorators, config.endpointDecorators)', () => 
     expect(seen).toEqual(['public']);
   });
 
-  it('rejects decorators that replace the generated controller or a handler', () => {
+  it('calls the handler an endpoint decorator wraps or returns, @Override included', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    @Controller('/items')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      endpointDecorators: { list: [denyInPlace], read: [denyByReturn] },
+    })
+    class ItemsController {
+      @Override('read')
+      customRead() {
+        return { custom: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
+        CrudModule.forFeature([
+          defineCrudFeature({
+            path: '/things',
+            model: makeModel({ name: 'thing' }),
+            endpointDecorators: { list: [denyInPlace], read: [denyByReturn] },
+          }),
+        ]),
+      ],
+      controllers: [ItemsController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    // The decorated handler is the one each route calls, as if written above it.
+    for (const path of ['/items', '/items/a', '/things', '/things/a']) {
+      const response = await hono.request(path);
+      expect(response.status, path).toBe(403);
+      expect(await response.json(), path).toEqual({
+        error: { code: 'forbidden', message: 'Wrapped' },
+      });
+    }
+    expect((await hono.request('/items', json('POST', { name: 'B', qty: 2 }))).status).toBe(201);
+  });
+
+  it('rejects decorators that replace the generated controller or leave no handler', () => {
     const feature = (config: Pick<CrudConfig, 'decorators' | 'endpointDecorators'>) =>
       CrudModule.forFeature([
         defineCrudFeature({ path: '/things', model: makeModel({ name: 'thing' }), ...config }),
@@ -504,8 +565,8 @@ describe('route metadata (config.decorators, config.endpointDecorators)', () => 
     expect(() => feature({ decorators: [replaceClass] })).toThrow(
       'CrudThingsController: CRUD decorators cannot replace the controller class',
     );
-    expect(() => feature({ endpointDecorators: { list: [replaceHandler] } })).toThrow(
-      "CrudThingsController: CRUD decorators cannot replace the 'list' handler; use @Override",
+    expect(() => feature({ endpointDecorators: { list: [returnsName] } })).toThrow(
+      "CrudThingsController: CRUD decorators must leave the 'list' handler a method",
     );
   });
 });

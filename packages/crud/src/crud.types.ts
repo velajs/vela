@@ -70,10 +70,10 @@ export interface RuntimeCrudConfig {
   decorators?: readonly ClassDecorator[];
   /**
    * Decorators for each endpoint's handler, applied as if written above that
-   * method in this order, so handler metadata overrides the class's. An
-   * `@Override`'d endpoint keeps them; keys of disabled verbs are inert. A
-   * decorator that returns a replacement descriptor is rejected: supply a
-   * custom handler with `@Override` instead.
+   * method in this order, so handler metadata overrides the class's. As in
+   * TypeScript, one that changes or returns the descriptor wraps the handler,
+   * and the route calls the result; it must remain a method. An `@Override`'d
+   * endpoint keeps them; keys of disabled verbs are inert.
    */
   endpointDecorators?: Partial<Record<CrudEndpointName, readonly MethodDecorator[]>>;
   hooks?: CrudHooks<Record<string, unknown>> & HookModeConfig;
