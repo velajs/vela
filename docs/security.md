@@ -46,8 +46,10 @@ name); multipart defaults to one file of 1 MiB, the same text limits, and a
 body of `maxFiles × maxFileBytes` plus 1 MiB. Repeated entries count
 individually. The route's `maxBytes` replaces the application's body limit for
 that route (a `streamingOverrides` entry still takes precedence), so the
-framework boundary and the route agree. The body is read counting the bytes
-received and cancelled at the limit; every part is measured before schema
+framework boundary and the route agree. A body whose `Content-Length` exceeds
+the route's limit answers 413 before guards; any other body is counted as it is
+read, after guards, and cancelled at the limit, so nothing is buffered before
+guards whichever code reads it. Every part is measured before schema
 validation. Size/count violations return 413 and a wrong media type returns 415.
 When a whole-body schema describes the form's fields (it converts to JSON
 Schema), unknown fields, duplicate scalar fields, and wrong text/file kinds

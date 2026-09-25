@@ -134,11 +134,13 @@ many.
 
 `@Body()` with no schema validates a parameter class carrying a static Standard
 Schema even without a global pipe, so bodies such a class rejects now answer
-400; a named `@Body('item') item: Item` validates the `item` member. A global
-`ValidationPipe` leaves a value the route validated as is
-(`ArgumentMetadata.validated`), a `defineRoute` group included, while the pipes
-before it pass that value on unchanged; a value an earlier pipe changed is
-validated again. It still validates body parameters registered without a route
+400; a named `@Body('item') item: Item` validates the `item` member. The value
+is validated once, in pipe order: by a `ValidationPipe` where one sits, after
+the pipes before it, or, without one, right after the global, controller and
+method pipes. A `defineRoute` group is validated before any pipe and reaches
+pipes marked `ArgumentMetadata.validated`; a `ValidationPipe` built without a
+schema leaves it as is, whatever the pipes before it returned. A global
+`ValidationPipe` still validates body parameters registered without a route
 reader.
 
 Method decorators with `response` or `format` are `RouteMethodDecorator<Result>`

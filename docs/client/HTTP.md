@@ -115,10 +115,11 @@ same verb; an override uses only its own.
 `@Body()` without a schema validates a parameter class that carries a static
 Standard Schema (`class CreateUser { static schema = CreateUserSchema }`, or a
 class that is itself a Standard Schema), with no global pipe; a named
-`@Body('user') user: CreateUser` validates that member. A global
-`ValidationPipe` leaves a value the route validated (`ArgumentMetadata.validated`)
-as is while the pipes before it pass that value on unchanged; a value an earlier
-pipe changed (a trimming pipe, say) is validated again. Named descriptors work too: `const BodyDto = defineDto(schema, { name:
+`@Body('user') user: CreateUser` validates that member. It validates once, in
+pipe order: a `ValidationPipe` validates it where it sits (the parameter's own,
+or one among the global, controller and method pipes), after the pipes before
+it (a trimming pipe, say); without one, the route validates it right after the
+global, controller and method pipes, before the parameter's own. Named descriptors work too: `const BodyDto = defineDto(schema, { name:
 'CreateUser' })`, then `@Body(BodyDto)`; OpenAPI then references a named
 component. Erased TypeScript interfaces cannot supply schemas.
 
@@ -179,10 +180,11 @@ export class UsersController {
 
 A contract takes `params`, `query` and `body` schemas, one of `json`, `form` or
 `multipart` for the body's encoding and limits, and the response options above.
-The route validates each group once per request; `@Body()`, `@Query()` and
-`@Param()` (whole or named) read the validated values, which a global
-`ValidationPipe` leaves as is, also for a parameter class carrying a static
-schema. The decorator's method
+The route validates each group once per request, before any pipe; `@Body()`,
+`@Query()` and `@Param()` (whole or named) read the validated values, which
+pipes receive marked `ArgumentMetadata.validated`. A `ValidationPipe` built
+without a schema leaves them as is, whatever the pipes before it returned, also
+for a parameter class carrying a static schema. The decorator's method
 must match the contract's, and the application fails to start when the
 contract's `path` is not the path the route serves (global prefix and version
 included), or when the route adds `@HttpCode`: `ContractApp` clients are typed
@@ -309,9 +311,10 @@ the whole encoded body — `maxFiles × maxFileBytes` plus 1 MiB for text fields
 and multipart framing. Repeated entries count individually. Limits must be
 positive safe integers; exceeding one returns 413: every entry is measured
 before any field is interpreted, so too many fields or files answer 413 before
-an unknown field answers 400. The body is read after guards, counting the bytes
-actually received and cancelling at `maxBytes`; it is never buffered beyond the
-limit. The route's `maxBytes` replaces `security.body.maxBytes` for that route,
+an unknown field answers 400. A body whose `Content-Length` exceeds `maxBytes`
+answers 413 before guards; any other body is read after guards, counting the
+bytes actually received and cancelling at `maxBytes`. Nothing is buffered before
+guards or beyond the limit, whichever code reads the body. The route's `maxBytes` replaces `security.body.maxBytes` for that route,
 so an upload route needs no separate override; `security.body.streamingOverrides`
 still take precedence. Parsing buffers a bounded body and creates native files;
 streaming storage is a separate concern. A JSON route can bound its body with
