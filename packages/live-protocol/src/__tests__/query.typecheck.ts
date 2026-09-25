@@ -33,3 +33,22 @@ void mismatched;
 // @ts-expect-error The name is part of the definition's type.
 const renamed: LiveQueryDefinition<'counters.all', { id: string }, { count: number }> = definition;
 void renamed;
+// @ts-expect-error The name is the first type argument: an `<Args, Result>` annotation fails.
+const twoArguments: LiveQueryDefinition<{ id: string }, { count: number }> = definition;
+void twoArguments;
+// Migrate a two-argument annotation by naming the query first, or by `string`.
+const migrated: LiveQueryDefinition<string, { id: string }, { count: number }> = definition;
+void migrated;
+// Explicit type arguments to defineLiveQuery also name the query first.
+const explicit = defineLiveQuery<'counters.byId', { id: string }, { count: number }>({
+  name: 'counters.byId',
+  args: definition.args,
+  result: definition.result,
+});
+void explicit;
+// @ts-expect-error Two type arguments (`<Args, Result>`) no longer fit defineLiveQuery.
+defineLiveQuery<{ id: string }, { count: number }>({
+  name: 'counters.byId',
+  args: definition.args,
+  result: definition.result,
+});

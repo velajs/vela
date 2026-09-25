@@ -18,6 +18,7 @@ import type {
   ExceptionFilter,
   ExecutionContext,
   CallHandler,
+  OnModuleInit,
 } from '../index.js';
 import { buildWsExecutionContext } from '../websocket/ws-execution-context.js';
 import {
@@ -401,6 +402,45 @@ describe('WsDispatcher', () => {
     expect(guardedModuleId).toBe(app.get(Container).getOwnerModuleIds(GuardedGateway)[0]);
   });
 
+  it('runs the class-level guards an ancestor of the gateway declares', async () => {
+    let checked = 0;
+    // Not provided anywhere: the module loader registers the guard the gateway inherits.
+    @Injectable()
+    class DenyGuard implements CanActivate {
+      canActivate(): boolean {
+        checked++;
+        return false;
+      }
+    }
+
+    @UseGuards(DenyGuard)
+    abstract class LockedGateway {}
+
+    @WebSocketGateway({ path: '/locked' })
+    class ReportsGateway extends LockedGateway {
+      @SubscribeMessage('secret')
+      onSecret() {
+        return { event: 'secret', data: 'leaked' };
+      }
+    }
+
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [ReportsGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const client = new FakeClient();
+      await app.get(WsDispatcher).dispatchMessage('/locked', client, frame('secret', {}, '8'));
+
+      expect(checked).toBe(1);
+      expect(client.sent).toEqual([
+        { event: 'exception', data: { message: 'Forbidden' }, id: '8' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('reuses the interceptor onion chain', async () => {
     @Injectable()
     class WrapInterceptor implements NestInterceptor {
@@ -762,6 +802,161 @@ describe('rooms + Server handle', () => {
     }
   });
 
+  it.each([
+    { layout: 'loaded after WebSocketModule', order: 'after', lazy: false },
+    { layout: 'loaded before WebSocketModule', order: 'before', lazy: false },
+    { layout: 'lazy', order: 'after', lazy: true },
+  ])(
+    "connects a gateway's server to an async WS_SERVER its module provides ($layout)",
+    async ({ order, lazy }) => {
+      const pushes: Array<{ rooms: string[]; event: string; data: unknown }> = [];
+      const operator = (rooms: string[]): BroadcastOperator => ({
+        to: (room) => operator([...rooms, room]),
+        in: (room) => operator([...rooms, room]),
+        except: () => operator(rooms),
+        emit(event, data) {
+          pushes.push({ rooms, event, data });
+        },
+      });
+      const double: WsServer = {
+        emit(event, data) {
+          pushes.push({ rooms: [], event, data });
+        },
+        to: (room) => operator([room]),
+        in: (room) => operator([room]),
+        except: () => operator([]),
+      };
+
+      @WebSocketGateway({ path: '/rooms' })
+      class RoomGateway implements OnModuleInit, OnGatewayInit {
+        constructor(@WebSocketServer() readonly server: WsServer) {}
+        onModuleInit() {
+          this.server.emit('module-init', 1);
+        }
+        afterInit(server: WsServer) {
+          server.to('r1').emit('after-init', 2);
+        }
+      }
+
+      @Module({
+        lazy,
+        providers: [
+          RoomGateway,
+          defineProvider(WS_SERVER, {
+            useFactory: async () => {
+              await Promise.resolve();
+              return double;
+            },
+          }),
+        ],
+      })
+      class GatewayModule {}
+
+      // Loaded first, the gateway's module runs its hooks before any hook of
+      // WebSocketModule's providers; loaded last, its async WS_SERVER is still
+      // unresolved while WebSocketModule's providers are constructed. Bootstrap
+      // constructs no provider of a lazy module until something needs one.
+      @Module({
+        imports:
+          order === 'after'
+            ? [WebSocketModule.forRoot(), GatewayModule]
+            : [GatewayModule, WebSocketModule.forRoot()],
+      })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      try {
+        app.get(RoomGateway).server.to('r2').emit('later', 3);
+        expect(pushes).toEqual([
+          { rooms: [], event: 'module-init', data: 1 },
+          { rooms: ['r1'], event: 'after-init', data: 2 },
+          { rooms: ['r2'], event: 'later', data: 3 },
+        ]);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it("fails bootstrap when a gateway's module sees a WS_SERVER beside WebSocketModule's", async () => {
+    const recorded: string[] = [];
+    const double: WsServer = {
+      emit(event) {
+        recorded.push(event);
+      },
+      to: () => {
+        throw new Error('unused');
+      },
+      in: () => {
+        throw new Error('unused');
+      },
+      except: () => {
+        throw new Error('unused');
+      },
+    };
+
+    @WebSocketGateway({ path: '/rooms' })
+    class RoomGateway {
+      constructor(@WebSocketServer() readonly server: WsServer) {}
+    }
+
+    @Module({
+      providers: [
+        defineProvider(WS_SERVER, {
+          useFactory: async () => {
+            await Promise.resolve();
+            return double;
+          },
+        }),
+      ],
+      exports: [WS_SERVER],
+    })
+    class DoubleModule {}
+
+    @Module({
+      imports: [WebSocketModule.forRoot(), DoubleModule],
+      providers: [RoomGateway],
+    })
+    class GatewayModule {}
+
+    const bootstrap = VelaFactory.create(GatewayModule);
+    await expect(bootstrap).rejects.toThrow(
+      "RoomGateway's @WebSocketServer() is ambiguous: its module 'GatewayModule#default' sees " +
+        "2 WS_SERVER providers, from 'WebSocketModule#ws#local', 'DoubleModule#default'.",
+    );
+    expect(recorded).toEqual([]);
+  });
+
+  it('serves a gateway whose module imports several WebSocketModule instances', async () => {
+    @WebSocketGateway({ path: '/rooms' })
+    class RoomGateway {
+      constructor(@WebSocketServer() readonly server: WsServer) {}
+    }
+
+    // Both instances share one registry, so the socket is reachable through
+    // whichever instance's server serves the gateway.
+    const registry = new InMemoryRoomRegistry();
+    @Module({
+      imports: [
+        WebSocketModule.forRoot({ registry }),
+        WebSocketModule.forRoot({ key: 'second', registry }),
+      ],
+      providers: [RoomGateway],
+    })
+    class GatewayModule {}
+
+    const app = await VelaFactory.create(GatewayModule, { diagnostics: 'silent' });
+    try {
+      const client = sink('c1', '/rooms');
+      registry.register(client);
+      registry.join(client, 'r1');
+      await app.get(RoomGateway).server.to('r1').emit('hello', 1);
+      expect(client.received).toEqual([{ event: 'hello', data: 1 }]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("refuses a gateway's pushes without WebSocketModule, naming how to serve or substitute it", async () => {
     @WebSocketGateway({ path: '/rooms' })
     class RoomGateway {
@@ -775,7 +970,7 @@ describe('rooms + Server handle', () => {
     try {
       const { server } = app.get(RoomGateway);
       const guidance =
-        /RoomGateway's @WebSocketServer\(\) is not connected[\s\S]*WebSocketModule\.forRoot\(\)[\s\S]*WS_SERVER/;
+        /RoomGateway's @WebSocketServer\(\) is not connected[\s\S]*WebSocketModule\.forRoot\(\)[\s\S]*WS_SERVER without WebSocketModule connects nothing[\s\S]*keep that import/;
       expect(() => server.emit('everyone')).toThrow(guidance);
       expect(() => server.to('r1')).toThrow(guidance);
     } finally {

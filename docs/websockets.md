@@ -178,16 +178,40 @@ A gateway's `@WebSocketServer()` (or `@Inject(WS_SERVER)` in its constructor,
 declared or inherited from a base class) is that gateway's own server: every
 broadcast carries the gateway's path and is bounded by its `maxFrameBytes`, so
 it reaches only the sockets connected through that gateway, even when another
-gateway has a room with the same id. `afterInit(server)` receives the same
-server. `WS_SERVER` injected outside a gateway addresses every gateway's
-sockets; push to one gateway's rooms with `Gateways` instead.
+gateway has a room with the same id. `afterInit(server)` receives the server
+the injected handle pushes through, so pushes through either reach the same
+sockets, but it is not the same object. `WS_SERVER` injected outside a
+gateway addresses every gateway's sockets; push to one gateway's rooms with
+`Gateways` instead.
 
 `WebSocketModule` connects each gateway's server while the application starts,
-from the `WS_SERVER` the gateway's module sees. To test a gateway against a
-double, provide `WS_SERVER` in the gateway's module next to
-`WebSocketModule.forRoot()`, or override `WS_SERVER` in the testing module.
-Without `WebSocketModule`, a gateway's server refuses each push with that
-guidance.
+before any lifecycle hook runs, from the `WS_SERVER` the gateway's module sees
+when it sees exactly one (a provider with an async `useFactory` included).
+When it sees none, or only the servers of several `WebSocketModule` instances
+it imports, a `WebSocketModule` instance's own server serves the gateway. A
+module that sees another module's `WS_SERVER` beside those is ambiguous:
+bootstrap fails with an error that names each module providing one. A
+`WS_SERVER` without `WebSocketModule` connects nothing: the gateway's server
+then refuses each push with guidance. To push to a test double, keep `WebSocketModule.forRoot()`
+imported and either provide `WS_SERVER` in the gateway's module or override it
+in the testing module:
+
+```ts
+import { Test } from '@velajs/testing';
+import { WS_SERVER, WebSocketModule } from '@velajs/vela/websocket';
+
+const module = await Test.createTestingModule({
+  imports: [WebSocketModule.forRoot()],
+  providers: [ChatGateway],
+})
+  .overrideProvider(WS_SERVER)
+  .useValue(recordingServer)
+  .compile();
+```
+
+The double receives the gateway's `@WebSocketServer()` pushes. `Gateways`
+pushes do not go through `WS_SERVER`: they reach the sockets through the
+module's sync driver or the platform transport.
 
 ---
 
@@ -273,7 +297,23 @@ A platform adapter supplies the delivery through the `WS_TRANSPORT` token:
 room, command }`) per room, and delivers the command to that gateway's
 sockets. A transport that delivers pushes but builds no
 server gives gateways a `@WebSocketServer()` that keeps no sockets and refuses
-each push with guidance to `Gateways`.
+each push with guidance to `Gateways`. A transport that forwards upgrades
+(`forwardUpgrade`) keeps a forwarded gateway's sockets (a gateway with a
+`binding`) in another isolate. When it implements neither `deliver` nor
+`createServer` and the sync driver is `local()`, nothing can reach them from
+this process: a `Gateways` push to that gateway rejects with guidance, and its
+`@WebSocketServer()` refuses each push the same way, instead of resolving
+without reaching anyone. A cross-instance sync driver such as `redis()` may
+reach the isolate that holds them, so with one both push paths hand it the
+command.
+
+A push that `deliver` carries to several gateway rooms settles every delivery
+before it answers. When some fail, it rejects with an `AggregateError` whose
+message names the failed rooms (`2 of 3 ChatGateway room pushes failed: "b",
+"c"`; past ten, the first ten and how many more) and whose `errors` hold one
+error per failed room, naming it, with the transport's error as its `cause`;
+the other rooms received the push. A push delivered to one room (every push to
+a gateway without `roomParam`) rejects with the transport's own error.
 
 ---
 
@@ -529,7 +569,10 @@ token (a `WebSocketTransport`) in `configureContainer`, before modules load.
 sockets live in another isolate also implements `forwardUpgrade(upgrade)`:
 `WebSocketModule` then mounts each binding-backed gateway's upgrade route,
 authenticates the upgrade there and passes the request, gateway path, room,
-binding and verified identity to it. `forwardingHeaders` names the headers the
+binding and verified identity to it. Such a platform implements
+`deliver(delivery)` as well, so that `Gateways` pushes reach the forwarded
+sockets: with the `local()` sync driver, a forwarded gateway's pushes
+otherwise reject, from `Gateways` and from its `@WebSocketServer()` alike. `forwardingHeaders` names the headers the
 transport sets; the route removes client copies before any application hook
 runs. The adapter never replaces the module's providers. An application
 overrides the adapter's transport with a `@Global()` module that provides and

@@ -2,7 +2,13 @@ import { InjectionToken, type Constructor } from '../container/types';
 import type { SyncDriver } from './ws-sync';
 import { assertBroadcastCommandFits } from './ws-sync';
 import { DEFAULT_WS_MAX_FRAME_BYTES, resolveMaxFrameBytes } from './gateway-routing';
-import type { BroadcastCommand, BroadcastOperator, WsServer } from './websocket.types';
+import type {
+  BroadcastCommand,
+  BroadcastOperator,
+  WebSocketGatewayOptions,
+  WebSocketTransport,
+  WsServer,
+} from './websocket.types';
 
 /**
  * Accumulates `{ rooms, exceptRooms, exceptIds }` across a fluent chain and, on
@@ -125,12 +131,16 @@ export class WsServerImpl implements WsServer {
  */
 export class GatewayServerHandle implements WsServer {
   #server?: WsServer;
+  #resolve?: () => WsServer | undefined;
 
   constructor(private readonly gatewayName: string) {}
 
-  /** Connect the gateway's server; the first connection wins. */
-  connect(server: WsServer): void {
-    this.#server ??= server;
+  /**
+   * Connect the gateway's server, looked up on first use; the first
+   * connection wins.
+   */
+  connect(resolve: () => WsServer | undefined): void {
+    this.#resolve ??= resolve;
   }
 
   emit(event: string, data?: unknown): void | Promise<void> {
@@ -150,13 +160,14 @@ export class GatewayServerHandle implements WsServer {
   }
 
   #target(): WsServer {
+    this.#server ??= this.#resolve?.();
     if (this.#server) return this.#server;
     throw new Error(
       `${this.gatewayName}'s @WebSocketServer() is not connected: WebSocketModule connects ` +
-        'the server of each gateway it discovers while the application starts. Import ' +
-        "WebSocketModule.forRoot() in the gateway's application. To substitute a test " +
-        "double, provide WS_SERVER in the gateway's module next to that import, or " +
-        'override WS_SERVER in the testing module.',
+        'the server of each gateway it discovers while the application starts, so import ' +
+        "WebSocketModule.forRoot() in the gateway's application. A WS_SERVER without " +
+        'WebSocketModule connects nothing: to push to a test double, keep that import and ' +
+        "provide WS_SERVER in the gateway's module or override WS_SERVER in the testing module.",
     );
   }
 }
@@ -194,16 +205,86 @@ const REMOTE_SOCKETS =
  * addresses a gateway room, instead of reaching no one.
  */
 export class RemoteSocketsWsServer implements WsServer {
+  constructor(private readonly guidance = REMOTE_SOCKETS) {}
+
   emit(): never {
-    throw new Error(REMOTE_SOCKETS);
+    throw new Error(this.guidance);
   }
   to(): never {
-    throw new Error(REMOTE_SOCKETS);
+    throw new Error(this.guidance);
   }
   in(): never {
-    throw new Error(REMOTE_SOCKETS);
+    throw new Error(this.guidance);
   }
   except(): never {
-    throw new Error(REMOTE_SOCKETS);
+    throw new Error(this.guidance);
   }
+}
+
+/**
+ * Whether a push through this process cannot reach the sockets of a gateway
+ * whose upgrades `transport` forwards (one that names a `binding`): the
+ * transport delivers no pushes, and the `local()` sync driver keeps each push
+ * in this process. A cross-instance driver, such as `redis()`, may reach the
+ * isolate that holds them.
+ */
+export function forwardedSocketsUnreachable(
+  transport: WebSocketTransport | undefined,
+  driver: SyncDriver,
+): boolean {
+  return (
+    transport?.forwardUpgrade !== undefined &&
+    transport.deliver === undefined &&
+    driver.kind === 'local'
+  );
+}
+
+function forwardedSockets(gatewayName: string): string {
+  return (
+    `${gatewayName}'s upgrades are forwarded by the platform transport, so its sockets live in ` +
+    'another isolate, but neither the transport nor the local() sync driver delivers pushes there.'
+  );
+}
+
+/** Why a `Gateways` push to a gateway whose sockets are unreachable rejects. */
+export function forwardedGatewayPushError(gatewayName: string): Error {
+  return new Error(
+    `${forwardedSockets(gatewayName)} A transport that implements forwardUpgrade() must also ` +
+      'implement WebSocketTransport.deliver() for Gateways pushes, unless the sync driver ' +
+      'reaches that isolate.',
+  );
+}
+
+/**
+ * `WS_SERVER` where the platform transport forwards upgrades to another
+ * isolate but neither builds the server nor delivers pushes, and the
+ * `local()` sync driver keeps each push in this process. It broadcasts like
+ * {@link WsServerImpl}; {@link gatewayServerOf} gives a gateway whose
+ * upgrades are forwarded a server that refuses each push instead.
+ */
+export class ForwardedUpgradesWsServer extends WsServerImpl {}
+
+/**
+ * The server one gateway's `@WebSocketServer()` pushes through, built from
+ * the `WS_SERVER` its module sees: that server's view of the gateway
+ * ({@link WsServer.forGateway}), else the server itself. A forwarded gateway
+ * of a {@link ForwardedUpgradesWsServer} gets a server that refuses each push
+ * with guidance, as a `Gateways` push to it rejects.
+ */
+export function gatewayServerOf(
+  server: WsServer,
+  gatewayName: string,
+  options: WebSocketGatewayOptions,
+): WsServer {
+  if (options.binding !== undefined && server instanceof ForwardedUpgradesWsServer) {
+    return new RemoteSocketsWsServer(
+      `${gatewayName}'s @WebSocketServer() cannot reach its sockets: ` +
+        `${forwardedSockets(gatewayName)} Implement WebSocketTransport.deliver() in the ` +
+        'transport and push with Gateways, or createServer() to build a server that reaches them.',
+    );
+  }
+  return (
+    server.forGateway?.(options.path ?? '', options.maxFrameBytes ?? DEFAULT_WS_MAX_FRAME_BYTES) ??
+    server
+  );
 }

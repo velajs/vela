@@ -85,8 +85,22 @@ response through `switchToHttp().getResponse()`, or on a `Response` the handler
 returns. A handler that throws invalidates nothing, and a tags callback that
 returns `[]` skips the invalidation. It resolves `LiveInvalidation` from the
 module that declares the controller before the handler runs, so a module that
-cannot reach `LiveModule` fails without committing the write. For code outside
-a handler, inject `LiveInvalidation`:
+cannot reach `LiveModule` fails without committing the write.
+
+The invalidation runs after the handler has committed its write, so its
+failure does not fail the request. When the tags or room callback throws, or
+the live driver cannot reach the room (a Durable Object RPC that fails, say),
+the error goes to the application's error reporter with `edge: 'live'`, the
+handler's `Class.method` as `source`, and the note `invalidation failed after
+the handler succeeded`. The request still answers with the handler's result,
+without commit headers: the client then drops its optimistic layer at once,
+and subscribers see the write at the next invalidation of the same tags. A
+failed response would tell the client the write did not happen and invite a
+retry that repeats it, while no retry can repair the invalidation. Keep write
+handlers idempotent anyway, or accept an idempotency key, because a client may
+retry a request whose response it never received.
+
+For code outside a handler, inject `LiveInvalidation`:
 
 ```ts
 const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // returns { cursor, epoch }
@@ -101,7 +115,7 @@ const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // retu
 
 ### High-fanout execution coalescing
 
-Resolver runs remain per subscription by default. A side-effect-free query can opt into flush-local sharing with `coalesceBy`; Vela automatically combines the returned authorization/result partition with the query name and canonical parsed args:
+Resolver runs remain per subscription by default. A side-effect-free query can opt into flush-local sharing with `coalesceBy`; Vela automatically combines the returned authorization/result partition with the subscribing gateway's path, the query name and the canonical parsed args, so subscribers of two gateways never share a run even when they return the same partition:
 
 ```ts
 @LiveQuery(todoListDefinition, {
@@ -116,7 +130,7 @@ list(args: { listId: string }, ctx: LiveQueryContext) {
 }
 ```
 
-Returning the same partition is an application assertion that the complete resolver/interceptor result is equivalent for those subscribers, including any state reachable through `identity`, `clientId`, rooms, or the interceptor execution context. Expiry, WebSocket delivery authorization, resolver guards, and `authorizeDelivery` still run per subscription before sharing; explicit BYO-DB tags still decide which subscriptions enter a pass; and each recipient still diffs against and advances its own baseline/cursor. The Promise cache exists for one drain pass only and is capped at 256 groups, 64 KiB per retained result, and 2 MiB of retained serialized results; overflow executes independently. `undefined`, a thrown callback, an empty/control-bearing partition, a partition over 256 UTF-8 bytes, exotic args, or canonical args over 4 KiB all fail closed to an independent run.
+Returning the same partition is an application assertion that the complete resolver/interceptor result is equivalent for those subscribers, including any state reachable through `identity`, `clientId`, rooms, or the interceptor execution context; `context.path` needs no such assertion, because the gateway path is always part of the key. Expiry, WebSocket delivery authorization, resolver guards, and `authorizeDelivery` still run per subscription before sharing; explicit BYO-DB tags still decide which subscriptions enter a pass; and each recipient still diffs against and advances its own baseline/cursor. The Promise cache exists for one drain pass only and is capped at 256 groups, 64 KiB per retained result, and 2 MiB of retained serialized results; overflow executes independently. `undefined`, a thrown callback, an empty/control-bearing partition, a partition over 256 UTF-8 bytes, exotic args, or canonical args over 4 KiB all fail closed to an independent run.
 
 ## Cursors, resume, and transports
 
@@ -203,7 +217,7 @@ All may be lowered; the first three have explicit bounded module options.
 ## Guarantees & limits (v1)
 
 - At-least-once frames; per-subscription total order within a log scope; coalescing may collapse bursts but every committed invalidation is observed by a re-run that starts after it.
-- Tag granularity remains explicit. N identical subscriptions re-run N times unless their query opts into `coalesceBy`; one matching `(query, canonical args, partition)` then executes once per pass and fans out through N independent delivery baselines.
+- Tag granularity remains explicit. N identical subscriptions re-run N times unless their query opts into `coalesceBy`; one matching `(gateway path, query, canonical args, partition)` then executes once per pass and fans out through N independent delivery baselines.
 - A subscription lives in exactly one room; cross-room live queries are out of scope.
 - Resume, invalidation re-runs, and delivery re-check identity expiry plus the
   app/gateway/resolver authorization chain. A revoked identity removes the

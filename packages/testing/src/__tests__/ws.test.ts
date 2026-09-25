@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { Module } from '@velajs/vela';
+import {
+  WS_SERVER,
+  WebSocketGateway,
+  WebSocketModule,
+  WebSocketServer,
+  type BroadcastOperator,
+  type WsServer,
+} from '@velajs/vela/websocket';
 import { Test } from '../test.js';
 import { TestWsConnection } from '../ws/test-ws-connection.js';
 
@@ -67,5 +75,97 @@ describe('module.ws without a transport adapter', () => {
     await expect(module.ws('/ws/chat').connect()).rejects.toThrow(
       /transport adapter|websocket-node/i,
     );
+  });
+});
+
+describe("a gateway's @WebSocketServer() in a testing module", () => {
+  interface Push {
+    rooms: string[];
+    event: string;
+    data: unknown;
+  }
+
+  function recordingServer(pushes: Push[]): WsServer {
+    const operator = (rooms: string[]): BroadcastOperator => ({
+      to: (room) => operator([...rooms, room]),
+      in: (room) => operator([...rooms, room]),
+      except: () => operator(rooms),
+      emit(event, data) {
+        pushes.push({ rooms, event, data });
+      },
+    });
+    return {
+      emit(event, data) {
+        pushes.push({ rooms: [], event, data });
+      },
+      to: (room) => operator([room]),
+      in: (room) => operator([room]),
+      except: () => operator([]),
+    };
+  }
+
+  @WebSocketGateway({ path: '/rooms' })
+  class RoomGateway {
+    constructor(@WebSocketServer() readonly server: WsServer) {}
+  }
+
+  it('pushes to a WS_SERVER overridden next to WebSocketModule.forRoot()', async () => {
+    const pushes: Push[] = [];
+    const module = await Test.createTestingModule({
+      imports: [WebSocketModule.forRoot()],
+      providers: [RoomGateway],
+    })
+      .overrideProvider(WS_SERVER)
+      .useValue(recordingServer(pushes))
+      .compile();
+    try {
+      const { server } = module.get(RoomGateway);
+      server.emit('everyone', 1);
+      server.to('r1').emit('room', 2);
+      expect(pushes).toEqual([
+        { rooms: [], event: 'everyone', data: 1 },
+        { rooms: ['r1'], event: 'room', data: 2 },
+      ]);
+    } finally {
+      await module.close();
+    }
+  });
+
+  it('pushes to a WS_SERVER overridden with an async factory', async () => {
+    const pushes: Push[] = [];
+    const module = await Test.createTestingModule({
+      imports: [WebSocketModule.forRoot()],
+      providers: [RoomGateway],
+    })
+      .overrideProvider(WS_SERVER)
+      .useFactory({
+        factory: async () => {
+          await Promise.resolve();
+          return recordingServer(pushes);
+        },
+      })
+      .compile();
+    try {
+      module.get(RoomGateway).server.to('r1').emit('room', 2);
+      expect(pushes).toEqual([{ rooms: ['r1'], event: 'room', data: 2 }]);
+    } finally {
+      await module.close();
+    }
+  });
+
+  it('connects nothing when the override stands in for WebSocketModule, and says what to do', async () => {
+    const pushes: Push[] = [];
+    const module = await Test.createTestingModule({ providers: [RoomGateway] })
+      .overrideProvider(WS_SERVER)
+      .useValue(recordingServer(pushes))
+      .compile();
+    try {
+      expect(() => module.get(RoomGateway).server.emit('everyone', 1)).toThrow(
+        /is not connected[\s\S]*keep that import[\s\S]*override WS_SERVER in the testing module/,
+      );
+      expect(pushes).toEqual([]);
+    } finally {
+      await module.close();
+    }
   });
 });
