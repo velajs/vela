@@ -49,6 +49,8 @@ export interface DeploymentTarget {
   readonly bindings: readonly DeploymentBinding[];
   readonly queueProducers: readonly DeploymentQueueProducer[];
   readonly queueConsumers: readonly string[];
+  /** Classes this Worker's own Durable Object bindings name (no `script_name`). */
+  readonly durableObjectClasses: readonly string[];
   readonly customBuild: boolean;
 }
 
@@ -173,6 +175,9 @@ export function selectDeploymentTarget(raw: unknown, environment?: string): Depl
     bindings,
     queueProducers,
     queueConsumers,
+    durableObjectClasses: (durable?.bindings ?? [])
+      .filter((row) => row.script_name === undefined)
+      .map((row) => row.class_name),
     customBuild: build?.command !== undefined,
   };
 }

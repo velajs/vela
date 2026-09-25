@@ -7,6 +7,7 @@
   "gzipAllowanceBytes": 9216,
   "excludedModules": [
     "dist/decorators/",
+    "dist/durable-object/",
     "dist/durable-objects.js",
     "dist/nonce/",
     "dist/queue/",

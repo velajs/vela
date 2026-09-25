@@ -117,24 +117,21 @@ function createMockQueue(): MockQueue {
   } as unknown as MockQueue;
 }
 
-function createMockDurableObjectNamespace(): DurableObjectNamespace {
-  const stub = {
-    fetch: async (input: RequestInfo | URL) => {
-      const url = new URL(String(input));
-      return Response.json({
-        durableObject: true,
-        name: url.pathname.split('/').pop() ?? 'unknown',
-      });
+/** The Counter Durable Object's RPC stub: one hit counter per name, in memory. */
+function createMockDurableObjectNamespace(): MockWorkerEnv['COUNTER_DO'] {
+  const hits = new Map<string, number>();
+  const stub = (name: string) => ({
+    status: async () => {
+      const count = (hits.get(name) ?? 0) + 1;
+      hits.set(name, count);
+      return { durableObject: true as const, name, hits: count };
     },
-  };
+  });
 
   return {
     idFromName: (name: string) => ({ name, toString: () => `id:${name}` }),
-    idFromString: (id: string) => ({ id, toString: () => id }),
-    newUniqueId: () => ({ toString: () => 'id:unique' }),
-    get: () => stub,
-    jurisdiction: () => ({ get: () => stub }),
-  } as unknown as DurableObjectNamespace;
+    getByName: (name: string) => stub(name),
+  } as unknown as MockWorkerEnv['COUNTER_DO'];
 }
 
 function createMockAI(): Ai {

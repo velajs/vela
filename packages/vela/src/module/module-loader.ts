@@ -424,6 +424,7 @@ export class ModuleLoader {
         isGlobal,
         lazy: isLazy,
         moduleClass,
+        moduleKey: key,
         controllers,
       });
 

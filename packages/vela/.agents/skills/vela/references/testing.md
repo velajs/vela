@@ -135,7 +135,7 @@ ws.send(JSON.stringify({ event: 'echo', data: { text: 'hi' } }));
 await ws.assertMessage(/* expected */);
 ```
 
-`TestWsConnection`: `send`, `close`, `waitForMessage`, `waitForClose`, `assertMessage`, `assertClosed`. The connector seam is `registerWsConnector(connector)` / `getWsConnector()` (type `WsConnector`). Cloudflare Durable-Object sockets are exercised via `@velajs/cloudflare` + the workerd pool, not this harness.
+`TestWsConnection`: `send`, `close`, `waitForMessage`, `waitForClose`, `assertMessage`, `assertClosed`. The connector seam is `registerWsConnector(connector)` / `getWsConnector()` (type `WsConnector`). Cloudflare Durable-Object sockets are exercised via `@velajs/cloudflare` + the workerd pool, not this harness. So are `VelaDurableObject` hosts: call `env.COUNTER.getByName(name).method()` (from `cloudflare:workers`) in a workerd spec, and `runDurableObjectAlarm(stub)` from `cloudflare:test` for alarms.
 
 ## Request scope, seeding & database assertions
 

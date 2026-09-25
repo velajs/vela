@@ -1,15 +1,27 @@
-import { VelaWebSocketDurableObject } from '../../durable-objects';
 import {
+  DO_ID,
+  DO_STATE,
+  DO_STORAGE,
+  VelaDurableObject,
+  VelaWebSocketDurableObject,
+} from '../../durable-objects';
+import {
+  APP_EXCEPTION_HANDLER,
   Controller,
   Inject,
   InjectEnv,
+  InjectionToken,
   Injectable,
   Module,
   Param,
   Post,
   Scope,
+  UseGuards,
+  defineProvider,
+  type CanActivate,
   type VelaEnv,
 } from '@velajs/vela';
+import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { Cron } from '@velajs/vela/schedule';
 import { LiveModule } from '@velajs/vela/live';
 import { countRegisteredClasses } from '@velajs/vela/internal';
@@ -28,7 +40,7 @@ import {
   type WsServer,
 } from '@velajs/vela/websocket';
 import {
-  createCloudflareWorker,
+  defineCloudflareApp,
   CLOUDFLARE_SCHEDULED_EVENT,
   type CloudflareScheduledEvent,
 } from '../../index';
@@ -161,14 +173,194 @@ class PushController {
   }
 }
 
+/** What each application (the Worker's, every Durable Object's) reported, by message. */
+export const REPORTS = new InjectionToken<string[]>('workerd reports');
+
+/**
+ * A runtime adapter of the app definition: it configures the Worker's
+ * application and every Durable Object context defined from the app.
+ */
+const reportingAdapter: RuntimeAdapter = {
+  name: 'reports',
+  configureContainer(container) {
+    const reports: string[] = [];
+    container.register(defineProvider(REPORTS, { useValue: reports }));
+    container.markGlobalToken(REPORTS);
+    container.register(
+      defineProvider(APP_EXCEPTION_HANDLER, {
+        useValue: {
+          report: (error: unknown) =>
+            void reports.push(error instanceof Error ? error.message : String(error)),
+        },
+      }),
+    );
+  },
+};
+
+/** One per Durable Object instance: its application context's singleton. */
+@Injectable()
+class CounterStore {
+  readonly instanceId = crypto.randomUUID();
+}
+
+/** Request-scoped: built for each RPC call and event, disposed when it ends. */
+@Injectable({ scope: Scope.REQUEST })
+class CallTrace {
+  readonly callId = crypto.randomUUID();
+  closed = false;
+  dispose(): void {
+    this.closed = true;
+  }
+}
+
+@Injectable()
+class DenyGuard implements CanActivate {
+  canActivate(): boolean {
+    return false;
+  }
+}
+
+/** The Counter Durable Object's host: the methods its rpc list names are the object's RPC methods. */
+@Injectable()
+export class CounterHost {
+  constructor(
+    @Inject(DO_STORAGE) private readonly storage: DurableObjectStorage,
+    @Inject(DO_ID) private readonly id: DurableObjectId,
+    @Inject(DO_STATE) private readonly state: DurableObjectState,
+    @InjectEnv() private readonly env: VelaEnv,
+    @Inject(CounterStore) private readonly store: CounterStore,
+    @Inject(CallTrace) private readonly trace: CallTrace,
+    @Inject(REPORTS) private readonly reports: string[],
+  ) {}
+
+  async increment(by: number): Promise<number> {
+    const value = ((await this.storage.get<number>('value')) ?? 0) + by;
+    await this.storage.put('value', value);
+    return value;
+  }
+
+  snapshot(): {
+    name: string | null;
+    instanceId: string;
+    callId: string;
+    probe: string;
+    storage: boolean;
+  } {
+    return {
+      name: this.id.name ?? null,
+      instanceId: this.store.instanceId,
+      callId: this.trace.callId,
+      probe: this.env.ENV_PROBE,
+      storage: this.state.storage === this.storage,
+    };
+  }
+
+  async scheduleAlarm(): Promise<void> {
+    await this.storage.setAlarm(Date.now() + 60_000);
+  }
+
+  async alarms(): Promise<number> {
+    return (await this.storage.get<number>('alarms')) ?? 0;
+  }
+
+  async alarm(): Promise<void> {
+    await this.storage.put('alarms', (await this.alarms()) + 1);
+  }
+
+  leak(): never {
+    throw new Error('secret database detail');
+  }
+
+  @UseGuards(DenyGuard)
+  denied(): string {
+    return 'never';
+  }
+
+  reported(): string[] {
+    return [...this.reports];
+  }
+
+  /** Public, but left out of the rpc list. */
+  audit(): string {
+    return 'audit';
+  }
+
+  /** A TypeScript-private helper: never on the RPC surface. */
+  private async wipe(): Promise<void> {
+    await this.storage.deleteAll();
+  }
+
+  /** The container's disposal hook; the scope calls it, callers never can. */
+  dispose(): void {}
+
+  fetch(request: Request): Response {
+    const path = new URL(request.url).pathname;
+    if (path === '/stream') {
+      // Request-scoped providers stay open until the streamed body finishes.
+      const trace = this.trace;
+      const encoder = new TextEncoder();
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(encoder.encode(`first closed=${trace.closed}\n`));
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            controller.enqueue(encoder.encode(`later closed=${trace.closed}\n`));
+            controller.close();
+          },
+        }),
+      );
+    }
+    return Response.json({ path, name: this.id.name ?? null });
+  }
+}
+
+/** Calls the Counter Durable Object over RPC from the Worker. */
+@Controller('/counters')
+class CounterController {
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
+
+  @Post('/:name')
+  async increment(@Param('name') name: string): Promise<{ count: number }> {
+    return { count: await this.env.COUNTER.getByName(name).increment(1) };
+  }
+}
+
 @Module({
   imports: [WebSocketModule.forRoot()],
-  controllers: [PushController],
-  providers: [TestGateway],
+  controllers: [PushController, CounterController],
+  providers: [TestGateway, CounterStore, CallTrace, DenyGuard],
 })
 class TestModule {}
 
-export class TestRoom extends VelaWebSocketDurableObject(TestModule) {}
+// One app definition: the Worker's default export and the Durable Object
+// classes defined from it share its root module and runtime adapters.
+const app = defineCloudflareApp(TestModule, { adapters: [reportingAdapter] });
+
+export class TestRoom extends VelaWebSocketDurableObject(app) {}
+
+export class Counter extends VelaDurableObject(app, CounterHost, {
+  rpc: ['increment', 'snapshot', 'scheduleAlarm', 'alarms', 'leak', 'denied', 'reported'],
+}) {}
+
+/** Its context fails to start: callers learn nothing about why. */
+@Injectable()
+class BrokenStart {
+  onModuleInit(): void {
+    throw new Error('secret startup detail');
+  }
+}
+
+@Injectable()
+class BrokenHost {
+  ping(): string {
+    return 'pong';
+  }
+}
+
+@Module({ providers: [BrokenStart] })
+class BrokenModule {}
+
+export class BrokenCounter extends VelaDurableObject(BrokenModule, BrokenHost, { rpc: ['ping'] }) {}
 
 // Every Durable Object instance in this isolate constructs from one static
 // DynamicModule root declared at module scope.
@@ -207,4 +399,4 @@ class LiveRoomModule {}
 export class SqliteLiveRoom extends VelaWebSocketDurableObject(LiveRoomModule) {}
 export class KvLiveRoom extends VelaWebSocketDurableObject(LiveRoomModule) {}
 
-export default createCloudflareWorker(TestModule);
+export default app.worker;

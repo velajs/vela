@@ -10,7 +10,7 @@ import {
   type VelaEnv,
 } from '@velajs/vela';
 import { Cron, type CronInvocation } from '@velajs/vela/schedule';
-import { QueueConsumer, createCloudflareApp, createCloudflareWorker } from '@velajs/cloudflare';
+import { QueueConsumer, createCloudflareApp } from '@velajs/cloudflare';
 import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import {
   InjectQueue,
@@ -60,11 +60,9 @@ class WorkerBindingFacade {
     return { queued: true };
   }
 
-  async durableObjectStatus(name: string) {
-    const id = this.env.COUNTER_DO.idFromName(name);
-    const stub = this.env.COUNTER_DO.get(id);
-    const response = await stub.fetch(`https://worker-bindings-lab.test/counters/${name}`);
-    return response.json();
+  // A JS-RPC call typed by the Counter class the Worker entry exports.
+  durableObjectStatus(name: string) {
+    return this.env.COUNTER_DO.getByName(name).status();
   }
 
   async runAI(input: unknown) {
@@ -213,8 +211,4 @@ export class WorkerBindingsLabModule {}
 
 export async function createWorkerBindingsLabApp(env: VelaEnv) {
   return createCloudflareApp(WorkerBindingsLabModule, { env });
-}
-
-export function createWorkerBindingsLabWorker() {
-  return createCloudflareWorker(WorkerBindingsLabModule);
 }

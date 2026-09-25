@@ -43,6 +43,19 @@ tag = "v4"
 new_sqlite_classes = ["SqliteLiveRoom"]
 new_classes = ["KvLiveRoom"]
 
+# Vela Durable Object hosts: the application context booted per instance.
+[[durable_objects.bindings]]
+name = "COUNTER"
+class_name = "Counter"
+
+[[durable_objects.bindings]]
+name = "BROKEN_COUNTER"
+class_name = "BrokenCounter"
+
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["Counter", "BrokenCounter"]
+
 [[kv_namespaces]]
 binding = "CACHE"
 id = "test-cache"

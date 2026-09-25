@@ -5,10 +5,12 @@ import { Command, Option } from 'clipanion';
 import { loadConfig } from '../config.js';
 import { withApp } from '../with-app.js';
 import { renderTable } from '../format.js';
+import type { LoadedVelaConfig } from '../config.js';
 import {
   collectEntrypoints,
   collectModules,
   collectRoutes,
+  collectWorkerDurableObjects,
   renderModuleTree,
 } from '../introspect.js';
 
@@ -23,12 +25,12 @@ abstract class AppCommand extends Command {
   });
   json = Option.Boolean('--json', false, { description: 'Emit machine-readable JSON.' });
 
-  protected abstract run(app: VelaApplication): Promise<number>;
+  protected abstract run(app: VelaApplication, loaded: LoadedVelaConfig): Promise<number>;
 
   async execute(): Promise<number> {
     return withApp(
       () => loadConfig(process.cwd(), this.config, { environment: this.environment }),
-      (app) => this.run(app),
+      (app, loaded) => this.run(app, loaded),
       (message) => {
         this.context.stderr.write(`${message}\n`);
       },
@@ -110,12 +112,15 @@ export class EntrypointListCommand extends AppCommand {
     description: 'List entrypoint kinds and entries (websocket, queue, cron, …).',
     details:
       'Every declared kind — including kinds with zero entries — with the contributing ' +
-      'class (and method for method-level kinds) and its metadata.',
+      'class (and method for method-level kinds) and its metadata. Without a config, the ' +
+      'Durable Object classes built by @velajs/cloudflare follow as cf:durable-object rows: ' +
+      'those the Worker entry exports, by export name, and those its app defines without ' +
+      'exporting them.',
     examples: [['List entrypoints', 'vela entrypoint list']],
   });
 
-  protected async run(app: VelaApplication): Promise<number> {
-    const rows = collectEntrypoints(app);
+  protected async run(app: VelaApplication, loaded: LoadedVelaConfig): Promise<number> {
+    const rows = [...collectEntrypoints(app), ...(await collectWorkerDurableObjects(loaded))];
     if (this.json) {
       this.print(JSON.stringify(rows, null, 2));
       return 0;

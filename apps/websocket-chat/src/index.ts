@@ -9,7 +9,7 @@ import {
   Param,
   Post,
 } from '@velajs/vela';
-import { createCloudflareWorker } from '@velajs/cloudflare';
+import { defineCloudflareApp } from '@velajs/cloudflare';
 import {
   Gateways,
   WebSocketGateway,
@@ -175,10 +175,13 @@ export class AnnouncementController {
 })
 export class AppModule {}
 
-// The Cloudflare adapter serves the gateway's upgrade route in the Worker and
-// forwards it to the CHAT_ROOM Durable Object for the room, read by name from
-// ENV; inside that object the same module broadcasts to the room's sockets, and
-// Gateways pushes from the Worker reach it over its broadcast RPC.
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
+// One app definition for the Worker and its Durable Object. The Cloudflare
+// adapter serves the gateway's upgrade route in the Worker and forwards it to
+// the CHAT_ROOM Durable Object for the room, read by name from ENV; inside that
+// object the same module broadcasts to the room's sockets, and Gateways pushes
+// from the Worker reach it over its broadcast RPC.
+const app = defineCloudflareApp(AppModule);
 
-export default createCloudflareWorker(AppModule);
+export class ChatRoom extends VelaWebSocketDurableObject(app) {}
+
+export default app.worker;

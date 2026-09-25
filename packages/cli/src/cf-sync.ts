@@ -275,10 +275,23 @@ export function planCloudflareSync(
   ];
   const unboundGateways = gateways.filter((binding) => !names.has(binding));
   const unbound = facts.exports.durableObjects.filter((name) => !bound.has(name));
+  // A WebSocket Durable Object class serves gateway rooms; other Vela classes never do.
+  const kindOf = (className: string) =>
+    facts.exports.velaDurableObjects.find((described) => described.name === className)?.kind;
+  const roomClasses = unbound.filter((className) => kindOf(className) !== 'host');
+  const websocketClasses = unbound.filter((className) => kindOf(className) === 'websocket');
+  const gatewayClass =
+    unboundGateways.length !== 1
+      ? undefined
+      : websocketClasses.length === 1
+        ? websocketClasses[0]
+        : roomClasses.length === 1
+          ? roomClasses[0]
+          : undefined;
   for (const className of unbound) {
-    // One gateway binding without a class, and one class without a binding: they belong together.
+    // One gateway binding without a class, and one class that can serve it: they belong together.
     const name =
-      unbound.length === 1 && unboundGateways.length === 1
+      className === gatewayClass
         ? (unboundGateways[0] ?? constantCase(className))
         : constantCase(className);
     if (names.has(name)) {
@@ -302,6 +315,16 @@ export function planCloudflareSync(
           'exported class serves: export a VelaWebSocketDurableObject class from the Worker entry.',
       );
     }
+  }
+  for (const described of facts.exports.unexportedDurableObjects) {
+    const factory =
+      described === 'WebSocket'
+        ? 'VelaWebSocketDurableObject(app)'
+        : `VelaDurableObject(app, ${described})`;
+    warnings.push(
+      `The app defines a Durable Object class for ${described}, which the Worker entry does not ` +
+        `export: export it (export class Name extends ${factory} {}) so Wrangler can bind it.`,
+    );
   }
   for (const row of local) {
     if (

@@ -8,8 +8,10 @@ import './metadata';
 
 // Factory & Application
 export { VelaFactory } from './factory';
-export type { VelaCreateOptions } from './factory';
+export type { VelaApplicationContextOptions, VelaCreateOptions } from './factory';
 export { VelaApplication } from './application';
+export { VelaApplicationContext } from './application-context';
+export type { ApplicationContextLookupOptions } from './application-context';
 
 // Runtime environment: bindings, variables and secrets seeded per application
 export { ENV, InjectEnv } from './env';

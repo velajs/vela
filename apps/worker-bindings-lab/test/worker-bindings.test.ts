@@ -1,5 +1,6 @@
 import type { ExecutionContext } from 'hono';
 import { ENV } from '@velajs/vela';
+import { CLOUDFLARE_DURABLE_OBJECT, CLOUDFLARE_WORKER } from '@velajs/cloudflare';
 import type { MockWorkerEnv } from '../src/mock-env.js';
 import { describe, expect, it } from 'vitest';
 import { createWorkerBindingsLabApp } from '../src/app.js';
@@ -82,7 +83,7 @@ describe('Worker bindings lab consumer project', () => {
     expect(env.JOB_QUEUE._messages).toEqual([{ type: 'sync-report', id: 7 }]);
 
     const durableObject = await fetchJson(app.fetch, '/lab/durable-object/main', env, ctx);
-    expect(durableObject.body).toEqual({ durableObject: true, name: 'main' });
+    expect(durableObject.body).toEqual({ durableObject: true, name: 'main', hits: 1 });
 
     const ai = await fetchJson(app.fetch, '/lab/ai', env, ctx, {
       method: 'POST',
@@ -166,7 +167,11 @@ describe('Worker bindings lab consumer project', () => {
   });
 
   it('exports a Worker-shaped default object', async () => {
-    const { default: worker } = await import('../src/worker.js');
+    const { default: worker, Counter } = await import('../src/worker.js');
+    // The Counter Durable Object is defined from the same app as the Worker.
+    const [counter] = worker[CLOUDFLARE_WORKER].durableObjects;
+    expect(counter).toMatchObject({ kind: 'host', methods: ['status'] });
+    expect(Reflect.get(Counter, CLOUDFLARE_DURABLE_OBJECT)).toBe(counter);
     const env = createMockWorkerEnv();
     const ctx = createExecutionContext();
 
