@@ -1,7 +1,9 @@
 ---
 '@velajs/vela': minor
-'@velajs/authz': patch
-'@velajs/authz-cedar': patch
+'@velajs/authz': minor
+'@velajs/authz-cedar': minor
+'@velajs/tenant': minor
+'@velajs/feature-flags': minor
 ---
 
 Declarations on an ancestor class apply to the classes that extend it, as reflect-metadata resolves them in Nest. In 1.30.0 every reader looked only at the concrete class.

@@ -2,7 +2,7 @@
 '@velajs/storage': minor
 ---
 
-Build `StorageModule` on `defineModule`. `name` and `http` are its structural options; the driver may be a function that builds it on the first storage operation (and again on the next one until it succeeds), and the top-level `multipartGrantSecret` option carries a secret from `ENV`.
+Build `StorageModule` on `defineModule`. `name` and `http` are its structural options (`StorageStructuralOption`); the driver may be a function that builds it on the first storage operation (and again on the next one until it succeeds), and the top-level `multipartGrantSecret` option carries a secret from `ENV`.
 
 **Behavior change:** a `forRootAsync` factory returns the module options instead of a bare driver or `{ driver, multipartGrantSecret }`: `useFactory: (env) => ({ driver: () => r2Driver({ bucket: env.FILES }), multipartGrantSecret: env.SECRET })`, with `name` and `http` next to the factory. `prefix`, `readonly` and `hooks`, which `forRootAsync` took next to the factory, come from the factory result too. The factory runs while the application initializes; return `driver` as a function to keep construction on first use. `StorageAsyncResult` is removed.
 
