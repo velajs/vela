@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { Command, Option } from 'clipanion';
 import { loadConfig } from '../config.js';
-import { collectEntrypoints, collectWorkerDurableObjects } from '../introspect.js';
+import { collectEntrypoints, collectWorkerEntrypointClasses } from '../introspect.js';
 import { readInput } from '../project/files.js';
 import { findWranglerConfig } from '../project/wrangler.js';
 import { withApp } from '../with-app.js';
@@ -128,7 +128,7 @@ export class DeployCheckCommand extends Command {
           () => loadConfig(cwd, undefined, { environment: this.environment, wrangler: configPath }),
           async (app, loaded) => [
             ...collectEntrypoints(app),
-            ...(await collectWorkerDurableObjects(loaded)),
+            ...(await collectWorkerEntrypointClasses(loaded)),
           ],
           (message) => this.context.stderr.write(`${message}\n`),
           this.context.stderr,

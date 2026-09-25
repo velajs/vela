@@ -1,12 +1,12 @@
 import { HttpException, renderHttpError, type RenderedHttpError } from '@velajs/vela';
 import type { ErrorReporter } from '@velajs/vela/module-kit';
 
-const NAME = 'DurableObjectError';
+const NAME = 'EntrypointError';
 const CODE = /^[A-Za-z0-9_.:-]{1,160}$/;
 const MAX_MESSAGE_LENGTH = 2048;
 
-/** What a failed Durable Object RPC call carries across the RPC boundary. */
-export interface DurableObjectErrorInit {
+/** What a failed JS-RPC call of a Vela entrypoint carries across the RPC boundary. */
+export interface EntrypointErrorInit {
   /** An HTTP error status, 400–599. */
   readonly status: number;
   /** A stable error code, such as `not_found` or `internal`. */
@@ -17,30 +17,32 @@ export interface DurableObjectErrorInit {
 }
 
 /**
- * The one error a Vela Durable Object's RPC method rejects with. The object
- * reports the original error first, then renders it as HTTP renders a
- * response (`renderHttpError`): a 4xx `HttpException` or branded `VelaError`
- * keeps its code, message and details; anything else becomes
- * `500 internal "Internal Server Error"`. Only these own properties cross the
- * RPC boundary: no stack frames, causes or other fields of the original.
+ * The one error the JS-RPC methods of a Vela entrypoint reject with: a
+ * Durable Object from `VelaDurableObject()` and a service entrypoint from
+ * `VelaEntrypoint()`. The entrypoint reports the original error first, then
+ * renders it as HTTP renders a response (`renderHttpError`): a 4xx
+ * `HttpException` or branded `VelaError` keeps its code, message and details;
+ * anything else becomes `500 internal "Internal Server Error"`. Only these own
+ * properties cross the RPC boundary: no stack frames, causes or other fields of
+ * the original.
  *
  * workerd rebuilds it on the caller's side as a plain `Error` with the same
  * `name`, `status`, `code`, `message` and `details`; read it with
- * {@link isDurableObjectError}. That needs a Worker `compatibility_date` of
+ * {@link isEntrypointError}. That needs a Worker `compatibility_date` of
  * 2026-04-21 or later, or the `enhanced_error_serialization` compatibility
  * flag: before it, workerd delivers only an `Error` whose message is
- * `DurableObjectError: <message>`, without the status, code or details
+ * `EntrypointError: <message>`, without the status, code or details
  * (`vela deploy check` warns about it). A host may throw one itself, for
- * example to pass on another object's failure: a 4xx one keeps its code,
+ * example to pass on another entrypoint's failure: a 4xx one keeps its code,
  * message and details, a 5xx one only its status.
  */
-export class DurableObjectError extends Error implements DurableObjectErrorInit {
+export class EntrypointError extends Error implements EntrypointErrorInit {
   override readonly name = NAME;
   readonly status: number;
   readonly code: string;
   declare readonly details?: unknown;
 
-  constructor(init: DurableObjectErrorInit) {
+  constructor(init: EntrypointErrorInit) {
     super(init.message);
     this.status = init.status;
     this.code = init.code;
@@ -52,18 +54,19 @@ export class DurableObjectError extends Error implements DurableObjectErrorInit 
         configurable: true,
       });
     }
-    // workerd serializes the stack across RPC; it would disclose the object's frames.
+    // workerd serializes the stack across RPC; it would disclose the entrypoint's frames.
     this.stack = `${NAME}: ${this.message}`;
   }
 }
 
 /**
- * Whether `error` is a Durable Object RPC failure: a {@link DurableObjectError},
- * or the plain `Error` workerd delivers for one to the caller. On a
- * compatibility date before 2026-04-21 without `enhanced_error_serialization`,
- * workerd drops the error's properties, so this is false.
+ * Whether `error` is a failed JS-RPC call of a Vela entrypoint: an
+ * {@link EntrypointError}, or the plain `Error` workerd delivers for one to
+ * the caller. On a compatibility date before 2026-04-21 without
+ * `enhanced_error_serialization`, workerd drops the error's properties, so
+ * this is false.
  */
-export function isDurableObjectError(error: unknown): error is DurableObjectError {
+export function isEntrypointError(error: unknown): error is EntrypointError {
   if (typeof error !== 'object' || error === null) return false;
   return (
     Reflect.get(error, 'name') === NAME &&
@@ -71,6 +74,11 @@ export function isDurableObjectError(error: unknown): error is DurableObjectErro
     typeof Reflect.get(error, 'code') === 'string' &&
     typeof Reflect.get(error, 'message') === 'string'
   );
+}
+
+/** @internal The redacted failure of an invocation that failed outside its pipeline. */
+export function internalEntrypointError(): EntrypointError {
+  return new EntrypointError({ status: 500, code: 'internal', message: 'Internal Server Error' });
 }
 
 // JSON-safe client details only: an RPC failure must stay serializable.
@@ -84,7 +92,7 @@ function clientDetails(value: unknown): unknown {
   }
 }
 
-function fromRendered(rendered: Pick<RenderedHttpError, 'status' | 'body'>): DurableObjectError {
+function fromRendered(rendered: Pick<RenderedHttpError, 'status' | 'body'>): EntrypointError {
   const status =
     Number.isInteger(rendered.status) && rendered.status >= 400 && rendered.status <= 599
       ? rendered.status
@@ -107,42 +115,42 @@ function fromRendered(rendered: Pick<RenderedHttpError, 'status' | 'body'>): Dur
       ? 'Internal Server Error'
       : typeof rawMessage === 'string'
         ? rawMessage.slice(0, MAX_MESSAGE_LENGTH)
-        : 'Durable Object request failed';
+        : 'Entrypoint request failed';
   const details = status < 500 ? clientDetails(field('details')) : undefined;
-  return new DurableObjectError({ status, code, message, details });
+  return new EntrypointError({ status, code, message, details });
 }
 
 /**
- * A {@link DurableObjectError} a host rethrows, such as another object's
+ * An {@link EntrypointError} a host rethrows, such as another entrypoint's
  * failure: a client fault keeps its code, message and details; a server fault
  * keeps only its status, rendered like an `HttpException` of that status.
  */
-function renderPassedOn(error: DurableObjectError): Pick<RenderedHttpError, 'status' | 'body'> {
+function renderPassedOn(error: EntrypointError): Pick<RenderedHttpError, 'status' | 'body'> {
   if (Number.isInteger(error.status) && error.status >= 400 && error.status < 500) {
     return {
       status: error.status,
       body: { error: { code: error.code, message: error.message, details: error.details } },
     };
   }
-  return renderHttpError(new HttpException('Durable Object request failed', error.status));
+  return renderHttpError(new HttpException('Entrypoint request failed', error.status));
 }
 
 /**
- * Render a failure of a Durable Object RPC call, after it was reported: the
- * application's `ExceptionHandler.render` first, then the HTTP renderer with
- * server bodies redacted. A 4xx {@link DurableObjectError} passes through.
+ * Render a failure of a JS-RPC call, after it was reported: the application's
+ * `ExceptionHandler.render` first, then the HTTP renderer with server bodies
+ * redacted. A 4xx {@link EntrypointError} passes through.
  */
-export function renderDurableObjectError(
+export function renderEntrypointError(
   error: unknown,
   reporter: ErrorReporter,
   context: unknown,
-): DurableObjectError {
-  if (isDurableObjectError(error)) return fromRendered(renderPassedOn(error));
+): EntrypointError {
+  if (isEntrypointError(error)) return fromRendered(renderPassedOn(error));
   const override = reporter.render(error, context);
   if (override instanceof Response) {
     void override.body?.cancel().catch(() => {});
     return fromRendered(
-      renderHttpError(new HttpException('Durable Object request failed', override.status)),
+      renderHttpError(new HttpException('Entrypoint request failed', override.status)),
     );
   }
   return fromRendered(
@@ -154,12 +162,12 @@ export function renderDurableObjectError(
  * Render a failure of a Durable Object's `fetch()` as the HTTP edge does: the
  * application's `ExceptionHandler.render`, else the canonical JSON error body.
  */
-export function renderDurableObjectResponse(
+export function renderEntrypointResponse(
   error: unknown,
   reporter: ErrorReporter,
   context: unknown,
 ): Response {
-  if (isDurableObjectError(error)) {
+  if (isEntrypointError(error)) {
     const rendered = fromRendered(renderPassedOn(error));
     return Response.json(
       {

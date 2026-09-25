@@ -2,7 +2,12 @@ import { open, readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseCron } from '@velajs/vela/schedule';
 import { hasErrorCode, isRecord } from '../project/files.js';
-import { findWranglerConfig, readWranglerConfig, wranglerMain } from '../project/wrangler.js';
+import {
+  findWranglerConfig,
+  readWranglerConfig,
+  wranglerMain,
+  wranglerWorkerName,
+} from '../project/wrangler.js';
 import { names, singular } from './names.js';
 import {
   controllerSource,
@@ -11,10 +16,18 @@ import {
   durableObjectDeclaration,
   durableObjectHostSource,
   durableObjectSource,
+  entrypointClassLine,
+  entrypointDeclaration,
+  entrypointHostSource,
+  entrypointSource,
   moduleSource,
   processorSource,
   resourceSources,
   serviceSource,
+  workflowClassLine,
+  workflowDeclaration,
+  workflowHostSource,
+  workflowSource,
   type ImportExtension,
 } from './schematics.js';
 import {
@@ -23,6 +36,7 @@ import {
   addToModule,
   addWorkerDeclaration,
   callsMethod,
+  defineWorkerApp,
   importedWorkerApp,
   moduleExport,
   workerApp,
@@ -39,6 +53,8 @@ export const SCHEMATICS = [
   'queue',
   'cron',
   'durable-object',
+  'workflow',
+  'entrypoint',
 ] as const;
 export type Schematic = (typeof SCHEMATICS)[number];
 
@@ -111,6 +127,17 @@ async function workerEntry(cwd: string): Promise<string> {
   const { path } = await findWranglerConfig(cwd);
   if (path === undefined) return join(cwd, 'src/worker.ts');
   return wranglerMain(await readWranglerConfig(path));
+}
+
+/** The Worker's name in its Wrangler file, for printed instructions. */
+async function workerName(cwd: string): Promise<string> {
+  const { path } = await findWranglerConfig(cwd);
+  if (path === undefined) return '<this Worker>';
+  try {
+    return wranglerWorkerName(await readWranglerConfig(path));
+  } catch {
+    return '<this Worker>';
+  }
 }
 
 /** Resolve an import specifier of `from` to its TypeScript source. */
@@ -327,8 +354,12 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
   const notes: string[] = [];
   let target = '';
   let exported: { name: string; file: string } | undefined;
-  // A declaration added to the Worker entry itself (a class built from its app).
+  // A declaration added to the Worker entry itself (a class built from its app),
+  // and that declaration's class on one line, for --skip-import.
   let declared: WorkerDeclaration | undefined;
+  let declaredLine = '';
+  // The Worker entry must bind its app first (a Workflow or service entrypoint runs in it).
+  let defineApp = false;
   const file = (suffix: string) => join(directory, `${name.kebab}.${suffix}`);
 
   switch (options.schematic) {
@@ -432,6 +463,7 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
             { name: hostName, from: specifier(entry, hostFile, ext) },
           ],
         };
+        declaredLine = durableObjectClassLine(name, app.binding);
       } else if (imported !== undefined) {
         // An app in its own module: the class imports it, as the entry does.
         target = file('durable-object.ts');
@@ -492,6 +524,78 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
       );
       break;
     }
+    case 'workflow':
+    case 'entrypoint': {
+      // Both run in the Worker's application: they are built from its app.
+      const workflow = options.schematic === 'workflow';
+      const hostFile = file('host.ts');
+      creates.push({
+        path: hostFile,
+        content: workflow ? workflowHostSource(name) : entrypointHostSource(name),
+      });
+      const factory = workflow
+        ? { name: 'VelaWorkflow', from: '@velajs/cloudflare/workflows' }
+        : { name: 'VelaEntrypoint', from: '@velajs/cloudflare/entrypoints' };
+      const entryText = await readText(entry);
+      const app = entryText === undefined ? undefined : workerApp(entry, entryText);
+      const imported =
+        entryText === undefined || app !== undefined
+          ? undefined
+          : importedWorkerApp(entry, entryText);
+      if (imported !== undefined) {
+        // An app in its own module: the class imports it, as the entry does.
+        target = file(workflow ? 'workflow.ts' : 'entrypoint.ts');
+        const appName = imported.name === 'default' ? 'app' : imported.name;
+        const appFrom = specifier(target, await importedSource(entry, imported.from), ext);
+        const appImport =
+          imported.name === 'default'
+            ? `import ${appName} from '${appFrom}';`
+            : `import { ${appName} } from '${appFrom}';`;
+        const hostFrom = specifier(target, hostFile, ext);
+        creates.push({
+          path: target,
+          content: workflow
+            ? workflowSource(name, appName, appImport, hostFrom)
+            : entrypointSource(name, appName, appImport, hostFrom),
+        });
+        exported = { name: name.pascal, file: target };
+      } else {
+        if (entryText === undefined || app === undefined) {
+          throw new Error(
+            `A ${workflow ? 'Workflow' : 'service entrypoint'} runs in the Worker's application, ` +
+              `but ${relative(cwd, entry)} builds none: default-export ` +
+              'defineCloudflareApp(AppModule, options).worker from it.',
+          );
+        }
+        let binding = app.binding;
+        if (binding === undefined) {
+          // Checked now, so an entry it cannot edit fails before anything is written.
+          defineWorkerApp(entry, entryText);
+          defineApp = true;
+          binding = 'app';
+        }
+        // The class uses the entry's app, so it is declared beside it: a file
+        // importing the entry would run before the entry defined the app.
+        target = entry;
+        declared = {
+          after: binding,
+          name: name.pascal,
+          declaration: workflow
+            ? workflowDeclaration(name, binding)
+            : entrypointDeclaration(name, binding),
+          imports: [factory, { name: hostClassName(name), from: specifier(entry, hostFile, ext) }],
+        };
+        declaredLine = workflow
+          ? workflowClassLine(name, binding)
+          : entrypointClassLine(name, binding);
+      }
+      notes.push(
+        workflow
+          ? `Next: vela cf sync --write adds the ${name.constant} Workflow binding, and your types script types ENV.${name.constant}.`
+          : `Next: bind it from another Worker (or this one) with services: [{ binding: '${name.constant}', service: '${await workerName(cwd)}', entrypoint: '${name.pascal}' }], and call env.${name.constant}.ping().`,
+      );
+      break;
+    }
   }
 
   const updates = new Map<string, string>();
@@ -504,6 +608,18 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
   // With --skip-import: what to register by hand, listed before the next steps.
   const manual: string[] = [];
 
+  if (defineApp) {
+    if (options.skipImport) {
+      const definition = defineWorkerApp(entry, await read(entry));
+      manual.push(
+        `Define the app in the Worker entry ${display(entry)}: ` +
+          `${definition.statement} ${definition.defaultExport}`,
+      );
+    } else {
+      updates.set(entry, defineWorkerApp(entry, await read(entry)).source);
+    }
+  }
+
   if (declared) {
     if (options.skipImport) {
       const lines = declared.imports.map(
@@ -511,7 +627,7 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
       );
       manual.push(
         `Declare it in the Worker entry ${display(entry)}, after ${declared.after}: ` +
-          `${lines.join(' ')} ${durableObjectClassLine(name, declared.after)}`,
+          `${lines.join(' ')} ${declaredLine}`,
       );
     } else {
       updates.set(entry, addWorkerDeclaration(entry, await read(entry), declared).source);
@@ -570,6 +686,11 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
     updates: [...updates].map(([path, content]) => ({ path, content })),
     notes: [...manual, ...notes],
   };
+}
+
+/** The host class of a Durable Object, Workflow or service entrypoint named `name`. */
+function hostClassName(name: { readonly pascal: string }): string {
+  return `${name.pascal}Host`;
 }
 
 /** Register the class `entry`, imported from the new file `from`. */

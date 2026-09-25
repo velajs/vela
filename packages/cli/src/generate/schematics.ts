@@ -153,6 +153,123 @@ ${durableObjectDeclaration(name, root, app)}
 `;
 }
 
+export function workflowHostSource(name: Names): string {
+  return `import { Injectable, Logger } from '@velajs/vela';
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+
+/** What each ${name.pascal} instance is created with: \`ENV.${name.constant}.create({ params })\`. */
+export interface ${name.pascal}Params {
+  readonly id: string;
+}
+
+/**
+ * The ${name.pascal} Workflow's body. Each run executes in the Worker's
+ * application, so the host injects its providers and ENV. The engine stores
+ * what each step returns and may run the Workflow again (after a sleep or a
+ * failure), when completed steps return their stored result: keep side
+ * effects inside \`step.do\`.
+ */
+@Injectable()
+export class ${name.pascal}Host {
+  readonly #logger = new Logger(${name.pascal}Host.name);
+
+  async run(
+    event: WorkflowEvent<${name.pascal}Params>,
+    step: WorkflowStep,
+  ): Promise<{ id: string; completedAt: string }> {
+    const completedAt = await step.do('process', async () => {
+      this.#logger.log(\`Processing \${event.payload.id}\`);
+      return new Date().toISOString();
+    });
+    return { id: event.payload.id, completedAt };
+  }
+}
+`;
+}
+
+/** The exported Workflow class, built from the app \`app\` names. */
+export function workflowDeclaration(name: Names, app: string): string {
+  return `// Each run executes ${name.pascal}Host.run(event, step) in the application ${app} builds
+// for the run's environment, the one the Worker's handlers use.
+export class ${name.pascal} extends VelaWorkflow(${app}, ${name.pascal}Host) {}`;
+}
+
+/** {@link workflowDeclaration}'s class on one line, for printed instructions. */
+export function workflowClassLine(name: Names, app: string): string {
+  return `export class ${name.pascal} extends VelaWorkflow(${app}, ${name.pascal}Host) {}`;
+}
+
+/** The file declaring the Workflow class the Worker entry exports, from an app it imports. */
+export function workflowSource(
+  name: Names,
+  app: string,
+  appImport: string,
+  hostFrom: string,
+): string {
+  return `import { VelaWorkflow } from '@velajs/cloudflare/workflows';
+${appImport}
+import { ${name.pascal}Host } from '${hostFrom}';
+
+${workflowDeclaration(name, app)}
+`;
+}
+
+/** The RPC methods of the host \`vela generate entrypoint\` writes. */
+export const ENTRYPOINT_RPC = ['ping'] as const;
+
+export function entrypointHostSource(name: Names): string {
+  return `import { Injectable } from '@velajs/vela';
+
+/**
+ * The ${name.pascal} service entrypoint's host. The methods its class lists in
+ * \`rpc\` are the entrypoint's RPC methods, typed on a service binding to it:
+ * \`await env.${name.constant}.ping('hello')\`. No other method is reachable
+ * over RPC; list a new public method there to expose it. Each call runs in the
+ * Worker's application; inject ENTRYPOINT_PROPS from
+ * '@velajs/cloudflare/entrypoints' to read the caller's props.
+ */
+@Injectable()
+export class ${name.pascal}Host {
+  ping(message: string): { message: string; receivedAt: string } {
+    return { message, receivedAt: new Date().toISOString() };
+  }
+}
+`;
+}
+
+const entrypointRpcList = (): string => ENTRYPOINT_RPC.map((method) => `'${method}'`).join(', ');
+
+/** The exported service entrypoint class, built from the app \`app\` names. */
+export function entrypointDeclaration(name: Names, app: string): string {
+  return `// Each call runs in the application ${app} builds for its environment, the one
+// the Worker's handlers use. The host methods rpc names are this entrypoint's
+// RPC methods; the host's guards, pipes, interceptors and filters run around
+// every call.
+export class ${name.pascal} extends VelaEntrypoint(${app}, ${name.pascal}Host, {
+  rpc: [${entrypointRpcList()}],
+}) {}`;
+}
+
+/** {@link entrypointDeclaration}'s class on one line, for printed instructions. */
+export function entrypointClassLine(name: Names, app: string): string {
+  return `export class ${name.pascal} extends VelaEntrypoint(${app}, ${name.pascal}Host, { rpc: [${entrypointRpcList()}] }) {}`;
+}
+
+/** The file declaring the service entrypoint class the Worker entry exports, from an app it imports. */
+export function entrypointSource(
+  name: Names,
+  app: string,
+  appImport: string,
+  hostFrom: string,
+): string {
+  return `import { VelaEntrypoint } from '@velajs/cloudflare/entrypoints';
+${appImport}
+import { ${name.pascal}Host } from '${hostFrom}';
+
+${entrypointDeclaration(name, app)}
+`;
+}
+
 /** The files `vela generate resource` writes, relative to the resource directory. */
 export function resourceSources(
   name: Names,

@@ -40,13 +40,16 @@ class AppModule {}
 export default createCloudflareWorker(AppModule);
 ```
 
-The worker exposes `fetch`, `queue`, and `scheduled`, and carries a
+The worker exposes `fetch`, `queue`, and `scheduled`, plus `email` and `tail`
+once a module imports `@OnEmail()` or `@OnTail()` (see
+[Service entrypoints, email and tail](#service-entrypoints-email-and-tail)), and carries a
 descriptor under the symbol key `CLOUDFLARE_WORKER`
 (`Symbol.for('vela.cloudflare.worker')`), which the platform ignores and which
 an entry adding handlers keeps (`export default { ...worker, email }`): the
-root module, the options, the Durable Object classes defined from the same
-app (each class also carries its descriptor under `CLOUDFLARE_DURABLE_OBJECT`),
-and
+root module, the options, the Durable Object, Workflow and service entrypoint
+classes defined from the same app (each class also carries its descriptor
+under `CLOUDFLARE_DURABLE_OBJECT`, `CLOUDFLARE_WORKFLOW` or
+`CLOUDFLARE_ENTRYPOINT`), and
 `createOptions(env)`/`createApplication(env)`, which build the application
 exactly as the Worker does, short of the `configure(app, env)` hook, which
 receives the Workers application. `@velajs/cli` loads the Worker entry and builds its
@@ -469,16 +472,102 @@ event runs in its own execution scope (request-scoped providers per call)
 through the host's scoped guards, pipes, interceptors and filters, with an
 `ExecutionContext` of type `rpc` (or `cf:do:fetch`, `cf:do:alarm`,
 `cf:do:websocket`); a streamed `fetch()` body keeps its scope open until it is
-sent. Failures are reported first; an RPC call rejects only with a
-`DurableObjectError` (`status`, `code`, `message`, and `details` for a client
-fault), which `isDurableObjectError()` recognizes on the caller's side from
-`compatibility_date` 2026-04-21 (or with `enhanced_error_serialization`). See
+sent. Failures are reported first; an RPC call rejects only with an
+`EntrypointError` (`status`, `code`, `message`, and `details` for a client
+fault), which `isEntrypointError()` from the root entry recognizes on the
+caller's side from `compatibility_date` 2026-04-21 (or with
+`enhanced_error_serialization`). A host whose prototype defines `then()` is
+rejected when the class is defined. See
 [Durable Objects](../../docs/durable-objects.md).
+
+## Workflows
+
+`VelaWorkflow(app, Host)` from `@velajs/cloudflare/workflows` returns a
+`WorkflowEntrypoint` class whose `run(event, step)` is the `run` method of an
+`@Injectable()` host, resolved in the Worker's application for the run's
+environment (the one the Worker's handlers use), with the host added to the
+root module's providers:
+
+```ts
+import { Injectable } from '@velajs/vela';
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { VelaWorkflow } from '@velajs/cloudflare/workflows';
+
+@Injectable()
+export class SignupHost {
+  constructor(private readonly users: UsersService) {}
+
+  async run(event: WorkflowEvent<{ email: string }>, step: WorkflowStep) {
+    const userId = await step.do(
+      'create user',
+      async (): Promise<string> => this.users.create(event.payload.email),
+    );
+    await step.sleep('grace period', '1 day');
+    return { userId };
+  }
+}
+
+export class SignupWorkflow extends VelaWorkflow(app, SignupHost) {}
+// Worker code: await env.SIGNUP_WORKFLOW.create({ params: { email } })
+```
+
+`event` and `step` pass through untouched, so step retries and replays keep
+their semantics. Each run gets its own execution scope (request-scoped
+providers per run) and runs the host's scoped guards, interceptors and filters
+(`getType()` `'cf:workflow'`). A failure is reported (`edge: 'workflow'`) and
+rethrown as it is, so the engine honors `NonRetryableError`. The engine's own
+interruptions (`Aborting engine: ...` when an instance is paused, restarted or
+terminated) pass through unreported and unfiltered. The typed
+`workflow<Params>({ binding })` reference (root entry) creates and reads
+instances from module options and helpers; `WorkflowParams<T>` reads a
+Workflow's params from its class or host. See
+[Workflows](../../docs/workflows.md).
+
+## Service entrypoints, email and tail
+
+`VelaEntrypoint(app, Host, { rpc })` from `@velajs/cloudflare/entrypoints`
+returns a `WorkerEntrypoint` class whose JS-RPC methods are the host methods
+`rpc` names, typed on a `Service<typeof Billing>` binding. Each call runs in the
+Worker's application through the host's scoped guards, pipes, interceptors and
+filters (`getType()` `'rpc'`), with the caller's `ctx.props` injectable as
+`ENTRYPOINT_PROPS`; failures are reported (`edge: 'rpc'`) and reject only with
+an `EntrypointError`:
+
+```ts
+import { Inject, Injectable } from '@velajs/vela';
+import { ENTRYPOINT_PROPS, VelaEntrypoint } from '@velajs/cloudflare/entrypoints';
+
+@Injectable()
+export class BillingHost {
+  constructor(@Inject(ENTRYPOINT_PROPS) private readonly props: unknown) {}
+
+  async charge(customerId: string, cents: number): Promise<{ invoiceId: string }> {
+    return { invoiceId: `${customerId}-${cents}` };
+  }
+}
+
+export class Billing extends VelaEntrypoint(app, BillingHost, { rpc: ['charge'] }) {}
+// Another Worker: services: [{ binding: 'BILLING', service: 'billing', entrypoint: 'Billing' }]
+// await env.BILLING.charge('customer-1', 500)
+```
+
+`fetch`, `connect`, `then`, `ctx`, `env`, `dup`, hooks and the
+`WorkerEntrypoint` handlers are never RPC methods.
+
+`@OnEmail({ to? })` from `@velajs/cloudflare/email` and `@OnTail()` from
+`@velajs/cloudflare/tail` make provider methods the Worker's Email Workers and
+Tail Workers handlers (entrypoint kinds `cf:email` and `cf:tail`); importing
+them gives `app.worker` its `email` and `tail` handlers. An email goes to the
+handlers whose `to` lists its envelope recipient, else to those without `to`,
+and a message no handler accepts is rejected with `setReject()`. Tail handler
+failures are reported and never thrown into the platform's loop; an
+application that fails to start is logged to the console instead. See
+[Service entrypoints, email and tail](../../docs/entrypoints.md).
 
 ## Bindings by name
 
 Module options name a binding instead of holding it. `kv`, `r2`, `d1`,
-`queue`, `durableObject` and `rateLimit` each take `{ binding }`, the name
+`queue`, `durableObject`, `rateLimit` and `workflow` each take `{ binding }`, the name
 declared in the Wrangler configuration, and read nothing when declared: calling
 the reference with an application's `ENV` returns the typed native binding, or
 fails naming the binding and the Wrangler key that declares it
@@ -625,6 +714,11 @@ it('processes a created todo', async () => {
   builds the envelope `QueueClient.add()` sends.
 - `scheduled(cron, { scheduledTime? })` fires a cron trigger with
   `createScheduledController()`, and rejects when no `@Cron` job declares `cron`.
+- `email(message)` and `tail(events)` deliver to the `@OnEmail()` and
+  `@OnTail()` handlers. `emailMessage({ from, to, subject?, text?, headers?, raw? })`
+  builds a `ForwardableEmailMessage` that records `setReject()`, `forward()` and
+  `reply()` (`rejectReason`, `forwards`, `replies`); `traceItem(overrides?)`
+  builds a `TraceItem`.
 - `close()` cancels response bodies a test never read, waits for background
   work (`waitUntil`) and closes the application.
 

@@ -52,6 +52,8 @@ export type {
   ParseInboundEmailOptions,
   Verdict,
 } from './inbound/parse';
+export { readInboundEmail } from './inbound/read';
+export type { InboundEmailMessage, ReadInboundEmailOptions } from './inbound/read';
 export { DEFAULT_INBOUND_GATE, evaluateInboundGate } from './inbound/gate';
 export type { GateMechanism, GateResult, MailInboundGate } from './inbound/gate';
 export { OnInboundEmail } from './inbound/decorator';

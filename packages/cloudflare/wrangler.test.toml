@@ -56,6 +56,25 @@ class_name = "BrokenCounter"
 tag = "v5"
 new_sqlite_classes = ["Counter", "BrokenCounter"]
 
+# A Vela Workflow: each run executes in the Worker's application.
+[[workflows]]
+name = "vela-signups"
+binding = "SIGNUP_WORKFLOW"
+class_name = "SignupWorkflow"
+
+# A Vela Workflow that sleeps between steps, so an instance can be paused mid-run.
+[[workflows]]
+name = "vela-naps"
+binding = "NAP_WORKFLOW"
+class_name = "NapWorkflow"
+
+# A Vela service entrypoint, bound to this Worker with the props its calls carry.
+[[services]]
+binding = "BILLING"
+service = "vela-cloudflare-security-test"
+entrypoint = "Billing"
+props = { tenant = "acme" }
+
 [[kv_namespaces]]
 binding = "CACHE"
 id = "test-cache"

@@ -51,6 +51,8 @@ export interface DeploymentTarget {
   readonly queueConsumers: readonly string[];
   /** Classes this Worker's own Durable Object bindings name (no `script_name`). */
   readonly durableObjectClasses: readonly string[];
+  /** Classes this Worker's own `workflows` entries name (no `script_name`). */
+  readonly workflowClasses: readonly string[];
   readonly customBuild: boolean;
 }
 
@@ -101,6 +103,7 @@ export function selectDeploymentTarget(raw: unknown, environment?: string): Depl
     'build',
   );
   const bindings: DeploymentBinding[] = [];
+  const workflowClasses: string[] = [];
   const names = new Set<string>();
   const add = (name: string, kind: string): void => {
     if (names.has(name)) throw new Error(`Duplicate Worker binding name: ${name}.`);
@@ -129,7 +132,11 @@ export function selectDeploymentTarget(raw: unknown, environment?: string): Depl
         if (Object.hasOwn(row, field)) checked(text, row[field], `${kind}.${field}`);
       }
       if (kind === 'services') checked(workerName, row.service, 'services.service');
-      if (kind === 'workflows') checked(text, row.class_name, 'workflows.class_name');
+      if (kind === 'workflows') {
+        const className = checked(text, row.class_name, 'workflows.class_name');
+        const script = checked(workerName.optional(), row.script_name, 'workflows.script_name');
+        if (script === undefined) workflowClasses.push(className);
+      }
     }
   }
   const durable = checked(
@@ -178,6 +185,7 @@ export function selectDeploymentTarget(raw: unknown, environment?: string): Depl
     durableObjectClasses: (durable?.bindings ?? [])
       .filter((row) => row.script_name === undefined)
       .map((row) => row.class_name),
+    workflowClasses,
     customBuild: build?.command !== undefined,
   };
 }

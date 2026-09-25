@@ -14,7 +14,12 @@ export interface MockWorkerEnv extends VelaEnv {
   CACHE: MockKV;
   JOB_QUEUE: MockQueue;
   REPORT_QUEUE: MockQueue;
+  SIGNUP_WORKFLOW: MockWorkflow;
 }
+
+export type MockWorkflow = VelaEnv['SIGNUP_WORKFLOW'] & {
+  _created: { id: string; params: unknown }[];
+};
 
 function createMockKV(): MockKV {
   const store = new Map<string, string>();
@@ -134,6 +139,20 @@ function createMockDurableObjectNamespace(): MockWorkerEnv['COUNTER_DO'] {
   } as unknown as MockWorkerEnv['COUNTER_DO'];
 }
 
+/** The Signup Workflow binding: records the instances it creates. */
+function createMockWorkflow(): MockWorkflow {
+  const created: { id: string; params: unknown }[] = [];
+  return {
+    create: async (options?: { id?: string; params?: unknown }) => {
+      const id = options?.id ?? `signup-${created.length + 1}`;
+      created.push({ id, params: options?.params });
+      return { id };
+    },
+    get: async (id: string) => ({ id }),
+    _created: created,
+  } as unknown as MockWorkflow;
+}
+
 function createMockAI(): Ai {
   return {
     run: async (model: string, input: unknown) => ({
@@ -178,6 +197,7 @@ export function createMockWorkerEnv(): MockWorkerEnv {
     JOB_QUEUE: createMockQueue(),
     REPORT_QUEUE: createMockQueue(),
     COUNTER_DO: createMockDurableObjectNamespace(),
+    SIGNUP_WORKFLOW: createMockWorkflow(),
     AI: createMockAI(),
     VECTORIZE: createMockVectorize(),
     HYPERDRIVE: createMockHyperdrive(),

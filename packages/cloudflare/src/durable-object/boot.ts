@@ -3,10 +3,10 @@ import type { DynamicModule, Type, VelaApplicationContext, VelaEnv } from '@vela
 import type { Container, RuntimeAdapter } from '@velajs/vela/module-kit';
 import { isCloudflareApp, type CloudflareApp } from '../cloudflare-factory';
 import { registerCloudflarePlatform, type CloudflarePlatform } from '../platform';
-import type { CloudflareRoot } from '../root-module';
+import { withRootProviders, type CloudflareRoot } from '../root-module';
 import { workerLivePlatform } from '../websocket/live-driver';
 import { workerWebSocketTransport } from '../websocket/worker-transport';
-import { DurableObjectError } from './durable-object-error';
+import { internalEntrypointError } from '../rpc/entrypoint-error';
 import { DO_ID, DO_STATE, DO_STORAGE } from './tokens';
 
 /**
@@ -51,8 +51,7 @@ export interface DurableObjectContextOptions {
  * its own providers, so the host injects what the root module can see.
  */
 export function withDurableObjectHost(root: CloudflareRoot, host: Type): DynamicModule {
-  if (typeof root === 'function') return { module: root, providers: [host] };
-  return { ...root, providers: [...(root.providers ?? []), host] };
+  return withRootProviders(root, [host]);
 }
 
 /**
@@ -97,7 +96,7 @@ export function createDurableObjectContext(
  * no event runs before it is ready. A failure is logged, and resets the
  * object (the next event boots it again); workerd hands the callback's
  * rejection to every waiting caller, so they receive only a redacted
- * `DurableObjectError`, never the startup error itself.
+ * `EntrypointError`, never the startup error itself.
  */
 export function startDurableObject<T>(
   state: Pick<DurableObjectState, 'blockConcurrencyWhile'>,
@@ -109,11 +108,7 @@ export function startDurableObject<T>(
       return await boot();
     } catch (error) {
       console.error(`[vela] Durable Object ${name} failed to start:`, error);
-      throw new DurableObjectError({
-        status: 500,
-        code: 'internal',
-        message: 'Internal Server Error',
-      });
+      throw internalEntrypointError();
     }
   });
   // Every handler awaits it; this observes a failure no handler has awaited yet.

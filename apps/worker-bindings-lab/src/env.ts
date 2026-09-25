@@ -11,6 +11,7 @@ declare global {
       JOB_QUEUE: Queue<unknown>;
       REPORT_QUEUE: Queue<unknown>;
       COUNTER_DO: DurableObjectNamespace<import('./worker.js').Counter>;
+      SIGNUP_WORKFLOW: Workflow<Parameters<import('./worker.js').Signup['run']>[0]['payload']>;
       AI: Ai;
       VECTORIZE: VectorizeIndex;
       HYPERDRIVE: Hyperdrive;

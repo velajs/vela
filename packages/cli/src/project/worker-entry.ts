@@ -1,6 +1,9 @@
 import type { DynamicModule, Type } from '@velajs/vela';
 import { cloudflareBaseClasses } from './cloudflare-stubs.js';
 import { isModuleRoot, isRecord } from './files.js';
+import type { UnexportedClass } from './vela-classes.js';
+
+export { definitionOf, type UnexportedClass } from './vela-classes.js';
 
 /** The key `createCloudflareWorker()` attaches its descriptor under (see `@velajs/cloudflare`). */
 export const WORKER_DESCRIPTOR = Symbol.for('vela.cloudflare.worker');
@@ -10,6 +13,12 @@ export const WORKER_DESCRIPTOR = Symbol.for('vela.cloudflare.worker');
  * `VelaWebSocketDurableObject()` carries its descriptor under.
  */
 export const DURABLE_OBJECT_DESCRIPTOR = Symbol.for('vela.cloudflare.durableObject');
+
+/** The static key a Workflow class from `VelaWorkflow()` carries its descriptor under. */
+export const WORKFLOW_DESCRIPTOR = Symbol.for('vela.cloudflare.workflow');
+
+/** The static key a service entrypoint class from `VelaEntrypoint()` carries its descriptor under. */
+export const ENTRYPOINT_DESCRIPTOR = Symbol.for('vela.cloudflare.entrypoint');
 
 /** What `@velajs/cloudflare` records about a Durable Object class it defined. */
 export interface DescribedDurableObject {
@@ -62,14 +71,17 @@ function isClass(value: unknown): value is abstract new (...args: never[]) => un
   return typeof value === 'function';
 }
 
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
 /** Validate one Durable Object descriptor; anything else is not a Vela Durable Object. */
 function readDurableObject(value: unknown): DescribedDurableObject | undefined {
   if (!isRecord(value)) return undefined;
   const { kind, host, methods, durableObject } = value;
   if (
     (kind !== 'host' && kind !== 'websocket') ||
-    !Array.isArray(methods) ||
-    !methods.every((method) => typeof method === 'string') ||
+    !isStringList(methods) ||
     !isClass(durableObject)
   ) {
     return undefined;
@@ -82,12 +94,56 @@ function readDurableObject(value: unknown): DescribedDurableObject | undefined {
   };
 }
 
+/** What `@velajs/cloudflare` records about a Workflow class it defined. */
+interface DescribedWorkflow {
+  readonly host: string;
+  readonly workflow: abstract new (...args: never[]) => unknown;
+}
+
+/** Validate one Workflow descriptor; anything else is not a Vela Workflow. */
+function readWorkflow(value: unknown): DescribedWorkflow | undefined {
+  if (!isRecord(value)) return undefined;
+  const { host, workflow } = value;
+  if (!isClass(host) || !isClass(workflow)) return undefined;
+  return { host: host.name, workflow };
+}
+
+/** What `@velajs/cloudflare` records about a service entrypoint class it defined. */
+interface DescribedEntrypoint {
+  readonly host: string;
+  readonly methods: readonly string[];
+  readonly entrypoint: abstract new (...args: never[]) => unknown;
+}
+
+/** Validate one service entrypoint descriptor; anything else is not a Vela entrypoint. */
+function readEntrypoint(value: unknown): DescribedEntrypoint | undefined {
+  if (!isRecord(value)) return undefined;
+  const { host, methods, entrypoint } = value;
+  if (!isClass(host) || !isStringList(methods) || !isClass(entrypoint)) return undefined;
+  return { host: host.name, methods, entrypoint };
+}
+
 /** A Vela Durable Object class the Worker entry exports. */
 export interface VelaDurableObjectExport {
   /** The export name: Wrangler's `class_name`. */
   readonly name: string;
   readonly kind: 'host' | 'websocket';
   readonly host?: string;
+  readonly methods: readonly string[];
+}
+
+/** A Vela Workflow class (`VelaWorkflow(app, Host)`) the Worker entry exports. */
+export interface VelaWorkflowExport {
+  /** The export name: the `class_name` of a `workflows` entry. */
+  readonly name: string;
+  readonly host: string;
+}
+
+/** A Vela service entrypoint class (`VelaEntrypoint(app, Host, { rpc })`) the Worker entry exports. */
+export interface VelaEntrypointExport {
+  /** The export name: the `entrypoint` of a service binding. */
+  readonly name: string;
+  readonly host: string;
   readonly methods: readonly string[];
 }
 
@@ -98,11 +154,15 @@ export interface WorkerExports {
   readonly entrypoints: readonly string[];
   /** The exported Durable Object classes built by `@velajs/cloudflare`, with what they serve. */
   readonly velaDurableObjects: readonly VelaDurableObjectExport[];
+  /** The exported Workflow classes built by `@velajs/cloudflare`, with their hosts. */
+  readonly velaWorkflows: readonly VelaWorkflowExport[];
+  /** The exported service entrypoint classes built by `@velajs/cloudflare`, with their RPC methods. */
+  readonly velaEntrypoints: readonly VelaEntrypointExport[];
   /**
-   * Durable Object classes defined from the Worker's app (`defineCloudflareApp`)
-   * that no export extends, by what they serve: `CounterHost`, or `WebSocket`.
+   * The Durable Object, Workflow and service entrypoint classes defined from
+   * the Worker's app (`defineCloudflareApp`) that no export extends.
    */
-  readonly unexportedDurableObjects: readonly string[];
+  readonly unexported: readonly UnexportedClass[];
 }
 
 /** How a Durable Object class the app defines is named in messages. */
@@ -112,11 +172,19 @@ export function describeDurableObject(
   return described.kind === 'websocket' ? 'WebSocket' : (described.host ?? 'host');
 }
 
+/** Whether an exported class is, or extends, the class a factory returned. */
+function exports(exported: readonly object[], defined: object): boolean {
+  return exported.some(
+    (candidate) => candidate === defined || Object.prototype.isPrototypeOf.call(defined, candidate),
+  );
+}
+
 /**
  * Classify the named class exports of a Worker entry by the platform class
  * they extend; `load` is the module loader that imported the entry. Durable
- * Object classes `@velajs/cloudflare` built carry what they serve, and the
- * Worker's app lists the Durable Object classes defined from it.
+ * Object, Workflow and service entrypoint classes `@velajs/cloudflare` built
+ * carry what they serve, and the Worker's app lists the classes defined from
+ * it.
  */
 export async function classifyWorkerExports(
   entry: unknown,
@@ -127,6 +195,8 @@ export async function classifyWorkerExports(
   const workflows: string[] = [];
   const entrypoints: string[] = [];
   const velaDurableObjects: VelaDurableObjectExport[] = [];
+  const velaWorkflows: VelaWorkflowExport[] = [];
+  const velaEntrypoints: VelaEntrypointExport[] = [];
   const exportedClasses: object[] = [];
   if (isRecord(entry)) {
     for (const [name, value] of Object.entries(entry)) {
@@ -144,8 +214,19 @@ export async function classifyWorkerExports(
             methods: described.methods,
           });
         }
-      } else if (prototype instanceof WorkflowEntrypoint) workflows.push(name);
-      else if (prototype instanceof WorkerEntrypoint) entrypoints.push(name);
+      } else if (prototype instanceof WorkflowEntrypoint) {
+        workflows.push(name);
+        exportedClasses.push(value);
+        const described = readWorkflow(Reflect.get(value, WORKFLOW_DESCRIPTOR));
+        if (described) velaWorkflows.push({ name, host: described.host });
+      } else if (prototype instanceof WorkerEntrypoint) {
+        entrypoints.push(name);
+        exportedClasses.push(value);
+        const described = readEntrypoint(Reflect.get(value, ENTRYPOINT_DESCRIPTOR));
+        if (described) {
+          velaEntrypoints.push({ name, host: described.host, methods: described.methods });
+        }
+      }
     }
   }
   const worker = isRecord(entry) ? entry.default : undefined;
@@ -153,18 +234,38 @@ export async function classifyWorkerExports(
     typeof worker === 'object' && worker !== null
       ? Reflect.get(worker, WORKER_DESCRIPTOR)
       : undefined;
-  const defined: unknown = isRecord(descriptor) ? descriptor.durableObjects : undefined;
-  const unexportedDurableObjects = (Array.isArray(defined) ? defined : [])
-    .map(readDurableObject)
-    .filter((described): described is DescribedDurableObject => described !== undefined)
-    .filter(
-      ({ durableObject }) =>
-        !exportedClasses.some(
-          (exported) =>
-            exported === durableObject ||
-            Object.prototype.isPrototypeOf.call(durableObject, exported),
-        ),
-    )
-    .map(describeDurableObject);
-  return { durableObjects, workflows, entrypoints, velaDurableObjects, unexportedDurableObjects };
+  const listed = (key: string): unknown[] => {
+    const value: unknown = isRecord(descriptor) ? descriptor[key] : undefined;
+    return Array.isArray(value) ? value : [];
+  };
+  const unexported: UnexportedClass[] = [
+    ...listed('durableObjects')
+      .map(readDurableObject)
+      .filter((described) => described !== undefined)
+      .filter(({ durableObject }) => !exports(exportedClasses, durableObject))
+      .map((described) => ({
+        kind: 'durable-object' as const,
+        serves: describeDurableObject(described),
+        methods: described.kind === 'websocket' ? [] : described.methods,
+      })),
+    ...listed('workflows')
+      .map(readWorkflow)
+      .filter((described) => described !== undefined)
+      .filter(({ workflow }) => !exports(exportedClasses, workflow))
+      .map(({ host }) => ({ kind: 'workflow' as const, serves: host, methods: [] })),
+    ...listed('entrypoints')
+      .map(readEntrypoint)
+      .filter((described) => described !== undefined)
+      .filter(({ entrypoint }) => !exports(exportedClasses, entrypoint))
+      .map(({ host, methods }) => ({ kind: 'entrypoint' as const, serves: host, methods })),
+  ];
+  return {
+    durableObjects,
+    workflows,
+    entrypoints,
+    velaDurableObjects,
+    velaWorkflows,
+    velaEntrypoints,
+    unexported,
+  };
 }

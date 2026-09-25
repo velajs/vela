@@ -6,57 +6,43 @@ import {
   type CloudflareDurableObjectDescriptor,
 } from '../cloudflare-factory';
 import { durableObjectDefinition, startDurableObject, type DurableObjectRoot } from './boot';
-import { DurableObjectError } from './durable-object-error';
+import { internalEntrypointError } from '../rpc/entrypoint-error';
+import type { RpcMethodOf, RpcMethods } from '../host/host-members';
 import { createDurableObjectHost, type DurableObjectHostDispatcher } from './host-dispatch';
 import { durableObjectHostMembers, type DurableObjectHandlerName } from './host-methods';
 
 /**
- * Host members that are never RPC methods: lifecycle, disposal and entrypoint
- * hooks the application context calls, the object's event handlers, and the
- * names the Durable Object class or its stubs own (`ctx`, `env`, `connect`,
- * `dup`, `id`, `name`).
+ * Host members that are never RPC methods, besides the lifecycle, disposal and
+ * entrypoint hooks the application context calls: the object's event
+ * handlers, the names the Durable Object class or its stubs own (`ctx`,
+ * `env`, `connect`, `dup`, `id`, `name`), and `then`.
  */
 type NotRpcMethod =
-  | 'onModuleInit'
-  | 'onApplicationBootstrap'
-  | 'onModuleDestroy'
-  | 'beforeApplicationShutdown'
-  | 'onApplicationShutdown'
-  | 'dispose'
-  | 'collectEntrypoints'
   | DurableObjectHandlerName
   | 'ctx'
   | 'env'
   | 'connect'
   | 'dup'
   | 'id'
-  | 'name';
+  | 'name'
+  | 'then';
 
 /**
  * The names a host's `rpc` list may take: its public methods, less hooks,
  * event handlers and names the Durable Object or its stubs own. TypeScript
  * `private` and `protected` methods are not among them.
  */
-export type DurableObjectRpcMethod<Host> = {
-  [K in keyof Host]: K extends string
-    ? K extends NotRpcMethod
-      ? never
-      : Host[K] extends (...args: never[]) => unknown
-        ? K
-        : never
-    : never;
-}[keyof Host];
+export type DurableObjectRpcMethod<Host> = RpcMethodOf<Host, NotRpcMethod>;
 
 /**
  * The RPC methods a `VelaDurableObject(root, Host, { rpc })` class exposes:
  * the host methods `Method` names, asynchronous. A stub of the class
  * (`env.COUNTER.getByName(name)`) calls them with these signatures.
  */
-export type DurableObjectRpc<Host, Method extends DurableObjectRpcMethod<Host>> = {
-  [K in Method]: Host[K] extends (...args: infer Args) => infer Result
-    ? (...args: Args) => Promise<Awaited<Result>>
-    : never;
-};
+export type DurableObjectRpc<Host, Method extends DurableObjectRpcMethod<Host>> = RpcMethods<
+  Host,
+  Method
+>;
 
 /** Options of {@link VelaDurableObject}. */
 export interface VelaDurableObjectOptions<Method extends string = string> {
@@ -97,11 +83,7 @@ async function startedDispatcher(instance: object): Promise<DurableObjectHostDis
   try {
     return await dispatcherOf(instance);
   } catch {
-    throw new DurableObjectError({
-      status: 500,
-      code: 'internal',
-      message: 'Internal Server Error',
-    });
+    throw internalEntrypointError();
   }
 }
 
@@ -130,9 +112,11 @@ async function startedDispatcher(instance: object): Promise<DurableObjectHostDis
  *   typed so `DurableObjectNamespace<Counter>` stubs expose exactly their
  *   signatures. No other method is reachable over RPC: not an unlisted public
  *   method, a TypeScript `private` helper or a hook. A listed name that is not
- *   a prototype method of the host throws here. `fetch`, `alarm`,
- *   `webSocketMessage`, `webSocketClose` and `webSocketError`, when the host
- *   defines them, become the object's handlers.
+ *   a prototype method of the host throws here, and so does a host whose
+ *   prototype defines `then()`, which would make every instance a thenable.
+ *   `fetch`, `alarm`, `webSocketMessage`, `webSocketClose` and
+ *   `webSocketError`, when the host defines them, become the object's
+ *   handlers.
  * - The context boots in the constructor under `blockConcurrencyWhile`, so no
  *   event runs before it is ready. It injects `ENV` (the object's
  *   environment), `DO_STATE`, `DO_STORAGE` and `DO_ID`, and reaches WebSocket
@@ -141,7 +125,7 @@ async function startedDispatcher(instance: object): Promise<DurableObjectHostDis
  *   scoped guards, pipes, interceptors and filters (`getType()` is `rpc`, or
  *   `cf:do:fetch`, `cf:do:alarm`, `cf:do:websocket`); a streamed `fetch()`
  *   body keeps its scope open until it finishes. Failures are reported; an
- *   RPC call rejects with a {@link DurableObjectError} and nothing else.
+ *   RPC call rejects with an `EntrypointError` and nothing else.
  */
 export function VelaDurableObject<
   Host extends object,

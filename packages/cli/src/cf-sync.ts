@@ -11,7 +11,7 @@ import {
 import { cronDialectAmbiguity, parseCronMetadata } from '@velajs/vela/module-kit';
 import type { EntrypointRow } from './introspect.js';
 import { isRecord } from './project/files.js';
-import type { WorkerExports } from './project/worker-entry.js';
+import { definitionOf, type UnexportedClass, type WorkerExports } from './project/worker-entry.js';
 import { environmentSection, wranglerWorkerName, type WranglerConfig } from './project/wrangler.js';
 
 /** What the application declares, as `vela cf sync` compares it with Wrangler. */
@@ -116,7 +116,10 @@ const label = (path: JSONPath): string => path.join('.');
  * application declares: cron triggers for `@Cron` jobs, queue producers for
  * `QueueModule.registerQueue({ binding })`, consumers for the queues its
  * processors and `@QueueConsumer` handlers read, and Durable Object bindings,
- * migrations and Workflows for the classes the Worker entry exports.
+ * migrations and Workflows for the classes the Worker entry exports. It warns
+ * about the Vela classes the app defines but the entry does not export, and
+ * about service bindings to an entrypoint of this Worker the entry does not
+ * export.
  */
 export function planCloudflareSync(
   config: WranglerConfig,
@@ -339,14 +342,21 @@ export function planCloudflareSync(
       );
     }
   }
-  for (const described of facts.exports.unexportedDurableObjects) {
-    const factory =
-      described === 'WebSocket'
-        ? 'VelaWebSocketDurableObject(app)'
-        : `VelaDurableObject(app, ${described})`;
+  // The class exists, with its rpc list: it only needs exporting.
+  const purpose: Record<UnexportedClass['kind'], string> = {
+    'durable-object': 'under its Wrangler class_name so Wrangler can bind it',
+    workflow: 'under its Wrangler class_name so a workflows binding can run it',
+    entrypoint: 'under the name service bindings give as their entrypoint',
+  };
+  const classLabel: Record<UnexportedClass['kind'], string> = {
+    'durable-object': 'a Durable Object class',
+    workflow: 'a Workflow class',
+    entrypoint: 'a service entrypoint class',
+  };
+  for (const described of facts.exports.unexported) {
     warnings.push(
-      `The app defines a Durable Object class for ${described}, which the Worker entry does not ` +
-        `export: export it (export class Name extends ${factory} {}) so Wrangler can bind it.`,
+      `The app defines ${classLabel[described.kind]}, ${definitionOf(described)}, that the Worker ` +
+        `entry does not export: export that class from the Worker entry ${purpose[described.kind]}.`,
     );
   }
   for (const row of local) {
@@ -418,6 +428,17 @@ export function planCloudflareSync(
           'which the Worker entry does not export.',
       );
     }
+  }
+
+  // Services: a binding to this Worker's own entrypoint needs the Worker entry to export it.
+  const services = location(config, environment, 'services', false);
+  for (const binding of records(services.value)) {
+    if (binding.service !== worker || typeof binding.entrypoint !== 'string') continue;
+    if (facts.exports.entrypoints.includes(binding.entrypoint)) continue;
+    warnings.push(
+      `The service binding ${JSON.stringify(binding.binding)} names entrypoint ` +
+        `${JSON.stringify(binding.entrypoint)} of this Worker, which the Worker entry does not export.`,
+    );
   }
 
   return { changes, warnings };

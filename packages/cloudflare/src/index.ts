@@ -4,7 +4,9 @@ export type { CloudflareRoot } from './root-module';
 export { durableObjectRoomName } from './websocket/room-id';
 export {
   CLOUDFLARE_DURABLE_OBJECT,
+  CLOUDFLARE_ENTRYPOINT,
   CLOUDFLARE_WORKER,
+  CLOUDFLARE_WORKFLOW,
   cloudflareAdapter,
   createCloudflareApp,
   createCloudflareWorker,
@@ -15,17 +17,23 @@ export type {
   CloudflareApp,
   CloudflareAppOptions,
   CloudflareDurableObjectDescriptor,
+  CloudflareEntrypointDescriptor,
   CloudflareWorker,
   CloudflareWorkerDescriptor,
   CloudflareWorkerOptions,
+  CloudflareWorkflowDescriptor,
   CreateCloudflareAppOptions,
 } from './cloudflare-factory';
 export { CloudflareApplication } from './cloudflare-application';
 export type { MountOpenApiOptions } from './cloudflare-application';
 
+// The one error a JS-RPC call of a Vela Durable Object or service entrypoint rejects with
+export { EntrypointError, isEntrypointError } from './rpc/entrypoint-error';
+export type { EntrypointErrorInit } from './rpc/entrypoint-error';
+
 // Name-based binding factories: { binding } references resolved from each
 // application's ENV when used
-export { d1, durableObject, kv, queue, r2, rateLimit } from './bindings';
+export { d1, durableObject, kv, queue, r2, rateLimit, workflow } from './bindings';
 
 // Services
 export {

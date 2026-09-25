@@ -28,7 +28,7 @@ import {
 } from '@velajs/vela';
 import { APP_LOGGER } from '@velajs/vela/logging';
 import type { Container, EntrypointExecutionContext } from '@velajs/vela/module-kit';
-import { DurableObjectError, isDurableObjectError } from '../durable-object/durable-object-error';
+import { EntrypointError, isEntrypointError } from '../rpc/entrypoint-error';
 import { durableObjectHostMembers } from '../durable-object/host-methods';
 import {
   createDurableObjectHost,
@@ -80,10 +80,10 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
   throw new Error('Expected a rejection');
 }
 
-/** The DurableObjectError a failed RPC call rejects with. */
-async function rpcFailure(promise: Promise<unknown>): Promise<DurableObjectError> {
+/** The EntrypointError a failed RPC call rejects with. */
+async function rpcFailure(promise: Promise<unknown>): Promise<EntrypointError> {
   const error = await rejection(promise);
-  if (!(error instanceof DurableObjectError)) throw new Error(`Unexpected rejection: ${error}`);
+  if (!(error instanceof EntrypointError)) throw new Error(`Unexpected rejection: ${error}`);
   return error;
 }
 
@@ -127,12 +127,43 @@ describe('Durable Object host methods', () => {
     expect(durableObjectHostMembers(CounterHost)).toEqual({ methods: [], handlers });
   });
 
+  it('rejects a host whose prototype defines then(), which would hang its resolution', () => {
+    class ThenableHost {
+      increment(): number {
+        return 1;
+      }
+      then(resolve: (value: unknown) => void): void {
+        void resolve;
+      }
+    }
+    class Base {
+      get then(): undefined {
+        return undefined;
+      }
+    }
+    class InheritedThenable extends Base {
+      increment(): number {
+        return 1;
+      }
+    }
+    // Resolving the host awaits it: a thenable never produces the instance.
+    expect(() => durableObjectHostMembers(ThenableHost, ['increment'])).toThrow(
+      'ThenableHost defines then()',
+    );
+    expect(() => durableObjectHostMembers(InheritedThenable)).toThrow(
+      'InheritedThenable defines then()',
+    );
+  });
+
   it('rejects rpc names that would shadow the Durable Object or its stubs', () => {
     for (const name of ['ctx', 'env', 'connect', 'dup', 'id', 'name']) {
       class Clashing {}
       Object.defineProperty(Clashing.prototype, name, { value: () => undefined });
       expect(() => durableObjectHostMembers(Clashing, [name])).toThrow(`'${name}' is reserved`);
     }
+    // A host defining then() is rejected outright (see above); listing it is reserved too.
+    class Plain {}
+    expect(() => durableObjectHostMembers(Plain, ['then'])).toThrow(`'then' is reserved`);
   });
 
   it('rejects rpc names that are hooks, handlers or not prototype methods', () => {
@@ -269,7 +300,7 @@ describe('Durable Object host dispatch', () => {
     expect(context?.getPayload()).toEqual(['21']);
 
     const denied = await rpcFailure(dispatcher.call('secret', []));
-    expect(isDurableObjectError(denied)).toBe(true);
+    expect(isEntrypointError(denied)).toBe(true);
     expect(denied).toMatchObject({ status: 403, code: 'forbidden', message: 'Forbidden' });
 
     expect(await dispatcher.call('missing', [])).toBe('recovered');
@@ -294,10 +325,10 @@ describe('Durable Object host dispatch', () => {
         });
       }
       nested(): never {
-        throw new DurableObjectError({ status: 409, code: 'conflict', message: 'Busy' });
+        throw new EntrypointError({ status: 409, code: 'conflict', message: 'Busy' });
       }
       nestedServerFault(): never {
-        throw new DurableObjectError({
+        throw new EntrypointError({
           status: 503,
           code: 'upstream_down',
           message: 'upstream db.internal:5432 refused',
@@ -315,11 +346,11 @@ describe('Durable Object host dispatch', () => {
     ]);
 
     const leaked = await rpcFailure(dispatcher.call('leak', []));
-    expect(isDurableObjectError(leaked)).toBe(true);
+    expect(isEntrypointError(leaked)).toBe(true);
     // Only these own properties cross the RPC boundary (workerd serializes them).
-    expect({ ...leaked }).toEqual({ name: 'DurableObjectError', status: 500, code: 'internal' });
+    expect({ ...leaked }).toEqual({ name: 'EntrypointError', status: 500, code: 'internal' });
     expect(leaked.message).toBe('Internal Server Error');
-    expect(leaked.stack).toBe('DurableObjectError: Internal Server Error');
+    expect(leaked.stack).toBe('EntrypointError: Internal Server Error');
     expect(Object.getOwnPropertyNames(leaked).toSorted()).toEqual(
       ['code', 'message', 'name', 'stack', 'status'].toSorted(),
     );
@@ -345,7 +376,7 @@ describe('Durable Object host dispatch', () => {
     // A server fault keeps its status only: its text is never a client message.
     const serverFault = await rpcFailure(dispatcher.call('nestedServerFault', []));
     expect({ ...serverFault, message: serverFault.message }).toEqual({
-      name: 'DurableObjectError',
+      name: 'EntrypointError',
       status: 503,
       code: 'service_unavailable',
       message: 'Service Unavailable',
@@ -397,7 +428,7 @@ describe('Durable Object host dispatch', () => {
     );
     const failure = await rpcFailure(dispatcher.call('ping', []));
     expect({ ...failure, message: failure.message }).toEqual({
-      name: 'DurableObjectError',
+      name: 'EntrypointError',
       status: 500,
       code: 'internal',
       message: 'Internal Server Error',
@@ -411,17 +442,15 @@ describe('Durable Object host dispatch', () => {
   it('recognizes the error shape after it crossed the RPC boundary', () => {
     // workerd delivers a plain Error carrying the thrown error's own properties.
     const remote = Object.assign(new Error('Forbidden'), {
-      name: 'DurableObjectError',
+      name: 'EntrypointError',
       status: 403,
       code: 'forbidden',
       remote: true,
     });
-    expect(isDurableObjectError(remote)).toBe(true);
-    if (isDurableObjectError(remote)) expectTypeOf(remote.status).toEqualTypeOf<number>();
-    expect(isDurableObjectError(new Error('Forbidden'))).toBe(false);
-    expect(isDurableObjectError({ name: 'DurableObjectError', status: '403', code: 'x' })).toBe(
-      false,
-    );
+    expect(isEntrypointError(remote)).toBe(true);
+    if (isEntrypointError(remote)) expectTypeOf(remote.status).toEqualTypeOf<number>();
+    expect(isEntrypointError(new Error('Forbidden'))).toBe(false);
+    expect(isEntrypointError({ name: 'EntrypointError', status: '403', code: 'x' })).toBe(false);
   });
 
   it('delegates fetch, alarm and WebSocket handlers through the same pipeline', async () => {

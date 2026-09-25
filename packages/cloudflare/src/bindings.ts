@@ -1,4 +1,9 @@
-import { defineBinding, type BindingKind } from '@velajs/vela/module-kit';
+import {
+  defineBinding,
+  type Binding,
+  type BindingKind,
+  type BindingRef,
+} from '@velajs/vela/module-kit';
 
 /** Whether a value exposes every named operation as a function. */
 function hasOperations(value: unknown, operations: readonly string[]): boolean {
@@ -63,3 +68,20 @@ export const RATE_LIMITER: BindingKind<RateLimit> = {
   accepts: (value): value is RateLimit => hasOperations(value, ['limit']),
 };
 export const rateLimit = /* @__PURE__ */ defineBinding(RATE_LIMITER);
+
+/**
+ * A reference to a Workflow binding declared under `workflows`, whose
+ * instances take `Params`: for a class from `VelaWorkflow()`,
+ * `workflow<WorkflowParams<SignupWorkflow>>({ binding: 'SIGNUP_WORKFLOW' })`.
+ * Called with an application's ENV, it returns the native binding typed with
+ * those params: `await signups(env).create({ params: { email } })`. The
+ * runtime checks that the binding is a Workflow; its params are what the
+ * Workflow class declares.
+ */
+export function workflow<Params = unknown>(ref: BindingRef): Binding<Workflow<Params>> {
+  return defineBinding<Workflow<Params>>({
+    name: 'Workflow',
+    configKey: 'workflows',
+    accepts: (value): value is Workflow<Params> => hasOperations(value, ['create', 'get']),
+  })(ref);
+}

@@ -56,8 +56,11 @@ describe('Worker descriptor', () => {
     expectTypeOf(descriptor).toEqualTypeOf<CloudflareWorkerDescriptor>();
     expect(descriptor.rootModule).toBe(AppModule);
     expect(descriptor.options).toBe(options);
-    // Workers read the string-keyed handlers only.
+    // Workers read the string-keyed handlers only. `email` and `tail` appear
+    // once a module imports @OnEmail() or @OnTail() (worker-events.test.ts).
     expect(Object.keys(worker).sort()).toEqual(['fetch', 'queue', 'scheduled']);
+    expect(descriptor.workflows).toEqual([]);
+    expect(descriptor.entrypoints).toEqual([]);
   });
 
   it('keeps the descriptor when the Worker is spread into an entry with more handlers', () => {

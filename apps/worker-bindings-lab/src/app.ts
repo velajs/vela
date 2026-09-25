@@ -11,6 +11,8 @@ import {
 } from '@velajs/vela';
 import { Cron, type CronInvocation } from '@velajs/vela/schedule';
 import { QueueConsumer, createCloudflareApp } from '@velajs/cloudflare';
+import { OnEmail } from '@velajs/cloudflare/email';
+import { OnTail } from '@velajs/cloudflare/tail';
 import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import {
   InjectQueue,
@@ -150,6 +152,13 @@ class WorkerBindingsController {
     return this.bindings.durableObjectStatus(name);
   }
 
+  // Starts a Signup Workflow instance, typed by the Signup class's run.
+  @Post('/signups')
+  async signup(@Body('email') email: string) {
+    const instance = await this.env.SIGNUP_WORKFLOW.create({ params: { email } });
+    return { id: instance.id };
+  }
+
   @Post('/ai')
   runAI(@Body() body: unknown) {
     return this.bindings.runAI(body);
@@ -184,6 +193,20 @@ class WorkerEvents {
   @QueueConsumer('JOB_QUEUE')
   queue(batch: { queue: string; messages: Array<{ body: unknown }> }) {
     this.env.EVENT_LOG.push(`queue:${batch.messages.length}`);
+  }
+
+  // Email Routing delivers reports@ to the Worker's email handler; mail for any
+  // other address is rejected, since no handler accepts it.
+  @OnEmail({ to: 'reports@lab.example' })
+  async inbound(message: ForwardableEmailMessage) {
+    this.env.EVENT_LOG.push(`email:${message.from}`);
+    await message.forward('archive@lab.example');
+  }
+
+  // The producer Workers naming this one in tail_consumers deliver their events here.
+  @OnTail()
+  tail(events: TraceItem[]) {
+    this.env.EVENT_LOG.push(`tail:${events.filter((event) => event.outcome !== 'ok').length}`);
   }
 }
 

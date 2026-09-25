@@ -105,12 +105,15 @@ vela deploy check
   The Worker of `defineCloudflareApp(AppModule, options)` (and
   `createCloudflareWorker(AppModule, options)`) attaches a descriptor under
   `Symbol.for('vela.cloudflare.worker')`, from which the CLI builds the same
-  application the Worker builds; it also lists the Durable Object classes
-  defined from the app, and each class `VelaDurableObject()` or
-  `VelaWebSocketDurableObject()` builds carries its own descriptor under
-  `Symbol.for('vela.cloudflare.durableObject')`. `cloudflare:*` modules resolve
+  application the Worker builds; it also lists the Durable Object, Workflow and
+  service entrypoint classes defined from the app, and each class
+  `VelaDurableObject()`, `VelaWebSocketDurableObject()`, `VelaWorkflow()` or
+  `VelaEntrypoint()` builds carries its own descriptor under
+  `Symbol.for('vela.cloudflare.durableObject')`,
+  `Symbol.for('vela.cloudflare.workflow')` or
+  `Symbol.for('vela.cloudflare.entrypoint')`. `cloudflare:*` modules resolve
   to inert Node stand-ins through a Node module hook, so the entry may export
-  Durable Object and Workflow classes. Listing commands (`route list`, `module graph`,
+  Durable Object, Workflow and entrypoint classes. Listing commands (`route list`, `module graph`,
   `entrypoint list`, `openapi dump`, `client generate`, `doctor --app`,
   `deploy check`, `cf sync`) seed `ENV` with the Wrangler `vars` only; `db seed`
   uses Wrangler's `getPlatformProxy()` local bindings. A `vela.config` in the
@@ -118,7 +121,7 @@ vela deploy check
   application, its console output (module-scope code of the config or Worker
   entry and `Logger` lines included) goes to stderr, so `--json` output and
   the `mcp serve` channel on stdout stay machine-readable.
-- **Generators.** `vela generate module|controller|service|resource|queue|cron|durable-object <name>`
+- **Generators.** `vela generate module|controller|service|resource|queue|cron|durable-object|workflow|entrypoint <name>`
   writes current-API code (the root application kit, `@velajs/vela/queue`,
   `@velajs/vela/schedule`, `ENV`, decorator routes whose options declare
   `response` schemas when the project uses zod) and registers it:
@@ -147,8 +150,18 @@ vela deploy check
   class is built from the root module the entry names, in
   `counter.durable-object.ts`, and the generator says so when the entry passes
   options the class then does not share (see
-  [Durable Objects](durable-objects.md)). `--skip-import` prints the
-  registration instead.
+  [Durable Objects](durable-objects.md)). `workflow` and `entrypoint` write a
+  host (`signup.host.ts` with its `run(event, step)` and params, or
+  `billing.host.ts` with a `ping` RPC method) and declare
+  `VelaWorkflow(app, SignupHost)` or
+  `VelaEntrypoint(app, BillingHost, { rpc: ['ping'] })` after the entry's app:
+  both run in the Worker's application, so an entry that default-exports
+  `createCloudflareWorker(AppModule, options)` is first given
+  `const app = defineCloudflareApp(AppModule, options)` and
+  `export default app.worker`, and an entry that imports its app from its own
+  module gets `signup.workflow.ts` or `billing.entrypoint.ts` importing it (see
+  [Workflows](workflows.md) and [entrypoints](entrypoints.md)). `--skip-import`
+  prints the registration instead.
   TypeScript 7 has no stable compiler API, which is why the CLI uses Oxc here.
 - **Resources.** `vela add d1|kv|r2|queue <BINDING>` wraps
   `wrangler <resource> create --binding --update-config` (queues:
@@ -184,8 +197,11 @@ vela deploy check
   consumers, Durable Object bindings and migrations, and Workflows from the
   application and the Worker entry's exports. A gateway binding no class serves
   is paired with the one exported `VelaWebSocketDurableObject` class without a
-  binding, never with a host Durable Object, and a Durable Object class the app
-  defines but the entry does not export is reported. It exits 1 on differences, and
+  binding, never with a host Durable Object. A Durable Object, Workflow or
+  service entrypoint class the app defines but the entry does not export is
+  reported with the call that defined it (with its `rpc` list), and so is a
+  service binding to an `entrypoint` of this Worker that the entry does not
+  export. It exits 1 on differences, and
   `--write` edits JSON/JSONC through `jsonc-parser`, one element at a time
   (a cron trigger is appended or removed on its own), keeping comments. A cron
   trigger no `@Cron` job declares is reported as not declared by any job and
