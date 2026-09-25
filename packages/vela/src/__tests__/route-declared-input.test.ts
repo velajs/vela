@@ -1,8 +1,11 @@
+import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+  APP_EXCEPTION_HANDLER,
   Body,
   Controller,
+  defineProvider,
   Delete,
   Get,
   Module,
@@ -212,5 +215,183 @@ describe('declared request groups', () => {
     await expect(start(Drafts)).rejects.toThrow(
       /Drafts\.create: the route declares the body schema; remove the schema from @Body\(\)/,
     );
+  });
+});
+
+// Serve a controller, collecting the errors the application reports.
+async function serve(controller: new () => object) {
+  const reported: unknown[] = [];
+  @Module({
+    controllers: [controller],
+    providers: [
+      defineProvider(APP_EXCEPTION_HANDLER, {
+        useValue: { report: (error: unknown) => void reported.push(error) },
+      }),
+    ],
+  })
+  class App {}
+  return { app: await VelaFactory.create(App), reported };
+}
+
+const messages = (reported: unknown[]) =>
+  reported.map((error) => (error instanceof Error ? error.message : String(error)));
+
+describe('named parameters on schemas that cannot list their keys', () => {
+  it('checks path parameters against a schema with fields JSON Schema cannot express', async () => {
+    const read = defineRoute({
+      method: 'GET',
+      path: '/orgs/:org/days/:id',
+      params: z.object({ id: z.coerce.date() }),
+      response: z.object({ org: z.string() }),
+    });
+    @Controller('/orgs/:org/days')
+    class Days {
+      @Get('/:id', read)
+      read(@Param('org') org: string) {
+        return { org };
+      }
+    }
+    await expect(start(Days)).rejects.toThrow(
+      /Days\.read: its params schema does not declare the path parameter org/,
+    );
+  });
+
+  it('answers 500 when a named parameter reads a path parameter its schema dropped', async () => {
+    const read = defineRoute({
+      method: 'GET',
+      path: '/orgs/:org/items/:id',
+      params: v.object({ id: v.string() }),
+      response: z.object({ org: z.string(), id: z.string() }),
+    });
+    const parsed = defineRoute({
+      method: 'GET',
+      path: '/orgs/:org/parsed/:id',
+      params: { parse: (value: unknown) => ({ id: String(Reflect.get(Object(value), 'id')) }) },
+      response: z.object({ org: z.string(), id: z.string() }),
+    });
+    calls = 0;
+    @Controller('/orgs/:org')
+    class Items {
+      @Get('/items/:id', read)
+      read(@Param('org') org: string, @Param('id') itemId: string) {
+        calls++;
+        return { org, id: itemId };
+      }
+
+      @Get('/parsed/:id', parsed)
+      parsed(@Param('org') org: string, @Param('id') itemId: string) {
+        calls++;
+        return { org, id: itemId };
+      }
+    }
+    const { app, reported } = await serve(Items);
+    try {
+      expect((await send(app, 'GET', '/orgs/acme/items/1')).status).toBe(500);
+      expect((await send(app, 'GET', '/orgs/acme/parsed/1')).status).toBe(500);
+      expect(calls).toBe(0);
+      expect(messages(reported)).toEqual([
+        "Items.read: @Param('org') reads a key the route's params schema does not return",
+        "Items.parsed: @Param('org') reads a key the route's params schema does not return",
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('answers 500 when a named query parameter reads a key its schema dropped', async () => {
+    const list = defineRoute({
+      method: 'GET',
+      path: '/ledger',
+      query: v.object({ page: v.optional(v.string()) }),
+      response: z.object({ tenant: z.string().nullable() }),
+    });
+    @Controller('/ledger')
+    class Ledger {
+      @Get(list)
+      list(@Query('tenant') tenant: string | undefined) {
+        return { tenant: tenant ?? null };
+      }
+    }
+    const { app, reported } = await serve(Ledger);
+    try {
+      const absent = await send(app, 'GET', '/ledger?page=1');
+      expect(absent.status).toBe(200);
+      expect(await absent.json()).toEqual({ tenant: null });
+      expect((await send(app, 'GET', '/ledger?tenant=a')).status).toBe(500);
+      expect(messages(reported)).toEqual([
+        "Ledger.list: @Query('tenant') reads a key the route's query schema does not return",
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('answers 500 when a named body parameter reads a member its schema dropped', async () => {
+    const create = defineRoute({
+      method: 'POST',
+      path: '/memos',
+      body: v.object({ title: v.string() }),
+      response: z.object({ owner: z.string().nullable() }),
+    });
+    @Controller('/memos')
+    class Memos {
+      @Post(create)
+      create(@Body('owner') owner: string | undefined) {
+        return { owner: owner ?? null };
+      }
+    }
+    const { app, reported } = await serve(Memos);
+    try {
+      const plain = await send(app, 'POST', '/memos', json({ title: 'a' }));
+      expect(plain.status).toBe(201);
+      expect(await plain.json()).toEqual({ owner: null });
+      expect((await send(app, 'POST', '/memos', json({ title: 'a', owner: 'b' }))).status).toBe(
+        500,
+      );
+      expect(messages(reported)).toEqual([
+        "Memos.create: @Body('owner') reads a key the route's body schema does not return",
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reads the keys a transforming schema returns, not the keys it accepts', async () => {
+    const read = defineRoute({
+      method: 'GET',
+      path: '/notes/:id',
+      params: z.object({ id: z.string() }).transform((value) => ({ noteId: value.id })),
+      response: z.object({ id: z.string() }),
+    });
+    const stale = defineRoute({
+      method: 'GET',
+      path: '/notes/:id/stale',
+      params: z.object({ id: z.string() }).transform((value) => ({ noteId: value.id })),
+      response: z.object({ id: z.string() }),
+    });
+    @Controller('/notes')
+    class Notes {
+      @Get('/:id', read)
+      read(@Param('noteId') noteId: string) {
+        return { id: noteId };
+      }
+
+      @Get('/:id/stale', stale)
+      stale(@Param('id') noteId: string) {
+        return { id: noteId };
+      }
+    }
+    const { app, reported } = await serve(Notes);
+    try {
+      const response = await send(app, 'GET', '/notes/n1');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ id: 'n1' });
+      expect((await send(app, 'GET', '/notes/n1/stale')).status).toBe(500);
+      expect(messages(reported)).toEqual([
+        "Notes.stale: @Param('id') reads a key the route's params schema does not return",
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 });

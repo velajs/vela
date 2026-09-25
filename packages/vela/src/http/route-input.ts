@@ -19,12 +19,7 @@ import { ValidationPipe } from '../validation/validation.pipe';
 import { readBoundedBody, readJsonBody } from './json-body';
 import type { ResolvedRouteBody } from './route-contract';
 import type { RouteInputReader } from './route-input-registry';
-import type {
-  ParamExtractorFactory,
-  ParamMetadata,
-  ParamReader,
-  RouteInputValues,
-} from './types';
+import type { ParamExtractorFactory, ParamMetadata, ParamReader, RouteInputValues } from './types';
 
 // Request values for `@Body()`, `@Query()` and `@Param()`, and the validation
 // of the request schemas a route declares. These readers ship with the
@@ -78,15 +73,20 @@ function parameterSchema(param: ParamMetadata): ValidationSchema | undefined {
   return undefined;
 }
 
-/** The input JSON Schema of a schema that can describe itself; undefined otherwise. */
-function describe(schema: ValidationSchema | undefined): JsonObject | undefined {
+/** The JSON Schema of a schema that can describe itself; undefined otherwise. */
+function describe(
+  schema: ValidationSchema | undefined,
+  direction: 'input' | 'output' = 'input',
+  libraryOptions?: Record<string, unknown>,
+): JsonObject | undefined {
   if (!schema) return undefined;
   let json: unknown;
   try {
-    json = standardJsonSchema(schema, 'input');
+    json = standardJsonSchema(schema, direction, undefined, libraryOptions);
     if (json === undefined && 'toJSONSchema' in schema && typeof schema.toJSONSchema === 'function')
-      json = 'schema' in schema ? schema.toJSONSchema('input') : schema.toJSONSchema();
-    if (json === undefined && 'schema' in schema) return describe(schema.schema);
+      json = 'schema' in schema ? schema.toJSONSchema(direction) : schema.toJSONSchema();
+    if (json === undefined && 'schema' in schema)
+      return describe(schema.schema, direction, libraryOptions);
   } catch {
     return undefined;
   }
@@ -101,12 +101,20 @@ function properties(json: JsonObject | undefined): [string, JsonObject][] {
     : [];
 }
 
+// A field JSON Schema cannot express (a coerced date, a custom check) still
+// names its key, for converters that take this option.
+const KEYS_ONLY = { unrepresentable: 'any' };
+
 /**
- * The keys an object schema declares, or undefined when it cannot say: it
- * describes no object properties, or passes undeclared keys through.
+ * The keys an object schema accepts (`input`) or returns (`output`), or
+ * undefined when it cannot say: it describes no object properties, or passes
+ * undeclared keys through.
  */
-function declaredKeys(schema: ValidationSchema): Set<string> | undefined {
-  const json = describe(schema);
+function declaredKeys(
+  schema: ValidationSchema,
+  direction: 'input' | 'output',
+): Set<string> | undefined {
+  const json = describe(schema, direction, KEYS_ONLY);
   if (!isObject(json?.properties) || (json.additionalProperties ?? false) !== false)
     return undefined;
   return new Set(Object.keys(json.properties));
@@ -268,13 +276,13 @@ function pathParameters(path: string): string[] {
  * Validates what a route declares — its `params`, `query` and `body` schemas,
  * and its body encoding with its limits — once per request, after guards,
  * before the handler, whether or not a parameter reads them. The application
- * fails to start when a `params` schema that describes its keys leaves out a
- * path parameter the route serves.
+ * fails to start when a `params` schema that lists the keys it accepts leaves
+ * out a path parameter the route serves.
  */
 export const readRouteInput: RouteInputReader = (route) => {
   const contract = route.contract!;
   const { params, query, bodySchema } = contract;
-  const declared = params && declaredKeys(params);
+  const declared = params && declaredKeys(params, 'input');
   if (declared) {
     const missing = [...new Set(route.paths.flatMap(pathParameters))].filter(
       (name) => !declared.has(name),
@@ -302,29 +310,57 @@ export const readRouteInput: RouteInputReader = (route) => {
     });
 };
 
+// Whether the request carries a key of a group, before validation.
+async function carries(
+  c: Context,
+  group: Group,
+  name: string,
+  body: ResolvedRouteBody | undefined,
+): Promise<boolean> {
+  if (group === 'params') return c.req.param(name) !== undefined;
+  if (group === 'query') return c.req.queries(name) !== undefined;
+  const raw = await readRouteBody(c, body);
+  return raw instanceof FormData ? raw.has(name) : isObject(raw) && Object.hasOwn(raw, name);
+}
+
 // A parameter reading a group the route declares: the validated value, whole
 // or one key, left alone by `ValidationPipe`s. Its own schema would validate
-// the value twice, and a key the schema does not declare would read nothing.
+// the value twice, and a key the schema does not return would read nothing:
+// the application fails to start when the schema lists the keys it returns,
+// and otherwise the request fails (500) when it carries a key the validated
+// value lacks.
 function readDeclared(
   route: Parameters<ParamExtractorFactory>[0],
   param: ParamMetadata,
   group: Group,
   schema: ValidationSchema,
 ): ParamReader {
-  const decorator = `@${DECORATOR[group]}(${param.name === undefined ? '' : `'${param.name}'`})`;
+  const name = param.name;
+  const decorator = `@${DECORATOR[group]}(${name === undefined ? '' : `'${name}'`})`;
   if (parameterSchema(param) !== undefined)
     throw new Error(
       `${route.source}: the route declares the ${group} schema; remove the schema from @${DECORATOR[group]}()`,
     );
-  const keys = param.name === undefined ? undefined : declaredKeys(schema);
-  if (keys && !keys.has(param.name!))
+  const keys = name === undefined ? undefined : declaredKeys(schema, 'output');
+  if (name !== undefined && keys && !keys.has(name))
     throw new Error(
       `${route.source}: ${decorator} reads a key the route's ${group} schema does not declare`,
     );
   const input = route.input!;
-  return Object.assign(async (c: Context) => pick((await input(c))[group], param.name), {
-    skips: isValidationPipe,
-  });
+  const body = route.contract?.body;
+  return Object.assign(
+    async (c: Context) => {
+      const value = (await input(c))[group];
+      if (name === undefined) return value;
+      const lacks = value == null || (typeof value === 'object' && !(name in value));
+      if (lacks && (await carries(c, group, name, body)))
+        throw new Error(
+          `${route.source}: ${decorator} reads a key the route's ${group} schema does not return`,
+        );
+      return pick(value, name);
+    },
+    { skips: isValidationPipe },
+  );
 }
 
 /**
