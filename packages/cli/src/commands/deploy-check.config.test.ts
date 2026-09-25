@@ -59,6 +59,7 @@ describe('deployment configuration', () => {
       crons: ['0 * * * *'],
       queueProducers: [{ binding: 'JOBS', queue: 'jobs' }],
       queueConsumers: ['jobs'],
+      durableObjectClasses: [],
     });
     expect(plan.bindings.map((binding) => binding.name)).toEqual(['CACHE', 'JOBS']);
   });

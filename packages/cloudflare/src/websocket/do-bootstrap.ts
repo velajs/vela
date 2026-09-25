@@ -1,11 +1,9 @@
-import { VelaApplication } from '@velajs/vela';
-import { bootstrap } from '@velajs/vela/internal';
 import type { DynamicModule, Type, VelaEnv } from '@velajs/vela';
-import type { Container } from '@velajs/vela/module-kit';
+import type { Container, RuntimeAdapter } from '@velajs/vela/module-kit';
 import { local, readWsEntrypointMeta, WsDispatcher, WsServerImpl } from '@velajs/vela/websocket';
 import type { GatewayDelivery, WsServer } from '@velajs/vela/websocket';
 import type { LiveEngine } from '@velajs/vela/live';
-import { registerCloudflarePlatform } from '../platform';
+import { createDurableObjectContext } from '../durable-object/boot';
 import { CfWsClient } from './cf-ws-client';
 import { CfRoomRegistry } from './cf-room-registry';
 import { durableObjectLivePlatform, initDoLive } from './do-live';
@@ -50,75 +48,87 @@ async function deliverFromDurableObject(
   else await target.call('broadcast', command);
 }
 
+/** Options of {@link buildDoRuntime}. */
+export interface DoRuntimeOptions {
+  /** The object's environment, seeded as `ENV`. */
+  env: VelaEnv;
+  /** Runtime adapters of the app definition; their `configureContainer` runs in the object. */
+  adapters?: readonly RuntimeAdapter[];
+  /** The object's native state, injected as `DO_STATE`, `DO_STORAGE` and `DO_ID`. */
+  state?: DurableObjectState;
+}
+
 /**
- * Slim DI bootstrap for the Durable Object isolate: wires the container and runs
- * `OnModuleInit`/`OnApplicationBootstrap` (so `WsDispatcher` discovers gateways)
- * WITHOUT building the Hono app/routes the DO never serves. The DO's `env` is
- * seeded as the global ENV before providers construct, next to this object's
- * platform: `WebSocketModule` builds its server over this object's sockets,
- * `Gateways` pushes to this object's room locally and forwards other rooms to
- * their objects, and `LiveModule` delivers locally with a SQLite cursor log
- * when the class is SQLite-backed.
+ * The application context of a WebSocket Durable Object, booted as every
+ * Vela Durable Object is (`VelaFactory.createApplicationContext`, without the
+ * HTTP routes it never serves): its `env` is seeded as the global ENV before
+ * providers construct, next to this object's platform. `WebSocketModule`
+ * builds its server over this object's sockets, `Gateways` pushes to this
+ * object's room locally and forwards other rooms to their objects, and
+ * `LiveModule` delivers locally with a SQLite cursor log when the class is
+ * SQLite-backed. `onModuleInit`/`onApplicationBootstrap` run, so
+ * `WsDispatcher` discovers the gateways.
  */
 export async function buildDoRuntime(
   rootModule: Type | DynamicModule,
   ctx: DoStateLike,
-  options: { env: VelaEnv },
+  options: DoRuntimeOptions,
 ): Promise<DoRuntime> {
   const registry = new CfRoomRegistry(ctx);
   const driver = local();
   driver.bind(registry);
   const server = new WsServerImpl(driver);
 
-  const { container, routeManager, loader } = await bootstrap(rootModule, {
-    configureContainer: (target) => {
-      registerCloudflarePlatform(target, options.env, {
-        websocket: {
-          createServer: () => server,
-          deliver: (delivery) => deliverFromDurableObject(ctx, options.env, registry, delivery),
-        },
-        live: durableObjectLivePlatform(ctx),
-      });
-    },
+  const context = await createDurableObjectContext(rootModule, {
+    env: options.env,
+    adapters: options.adapters,
+    state: options.state,
+    platform: () => ({
+      websocket: {
+        createServer: () => server,
+        deliver: (delivery) => deliverFromDurableObject(ctx, options.env, registry, delivery),
+      },
+      live: durableObjectLivePlatform(ctx),
+    }),
   });
-  if (!container.has(WsDispatcher)) {
-    throw new Error(
-      '[vela] A WebSocket Durable Object serves the gateways of WebSocketModule: import ' +
-        'WebSocketModule.forRoot() from @velajs/vela/websocket in the application it is built from.',
+  try {
+    if (!context.getContainer().has(WsDispatcher)) {
+      throw new Error(
+        '[vela] A WebSocket Durable Object serves the gateways of WebSocketModule: import ' +
+          'WebSocketModule.forRoot() from @velajs/vela/websocket in the application it is built from.',
+      );
+    }
+
+    // The entrypoint registry is the transport contract: one 'websocket' entry
+    // per discovered gateway ({ meta: { path, dispatcher } }), built with the
+    // context's lifecycle hooks.
+    const wsEntrypoints = context.entrypoints.ofKind('websocket', readWsEntrypointMeta);
+    const dispatcher = wsEntrypoints[0]?.meta.dispatcher ?? context.get(WsDispatcher);
+    registry.setSendPolicyResolver(
+      (path) => wsEntrypoints.find((entry) => entry.meta.path === path)?.meta.options.sendPolicy,
     );
+    registry.setFrameLimitResolver((path) => dispatcher.getGatewayMaxFrameBytes(path));
+    registry.setDeliveryAuthorizer((client) => {
+      const path = client instanceof CfWsClient ? client.path : '';
+      return dispatcher.authorizeDelivery(path, client);
+    });
+
+    // Live queries: replay hibernation-persisted subscriptions into the fresh engine.
+    const live = initDoLive(context, ctx, registry);
+
+    return {
+      container: context.getContainer(),
+      // Zero gateways still yields a live dispatcher (module imported, nothing
+      // decorated) — fall back to resolving it directly.
+      dispatcher,
+      registry,
+      server,
+      gatewayPaths: wsEntrypoints.map((ep) => ep.meta.path),
+      live,
+      close: (signal?: string) => context.close(signal),
+    };
+  } catch (error) {
+    await context.dispose().catch(() => {});
+    throw error;
   }
-
-  const app = new VelaApplication(container, routeManager);
-  app.setInstances(await loader.resolveAllInstances());
-  await app.callOnModuleInit();
-  await app.callOnApplicationBootstrap();
-
-  // The entrypoint registry is the transport contract: one 'websocket' entry
-  // per discovered gateway ({ meta: { path, dispatcher } }). Built by
-  // callOnApplicationBootstrap(), so this slim no-routes path has it too.
-  const wsEntrypoints = app.entrypoints.ofKind('websocket', readWsEntrypointMeta);
-  const dispatcher = wsEntrypoints[0]?.meta.dispatcher ?? app.get(WsDispatcher);
-  registry.setSendPolicyResolver(
-    (path) => wsEntrypoints.find((entry) => entry.meta.path === path)?.meta.options.sendPolicy,
-  );
-  registry.setFrameLimitResolver((path) => dispatcher.getGatewayMaxFrameBytes(path));
-  registry.setDeliveryAuthorizer((client) => {
-    const path = client instanceof CfWsClient ? client.path : '';
-    return dispatcher.authorizeDelivery(path, client);
-  });
-
-  // Live queries: replay hibernation-persisted subscriptions into the fresh engine.
-  const live = initDoLive(app, ctx, registry);
-
-  return {
-    container,
-    // Zero gateways still yields a live dispatcher (module imported, nothing
-    // decorated) — fall back to resolving it directly.
-    dispatcher,
-    registry,
-    server,
-    gatewayPaths: wsEntrypoints.map((ep) => ep.meta.path),
-    live,
-    close: (signal?: string) => app.close(signal),
-  };
 }

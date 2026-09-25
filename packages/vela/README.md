@@ -49,6 +49,12 @@ export default app; // Fetch-compatible application
 
 This example serves `GET /app/` and returns `{ "message": "Hello from the edge!" }`.
 
+For work without HTTP routes (a script, a custom runtime, a Cloudflare Durable
+Object), `VelaFactory.createApplicationContext(AppModule, { env })` builds the
+same module graph as Nest's `NestFactory.createApplicationContext`: providers,
+lifecycle hooks and entrypoints, with `get`, `resolve`, `select(Module)`,
+`init` and `close`. `VelaApplication` extends that context.
+
 Build decorated TypeScript with legacy decorators and emitted decorator metadata,
 for example with Vite 8, whose Oxc transformer emits both. See the
 [tooling guide](https://github.com/velajs/vela/blob/main/docs/tooling.md)

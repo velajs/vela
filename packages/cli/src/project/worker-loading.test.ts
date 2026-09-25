@@ -6,7 +6,7 @@ import { ENV } from '@velajs/vela';
 import { createOpenApiDocument } from '@velajs/vela/openapi';
 import { Cli } from 'clipanion';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { OpenApiDumpCommand } from '../commands/introspect.commands.js';
+import { EntrypointListCommand, OpenApiDumpCommand } from '../commands/introspect.commands.js';
 import { loadConfig, resolveConfig } from '../config.js';
 import { withApp } from '../with-app.js';
 import { classifyWorkerExports } from './worker-entry.js';
@@ -50,6 +50,28 @@ const worker = createCloudflareWorker({ module: AppModule, imports: [ExtraModule
 export default { ...worker, async email() {} };
 `;
 
+// One app definition: its Worker and the Durable Object classes defined from it.
+const APP_WORKER = `
+import { Injectable, Module } from '@velajs/vela';
+import { WebSocketModule } from '@velajs/vela/websocket';
+import { defineCloudflareApp } from '@velajs/cloudflare';
+import { VelaDurableObject, VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
+
+export class AppModule {}
+Module({ imports: [WebSocketModule.forRoot()] })(AppModule);
+class CounterHost { increment(by) { return by; } alarm() {} }
+Injectable()(CounterHost);
+class AuditHost { record() {} }
+Injectable()(AuditHost);
+
+const app = defineCloudflareApp(AppModule);
+export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
+export class Lobby extends VelaWebSocketDurableObject(app) {}
+// Defined from the app, but no export serves it.
+VelaDurableObject(app, AuditHost);
+export default app.worker;
+`;
+
 function write(file: string, content: string): void {
   mkdirSync(dirname(join(project, file)), { recursive: true });
   writeFileSync(join(project, file), content);
@@ -69,6 +91,7 @@ beforeAll(() => {
         "staging": { "main": "src/staging.mjs", "vars": { "GREETING": "staging" } },
         "plain": { "main": "src/plain.mjs" },
         "dynamic": { "main": "src/dynamic.mjs" },
+        "app": { "main": "src/app.mjs" },
       },
     }`,
   );
@@ -76,6 +99,7 @@ beforeAll(() => {
   write('src/staging.mjs', WORKER('/staging'));
   write('src/plain.mjs', 'export default { fetch() { return new Response("hi"); } };\n');
   write('src/dynamic.mjs', DYNAMIC_WORKER);
+  write('src/app.mjs', APP_WORKER);
   // A stand-in for the project's Wrangler, whose getPlatformProxy() supplies local bindings.
   write(
     'node_modules/wrangler/package.json',
@@ -150,10 +174,85 @@ describe('loading the Worker entry without a vela.config', () => {
         durableObjects: ['Counter'],
         workflows: ['SignupFlow'],
         entrypoints: ['Admin'],
+        velaDurableObjects: [],
+        unexportedDurableObjects: [],
       });
     } finally {
       await loaded.dispose();
     }
+  });
+
+  it('describes the Durable Object classes defined from a defineCloudflareApp() app', async () => {
+    const loaded = await loadConfig(project, undefined, { environment: 'app' });
+    try {
+      const root = loaded.config.rootModule;
+      expect(typeof root === 'function' ? root.name : root).toBe('AppModule');
+      expect(loaded.main).toBe(join(project, 'src/app.mjs'));
+      const entry = await loaded.importModule(join(project, 'src/app.mjs'));
+      expect(await classifyWorkerExports(entry, loaded.importModule)).toEqual({
+        durableObjects: ['Counter', 'Lobby'],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [
+          { name: 'Counter', kind: 'host', host: 'CounterHost', methods: ['increment'] },
+          {
+            name: 'Lobby',
+            kind: 'websocket',
+            methods: [
+              'broadcast',
+              'invalidate',
+              'inspectLive',
+              'pitrCurrentBookmark',
+              'pitrBookmarkForTime',
+              'pitrArmRestore',
+            ],
+          },
+        ],
+        unexportedDurableObjects: ['AuditHost'],
+      });
+    } finally {
+      await loaded.dispose();
+    }
+  });
+
+  it('lists the Durable Object classes of the Worker entry as entrypoints', async () => {
+    vi.spyOn(process, 'cwd').mockReturnValue(project);
+    const stdout = new PassThrough();
+    let output = '';
+    stdout.on('data', (chunk: Buffer) => (output += String(chunk)));
+    const code = await Cli.from([EntrypointListCommand], { binaryName: 'vela' }).run(
+      ['entrypoint', 'list', '--json', '--env', 'app'],
+      { stdout, stderr: new PassThrough() },
+    );
+    expect(code, output).toBe(0);
+    const rows: Array<{ kind: string; target: string; meta: string }> = JSON.parse(output);
+    expect(rows.filter((row) => row.kind === 'cf:durable-object')).toEqual([
+      {
+        kind: 'cf:durable-object',
+        target: 'Counter',
+        meta: JSON.stringify({ kind: 'host', host: 'CounterHost', methods: ['increment'] }),
+      },
+      {
+        kind: 'cf:durable-object',
+        target: 'Lobby',
+        meta: JSON.stringify({
+          kind: 'websocket',
+          methods: [
+            'broadcast',
+            'invalidate',
+            'inspectLive',
+            'pitrCurrentBookmark',
+            'pitrBookmarkForTime',
+            'pitrArmRestore',
+          ],
+        }),
+      },
+      {
+        kind: 'cf:durable-object',
+        target: '(not exported) AuditHost',
+        meta: JSON.stringify({ exported: false }),
+      },
+    ]);
   });
 
   it('loads the Worker entry of an explicitly named Wrangler file', async () => {

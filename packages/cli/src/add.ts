@@ -173,14 +173,14 @@ async function refreshTypes(
 
 /**
  * The root module: the file declaring the class the Worker entry passes to
- * createCloudflareWorker() (through the files re-exporting it), the name that
+ * createCloudflareWorker() or defineCloudflareApp() (through the files re-exporting it), the name that
  * file exports it under, and its source.
  */
 async function rootModule(entry: string): Promise<NamedImport & { readonly source: string }> {
   const root = workerRootImport(entry, await readFile(entry, 'utf8'));
   if (!root) {
     throw new Error(
-      `${entry} does not export createCloudflareWorker(AppModule); register the binding yourself or pass --skip-import.`,
+      `${entry} does not pass a root module to createCloudflareWorker() or defineCloudflareApp(); register the binding yourself or pass --skip-import.`,
     );
   }
   const resolved = await resolveModuleClass(await importedSource(entry, root.from), root.name);

@@ -105,7 +105,7 @@ export type {
 } from './http/route-contributor';
 
 // HTTP seams: request containers, execution contexts, ambient access, body
-// reading and the request-limit defaults
+// reading, streamed-response tracking and the request-limit defaults
 export { getRequestContainer } from './http/request-container';
 export { buildExecutionContext as buildHttpExecutionContext } from './http/execution-context';
 export {
@@ -120,6 +120,7 @@ export {
   DEFAULT_QUERY_PARAMETER_LIMIT,
 } from './http/index';
 export type { ReadJsonBodyOptions } from './http/index';
+export { trackResponseStream } from './http/route.manager';
 export type { RouteDescription } from './http/route.manager';
 
 // Trusted request identity for authentication and tenancy integrations

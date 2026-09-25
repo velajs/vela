@@ -61,7 +61,7 @@ In-core lazy modules: `EventEmitterModule`, `ScheduleModule`, `SeederModule`, `I
 
 ## Entrypoints — the non-HTTP surface
 
-Modules that dispatch non-HTTP work (WebSocket frames, queue batches, cron ticks) declare an **entrypoint kind**; transports query `app.entrypoints` instead of module internals. The per-app registry is built at the end of bootstrap (available even on slim, route-less paths like a Cloudflare Durable Object).
+Modules that dispatch non-HTTP work (WebSocket frames, queue batches, cron ticks) declare an **entrypoint kind**; transports query `app.entrypoints` instead of module internals. The per-app registry is built at the end of bootstrap (available on route-less application contexts too: `VelaFactory.createApplicationContext`, which every Cloudflare Durable Object boots).
 
 ```ts nocheck
 // Declarative: kernel discovers annotated providers per kind

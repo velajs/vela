@@ -26,8 +26,13 @@ it with `@InjectEnv()`. The lab has no Wrangler file, so `src/env.ts` declares
 the bindings on `Cloudflare.Env` the way `wrangler types` would generate them,
 and `VelaEnv` picks them up. `WorkerBindingsLabModule` is declared once at
 module scope. `createWorkerBindingsLabApp(env)` constructs an explicit
-application from it for tests; the Worker entry uses `createCloudflareWorker`
-for lazy per-environment bootstrap.
+application from it for tests; the Worker entry defines the app once with
+`defineCloudflareApp` for lazy per-environment bootstrap and exports the
+`Counter` Durable Object built from it with
+`VelaDurableObject(app, CounterHost, { rpc: ['status'] })`. The host methods
+`rpc` names are the object's RPC methods, so
+`env.COUNTER_DO.getByName(name).status()` is typed by the exported class; the
+Node tests replace the namespace with an in-memory stub.
 
 The example covers KV, D1, R2, typed queues, Durable Objects, AI, Vectorize,
 Hyperdrive, the injected environment, `@Cron` jobs on cron triggers (each job

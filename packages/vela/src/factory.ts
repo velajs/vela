@@ -1,10 +1,11 @@
 import type { VelaApplication } from './application';
+import type { VelaApplicationContext } from './application-context';
 import type { Type } from './container/types';
 import type { DynamicModule } from './registry/types';
 import { applyRuntimeAdapters } from './factory/adapter';
 import type { RuntimeAdapter } from './factory/adapter';
 import { bootstrap } from './factory/bootstrap';
-import { finalizeApplication } from './factory/finalize';
+import { finalizeApplication, finalizeApplicationContext } from './factory/finalize';
 import type { BootstrapOptions } from './factory/bootstrap';
 
 export interface VelaCreateOptions extends BootstrapOptions {
@@ -16,6 +17,12 @@ export interface VelaCreateOptions extends BootstrapOptions {
    */
   adapters?: RuntimeAdapter[];
 }
+
+/** Options of {@link VelaFactory.createApplicationContext}: the graph's environment and container. */
+export type VelaApplicationContextOptions = Pick<
+  BootstrapOptions,
+  'diagnostics' | 'env' | 'configureContainer'
+>;
 
 export const VelaFactory = {
   /**
@@ -33,5 +40,21 @@ export const VelaFactory = {
       await bootstrap(rootModule, applyRuntimeAdapters(bootstrapOptions, adapters)),
       adapters,
     );
+  },
+
+  /**
+   * Create a standalone application context: the module graph with its
+   * providers, lifecycle hooks and entrypoints, but no HTTP routes, as Nest's
+   * `NestFactory.createApplicationContext`. Use it for scripts, custom
+   * runtimes and platform objects (a Durable Object) that inject providers or
+   * dispatch entrypoints without serving HTTP. It is initialized
+   * (`onModuleInit`, `onApplicationBootstrap`) before it resolves;
+   * `close()`/`dispose()` run the shutdown hooks.
+   */
+  async createApplicationContext(
+    rootModule: Type | DynamicModule,
+    options: VelaApplicationContextOptions = {},
+  ): Promise<VelaApplicationContext> {
+    return finalizeApplicationContext(await bootstrap(rootModule, options));
   },
 };

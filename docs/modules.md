@@ -298,8 +298,9 @@ bootstrap).
 
 An application root is a module class, or a `DynamicModule` such as
 `AppModule.forRoot(...)`, declared once at module scope. `VelaFactory.create`,
-`createOpenApiDocument` and the Cloudflare factories (`createCloudflareWorker`,
-`createCloudflareApp`, `VelaWebSocketDurableObject`) accept either. Declare
+`createOpenApiDocument` and the Cloudflare factories (`defineCloudflareApp`,
+`createCloudflareWorker`, `createCloudflareApp`, `VelaDurableObject`,
+`VelaWebSocketDurableObject`) accept either. Declare
 decorated classes at module scope only: a function that declares controllers,
 providers or modules creates new classes on every call, and the isolate-global
 metadata registry keeps every one of them.
@@ -402,8 +403,9 @@ contributors; omission retains legacy unscoped resolution.
 argument to `ofKind(kind, parseMeta)` to validate it and infer its result type.
 
 The registry is per-application, built at the end of
-`callOnApplicationBootstrap()` — available on slim bootstrap paths (the
-Cloudflare Durable Object) that never build HTTP routes.
+`callOnApplicationBootstrap()` — available on application contexts
+(`VelaFactory.createApplicationContext`, which every Cloudflare Durable Object
+boots) that never build HTTP routes.
 
 ## Routes: contributing generated routes
 
