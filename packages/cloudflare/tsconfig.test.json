@@ -24,7 +24,11 @@
     "src/__tests__/worker-descriptor.test.ts",
     "src/__tests__/durable-object-host.test.ts",
     "src/__tests__/factory-options.test.ts",
-    "src/__tests__/do-live.test.ts"
+    "src/__tests__/do-live.test.ts",
+    "src/__tests__/workflow-host.test.ts",
+    "src/__tests__/entrypoint-host.test.ts",
+    "src/__tests__/email-tail.test.ts",
+    "src/__tests__/worker-events.test.ts"
   ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/__tests__"]

@@ -3,6 +3,8 @@ import {
   createCloudflareApp,
   createCloudflareWorker,
   defineCloudflareApp,
+  isEntrypointError,
+  workflow,
   type CloudflareApp,
   type CloudflareRoot,
   type CloudflareWorker,
@@ -12,8 +14,12 @@ import {
   DO_STORAGE,
   VelaDurableObject,
   VelaWebSocketDurableObject,
-  isDurableObjectError,
 } from '@velajs/cloudflare/durable-objects';
+import { OnEmail } from '@velajs/cloudflare/email';
+import { ENTRYPOINT_PROPS, VelaEntrypoint } from '@velajs/cloudflare/entrypoints';
+import { OnTail } from '@velajs/cloudflare/tail';
+import { VelaWorkflow, type WorkflowParams } from '@velajs/cloudflare/workflows';
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 // These import only the emitted packages: the published @velajs/cloudflare
 // declarations must extend VelaEnv with Cloudflare.Env, so ENV carries the
@@ -135,7 +141,7 @@ export async function verifyPublishedDurableObjects(
   try {
     await stub.increment(1);
   } catch (error) {
-    if (isDurableObjectError(error)) {
+    if (isEntrypointError(error)) {
       const failure: { status: number; code: string; message: string } = error;
       void failure;
     }
@@ -155,3 +161,104 @@ void VelaDurableObject(counterApp, CounterHost, { rpc: ['dispose'] });
 void VelaDurableObject(counterApp, CounterHost, { rpc: ['name'] });
 // @ts-expect-error lifecycle hooks are not RPC methods
 void VelaDurableObject(counterApp, CounterHost, { rpc: ['onModuleInit'] });
+
+// A published Workflow host: run's event payload types the Workflow's params.
+interface SignupParams {
+  email: string;
+}
+
+@Injectable()
+class SignupHost {
+  async run(event: WorkflowEvent<SignupParams>, step: WorkflowStep): Promise<{ id: string }> {
+    const id = await step.do('create user', async () => `user:${event.payload.email}`);
+    await step.sleep('grace period', '1 day');
+    return { id };
+  }
+}
+
+class SignupWorkflow extends VelaWorkflow(counterApp, SignupHost) {}
+
+export async function verifyPublishedWorkflows(
+  env: VelaEnv,
+  step: WorkflowStep,
+  event: WorkflowEvent<SignupParams>,
+  ctx: ExecutionContext,
+): Promise<void> {
+  const params: WorkflowParams<typeof SignupWorkflow> = { email: 'ada@example.com' };
+  const fromHost: WorkflowParams<SignupHost> = params;
+  void fromHost;
+  // @ts-expect-error the params come from run's event payload
+  const wrong: WorkflowParams<SignupHost> = { mail: 'ada@example.com' };
+  void wrong;
+  const signups = workflow<WorkflowParams<typeof SignupWorkflow>>({ binding: 'SIGNUPS' });
+  const instance = await signups(env).create({ params });
+  const status: InstanceStatus = await instance.status();
+  void status;
+  // @ts-expect-error the binding takes the Workflow's params
+  void signups(env).create({ params: { email: 1 } });
+  const output: { id: string } = await new SignupWorkflow(ctx, env).run(event, step);
+  void output;
+  // `wrangler types` types a Workflow binding by the exported class's run.
+  const generated: Workflow<Parameters<SignupWorkflow['run']>[0]['payload']> = signups(env);
+  await generated.create({ params: { email: 'grace@example.com' } });
+  // @ts-expect-error a host without run(event, step) is no Workflow host
+  void VelaWorkflow(counterApp, CounterHost);
+}
+
+// A published service entrypoint host: its RPC methods reach Service<typeof Billing>.
+@Injectable()
+class BillingHost {
+  constructor(@Inject(ENTRYPOINT_PROPS) private readonly props: unknown) {}
+  async charge(customerId: string, cents: number): Promise<{ invoice: string }> {
+    return { invoice: `${customerId}:${cents}:${String(this.props)}` };
+  }
+  audit(): string {
+    return 'audit';
+  }
+}
+
+class Billing extends VelaEntrypoint(counterApp, BillingHost, { rpc: ['charge'] }) {}
+
+export async function verifyPublishedEntrypoints(billing: Service<typeof Billing>): Promise<void> {
+  const invoice: { invoice: string } = await billing.charge('customer-1', 500);
+  void invoice;
+  // @ts-expect-error RPC arguments keep the host's parameter types
+  void billing.charge('customer-1', '500');
+  // @ts-expect-error a public method the rpc list leaves out is not an RPC method
+  void billing.audit;
+  try {
+    await billing.charge('customer-1', 500);
+  } catch (error) {
+    if (isEntrypointError(error)) {
+      const failure: { status: number; code: string } = error;
+      void failure;
+    }
+  }
+}
+
+// @ts-expect-error fetch is the entrypoint's own handler, never an RPC method
+void VelaEntrypoint(counterApp, BillingHost, { rpc: ['fetch'] });
+// @ts-expect-error then would make every stub a thenable
+void VelaEntrypoint(counterApp, BillingHost, { rpc: ['then'] });
+
+// Email and tail handlers: typed method decorators on providers.
+@Injectable()
+export class Inbox {
+  @OnEmail({ to: 'support@example.com' })
+  async receive(message: ForwardableEmailMessage): Promise<void> {
+    await message.forward('team@example.com');
+  }
+
+  @OnTail()
+  observe(events: TraceItem[]): number {
+    return events.length;
+  }
+}
+
+export class WrongInbox {
+  // @ts-expect-error an @OnEmail() handler receives the email message
+  @OnEmail()
+  receive(message: number): number {
+    return message;
+  }
+}

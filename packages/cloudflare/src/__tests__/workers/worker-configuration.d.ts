@@ -2,6 +2,9 @@
 // wrangler.test.toml, kept by hand for the workerd suites. @velajs/cloudflare
 // extends VelaEnv with Cloudflare.Env, so ENV carries these bindings typed.
 declare namespace Cloudflare {
+  interface GlobalProps {
+    mainModule: typeof import('./entry');
+  }
   interface Env {
     ENV_PROBE: 'workerd-env';
     URL_SIGNING_SECRET: 'workerd-signing-secret';
@@ -14,6 +17,10 @@ declare namespace Cloudflare {
     KV_LIVE_ROOM: DurableObjectNamespace<import('./entry').KvLiveRoom>;
     COUNTER: DurableObjectNamespace<import('./entry').Counter>;
     BROKEN_COUNTER: DurableObjectNamespace<import('./entry').BrokenCounter>;
+    SIGNUP_WORKFLOW: Workflow<
+      Parameters<import('./entry').SignupWorkflow['run']>[0]['payload']
+    >;
+    BILLING: Service<typeof import('./entry').Billing>;
     CACHE: KVNamespace;
     DB: D1Database;
     FILES: R2Bucket;

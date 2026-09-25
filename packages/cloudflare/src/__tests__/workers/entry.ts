@@ -1,3 +1,5 @@
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { NonRetryableError } from 'cloudflare:workflows';
 import {
   DO_ID,
   DO_STATE,
@@ -5,9 +7,12 @@ import {
   VelaDurableObject,
   VelaWebSocketDurableObject,
 } from '../../durable-objects';
+import { ENTRYPOINT_PROPS, VelaEntrypoint } from '../../entrypoints';
+import { VelaWorkflow, type WorkflowParams } from '../../workflows';
 import {
   APP_EXCEPTION_HANDLER,
   Controller,
+  Get,
   Inject,
   InjectEnv,
   InjectionToken,
@@ -41,6 +46,7 @@ import {
 } from '@velajs/vela/websocket';
 import {
   defineCloudflareApp,
+  workflow,
   CLOUDFLARE_SCHEDULED_EVENT,
   type CloudflareScheduledEvent,
 } from '../../index';
@@ -325,16 +331,158 @@ class CounterController {
   }
 }
 
+/** The params of a SignupWorkflow instance. */
+export interface SignupParams {
+  email: string;
+  /** Fail the first attempt of the `create user` step, which then retries. */
+  failFirstAttempt?: boolean;
+  /** Fail the run with a NonRetryableError. */
+  fatal?: boolean;
+}
+
+/**
+ * The Worker application's singleton: Workflow runs, service entrypoint calls
+ * and HTTP requests of one environment share it.
+ */
+@Injectable()
+class Ledger {
+  readonly users: string[] = [];
+  readonly charges: string[] = [];
+  readonly attempts = new Map<string, number>();
+}
+
+/** The SignupWorkflow body: a Workflow host resolved in the Worker application. */
+@Injectable()
+export class SignupHost {
+  constructor(
+    private readonly ledger: Ledger,
+    @Inject(CallTrace) private readonly trace: CallTrace,
+    @InjectEnv() private readonly env: VelaEnv,
+  ) {}
+
+  async run(
+    event: WorkflowEvent<SignupParams>,
+    step: WorkflowStep,
+  ): Promise<{ email: string; attempt: number; probe: string; run: string }> {
+    if (event.payload.fatal) throw new NonRetryableError('signup refused: secret policy detail');
+    const user = await step.do(
+      'create user',
+      { retries: { limit: 2, delay: '10 seconds', backoff: 'constant' } },
+      async () => {
+        const attempt = (this.ledger.attempts.get(event.instanceId) ?? 0) + 1;
+        this.ledger.attempts.set(event.instanceId, attempt);
+        if (event.payload.failFirstAttempt && attempt === 1) throw new Error('transient failure');
+        this.ledger.users.push(event.payload.email);
+        return { email: event.payload.email, attempt };
+      },
+    );
+    await step.sleep('grace period', '1 hour');
+    return { ...user, probe: this.env.ENV_PROBE, run: this.trace.callId };
+  }
+}
+
+/** Creates SignupWorkflow instances through a typed Workflow binding reference. */
+const signups = workflow<WorkflowParams<SignupHost>>({ binding: 'SIGNUP_WORKFLOW' });
+
+/** The Worker side of the Workflow and service entrypoint: same application. */
+@Controller('/ledger')
+class LedgerController {
+  constructor(
+    private readonly ledger: Ledger,
+    @InjectEnv() private readonly env: VelaEnv,
+  ) {}
+
+  @Get()
+  read(): { users: string[]; charges: string[] } {
+    return { users: this.ledger.users, charges: this.ledger.charges };
+  }
+
+  @Post('/signups/:id')
+  async signup(@Param('id') id: string): Promise<{ id: string }> {
+    const instance = await signups(this.env).create({
+      id,
+      params: { email: `${id}@example.com` },
+    });
+    return { id: instance.id };
+  }
+}
+
+@Injectable()
+class TenantGuard implements CanActivate {
+  constructor(@Inject(ENTRYPOINT_PROPS) private readonly props: unknown) {}
+
+  canActivate(): boolean {
+    return (
+      typeof this.props === 'object' &&
+      this.props !== null &&
+      Reflect.get(this.props, 'tenant') === 'acme'
+    );
+  }
+}
+
+/** The Billing service entrypoint's host: the methods its rpc list names are RPC methods. */
+@UseGuards(TenantGuard)
+@Injectable()
+export class BillingHost {
+  constructor(
+    private readonly ledger: Ledger,
+    @Inject(CallTrace) private readonly trace: CallTrace,
+    @Inject(ENTRYPOINT_PROPS) private readonly props: unknown,
+    @Inject(REPORTS) private readonly reports: string[],
+  ) {}
+
+  charge(
+    customer: string,
+    cents: number,
+  ): { invoice: string; tenant: string | null; call: string } {
+    this.ledger.charges.push(`${customer}:${cents}`);
+    const tenant: unknown =
+      typeof this.props === 'object' && this.props !== null
+        ? Reflect.get(this.props, 'tenant')
+        : undefined;
+    return {
+      invoice: `inv-${this.ledger.charges.length}`,
+      tenant: typeof tenant === 'string' ? tenant : null,
+      call: this.trace.callId,
+    };
+  }
+
+  leak(): never {
+    throw new Error('secret billing detail');
+  }
+
+  @UseGuards(DenyGuard)
+  denied(): string {
+    return 'never';
+  }
+
+  reported(): string[] {
+    return [...this.reports];
+  }
+
+  /** Public, but left out of the rpc list. */
+  audit(): string[] {
+    return this.ledger.charges;
+  }
+}
+
 @Module({
   imports: [WebSocketModule.forRoot()],
-  controllers: [PushController, CounterController],
-  providers: [TestGateway, CounterStore, CallTrace, DenyGuard],
+  controllers: [PushController, CounterController, LedgerController],
+  providers: [TestGateway, CounterStore, CallTrace, DenyGuard, Ledger, TenantGuard],
 })
 class TestModule {}
 
-// One app definition: the Worker's default export and the Durable Object
-// classes defined from it share its root module and runtime adapters.
+// One app definition: the Worker's default export and the Durable Object,
+// Workflow and service entrypoint classes defined from it share its root
+// module and runtime adapters.
 const app = defineCloudflareApp(TestModule, { adapters: [reportingAdapter] });
+
+export class SignupWorkflow extends VelaWorkflow(app, SignupHost) {}
+
+export class Billing extends VelaEntrypoint(app, BillingHost, {
+  rpc: ['charge', 'leak', 'denied', 'reported'],
+}) {}
 
 export class TestRoom extends VelaWebSocketDurableObject(app) {}
 

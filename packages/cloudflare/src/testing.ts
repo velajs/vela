@@ -13,7 +13,9 @@ import {
   configureCloudflareApplication,
   type CloudflareWorkerOptions,
 } from './cloudflare-factory';
+import { dispatchEmail } from './email/email-dispatch';
 import type { CloudflareRoot } from './root-module';
+import { dispatchTail } from './tail/tail-dispatch';
 
 /** The `cloudflare:test` helpers this module drives (see @cloudflare/vitest-plugin). */
 interface WorkersTestPool {
@@ -72,7 +74,7 @@ export interface TestingQueueResult {
   readonly retryMessages: readonly { readonly msgId: string; readonly delaySeconds?: number }[];
 }
 
-/** The Worker's `fetch`, `queue` and `scheduled` handlers for one test application. */
+/** The Worker's `fetch`, `queue`, `scheduled`, `email` and `tail` handlers for one test application. */
 export interface TestingWorker {
   /** The compiled testing module: `get()`, `resolveInRequest()`, the fluent `http` client. */
   readonly module: TestingModule;
@@ -86,8 +88,119 @@ export interface TestingWorker {
    * no job declares `cron`: Cloudflare delivers the literal trigger expression.
    */
   scheduled(cron: string, options?: { scheduledTime?: Date | number }): Promise<void>;
+  /**
+   * Deliver an Email Workers message (such as one from {@link emailMessage})
+   * to the application's `@OnEmail()` handlers, as the Worker's `email`
+   * handler does: a message no handler accepts is rejected.
+   */
+  email(message: ForwardableEmailMessage): Promise<void>;
+  /** Deliver Tail Workers events (such as {@link traceItem}s) to its `@OnTail()` handlers. */
+  tail(events: TraceItem[]): Promise<void>;
   /** Wait for background work (`waitUntil`) of every event, then close the application. */
   close(): Promise<void>;
+}
+
+/** An Email Workers message built by {@link emailMessage}, recording what handlers did with it. */
+export interface TestingEmailMessage extends ForwardableEmailMessage {
+  /** The reason passed to `setReject()`, when a handler rejected the message. */
+  readonly rejectReason: string | undefined;
+  /** The `forward()` calls, in order. */
+  readonly forwards: readonly { readonly rcptTo: string; readonly headers?: Headers }[];
+  /** The `reply()` calls, in order. */
+  readonly replies: readonly (EmailMessage | EmailReplyMessageBuilder)[];
+}
+
+/** What {@link emailMessage} builds a message from. */
+export interface TestingEmailInit {
+  /** The envelope sender (`MAIL FROM`). */
+  readonly from: string;
+  /** The envelope recipient (`RCPT TO`), which `@OnEmail({ to })` routes on. */
+  readonly to: string;
+  readonly subject?: string;
+  /** The plain-text body of the default raw message. */
+  readonly text?: string;
+  /** Further headers; `From`, `To` and `Subject` default from the fields above. */
+  readonly headers?: HeadersInit;
+  /** The raw RFC 5322 message; built from the headers and `text` by default. */
+  readonly raw?: string | Uint8Array;
+}
+
+/**
+ * An Email Workers message (`ForwardableEmailMessage`) for tests, in the
+ * spirit of `cloudflare:test`'s `createMessageBatch()`: `raw`, `rawSize` and
+ * `headers` describe the message, and `setReject()`, `forward()` and `reply()`
+ * record what the handlers did (`rejectReason`, `forwards`, `replies`) instead
+ * of sending anything.
+ *
+ * ```ts
+ * const message = emailMessage({ from: 'ada@example.net', to: 'support@example.com', subject: 'Help' });
+ * await worker.email(message);
+ * expect(message.forwards).toEqual([{ rcptTo: 'team@example.com' }]);
+ * ```
+ */
+export function emailMessage(init: TestingEmailInit): TestingEmailMessage {
+  const headers = new Headers(init.headers);
+  if (!headers.has('from')) headers.set('from', init.from);
+  if (!headers.has('to')) headers.set('to', init.to);
+  if (init.subject !== undefined && !headers.has('subject')) headers.set('subject', init.subject);
+  const raw =
+    init.raw ??
+    `${[...headers].map(([name, value]) => `${name}: ${value}`).join('\r\n')}\r\n\r\n${init.text ?? ''}`;
+  const bytes = typeof raw === 'string' ? new TextEncoder().encode(raw) : raw;
+  let rejectReason: string | undefined;
+  const forwards: { rcptTo: string; headers?: Headers }[] = [];
+  const replies: (EmailMessage | EmailReplyMessageBuilder)[] = [];
+  return {
+    from: init.from,
+    to: init.to,
+    headers,
+    rawSize: bytes.byteLength,
+    raw: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice());
+        controller.close();
+      },
+    }),
+    get rejectReason() {
+      return rejectReason;
+    },
+    forwards,
+    replies,
+    setReject(reason: string): void {
+      rejectReason = reason;
+    },
+    async forward(rcptTo: string, forwardHeaders?: Headers): Promise<EmailSendResult> {
+      forwards.push(
+        forwardHeaders === undefined ? { rcptTo } : { rcptTo, headers: forwardHeaders },
+      );
+      return { messageId: `forward-${forwards.length}@vela.test` };
+    },
+    async reply(message: EmailMessage | EmailReplyMessageBuilder): Promise<EmailSendResult> {
+      replies.push(message);
+      return { messageId: `reply-${replies.length}@vela.test` };
+    },
+  };
+}
+
+/**
+ * A Tail Workers event (`TraceItem`) for tests: an `ok` fetch-less invocation
+ * of the Worker `producer`, with `overrides` applied.
+ */
+export function traceItem(overrides: Partial<TraceItem> = {}): TraceItem {
+  return {
+    event: null,
+    eventTimestamp: Date.now(),
+    logs: [],
+    exceptions: [],
+    diagnosticsChannelEvents: [],
+    scriptName: 'producer',
+    outcome: 'ok',
+    executionModel: 'stateless',
+    truncated: false,
+    cpuTime: 0,
+    wallTime: 0,
+    ...overrides,
+  };
 }
 
 /**
@@ -179,6 +292,8 @@ export async function createTestingWorker(
       await app.scheduled(pool.createScheduledController({ cron, scheduledTime }), env, ctx);
       await pool.waitOnExecutionContext(ctx);
     },
+    email: (message) => dispatchEmail(app, message),
+    tail: (events) => dispatchTail(app, events),
     async close() {
       await Promise.all(
         [...responses].map((response) =>

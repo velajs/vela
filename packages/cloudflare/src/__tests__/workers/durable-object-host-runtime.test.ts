@@ -2,7 +2,7 @@
 import * as cloudflareTest from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { isDurableObjectError } from '../../durable-objects';
+import { isEntrypointError } from '../../index';
 import type { Counter } from './entry';
 
 /** The `cloudflare:test` helpers these specs drive. */
@@ -102,14 +102,14 @@ describe('VelaDurableObject under workerd', () => {
 
   it('runs guards on RPC methods', async () => {
     const error = await rejection(counter('guarded').denied());
-    expect(isDurableObjectError(error)).toBe(true);
+    expect(isEntrypointError(error)).toBe(true);
     expect(error).toMatchObject({ status: 403, code: 'forbidden', message: 'Forbidden' });
   });
 
   it('reports a failure and redacts it across the RPC boundary', async () => {
     const stub = counter('redaction');
     const error = await rejection(stub.leak());
-    expect(isDurableObjectError(error)).toBe(true);
+    expect(isEntrypointError(error)).toBe(true);
     expect(error).toMatchObject({
       status: 500,
       code: 'internal',

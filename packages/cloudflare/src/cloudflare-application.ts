@@ -156,6 +156,15 @@ export class CloudflareApplication {
     return this.#app.entrypoints;
   }
 
+  /**
+   * The application's DI container (delegates to `VelaApplication.getContainer`),
+   * for dispatch seams that take it with `entrypoints`, such as
+   * `dispatchInboundEmail(app.getContainer(), app.entrypoints, email)`.
+   */
+  getContainer(): ReturnType<VelaApplication['getContainer']> {
+    return this.#app.getContainer();
+  }
+
   /** Enable CORS for every route, as `VelaApplication.enableCors()`; no rebuild needed. */
   enableCors(options?: CorsOptions): this {
     this.#app.enableCors(options);

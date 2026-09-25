@@ -4,9 +4,13 @@ const shared: UserConfig = {
   entry: [
     'src/index.ts',
     'src/durable-objects.ts',
+    'src/email.ts',
+    'src/entrypoints.ts',
     'src/queues.ts',
     'src/storage.ts',
+    'src/tail.ts',
     'src/testing.ts',
+    'src/workflows.ts',
   ],
   format: ['esm'],
   platform: 'neutral',
