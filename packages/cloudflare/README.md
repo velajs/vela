@@ -567,13 +567,45 @@ application that fails to start is logged to the console instead. See
 ## Bindings by name
 
 Module options name a binding instead of holding it. `kv`, `r2`, `d1`,
-`queue`, `durableObject`, `rateLimit` and `workflow` each take `{ binding }`, the name
+`queue`, `durableObject`, `rateLimit`, `workflow`, `flagship` and
+`secretsStoreSecret` each take `{ binding }`, the name
 declared in the Wrangler configuration, and read nothing when declared: calling
 the reference with an application's `ENV` returns the typed native binding, or
 fails naming the binding and the Wrangler key that declares it
 (`ENV.UPLOADS is not set: declare the R2 bucket binding 'UPLOADS' under r2_buckets …`).
 The drivers and stores below are built on them, so one static module graph
 serves every environment.
+
+`flagship` returns the native `Flagship` handle, including typed value and detail
+methods. `secretsStoreSecret` returns a native `SecretsStoreSecret` handle; call
+`get()` to read its current value. References perform structural checks only:
+they do not read secrets, evaluate flags, cache results, create resources or prove
+remote availability. Native method errors and local-development behavior are
+unchanged. Use current generated Wrangler types or Workers types containing
+these native interfaces (validated with Wrangler 4.135.0 and Workers types
+5.20260920.1).
+
+```ts
+import { flagship, secretsStoreSecret } from '@velajs/cloudflare';
+
+const flags = flagship({ binding: 'FLAGS' });
+const apiKey = secretsStoreSecret({ binding: 'API_KEY' });
+
+// In request/application scope, using that application's environment:
+async function readSettings(env: Env) {
+  const enabled = await flags(env).getBooleanValue('new-layout', false);
+  const key = await apiKey(env).get();
+  return { enabled, key };
+}
+```
+
+Declare `FLAGS` under `flagship` with an `app_id`, and `API_KEY` under
+`secrets_store_secrets` with a `store_id` and `secret_name`, separately for each
+named environment. `vela add binding` can write those config declarations;
+resource setup remains explicit. See Cloudflare's [Flagship binding API](https://developers.cloudflare.com/flagship/binding/)
+and [Secrets Store Workers integration](https://developers.cloudflare.com/secrets-store/integrations/workers/)
+for native methods and local setup. In particular, local Secrets Store values
+are separate from production secrets.
 
 ## Rate limiting
 

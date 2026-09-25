@@ -16,6 +16,7 @@ import { DoctorCommand } from './commands/doctor.command.js';
 import { DeployCheckCommand } from './commands/deploy-check.command.js';
 import { CloudflareSyncCommand } from './commands/cf-sync.command.js';
 import { GenerateCommand } from './commands/generate.command.js';
+import { AddBindingCommand } from './commands/add-binding.command.js';
 import { AddCommand } from './commands/add.command.js';
 
 const cli = new Cli({
@@ -40,6 +41,7 @@ cli.register(DeployCheckCommand);
 cli.register(CloudflareSyncCommand);
 cli.register(GenerateCommand);
 cli.register(AddCommand);
+cli.register(AddBindingCommand);
 
 void cli.runExit(process.argv.slice(2));
 

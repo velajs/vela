@@ -151,6 +151,57 @@ registration `--skip-import` prints; 1 means the command failed. Source edits
 keep CRLF files CRLF. `--skip-import` prints the registration instead and needs
 no editable root.
 
+### Declare native bindings without provisioning
+
+```sh
+vela add binding flagship FLAGS --options '{"app_id":"example-app"}'
+vela add binding secrets_store_secrets API_KEY --options '{"store_id":"example-store","secret_name":"example-key"}'
+vela add binding ai AI --env staging
+vela add binding send_email MAIL --options '{"allowed_destination_addresses":["test@example.com"]}'
+vela add binding pipelines EVENTS --options '{"stream":"example-stream"}'
+vela add binding queues.producers JOBS --options '{"queue":"example-jobs"}'
+```
+
+`add binding` adds a native declaration to JSON/JSONC and refreshes types. It does
+not edit application modules or provision resources, consumers, migrations,
+permissions or credentials. Configure those separately through Wrangler or the
+Cloudflare dashboard. `--options` is a JSON object of native Wrangler settings;
+pass the binding name only as the positional `BINDING`. Unknown option fields
+and unrelated configuration are preserved. A singleton already configured is
+refused rather than replaced. TOML is unchanged: the command prints a manual
+step and exits 2. Type generation failures warn after the declaration is saved.
+
+Use the Wrangler key as the kind: `kv_namespaces`, `d1_databases`, `r2_buckets`,
+`services`, `hyperdrive`, `vectorize`, `workflows`, `analytics_engine_datasets`,
+`durable_objects.bindings`, `queues.producers`, `send_email`, `ai_search`,
+`ai_search_namespaces`, `agent_memory`, `browser`, `ai`, `images`, `media`,
+`stream`, `version_metadata`, `assets`, `mtls_certificates`, `dispatch_namespaces`,
+`pipelines`, `secrets_store_secrets`, `artifacts`, `flagship`, `ratelimits`,
+`worker_loaders`, `vpc_services` or `vpc_networks`. `vela add d1|kv|r2|queue`
+remains the explicit resource-provisioning path. Other resource creation needs
+product-specific choices, so declaration support does not imply provisioning.
+
+The shared inventory covers these native kinds, required secret names, vars,
+legacy blob/module maps, log forwarding, and `unsafe.bindings` for collision
+checks in `add`, `cf sync`, and `deploy check`. Consumers, tails, containers and
+build substitutions do not themselves create ENV binding names. Known binding
+shapes are checked without reporting values or IDs; Wrangler still owns full
+configuration validation, resource existence and deployment access checks.
+Unknown future sections are kept and left to Wrangler.
+
+Named environments do not inherit ordinary bindings, vars, required secrets or
+version metadata. Assets and log forwarding inherit unless overridden; legacy
+blob/module maps are top-level-only. These rules were checked against installed
+Wrangler 4.135.0 and its [configuration documentation](https://developers.cloudflare.com/workers/wrangler/configuration/).
+Both add commands pass `--env` to `wrangler types` when an environment is selected,
+bypassing a types script that might target a different environment. Without
+`--env`, the project's types script is used when available; Wrangler's default
+types include the union of configured environments. Wrangler 4.135.0's explicit
+`--env` type generation omits assets inherited only from the top level even
+though its runtime configuration inherits them. Redeclare `assets` in the named
+environment when using those generated types. Keep generated types current
+with the project's Wrangler version, including newer native binding types.
+
 ### Keep Wrangler in sync
 
 ```sh

@@ -17,6 +17,7 @@ import {
   type NamedImport,
 } from './generate/source-editor.js';
 import { hasErrorCode, isRecord } from './project/files.js';
+import { bindingInventory } from './project/bindings.js';
 import {
   environmentSection,
   findWranglerConfig,
@@ -73,32 +74,6 @@ export interface AddOptions {
   readonly skipImport?: boolean;
   /** Where messages go. */
   readonly log: (line: string) => void;
-}
-
-/** Every binding name the selected environment declares. */
-function declaredBindings(config: WranglerConfig, environment: string | undefined): Set<string> {
-  const section = environmentSection(config, environment);
-  const names = new Set<string>(isRecord(section.vars) ? Object.keys(section.vars) : []);
-  const rows = (value: unknown) => (Array.isArray(value) ? value.filter(isRecord) : []);
-  for (const key of [
-    'kv_namespaces',
-    'd1_databases',
-    'r2_buckets',
-    'services',
-    'hyperdrive',
-    'vectorize',
-    'workflows',
-    'analytics_engine_datasets',
-  ]) {
-    for (const row of rows(section[key]))
-      if (typeof row.binding === 'string') names.add(row.binding);
-  }
-  const queues = isRecord(section.queues) ? section.queues : {};
-  for (const row of rows(queues.producers))
-    if (typeof row.binding === 'string') names.add(row.binding);
-  const durable = isRecord(section.durable_objects) ? section.durable_objects : {};
-  for (const row of rows(durable.bindings)) if (typeof row.name === 'string') names.add(row.name);
-  return names;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -162,17 +137,30 @@ function wrangler(project: string, args: readonly string[]): void {
 /**
  * Regenerate worker-configuration.d.ts: the project's types script, else
  * `wrangler types`. `config` is a Wrangler file other than the default one,
- * which the script does not read.
+ * which the script does not read. A selected environment bypasses the script
+ * and is passed directly to Wrangler.
  */
-async function refreshTypes(
+export async function refreshTypes(
   project: string,
   config: string | undefined,
   log: (line: string) => void,
+  environment?: string,
 ): Promise<void> {
-  const manifest: unknown = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
+  } catch {
+    log(
+      'Warning: could not read package.json; run wrangler types for the selected configuration and environment yourself.',
+    );
+    return;
+  }
   const scripts = isRecord(manifest) && isRecord(manifest.scripts) ? manifest.scripts : {};
-  const configArgs = config === undefined ? [] : ['--config', config];
-  if (typeof scripts.types !== 'string') {
+  const configArgs = [
+    ...(config === undefined ? [] : ['--config', config]),
+    ...(environment === undefined ? [] : ['--env', environment]),
+  ];
+  if (typeof scripts.types !== 'string' || environment !== undefined) {
     try {
       wrangler(project, ['types', '--include-runtime=false', ...configArgs]);
     } catch {
@@ -512,7 +500,11 @@ export async function addResource(options: AddOptions): Promise<AddResult> {
   }
   const config = await readWranglerConfig(configPath);
   const project = dirname(configPath);
-  if (declaredBindings(config, options.environment).has(binding)) {
+  if (
+    bindingInventory(config.root, environmentSection(config, options.environment)).some(
+      (entry) => entry.name === binding,
+    )
+  ) {
     throw new Error(
       `${binding} is already a binding in ${relative(options.cwd, configPath) || configPath}.`,
     );
@@ -582,7 +574,12 @@ export async function addResource(options: AddOptions): Promise<AddResult> {
     // eslint-disable-next-line no-await-in-loop -- One file after the other.
     await writeFile(path, content, 'utf8');
   }
-  await refreshTypes(project, configPath === defaultConfig ? undefined : configPath, log);
+  await refreshTypes(
+    project,
+    configPath === defaultConfig ? undefined : configPath,
+    log,
+    options.environment,
+  );
   for (const note of registration.notes) log(note);
   return { manualSteps };
 }
