@@ -44,6 +44,10 @@
       "types": "./dist/transports/resend/index.d.ts",
       "import": "./dist/transports/resend/index.js"
     },
+    "./transports/cloudflare": {
+      "types": "./dist/transports/cloudflare/index.d.ts",
+      "import": "./dist/transports/cloudflare/index.js"
+    },
     "./transports/catcher": {
       "types": "./dist/transports/catcher/index.d.ts",
       "import": "./dist/transports/catcher/index.js"

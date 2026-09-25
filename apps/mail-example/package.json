@@ -5,16 +5,25 @@
   "type": "module",
   "scripts": {
     "build": "tsdown src/index.ts --format esm --platform neutral --out-dir dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p cloudflare/tsconfig.json",
     "start": "node dist/index.js",
-    "test": "node dist/index.js"
+    "test": "node dist/index.js",
+    "test:workers": "vitest run --config cloudflare/vitest.config.ts",
+    "types:workers": "wrangler types --include-runtime=false -c cloudflare/wrangler.jsonc cloudflare/worker-configuration.d.ts"
   },
   "dependencies": {
+    "@velajs/cloudflare": "workspace:*",
     "@velajs/mail": "workspace:*",
     "@velajs/vela": "workspace:*"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@swc/core": "catalog:",
     "tsdown": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
   }
 }

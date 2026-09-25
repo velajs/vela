@@ -66,7 +66,7 @@ export interface BuiltMessage {
   envelope: { from: string; to: string[] };
 }
 
-/** The outcome of a delivery. */
+/** Provider submission metadata; not proof of recipient delivery or exactly-once sending. */
 export interface DeliveryResult {
   id?: string;
   provider?: string;

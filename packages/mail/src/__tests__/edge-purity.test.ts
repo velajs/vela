@@ -6,7 +6,7 @@ const SRC = join(process.cwd(), 'src');
 
 // The edge-neutrality invariant: `@velajs/mail` core must run on any Web-API
 // runtime, so no `node:*` import, no Buffer, no process/__dirname, no timers
-// that don't exist on the edge. CF-specific code lives in @velajs/cloudflare.
+// that don't exist on the edge. Native sending is an optional structural transport.
 const FORBIDDEN: ReadonlyArray<{ name: string; re: RegExp }> = [
   { name: 'node:* import', re: /from\s+['"]node:[a-z_/]+['"]/g },
   { name: 'Buffer', re: /(?<![A-Za-z])Buffer(?![A-Za-z])/g },
@@ -92,6 +92,12 @@ describe('edge purity', () => {
 });
 
 describe('subpath purity', () => {
+  it('the Cloudflare transport never reaches Vela or native runtime modules', async () => {
+    const { specs } = await reachable(join(SRC, 'transports/cloudflare/index.ts'));
+    expect(
+      [...specs].filter((s) => s.startsWith('@velajs/') || s.startsWith('cloudflare:')),
+    ).toEqual([]);
+  });
   it('the catcher transport never reaches @velajs/vela', async () => {
     const { specs } = await reachable(join(SRC, 'transports/catcher/index.ts'));
     expect([...specs].filter((s) => s.startsWith('@velajs/vela'))).toEqual([]);

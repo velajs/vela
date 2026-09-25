@@ -438,6 +438,9 @@ importers:
 
   apps/mail-example:
     dependencies:
+      '@velajs/cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare
       '@velajs/mail':
         specifier: workspace:*
         version: link:../../packages/mail
@@ -445,12 +448,30 @@ importers:
         specifier: workspace:*
         version: link:../../packages/vela
     devDependencies:
+      '@cloudflare/vitest-plugin':
+        specifier: 'catalog:'
+        version: 1.1.13(@cloudflare/workers-types@5.20260920.1)(@types/node@26.6.2)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11(@types/node@26.6.2)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(yaml@2.9.1))
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 5.20260920.1
+      '@swc/core':
+        specifier: 'catalog:'
+        version: 1.15.43
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(@arethetypeswrong/core@0.18.5)(publint@0.3.21)(typescript@7.0.2)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      unplugin-swc:
+        specifier: 'catalog:'
+        version: 1.5.9(@swc/core@1.15.43)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.6.2)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(yaml@2.9.1)
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.135.0(@cloudflare/workers-types@5.20260920.1)(@types/node@26.6.2)
 
   apps/module-workers:
     dependencies:
