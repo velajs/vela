@@ -796,6 +796,36 @@ describe('CrudModule', () => {
       "CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: " +
         "'note' (CrudNotesController, as '/notes/') and 'note' (CrudNotesController)",
     );
+    // Repeated slashes, which proxies and clients commonly collapse, are one path too.
+    for (const spelling of ['//notes', '/notes//', '//notes//']) {
+      const repeated = defineCrudFeature({
+        path: spelling,
+        model: makeModel({ name: 'note' }),
+        endpointDecorators: { list: [UseGuards(DenyGuard)] },
+      });
+      await expect(boot([open], [repeated])).rejects.toThrow(
+        "CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: " +
+          `'note' (CrudNotesController) and 'note' (CrudNotesController, as '${spelling}')`,
+      );
+    }
+    const nested = defineCrudFeature({
+      path: '/orgs//:org/notes/',
+      model: makeModel({ name: 'note' }),
+      endpointDecorators: { list: [UseGuards(DenyGuard)] },
+    });
+    // Routing is case-sensitive, so another case is another path.
+    const upper = defineCrudFeature({
+      path: '/Notes',
+      model: makeModel({ name: 'note' }),
+      endpointDecorators: { list: [UseGuards(DenyGuard)] },
+    });
+    const cased = await boot([open], [upper]);
+    try {
+      expect((await cased.getHonoApp().request('/notes')).status).toBe(200);
+      expect((await cased.getHonoApp().request('/Notes')).status).toBe(403);
+    } finally {
+      await cased.close();
+    }
     const byOrg = defineCrudFeature({
       path: '/orgs/:org/notes',
       model: makeModel({ name: 'note' }),
@@ -809,6 +839,11 @@ describe('CrudModule', () => {
       "CRUD path '/orgs/:param/notes' is mounted by two different CrudModule.forFeature() " +
         "features: 'note' (CrudNotesController, as '/orgs/:org/notes') and 'note' " +
         "(CrudNotesController, as '/orgs/:tenant/notes')",
+    );
+    await expect(boot([byOrg], [nested])).rejects.toThrow(
+      "CRUD path '/orgs/:param/notes' is mounted by two different CrudModule.forFeature() " +
+        "features: 'note' (CrudNotesController, as '/orgs/:org/notes') and 'note' " +
+        "(CrudNotesController, as '/orgs//:org/notes/')",
     );
 
     // The identical definition, imported by two features, is one policy.
