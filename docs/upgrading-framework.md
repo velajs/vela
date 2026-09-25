@@ -8,9 +8,17 @@ error and guard, Cloudflare adapter, realtime, feature surface, and CLI and test
 sections cover core 1.31.0 and the integrations released with it. The schema-first
 routes section and the paragraphs marked *1.32.0* cover core 1.32.0 and the
 integrations released with it (Cloudflare, CLI, CRUD, mail and Studio). Update the core
-and affected integrations together using their published dependency ranges; consult
-each package's changelog for its version. A prepared version in this repository
-becomes installable only after publication to npm.
+and affected integrations together; consult each package's changelog for its version.
+Published dependency ranges alone do not keep them in step: the 1.31.0 integrations
+declare `^1.31.0` peer ranges, which accept core 1.32.0 without a warning. Install
+core 1.32.0 with `@velajs/cli` 1.32.0, `@velajs/cloudflare` 1.32.0, `@velajs/crud`
+1.32.0, `@velajs/mail` 1.32.0, `@velajs/storage` 1.31.1, `@velajs/testing` 1.31.1 and
+`@velajs/studio` 1.32.0 (with `@velajs/studio-host` 1.24.0 and `@velajs/studio-ui`
+1.25.0): `@velajs/crud` 1.31.0 calls the removed `@ApiResponse(status, options)` form
+and fails at import, Studio and CLI 1.31.0 read the removed
+`ModuleDescription.isGlobal`, and the storage controller's POST routes in
+`@velajs/storage` 1.31.0 answer 201. A prepared version in this repository becomes
+installable only after publication to npm.
 
 ## Import paths
 
@@ -230,8 +238,11 @@ are removed:
 - Replace `body: { contentType: 'multipart/form-data', ...limits }` with
   `body: { multipart: limits }`, `application/x-www-form-urlencoded` with
   `body: { form: limits }` and `application/json` with `body: { json: { maxBytes } }`.
-  Multipart now defaults to one file and a body of `maxFiles × maxFileBytes` plus
-  1 MiB, and a route's own `maxBytes` replaces the application body limit for
+  Multipart now defaults to one file of 1 MiB and a body of
+  `maxFiles × maxFileBytes` plus 1 MiB, where `@Endpoint` accepted 10 files within
+  a 1 MiB body: a converted upload route that relied on the defaults answers 413
+  for a second file, so declare `maxFiles` (and `maxBytes`) to keep the earlier
+  limits. A route's own `maxBytes` replaces the application body limit for
   that route, so upload routes no longer need a `streamingOverrides` entry;
   remove such entries, which still take precedence. A default `maxBytes` never
   exceeds a `security.body.maxBytes` (or `bodyLimit`) the application sets:
@@ -243,6 +254,9 @@ are removed:
   stream of the platform `Request` that `@Req()` injects.
 - Replace `format: 'binary' | 'stream' | 'response'` endpoint definitions with
   the same `format` and `contentType` route options.
+- Request values a route contract or schema argument rejects answer the canonical
+  validation body with `message: 'Validation failed'`, as `ValidationPipe` failures
+  do, where `@Endpoint` input failures carried `'Endpoint input validation failed'`.
 - Replace `@Serialize(dto)` and `SerializerInterceptor` with
   `@Get({ response: dto })`. The response is parsed as a whole, after
   interceptors: use `z.array(item)` where `@Serialize` parsed each array element.
@@ -287,7 +301,10 @@ scopes) for it to apply to entries stored before their TTL expires.
 `@Query()` without a schema returns repeated keys (`?tag=a&tag=b`) as arrays
 instead of the first value, and keys a query schema declares as arrays in its
 JSON Schema arrive as arrays even when sent once, beside fields JSON Schema
-cannot express such as `z.coerce.date()`; a repeated scalar fails its schema. A
+cannot express such as `z.coerce.date()`. A key the schema declares as a scalar
+arrives as an array when it is repeated, so `@Query(schema)` and
+`@Query(name, schema)` answer 400 for `?page=1&page=2` where the first value used
+to pass: declare the field as an array, or send the key once. A
 schema without a JSON Schema converter (a Valibot schema, a `parse()` parser)
 receives an array only for a repeated key. A named
 parameter without a schema follows its declared type: `string`, `number` and
@@ -353,7 +370,8 @@ import, batch restore and upsert, version rollback) unless it declares its own
 `@HttpCode`, and OpenAPI documents that status. An overridden `create`,
 `batchCreate` or `clone` therefore answers 201 instead of 200; add `@HttpCode(200)`
 to keep 200. OpenAPI documents 201 for the generated `batchCreate` and `clone`,
-the status they already answered.
+the status they already answered. The generated `upsert` answers 201 when it
+creates the row and 200 when it updates one; OpenAPI documents only its 200.
 
 ## HTTP errors, request parameters and guards
 
@@ -730,9 +748,10 @@ from `compatibility_date` 2026-04-21 (or the `enhanced_error_serialization`
 flag); `vela deploy check` warns with `rpc-error-serialization` before that date.
 Host invocations, like Workflow runs (`VelaWorkflow`), service entrypoint calls
 (`VelaEntrypoint`) and `@OnEmail()`/`@OnTail()` handlers, run the guards,
-interceptors, pipes and filters declared on the host or handler class and method;
-application-wide `APP_GUARD`, `APP_INTERCEPTOR`, `APP_PIPE` and `APP_FILTER`
-components do not apply, so declare the guards those entrypoints need on them.
+interceptors and filters (and pipes on RPC arguments) declared on the host or
+handler class and method; application-wide `APP_GUARD`, `APP_INTERCEPTOR`,
+`APP_PIPE` and `APP_FILTER` components do not apply, so declare the guards those
+entrypoints need on them.
 `vela g durable-object` now writes such a host and class. See
 [Durable Objects](durable-objects.md) and [entrypoints](entrypoints.md).
 
@@ -879,8 +898,10 @@ shape of `add()`.
 *1.32.0:* `@velajs/mail` reports an unclaimed `@OnInboundEmail` handler failure on the
 `'email'` edge of `ErrorReportContext` (with `kind: 'mail:inbound'`) instead of
 `'queue'`: an `ExceptionHandler` that selects inbound mail failures by
-`edge === 'queue'` matches `'email'` now. Cloudflare Workflows, Email Workers
-and Tail Workers report on `'workflow'`, `'email'` and `'tail'`.
+`edge === 'queue'` matches `'email'` now. Cloudflare Durable Objects, Workflows,
+Email Workers and Tail Workers report on `'durable-object'`, `'workflow'`, `'email'`
+and `'tail'`: an `ExceptionHandler` whose `report()` or `context()` switches
+exhaustively over `ErrorReportContext.edge` must handle these four edges.
 
 Storage aborts and deadlines stop follow-up work without retrying abandoned writes.
 An already-issued native write can still commit. Reconcile uncertain results at
