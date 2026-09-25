@@ -1072,8 +1072,10 @@ option. See [tooling](tooling.md) and [testing](testing.md).
   module), and otherwise from the root module the entry names, in a separate
   file: for `export default createCloudflareWorker(AppModule, options)` it does
   not share those options, and the generator says so. `vela cf sync` binds a
-  gateway binding that no class serves only to a `VelaWebSocketDurableObject`
-  class.
+  gateway binding that no class serves to the one exported
+  `VelaWebSocketDurableObject` class without a binding, or, when there is none,
+  to the one unbound class that is not a `VelaDurableObject` host, such as a
+  hand-written Durable Object; it never binds it to a host class.
 - A module class that implements `NestModule` is built, and its `configure()`
   called, after the whole graph is registered and, in `@velajs/testing` 1.32.0,
   after provider overrides and `useMocker` apply. That testing release requires
