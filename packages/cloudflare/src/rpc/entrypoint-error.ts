@@ -20,11 +20,15 @@ export interface EntrypointErrorInit {
  * The one error the JS-RPC methods of a Vela entrypoint reject with: a
  * Durable Object from `VelaDurableObject()` and a service entrypoint from
  * `VelaEntrypoint()`. The entrypoint reports the original error first, then
- * renders it as HTTP renders a response (`renderHttpError`): a 4xx
- * `HttpException` or branded `VelaError` keeps its code, message and details;
- * anything else becomes `500 internal "Internal Server Error"`. Only these own
- * properties cross the RPC boundary: no stack frames, causes or other fields of
- * the original.
+ * renders it as HTTP renders a response with server bodies redacted
+ * (`renderHttpError`): a 4xx `HttpException` keeps its code, message and
+ * details; a branded `VelaError` keeps its code and message at any status, and
+ * its details below 500; a 5xx `HttpException` becomes its status's code and
+ * title; an unknown error becomes `500 internal "Internal Server Error"`. A 4xx
+ * `HttpException` constructed with an object response keeps only its status
+ * (code `error`) unless that object is a canonical `{ error: { code, message,
+ * details } }` body. Only these own properties cross the RPC boundary: no stack
+ * frames, causes or other fields of the original.
  *
  * workerd rebuilds it on the caller's side as a plain `Error` with the same
  * `name`, `status`, `code`, `message` and `details`; read it with
