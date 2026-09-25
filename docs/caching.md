@@ -64,7 +64,8 @@ body, after every interceptor and the route's `response` schema. A hit replays
 it without running the handler or parsing again; interceptors outside
 `CacheInterceptor` (global ones registered before `CacheModule`'s) receive the
 replayed `Response`, and a value they return instead of a `Response` is
-ignored, so a hit sends exactly what the miss that stored it sent. An
+ignored, so a hit sends exactly what the miss that stored it sent unless one
+of them returns another `Response`, which is sent instead. An
 interceptor outside it that reads the value must accept that `Response`. What
 is stored is the result of the call `CacheInterceptor` makes: the handler and
 the interceptors inside it (controller and method interceptors, and global ones
