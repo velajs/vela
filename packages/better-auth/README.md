@@ -62,7 +62,7 @@ Authentication has no allow-by-default compatibility mode. Use `@Public(true)` f
 
 `basePath`, `mountHandler` and `guard` are structural: `forRootAsync` takes them next to its factory, which returns the other options. An `auth` function runs on the first authentication, not while the application initializes.
 
-Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity. The mounted auth handler is `@Public(true)` and marked `SkipGuardPhases(['tenant', 'authorize'])`, so the tenant admission and authorization guards integrations install globally never block sign-in; throttling and the application's own global guards still apply.
+Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity. The mounted auth handler is `@Public(true)` and marked `SkipGuardPhases(['tenant', 'authorize'])`, so the tenant admission and authorization guards integrations install globally never block sign-in, including a `TenantGuard` the application registers globally itself; throttling and the other global guards still apply.
 
 ## Three composition patterns
 

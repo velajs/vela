@@ -56,6 +56,40 @@ The guard publishes the canonical tenant into the trusted identity and CRUD's
 compatibility variable. For generated tenant CRUD controllers, retain
 `tenantResolverMounted: true` and apply the guard to the controller/module.
 
+The installed guard also runs wherever the application's global guards run outside
+controller routes: on WebSocket gateway messages, on the check before each push to a
+socket (with the gateway class), on the reserved `$live` frames that subscribe to live
+queries or send presence heartbeats (with the framework's `LiveEngine` class) and on RPC
+procedures, which require a tenant as routes do. A socket context has no request to
+select the tenant from, so by default each gateway message answers an `exception` frame,
+pushes are dropped and `$live` frames get no reply. Mark gateway classes and handlers
+with `@TenantIgnored()` or `@TenantOptional()`; only a marker on the gateway class also
+admits its pushes. No marker reaches `$live` frames: admit socket contexts with
+`resolve`, from the identity the upgrade verified, or pass `guard: 'none'`:
+
+```ts
+import { normalizeWebSocketUpgradeIdentity } from '@velajs/vela/websocket';
+import { MemoryTenantRegistryStore } from '@velajs/tenant';
+import { TenantModule } from '@velajs/tenant/vela';
+
+TenantModule.forRoot({
+  lookup: new MemoryTenantRegistryStore([]),
+  authorize: ({ tenant, principal }) => memberships.authorize(tenant.id, principal),
+  // Socket frames and pushes admit the tenant the upgrade verified.
+  resolve: (context) => {
+    if (context.getType() !== 'ws') return undefined;
+    const identity = normalizeWebSocketUpgradeIdentity(context.switchToWs().getClient().data);
+    return identity
+      ? {
+          tenantId: identity.tenantId,
+          principal: { ...identity.principal, expiresAtMs: identity.expiresAtMs },
+          source: 'websocket',
+        }
+      : undefined;
+  },
+});
+```
+
 For a queue message, scheduled tenant, or WebSocket operation:
 
 ```ts

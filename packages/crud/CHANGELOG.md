@@ -1,5 +1,61 @@
 # Changelog
 
+## 1.31.0
+
+### Minor Changes
+
+- e2587de: `@Crud()` and `CrudModule.forFeature()` resources take `decorators` for the controller class and `endpointDecorators` for each endpoint's handler, so an application declares route metadata on controllers it does not write, such as Cedar policy under the default deny: `defineCrudFeature({ path: '/notes', model, decorators: [RequireResource({ action: 'note:write', resourceType: 'Note' })], endpointDecorators: { list: [CedarPublic()] } })`. They apply as if written above the class or method in order, so endpoint metadata overrides class-level metadata, and an `@Override`'d endpoint keeps them. A method decorator that changes or returns the descriptor wraps the handler the route calls. Class decorators apply after the generated handlers exist, as TypeScript applies them after the methods, so one that decorates or wraps each method reaches every endpoint, and one that writes method metadata overrides an `endpointDecorators` value for that key, exactly as in hand-written TypeScript; a class decorator that returns a replacement class is rejected.
+- 37dd27d: Two `CrudModule.forFeature()` registrations that mount the same path with different definitions, such as the same resource with other `decorators` or `endpointDecorators`, now fail bootstrap with `CRUD path '/notes' is mounted by two different CrudModule.forFeature() features: 'note' (CrudNotesController) and ...`, whether they come from one registration or several. Paths compare in canonical form, so spellings that mount the same routes are one path: a trailing slash (`'/notes'` and `'/notes/'`) and other parameter names (`'/orgs/:org/notes'` and `'/orgs/:tenant/notes'`, reported as `'/orgs/:param/notes'`); the message names each feature's own spelling when it differs. Previously both controllers mounted and import order silently decided which policy served the path. Registering the identical `defineCrudFeature(...)` value from several modules is still allowed.
+  
+  **Behavior change:** an application whose `CrudModule.forFeature()` registrations mount one path with different definitions no longer boots. Register one shared `defineCrudFeature(...)` value wherever the path is mounted, or give each feature its own path.
+- f267c2f: Every HTTP failure renders through one function, `renderHttpError(error, { catalog?, redactServerBodies? })`, exported from `@velajs/vela` with `getErrorStatus(error)`. It returns `{ status, body, redacted }`. Controller handlers, Vela middleware, the last-resort Hono `onError`, unmatched routes, request limits, RPC and GraphQL all derive their status and body there. Exception filters run first where the edge has a pipeline: controller handlers and RPC procedures (their scoped and global filters), GraphQL resolvers (the provider's filters and the `GraphqlModule` field filters), and Vela middleware, unmatched routes and request limits (global filters). The HTTP edges and RPC then apply the application's `ExceptionHandler.render` hook. The last-resort Hono `onError`, which receives errors thrown by raw Hono middleware and routes, runs no exception filters but applies the `ExceptionHandler.render` hook before rendering.
+  
+  - An exception owns its wire shape through `toResponse()`, which returns `{ status, body }` (`HttpErrorResponse`). `HttpException` returns an object response verbatim, as before, so a health check's 503 still ships as written; a string response takes the canonical `{ error: { code, message, details? } }` body. Only exceptions the `HttpException` constructor built, including subclasses such as `CrudException`, own a response: the constructor brands them. Any other thrown object with a `toResponse()` is an unknown error, reported and answered with a redacted 500, so a third-party error cannot choose its own status or body. `CrudException` renders its `{ success: false, error }` envelope through `toResponse()` and keeps its human-readable `message`. Errors thrown by raw Hono middleware reach only `onError`, which redacts an owned 5xx body to its status title, as RPC frames do.
+  - `HttpException` and each subclass accept `options` (`{ details, cause }`). A 4xx sends `details` as `error.details`; a 5xx sends neither its text nor its details. `getDetails()` reads them.
+  - Unmatched routes answer a JSON 404 (`{ error: { code: 'not_found', message: 'Not Found' } }`), including Workers built with `createCloudflareWorker`, and oversized bodies a JSON 413 (`payload_too_large`). These and the query-limit 400s are not reported. As in Nest, global exception filters receive them (`NotFoundException`, `PayloadTooLargeException`, `BadRequestException`), and a filter's plain result keeps their status.
+  - A Hono `HTTPException` with a 4xx status renders its message in the canonical body on every edge, including controller handlers, where @velajs/vela 1.30.0 answered a redacted 500; one built with its own `res`, such as an auth challenge, keeps that response and its headers. Any other status below 500 renders as a redacted 500 unless the exception has its own `res`.
+  - GraphQL maps a field error's status from the shared renderer, so branded `VelaError`s, Hono `HTTPException`s with a 4xx status and exception-owned responses reach the same public codes (`FORBIDDEN`, `NOT_FOUND`, …) as `HttpException`s, where @velajs/graphql 1.29.0 answered `INTERNAL_SERVER_ERROR` for any error that was not an `HttpException`. An RPC failure frame carries only `{ code, message, status }`. When the rendered body has `error.code` and `error.message` (the canonical body, or an exception-owned 4xx body with that member, such as the CRUD envelope), the frame keeps the message and the code, or the status's code when that code is malformed; otherwise it sends the status's code and a generic message. A frame coded `internal` always carries the generic message, and a 5xx owned body is redacted first.
+  
+  **Behavior change:** validation failures from `ValidationPipe` and `@Body(schema)` answer `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`, and `@Endpoint` input failures the same body with the message `'Endpoint input validation failed'`, instead of `{ statusCode, message, errors }`. The thrown `BadRequestException` carries the issues in `getDetails()`.
+  
+  **Behavior change:** an exception filter's result is sent with `getErrorStatus(error)`, the exception's status (`HttpException.getStatus()` or `VelaError.status`) when it is 400–599, else 500, instead of 200. Return `{ status, body }` (exactly those keys) to set the status explicitly, or a `Response`. A filter that returns `undefined` no longer sends an empty 204: the error falls through to the default renderer. RPC applies the same rules to the status it keeps: a filter's plain result, which @velajs/rpc 1.30.0 ignored (the error fell through to the application's `ExceptionHandler.render` hook and the default frame, with the error's own code and message), now ends the call with a failure frame carrying that status's code and a generic message (`RPC request failed` for a 4xx), and `ExceptionHandler.render` does not run for the error. Return `undefined` from the filter to keep the default frame.
+  
+  **Behavior change:** an RPC failure caused by an exception-owned 4xx body that has `error.code` and `error.message`, such as `CrudException`'s `{ success: false, error: { code, message } }` envelope or an `HttpException` built with `{ error: { code: 'locked', message: 'Record locked' } }`, now carries that code and message: a `CrudException` 404 answers `{ code: 'NOT_FOUND', message: <its message>, status: 404 }`, where @velajs/rpc 1.30.0 answered `{ code: 'not_found', message: 'RPC request failed', status: 404 }`. An `HttpException` with a string response keeps its message and the status's code, as before. Update clients that match RPC error codes. GraphQL clients now see the status's public code (`FORBIDDEN`, `NOT_FOUND`, …) for branded `VelaError`s and 4xx Hono `HTTPException`s instead of `INTERNAL_SERVER_ERROR`.
+  
+  **Behavior change:** the last-resort Hono `onError` now applies the application's `ExceptionHandler.render` hook to errors thrown by raw Hono middleware and routes; @velajs/vela 1.30.0's `onError` rendered them without calling it. Exception filters still do not run there.
+  
+  **Behavior change:** `HttpException.getRawResponse()` is removed. Override `toResponse()` to own an exception's response, and call `renderHttpError(error)` to map an error to another transport.
+- f267c2f: The new `@Ctx()` parameter decorator injects the Hono context (`VelaContext`); `@Res()` still returns it as the response handle.
+  
+  **Behavior change:** `@Req()` injects the platform `Request`, as Nest's `@Req()` injects the request object, instead of the Hono context. Replace `@Req() c: Context` with `@Ctx() c: Context`, or with `@Req() request: Request` when the handler only read `c.req.raw`. The Better Auth catch-all handler and generated CRUD handlers are migrated.
+
+### Patch Changes
+
+- b227d22: Follow the uniform module contract: `CrudModule` uses the default instance key and its tokens are plain `InjectionToken`s.
+- Updated dependencies [0b8c649]
+- Updated dependencies [1011653]
+- Updated dependencies [088f4d4]
+- Updated dependencies [f267c2f]
+- Updated dependencies [dfe925c]
+- Updated dependencies [fd11d20]
+- Updated dependencies [748e4f8]
+- Updated dependencies [096e259]
+- Updated dependencies [fd11d20]
+- Updated dependencies [3418c55]
+- Updated dependencies [fd11d20]
+- Updated dependencies [d51dbb3]
+- Updated dependencies [f267c2f]
+- Updated dependencies [4a06057]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1bfc1c1]
+- Updated dependencies [f267c2f]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1ef55ac]
+- Updated dependencies [f267c2f]
+- Updated dependencies [b227d22]
+- Updated dependencies [2c92243]
+  - @velajs/vela@1.31.0
+
 ## 1.30.0
 
 ### Minor Changes

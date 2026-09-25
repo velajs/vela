@@ -1,6 +1,6 @@
 {
   "name": "@velajs/crud",
-  "version": "1.30.0",
+  "version": "1.31.0",
   "description": "Native CRUD module for the Vela framework",
   "keywords": [
     "crud",

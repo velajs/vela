@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.31.0
+
+### Minor Changes
+
+- 2c92243: Add Nest's `overrideModule(Module).useModule(Replacement)` and `useMocker(factory)` to the testing module builder; as in Nest, the `OverrideModule` step `overrideModule()` returns is exported as a type. `overrideModule` loads the replacement (a module class or a `DynamicModule`) wherever the graph imports the module class, any `DynamicModule` of it, or exactly the `DynamicModule` passed, including through `exports: [Module]` re-exports, without modifying module metadata. `useMocker` calls `factory(token)` once for each token a constructor or factory injects that no visible provider satisfies, after the overrides and before anything is constructed, and registers the value in each module that needs it; optional parameters, `ModuleRef`, `InjectionToken` defaults and provided or overridden tokens are left alone. As in Nest, a falsy result supplies nothing: the dependency stays unresolved and `compile()` rejects with `UnresolvedDependencyError`.
+  
+  `Test.createTestingModule(metadata, options)` accepts every `VelaFactory.create` option (`globalPrefix`, `security`, `middleware`, `diagnostics` besides `env` and `adapters`): `TestingModuleOptions` extends `VelaCreateOptions`.
+
+### Patch Changes
+
+- Updated dependencies [0b8c649]
+- Updated dependencies [1011653]
+- Updated dependencies [088f4d4]
+- Updated dependencies [f267c2f]
+- Updated dependencies [dfe925c]
+- Updated dependencies [fd11d20]
+- Updated dependencies [748e4f8]
+- Updated dependencies [096e259]
+- Updated dependencies [fd11d20]
+- Updated dependencies [3418c55]
+- Updated dependencies [fd11d20]
+- Updated dependencies [d51dbb3]
+- Updated dependencies [f267c2f]
+- Updated dependencies [4a06057]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1bfc1c1]
+- Updated dependencies [f267c2f]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1ef55ac]
+- Updated dependencies [f267c2f]
+- Updated dependencies [b227d22]
+- Updated dependencies [2c92243]
+  - @velajs/vela@1.31.0
+
 ## 1.30.0
 
 ### Minor Changes
