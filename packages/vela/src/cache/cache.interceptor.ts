@@ -93,12 +93,20 @@ export class CacheInterceptor implements NestInterceptor {
         new Response(body, { status: code, headers: { 'content-type': type } }),
       );
     }
-    // Store the response the route sends, unless it turns out private.
+    // Store the response the route sends, unless it turns out private. A
+    // cache failure never fails the response.
     if (lookup)
       onResponseSent(c, async (sent) => {
         const type = sent.headers.get('content-type');
         if (unsafe(c.res) || unsafe(sent) || type === null) return;
-        await lookup.store({ status: sent.status, type, body: await sent.clone().text() });
+        let body: string;
+        try {
+          body = await sent.clone().text();
+        } catch (error) {
+          this.cache.report('write', error);
+          return;
+        }
+        await lookup.store({ status: sent.status, type, body });
       });
     return next.handle();
   }

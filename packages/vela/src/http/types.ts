@@ -34,8 +34,9 @@ export interface ParamExtractionRoute {
   readonly paths: readonly string[];
   /**
    * The request groups the route's schemas validated, read once per request
-   * after guards. Present when the route declares `params`, `query` or `body`
-   * schemas; a parameter reading a declared group reads its value here.
+   * after guards, with its declared body. Present when the route declares
+   * `params`, `query` or `body` schemas or a body encoding; a parameter
+   * reading a declared group reads its value here.
    */
   readonly input?: (c: Context) => Promise<RouteInputValues>;
 }
