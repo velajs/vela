@@ -132,6 +132,7 @@ cannot edit fails with nothing created; a failed type refresh only warns.
 ```sh
 vela cf sync            # exit 1 and list the differences
 vela cf sync --write    # apply them to wrangler.jsonc, keeping comments
+vela cf sync --write --prune   # also remove cron triggers no @Cron job declares
 vela cf sync --env staging --write
 ```
 
@@ -140,9 +141,11 @@ expression, a queue producer per `QueueModule.registerQueue({ binding })`, a
 consumer per processed or `@QueueConsumer` queue, a Durable Object binding and a
 `new_sqlite_classes` migration per exported Durable Object class, and a
 `workflows` entry per exported `WorkflowEntrypoint`. `--write` edits JSON and
-JSONC files through `jsonc-parser`; a `wrangler.toml` is only compared. Cron
-triggers no job declares are removed; anything else the application does not use
-is reported and left in place. Run the `types` script afterwards.
+JSONC files through `jsonc-parser`; a `wrangler.toml` is only compared. A cron
+trigger no `@Cron` job declares is reported as such and kept, since a Worker entry
+with its own `scheduled` handler may serve it; `--prune` removes those triggers.
+Anything else the application does not use is reported and left in place. Run the
+`types` script afterwards.
 
 ### MCP server
 

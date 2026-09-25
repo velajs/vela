@@ -148,7 +148,10 @@ vela deploy check
   consumers, Durable Object bindings and migrations, and Workflows from the
   application and the Worker entry's exports; it exits 1 on differences, and
   `--write` edits JSON/JSONC through `jsonc-parser`, one element at a time
-  (a cron trigger is appended or removed on its own), keeping comments. An
+  (a cron trigger is appended or removed on its own), keeping comments. A cron
+  trigger no `@Cron` job declares is reported as not declared by any job and
+  kept, since a Worker entry with its own `scheduled` handler may serve it;
+  `--prune` removes such triggers. An
   added element follows its array's or object's layout: on the line of the
   last one when that one shares a line (a one-line Wrangler file stays on one
   line), else on its own line after the comma and comment trailing the last
