@@ -237,6 +237,19 @@ Every HTTP failure renders through `renderHttpError`. Clients see these changes:
   400–599, else 500, instead of 200. Return `{ status, body }` to choose the
   status. A filter that returns `undefined` leaves the error to the default
   renderer instead of sending 204.
+- An RPC failure caused by an exception-owned 4xx body with `error.code` and
+  `error.message`, such as a `CrudException` envelope, carries that code and
+  message (`{ code: 'NOT_FOUND', message: <its message>, status: 404 }`) instead
+  of the status's code and `'RPC request failed'` (`{ code: 'not_found', … }`).
+  Update RPC clients that match error codes.
+- A GraphQL field error from a branded `VelaError` or a 4xx Hono `HTTPException`
+  answers the status's public code (`FORBIDDEN`, `NOT_FOUND`, …) instead of
+  `INTERNAL_SERVER_ERROR`.
+- The last-resort Hono `onError`, which receives errors thrown by raw Hono
+  middleware and routes, now applies the application's `ExceptionHandler.render`
+  hook. Exception filters run only where the edge has a pipeline: controller
+  handlers, RPC procedures, GraphQL resolvers, Vela middleware, unmatched routes
+  and request limits.
 
 `HttpException.getRawResponse()` is removed. Exceptions own their wire shape
 through `toResponse()`: an object response still renders verbatim, and a custom
@@ -324,10 +337,15 @@ controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`. It skips the
 global guards in the named phases whose class declares
 `static readonly skippable = true` (`TenantGuard`, `PermissionGuard`, `RolesGuard`
 and `CedarGuard`), whoever registers them: an application's own
-`{ provide: APP_GUARD, useClass: TenantGuard }` is skipped there too. Other global
-guards still run there. An application guard that extends an integration guard
-inherits `skippable`; declare `static override readonly skippable = false` on it to
-keep it running there.
+`{ provide: APP_GUARD, useClass: TenantGuard }` is skipped there too, where 1.30.0
+ran every global guard on the Better Auth handler, the storage controllers and the
+GraphQL endpoint. Check tenant membership for storage actions in the storage
+`http.authorize` callback. Other global guards still run there. An application
+guard that extends an integration guard inherits `skippable`; declare
+`static override readonly skippable = false` on it to keep it running there.
+`SkipGuardPhases` applies only to controller routes; see
+[guards on WebSocket, live-query and RPC entrypoints](#guards-on-websocket-live-query-and-rpc-entrypoints)
+for the entrypoints where the installed guards also run.
 
 An application's own global guard runs in the phase its class declares with
 `static readonly phase`, else in `feature`; 1.30.0 ran every global guard in
@@ -350,9 +368,80 @@ reaches prefixed routes while its written path also matches a route registered
 outside the prefix, such as an adapter's absolute `POST /rpc` under
 `forRoutes(':resource')`. Cover that route in the same `forRoutes()` with an
 absolute target (`{ path: '/rpc', absolute: true }`) or its controller, or leave it
-out with an absolute `exclude()`. `globalPrefixOptions: { exclude }` serves chosen
+out with an absolute `exclude()`. An absolute target or `exclude()` accounts only for
+the outside routes it matches itself, so `{ path: '/rpc', absolute: true }` does not
+cover an excluded `GET /health`: startup still fails until that route is covered or
+excluded too. `globalPrefixOptions: { exclude }` serves chosen
 controller routes without the prefix, as Nest's `setGlobalPrefix(prefix, { exclude })`
 does.
+
+### Guards on WebSocket, live-query and RPC entrypoints
+
+Global guards also run outside controller routes: on WebSocket gateway messages,
+on the check before each push to a socket (run with the gateway class), on the
+reserved `$live` frames that subscribe to and unsubscribe from live queries (run
+with the framework's `LiveEngine` class) and on RPC procedures. `SkipGuardPhases`
+applies only to controller routes. The guards the integrations now install reach
+these entrypoints too, so with default options an upgraded application sees:
+
+- `CedarModule` rejects each gateway message without `@RequireResource()` or
+  `@CedarPublic()` with an `exception` frame (`code: 'internal'`), drops pushes,
+  never answers `$live` frames, and answers an undeclared RPC procedure with a 403
+  failure frame. The Cedar guard 1.30.0 installed let undeclared handlers through.
+- `TenantModule` fails gateway messages, pushes and `$live` frames the same way,
+  because a socket context has no request to select the tenant from, and requires
+  a tenant and an authenticated identity on RPC procedures, as on routes.
+- `CloudflareAccessModule` fails every gateway message, push and `$live` frame,
+  in `mode: 'optional'` too, and requires an Access identity on RPC procedures,
+  as on routes.
+- `AuthzModule` and `FeatureFlagsModule` let undeclared handlers through, but now
+  enforce `@Roles()`, `@RequirePermission()` and `@FeatureFlag()` on gateway
+  handlers and RPC procedures. A socket message has no request context to
+  evaluate a flag for, so a `@FeatureFlag()` on a gateway rejects its messages
+  even when the flag is on.
+
+A guard failure on a `$live` frame or a push reaches only the error reporter,
+which skips 4xx errors by default, so live queries stop updating without a visible
+error. To keep gateways, live queries and RPC working:
+
+- Put `@CedarPublic()` or `@RequireResource()`, and `@TenantIgnored()` or
+  `@TenantOptional()`, on gateway classes and RPC providers, or on their handlers
+  and procedures. A marker on the gateway class, not on a handler, also admits the
+  gateway's pushes.
+- No marker reaches `$live` frames, including one on the `@LiveResolver()` class.
+  Admit their tenant with `TenantModule`'s `resolve` option, and set
+  `undeclared: 'allow'` on `CedarModule` or pass it `guard: 'none'`:
+
+```ts
+import { normalizeWebSocketUpgradeIdentity } from '@velajs/vela/websocket';
+import { TenantModule } from '@velajs/tenant/vela';
+
+TenantModule.forRoot({
+  lookup,
+  authorize,
+  // Socket frames and pushes admit the tenant the upgrade verified.
+  resolve: (context) => {
+    if (context.getType() !== 'ws') return undefined;
+    const identity = normalizeWebSocketUpgradeIdentity(context.switchToWs().getClient().data);
+    return identity
+      ? {
+          tenantId: identity.tenantId,
+          principal: { ...identity.principal, expiresAtMs: identity.expiresAtMs },
+          source: 'websocket',
+        }
+      : undefined;
+  },
+});
+```
+
+- `CloudflareAccessModule` has no socket option. With gateways or live queries,
+  pass `guard: 'none'`, authenticate sockets at upgrade with
+  `CloudflareAccessUpgradeAuthenticator`, and apply `CloudflareAccessGuard` to HTTP
+  controllers with `@UseGuards`. Global guards run before route guards, so apply
+  the tenant and authorization guards there too: pass `guard: 'none'` to their
+  modules and use `@UseGuards(CloudflareAccessGuard, TenantGuard, PermissionGuard)`.
+- With `guard: 'none'`, a module installs no global guard, so gateways, live
+  queries and RPC run only the guards you apply to them.
 
 ## Cloudflare adapter
 
@@ -650,7 +739,9 @@ ThrottlerModule.forRoot({
   `'default'` throttler; `@SkipThrottle({ name: true })` skips a named one. Custom
   stores implement `increment(key, ttl, limit, throttlerName)`, and a custom
   `generateKey` is `(context, tracker, throttlerName)`. Default counter keys gain
-  the throttler name, so counts in a shared store restart. `rateLimitStore()`
+  the throttler name, so counts in a shared store restart. Throttler names are
+  letters, digits, `_` or `-`: a Nest-style name such as `'per.minute'` fails
+  bootstrap. `rateLimitStore()`
   requires each binding's configured limit and period to equal its throttler's
   `limit` and `ttl`, which must be 10 or 60 seconds; a throttler it cannot serve
   fails bootstrap.
@@ -660,7 +751,9 @@ ThrottlerModule.forRoot({
   `managedModels` and `runAsIdentity` move to `crudPanel()`,
   `StudioLiveModule.forRoot({ source })` becomes `livePanel({ source })`, and
   `StudioCloudflareTimeTravelModule.forRoot({ namespace })` becomes
-  `cloudflareTimeTravelPanel({ binding })`.
+  `cloudflareTimeTravelPanel({ binding })`. `StudioAppHolder.capture(app, routePathOptions)`
+  takes the application's `RoutePathOptions` (`app.getRoutePathOptions()`) instead
+  of the global prefix string.
 
 See [caching](caching.md), [security](security.md) for CORS and throttling,
 [storage](../packages/storage/README.md) and [Studio](../packages/studio/README.md).
