@@ -615,6 +615,46 @@ export class BindingsModule {}
     },
   );
 
+  it.each([
+    [
+      'd1',
+      "export const CACHE = new InjectionToken<KVNamespace>('CACHE');",
+      'InjectionToken<KVNamespace>, not InjectionToken<D1Database>',
+    ],
+    [
+      'kv',
+      "export const CACHE = new InjectionToken<R2Bucket | undefined>('CACHE');",
+      'InjectionToken<R2Bucket | undefined>, not InjectionToken<KVNamespace>',
+    ],
+    [
+      'r2',
+      "export const CACHE = new InjectionToken('CACHE');",
+      'an InjectionToken without a type argument, not InjectionToken<R2Bucket>',
+    ],
+  ] as const)(
+    'refuses to reuse a token typed otherwise, creating nothing: vela add %s CACHE',
+    async (kind, line, reason) => {
+      // Reused, the token would keep its type while Wrangler created another resource.
+      const bindings = `import { ENV, Global, InjectionToken, Module, defineProvider } from '@velajs/vela';
+
+${line}
+
+@Global()
+@Module({ providers: [], exports: [] })
+export class BindingsModule {}
+`;
+      await writeFile(join(project, 'src/bindings.module.ts'), bindings);
+      const result = await add(kind, 'CACHE');
+      expect(result.code).toBe(1);
+      expect(result.output).toContain(
+        `src/bindings.module.ts declares CACHE as ${reason}; choose another binding name, ` +
+          'or change or remove that token.',
+      );
+      await expect(read('wrangler-calls.log')).rejects.toThrow();
+      expect(await read('src/bindings.module.ts')).toBe(bindings);
+    },
+  );
+
   it('reuses the token an earlier vela add declared for the same binding', async () => {
     const bindings = `import { ENV, Global, InjectionToken, Module, defineProvider } from '@velajs/vela';
 
