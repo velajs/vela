@@ -379,10 +379,11 @@ does.
 
 Global guards also run outside controller routes: on WebSocket gateway messages,
 on the check before each push to a socket (run with the gateway class), on the
-reserved `$live` frames that subscribe to and unsubscribe from live queries (run
-with the framework's `LiveEngine` class) and on RPC procedures. `SkipGuardPhases`
-applies only to controller routes. The guards the integrations now install reach
-these entrypoints too, so with default options an upgraded application sees:
+reserved `$live` frames that subscribe to and unsubscribe from live queries and
+send presence heartbeats (run with the framework's `LiveEngine` class) and on RPC
+procedures. `SkipGuardPhases` applies only to controller routes. The guards the
+integrations now install reach these entrypoints too, so with default options an
+upgraded application sees:
 
 - `CedarModule` rejects each gateway message without `@RequireResource()` or
   `@CedarPublic()` with an `exception` frame (`code: 'internal'`), drops pushes,
@@ -401,8 +402,9 @@ these entrypoints too, so with default options an upgraded application sees:
   even when the flag is on.
 
 A guard failure on a `$live` frame or a push reaches only the error reporter,
-which skips 4xx errors by default, so live queries stop updating without a visible
-error. To keep gateways, live queries and RPC working:
+which skips 4xx errors by default, so live queries stop updating and presence
+rosters leave the socket out without a visible error. To keep gateways, live
+queries and RPC working:
 
 - Put `@CedarPublic()` or `@RequireResource()`, and `@TenantIgnored()` or
   `@TenantOptional()`, on gateway classes and RPC providers, or on their handlers

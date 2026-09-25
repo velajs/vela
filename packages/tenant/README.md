@@ -59,13 +59,13 @@ compatibility variable. For generated tenant CRUD controllers, retain
 The installed guard also runs wherever the application's global guards run outside
 controller routes: on WebSocket gateway messages, on the check before each push to a
 socket (with the gateway class), on the reserved `$live` frames that subscribe to live
-queries (with the framework's `LiveEngine` class) and on RPC procedures, which require a
-tenant as routes do. A socket context has no request to select the tenant from, so by
-default each gateway message answers an `exception` frame, pushes are dropped and
-`$live` frames get no reply. Mark gateway classes and handlers with `@TenantIgnored()`
-or `@TenantOptional()`; only a marker on the gateway class also admits its pushes. No
-marker reaches `$live` frames: admit socket contexts with `resolve`, from the identity
-the upgrade verified, or pass `guard: 'none'`:
+queries or send presence heartbeats (with the framework's `LiveEngine` class) and on RPC
+procedures, which require a tenant as routes do. A socket context has no request to
+select the tenant from, so by default each gateway message answers an `exception` frame,
+pushes are dropped and `$live` frames get no reply. Mark gateway classes and handlers
+with `@TenantIgnored()` or `@TenantOptional()`; only a marker on the gateway class also
+admits its pushes. No marker reaches `$live` frames: admit socket contexts with
+`resolve`, from the identity the upgrade verified, or pass `guard: 'none'`:
 
 ```ts
 import { normalizeWebSocketUpgradeIdentity } from '@velajs/vela/websocket';

@@ -118,14 +118,14 @@ registration its own `key`, keep `guard: 'global'` on one and pass
 The installed guard also runs wherever the application's global guards run outside
 controller routes: on WebSocket gateway messages, on the check before each push to a
 socket (with the gateway class), on the reserved `$live` frames that subscribe to live
-queries (with the framework's `LiveEngine` class) and on RPC procedures. Under the
-default deny, an undeclared gateway message answers an `exception` frame, pushes are
-dropped, `$live` frames get no reply and an undeclared RPC procedure answers 403.
-Declare `@RequireResource()` or `@CedarPublic()` on gateway classes and handlers and on
-RPC providers and procedures; only a declaration on the gateway class also admits its
-pushes. No declaration reaches `$live` frames: with live queries, set
-`undeclared: 'allow'` or pass `guard: 'none'`. Supply `identity` to authorize socket
-contexts against a declared resource.
+queries or send presence heartbeats (with the framework's `LiveEngine` class) and on RPC
+procedures. Under the default deny, an undeclared gateway message answers an `exception`
+frame, pushes are dropped, `$live` frames get no reply and an undeclared RPC procedure
+answers 403. Declare `@RequireResource()` or `@CedarPublic()` on gateway classes and
+handlers and on RPC providers and procedures; only a declaration on the gateway class
+also admits its pushes. No declaration reaches `$live` frames: with live queries or
+presence, set `undeclared: 'allow'` or pass `guard: 'none'`. Supply `identity` to
+authorize socket contexts against a declared resource.
 
 The package includes NestM BSD-licensed adaptations and unmodified Apache-licensed
 Cedar WASM; see `THIRD_PARTY_LICENSES`.
