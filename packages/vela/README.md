@@ -75,8 +75,9 @@ Rate limiting prefers identity explicitly published by trusted authentication
 through `setTrustedRequestIdentity()` (principal plus verified tenant), then a
 configured tracker, then the runtime-attested client address. Core never derives
 a tracker from forwarding headers. Global guards run in fixed phases
-(`authenticate`, `tenant`, `authorize`, `feature`), so authentication runs before
-throttling whatever the import order.
+(`authenticate`, `tenant`, `authorize`, `feature`), so an authentication guard that
+declares `static readonly phase = 'authenticate'` runs before throttling whatever
+the import order; a guard without a phase runs in `feature`.
 
 ## Features
 

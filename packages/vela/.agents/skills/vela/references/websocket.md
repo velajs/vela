@@ -90,7 +90,11 @@ scoped guards/components and asynchronous providers use that child. Guards run
 before request-scoped gateway construction. Connection/room state belongs on
 the authenticated client or durable attachment; it does not survive in a
 request-scoped gateway instance. Socket invocations do not acquire HTTP
-`REQUEST_CONTEXT` or authority from frame payloads.
+`REQUEST_CONTEXT` or authority from frame payloads. Application-wide guards run
+on every gateway message, every push re-authorization (with the gateway class)
+and every reserved `$live` frame, including the guards `TenantModule`,
+`CedarModule` and `CloudflareAccessModule` install by default; see `auth.md`
+for the markers and options that keep sockets working under them.
 
 Validate complete envelopes and correlation IDs. Configurable send admission
 limits bound local queued bytes and rates; rejection does not mean delivery.

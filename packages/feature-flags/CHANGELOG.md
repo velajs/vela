@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.31.0
+
+### Minor Changes
+
+- b227d22: Add the structural `guard: 'global' | 'none'` option, the same option the authentication, tenant and authorization modules take. `'global'`, the default, registers `FeatureFlagGuard` application-wide, so every `@FeatureFlag()` route is gated without `@UseGuards` and a flagged route is never reachable ungated; `'none'` gates only the routes that declare `@UseGuards(FeatureFlagGuard)`. Any other value throws when `forRoot()` or `forRootAsync()` is called.
+  
+  **Behavior change:** `isGlobal: true` no longer registers `FeatureFlagGuard` as an `APP_GUARD`; it only makes the module global, as on every module. The app-wide guard is now registered by default instead, whatever `isGlobal` says. `@UseGuards(FeatureFlagGuard)` is redundant under it and evaluates the flag a second time: remove it, or pass `guard: 'none'` to keep gating per route with `@UseGuards(FeatureFlagGuard)`.
+  
+  `FeatureFlagGuard` declares the `feature` phase (`static readonly phase = 'feature'`), so the global guard runs after the authentication, tenant and authorization guards whatever the import order, as @velajs/vela 1.31.0 orders global guards by phase.
+  
+  **Behavior change:** the app-wide guard runs wherever the application's global guards run, including WebSocket gateway messages and RPC procedures, so a `@FeatureFlag()` there is enforced without `@UseGuards`. A socket message has no request context to evaluate the flag for, so a `@FeatureFlag()` on a gateway handler rejects every message with an `exception` frame, even when the flag is on, and one on the gateway class also stops the gateway's pushes and live-query subscriptions. Keep flags on HTTP routes and RPC procedures, or pass `guard: 'none'`.
+  
+  `guard` defaults to `'global'` as a structural default, so `forRoot({ manifest })`, `forRoot({ manifest, guard: 'global' })` and `forRoot({ manifest, lazy: true })` (the module is lazy by default) are one instance with one app-wide guard. With `forRootAsync`, pass `guard` beside the factory.
+  
+  **Behavior change:** registrations are keyed by `guard` instead of by all their options, so a second `FeatureFlagsModule` with the same `guard` and other drivers or another manifest fails bootstrap instead of becoming another instance. Give each additional registration its own `key`.
+- 096e259: Declarations on an ancestor class apply to the classes that extend it, as reflect-metadata resolves them in Nest. In @velajs/vela 1.30.0 every reader looked only at the concrete class. Route decorators (`@Get()`, `@Post()`, …) are still read from the controller class itself, unlike Nest: a method an ancestor routes is not mounted on the subclass. Route an inherited method on the subclass, for example `Get('list')(Sub.prototype, 'list', descriptor)`.
+  
+  - Class metadata applies to a subclass through every `Reflector` form (`get`, `getClass`, `getAll`, `getAllAndOverride` and `getAllAndMerge`, with an execution context, `context.getClass()` or the `[context.getHandler(), context.getClass()]` list): the controller's own, else the nearest ancestor's, so `@Roles(['admin'])` on an abstract base controller guards every controller that extends it.
+  - Method metadata an ancestor declares on a method the controller inherits without overriding, such as one it routes with `Get()(Sub.prototype, 'list', descriptor)`, applies through every `Reflector` form too: the nearest declaration wins, the controller's own, else the nearest ancestor's. A method the controller overrides reads only its own declarations, and metadata one controller declares on a shared method never applies to a sibling.
+  - Class-level `@UseGuards`, `@UseInterceptors`, `@UsePipes`, `@UseFilters` and `@UseMiddleware` on an ancestor run for the subclass on every transport, the root class's first and the subclass's own last. On an inherited method, the method-level enhancers each ancestor declares run before the controller's own, and `@Serialize` and `SkipGuardPhases` read the nearest declaration. The module loader registers the enhancer classes a class inherits, as it does its own.
+  - Guards that read route metadata, such as `AuthGuard`, `RolesGuard`, `PermissionGuard`, `TenantGuard`, `CedarGuard`, `FeatureFlagGuard` and `ThrottlerGuard`, enforce inherited requirements, and `authorizationAudit()` and `auditCedarRoutes()` read declarations as the guards do. `CacheModule` checks `@CacheResponse` at bootstrap as `CacheInterceptor` reads it, and `ThrottlerModule` checks `@Throttle()` as `ThrottlerGuard` reads it, inherited declarations included, so an invalid inherited declaration, such as tags without an invalidation store or a throttler the module does not declare, fails bootstrap instead of every request.
+  
+  **Behavior change:** class metadata and class-level enhancers an ancestor declares, and the metadata, method-level enhancers, `@Serialize` and `SkipGuardPhases` an ancestor declares on a method a controller inherits unchanged, now apply to the classes that extend it. Requirements such as `@Roles()`, `@RequirePermission()` or `@RequireResource()` there are enforced, where the routes previously ran without them. Opening markers apply the same way: an inherited `@Public()`, `@OptionalAuth()`, `@TenantIgnored()`, `@CedarPublic()`, `@SkipThrottle()` or `SkipGuardPhases` now opens or relaxes routes that previously required authentication, tenant admission, Cedar authorization or throttling. Remove a declaration from the ancestor, or override the method in the controller, where a subclass must not inherit it.
+
+### Patch Changes
+
+- Updated dependencies [0b8c649]
+- Updated dependencies [1011653]
+- Updated dependencies [088f4d4]
+- Updated dependencies [f267c2f]
+- Updated dependencies [dfe925c]
+- Updated dependencies [fd11d20]
+- Updated dependencies [748e4f8]
+- Updated dependencies [096e259]
+- Updated dependencies [fd11d20]
+- Updated dependencies [3418c55]
+- Updated dependencies [fd11d20]
+- Updated dependencies [d51dbb3]
+- Updated dependencies [f267c2f]
+- Updated dependencies [4a06057]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1bfc1c1]
+- Updated dependencies [f267c2f]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1ef55ac]
+- Updated dependencies [f267c2f]
+- Updated dependencies [b227d22]
+- Updated dependencies [2c92243]
+  - @velajs/vela@1.31.0
+
 ## 1.30.0
 
 ### Minor Changes

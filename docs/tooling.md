@@ -253,8 +253,12 @@ export class AppModule {}
 
 The document covers the application root (`ROOT_MODULE`), including routes that
 route contributors such as `@Crud()` document, under the application's global
-prefix. It is built on the first request and kept for that application, so each
-Workers environment documents its own application. The document route is served
+prefix. It does not read the application's `globalPrefixOptions` or `versioning`:
+when the application excludes routes from the prefix or sets `versioning.prefix`,
+pass the same `globalPrefixOptions` and `versioning` to `OpenApiModule.forRoot()`
+so the document's paths match the served routes. The document is built on the
+first request and kept for that application, so each Workers environment
+documents its own application. The document route is served
 at `path` exactly as given, outside the global prefix, runs no guards, and is
 left out of the document itself. `forRoot` also accepts `tags`, `servers`,
 `securitySchemes` and `security`; `forRootAsync` reads them through DI. Mark a

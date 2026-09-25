@@ -74,8 +74,8 @@ The second type argument lists the options that shape the module graph, and
   default; any other throws when `defineModule` runs.
 
 `key`, `lazy` and the extras (`isGlobal`, or a spec's own `extras`) are
-registration controls: they never reach the options token and never change the
-key. `isGlobal: true` makes the instance's exports visible to every module;
+registration controls: they never reach the options token. An explicit `key`
+replaces the default key; `lazy` and the extras never change it. `isGlobal: true` makes the instance's exports visible to every module;
 it means nothing else on any first-party module. Modules that register an
 application-wide component name that option after it:
 `guard: 'global' | 'none'` on the authentication, tenant, authorization and
