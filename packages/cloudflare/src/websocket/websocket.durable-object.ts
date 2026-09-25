@@ -11,7 +11,16 @@ import { buildDoRuntime } from './do-bootstrap';
 import { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
 import { armDoPitr, readDoPitrBookmark } from './do-pitr';
 import { FORWARDED_UPGRADE_HEADERS as FORWARDED } from './worker-transport';
-import type { CloudflareRoot } from '../root-module';
+import {
+  CLOUDFLARE_DURABLE_OBJECT,
+  registerDurableObject,
+  type CloudflareDurableObjectDescriptor,
+} from '../cloudflare-factory';
+import {
+  durableObjectDefinition,
+  startDurableObject,
+  type DurableObjectRoot,
+} from '../durable-object/boot';
 import type {
   DoPitrArmOptions,
   DoPitrArmResult,
@@ -32,13 +41,26 @@ function isIdentityField(value: string | null): value is string {
   );
 }
 
+/** The RPC methods a WebSocket Durable Object exposes to the Worker and other objects. */
+const WEBSOCKET_RPC_METHODS = [
+  'broadcast',
+  'invalidate',
+  'inspectLive',
+  'pitrCurrentBookmark',
+  'pitrBookmarkForTime',
+  'pitrArmRestore',
+] as const;
+
 /**
  * Base class for the WebSocket Durable Object. The user exports a named subclass
- * (matching their `wrangler.toml` `class_name`) built from their `AppModule`, or
- * from a `DynamicModule` declared at module scope:
+ * (matching their `wrangler.toml` `class_name`) built from their `AppModule`, a
+ * `DynamicModule` declared at module scope, or the app from
+ * `defineCloudflareApp`, whose runtime adapters the object shares:
  *
  * ```ts
- * export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
+ * const app = defineCloudflareApp(AppModule);
+ * export class ChatRoom extends VelaWebSocketDurableObject(app) {}
+ * export default app.worker;
  * ```
  *
  * It owns the raw hibernation socket lifecycle (Hono's `upgradeWebSocket` cannot
@@ -47,9 +69,10 @@ function isIdentityField(value: string | null): value is string {
  * `WebSocketModule.forRoot()`: this object registers the platform that binds
  * its server to these sockets, delivers live invalidations locally and keeps
  * the live cursor log in its SQLite storage. The DO's `env` is the
- * application's ENV, as in the Worker.
+ * application's ENV, as in the Worker, and its application context injects
+ * `DO_STATE`, `DO_STORAGE` and `DO_ID` like every Vela Durable Object's.
  */
-export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
+export function VelaWebSocketDurableObject(root: DurableObjectRoot): new (
   ctx: DurableObjectState,
   env: VelaEnv,
 ) => DurableObject<VelaEnv> &
@@ -58,7 +81,8 @@ export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
     invalidate(cmd: InvalidationCommand): Promise<CommitStamp | undefined>;
     inspectLive(): Promise<LiveInspection>;
   } {
-  return class VelaWsDurableObject extends DurableObject<VelaEnv> {
+  const definition = durableObjectDefinition(root);
+  class VelaWsDurableObject extends DurableObject<VelaEnv> {
     private host!: DoWebSocketHost;
     private liveEngine?: LiveEngine;
     private readonly ready: Promise<void>;
@@ -71,10 +95,14 @@ export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
       } catch {
         // Older runtimes without auto-response — fine, protocol pings still work.
       }
-      this.ready = ctx.blockConcurrencyWhile(async () => {
+      this.ready = startDurableObject(ctx, 'WebSocket', async () => {
         // The root is static, so constructing another instance declares no new
         // classes in the isolate-global metadata registry.
-        const runtime = await buildDoRuntime(rootModule, ctx, { env });
+        const runtime = await buildDoRuntime(definition.rootModule, ctx, {
+          env,
+          adapters: definition.adapters,
+          state: ctx,
+        });
         this.host = new DoWebSocketHost(
           ctx,
           runtime.dispatcher,
@@ -223,5 +251,16 @@ export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
       if (opts.restart === true) this.ctx.abort('vela PITR restore');
       return result;
     }
+  }
+
+  const descriptor: CloudflareDurableObjectDescriptor = {
+    kind: 'websocket',
+    rootModule: definition.rootModule,
+    methods: WEBSOCKET_RPC_METHODS,
+    durableObject: VelaWsDurableObject,
   };
+  // Static and non-enumerable: tools read it from the exported class.
+  Object.defineProperty(VelaWsDurableObject, CLOUDFLARE_DURABLE_OBJECT, { value: descriptor });
+  if (definition.app) registerDurableObject(definition.app, descriptor);
+  return VelaWsDurableObject;
 }

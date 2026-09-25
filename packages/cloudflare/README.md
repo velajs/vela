@@ -44,7 +44,9 @@ The worker exposes `fetch`, `queue`, and `scheduled`, and carries a
 descriptor under the symbol key `CLOUDFLARE_WORKER`
 (`Symbol.for('vela.cloudflare.worker')`), which the platform ignores and which
 an entry adding handlers keeps (`export default { ...worker, email }`): the
-root module, the options, and
+root module, the options, the Durable Object classes defined from the same
+app (each class also carries its descriptor under `CLOUDFLARE_DURABLE_OBJECT`),
+and
 `createOptions(env)`/`createApplication(env)`, which build the application
 exactly as the Worker does, short of the `configure(app, env)` hook, which
 receives the Workers application. `@velajs/cli` loads the Worker entry and builds its
@@ -57,7 +59,12 @@ drivers. A failed construction is evicted and the next event retries.
 
 The root is static: a module class, or a `DynamicModule` such as
 `AppModule.forRoot(...)`, declared once at module scope. `createCloudflareWorker`,
-`createCloudflareApp` and `VelaWebSocketDurableObject` all take the same root.
+`createCloudflareApp`, `VelaDurableObject` and `VelaWebSocketDurableObject` all
+take the same root. An entry that exports Durable Object classes defines the app
+once with `defineCloudflareApp(AppModule, options)`: its `worker` is the default
+export, and the classes built from the app share its root and runtime adapters
+(see [Durable Object hosts](#durable-object-hosts)); `createCloudflareWorker` is
+`defineCloudflareApp(...).worker`.
 When module configuration needs bindings, read them where each application is
 built, from its own `ENV`:
 
@@ -353,7 +360,7 @@ Use the native Durable Object entrypoint only in your Worker entry file:
 import { Module } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
 import { WebSocketModule } from '@velajs/vela/websocket';
-import { createCloudflareWorker } from '@velajs/cloudflare';
+import { defineCloudflareApp } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
 @Module({
@@ -363,8 +370,9 @@ import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 })
 class RoomModule {}
 
-export class Room extends VelaWebSocketDurableObject(RoomModule) {}
-export default createCloudflareWorker(RoomModule);
+const app = defineCloudflareApp(RoomModule);
+export class Room extends VelaWebSocketDurableObject(app) {}
+export default app.worker;
 ```
 
 `cloudflareAdapter` registers the platform as the global `WS_TRANSPORT` and
@@ -426,6 +434,43 @@ package. `VelaNonceDurableObject` is exported from `/durable-objects`; its
 
 The root package contains no runtime `cloudflare:workers` import and can be
 loaded by Node tooling. Native classes belong to `/durable-objects`.
+
+## Durable Object hosts
+
+`VelaDurableObject(app, Host)` from `/durable-objects` returns a Durable Object
+class whose instances each boot one application context from the app's root
+(`VelaFactory.createApplicationContext`, under `blockConcurrencyWhile`), with
+`Host`, an `@Injectable()`, added to the root module's providers. The host's
+public methods become the class's JS-RPC methods, typed on the binding, and its
+`fetch`, `alarm` and WebSocket handlers become the object's:
+
+```ts
+import { Inject, Injectable } from '@velajs/vela';
+import { DO_STORAGE, VelaDurableObject } from '@velajs/cloudflare/durable-objects';
+
+@Injectable()
+export class CounterHost {
+  constructor(@Inject(DO_STORAGE) private readonly storage: DurableObjectStorage) {}
+
+  async increment(by: number): Promise<number> {
+    const value = ((await this.storage.get<number>('value')) ?? 0) + by;
+    await this.storage.put('value', value);
+    return value;
+  }
+}
+
+export class Counter extends VelaDurableObject(app, CounterHost) {}
+// Anywhere with the COUNTER binding: await env.COUNTER.getByName('orders').increment(1)
+```
+
+The context injects `ENV`, `DO_STATE`, `DO_STORAGE` and `DO_ID`. Each call and
+event runs in its own execution scope (request-scoped providers per call)
+through the host's scoped guards, pipes, interceptors and filters, with an
+`ExecutionContext` of type `rpc` (or `cf:do:fetch`, `cf:do:alarm`,
+`cf:do:websocket`). Failures are reported first; an RPC call rejects only with
+a `DurableObjectError` (`status`, `code`, `message`, and `details` for a client
+fault), which `isDurableObjectError()` recognizes on the caller's side. See
+[Durable Objects](../../docs/durable-objects.md).
 
 ## Bindings by name
 

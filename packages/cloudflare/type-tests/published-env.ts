@@ -1,11 +1,19 @@
-import { ENV, InjectEnv, Injectable, registerAs, type VelaEnv } from '@velajs/vela';
+import { ENV, Inject, InjectEnv, Injectable, registerAs, type VelaEnv } from '@velajs/vela';
 import {
   createCloudflareApp,
   createCloudflareWorker,
+  defineCloudflareApp,
+  type CloudflareApp,
   type CloudflareRoot,
+  type CloudflareWorker,
   type CloudflareWorkerOptions,
 } from '@velajs/cloudflare';
-import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
+import {
+  DO_STORAGE,
+  VelaDurableObject,
+  VelaWebSocketDurableObject,
+  isDurableObjectError,
+} from '@velajs/cloudflare/durable-objects';
 
 // These import only the emitted packages: the published @velajs/cloudflare
 // declarations must extend VelaEnv with Cloudflare.Env, so ENV carries the
@@ -78,3 +86,46 @@ export async function verifyPublishedEnvironment(
   }
   void Room;
 }
+
+// The published Durable Object host: its RPC methods reach the stub types.
+@Injectable()
+class CounterHost {
+  constructor(@Inject(DO_STORAGE) private readonly storage: DurableObjectStorage) {}
+  async increment(by: number): Promise<number> {
+    const value = ((await this.storage.get<number>('value')) ?? 0) + by;
+    await this.storage.put('value', value);
+    return value;
+  }
+  label(): string {
+    return 'counter';
+  }
+  onModuleInit(): void {}
+}
+
+export async function verifyPublishedDurableObjects(
+  root: CloudflareRoot,
+  namespace: DurableObjectNamespace<Counter>,
+): Promise<void> {
+  const app: CloudflareApp = defineCloudflareApp(root);
+  const worker: CloudflareWorker = app.worker;
+  void worker;
+  const stub = namespace.getByName('orders');
+  const count: number = await stub.increment(1);
+  const label: string = await stub.label();
+  void [count, label];
+  // @ts-expect-error RPC arguments keep the host's parameter types
+  void stub.increment('one');
+  // @ts-expect-error lifecycle hooks are not RPC methods
+  void stub.onModuleInit;
+  try {
+    await stub.increment(1);
+  } catch (error) {
+    if (isDurableObjectError(error)) {
+      const failure: { status: number; code: string; message: string } = error;
+      void failure;
+    }
+  }
+}
+
+declare const counterApp: CloudflareApp;
+class Counter extends VelaDurableObject(counterApp, CounterHost) {}

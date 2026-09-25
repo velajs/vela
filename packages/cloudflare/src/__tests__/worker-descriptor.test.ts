@@ -11,10 +11,16 @@ import {
 } from '@velajs/vela';
 import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import {
+  CLOUDFLARE_DURABLE_OBJECT,
   CLOUDFLARE_WORKER,
   createCloudflareWorker,
+  defineCloudflareApp,
+  isCloudflareApp,
+  type CloudflareApp,
+  type CloudflareDurableObjectDescriptor,
   type CloudflareWorkerDescriptor,
 } from '../index';
+import { VelaDurableObject, VelaWebSocketDurableObject } from '../durable-objects';
 
 @Injectable()
 class Greeting {
@@ -121,5 +127,70 @@ describe('Worker descriptor', () => {
       props: {},
     });
     expect(await served.json()).toEqual({ message: 'from the descriptor' });
+  });
+
+  it('describes the Durable Object classes defined from the same app', () => {
+    @Injectable()
+    class CounterHost {
+      increment(by: number): number {
+        return by;
+      }
+      alarm(): void {}
+      onModuleInit(): void {}
+    }
+    const options = { globalPrefix: '/api' };
+    const app = defineCloudflareApp(AppModule, options);
+    expectTypeOf(app).toEqualTypeOf<CloudflareApp>();
+    expect(isCloudflareApp(app)).toBe(true);
+    expect(isCloudflareApp({ ...app })).toBe(false);
+    expect(app.rootModule).toBe(AppModule);
+    expect(app.options).toBe(options);
+    expect(app.worker[CLOUDFLARE_WORKER].options).toBe(options);
+    expect(app.worker[CLOUDFLARE_WORKER].durableObjects).toEqual([]);
+
+    class Counter extends VelaDurableObject(app, CounterHost) {}
+    class Room extends VelaWebSocketDurableObject(app) {}
+    // A class built from a bare root belongs to no app.
+    class Standalone extends VelaDurableObject(AppModule, CounterHost) {}
+
+    const described: CloudflareDurableObjectDescriptor[] = [
+      ...app.worker[CLOUDFLARE_WORKER].durableObjects,
+    ];
+    expect(described.map(({ kind, methods, host }) => ({ kind, methods, host }))).toEqual([
+      { kind: 'host', methods: ['increment'], host: CounterHost },
+      {
+        kind: 'websocket',
+        methods: [
+          'broadcast',
+          'invalidate',
+          'inspectLive',
+          'pitrCurrentBookmark',
+          'pitrBookmarkForTime',
+          'pitrArmRestore',
+        ],
+        host: undefined,
+      },
+    ]);
+    expect(app.durableObjects).toBe(app.worker[CLOUDFLARE_WORKER].durableObjects);
+    // The exported subclass carries its descriptor statically, for tools.
+    expect(Reflect.get(Counter, CLOUDFLARE_DURABLE_OBJECT)).toBe(described[0]);
+    expect(Reflect.get(Room, CLOUDFLARE_DURABLE_OBJECT)).toBe(described[1]);
+    expect(Reflect.get(Standalone, CLOUDFLARE_DURABLE_OBJECT)).toMatchObject({
+      kind: 'host',
+      rootModule: AppModule,
+    });
+    expect(described[0]?.durableObject.isPrototypeOf(Counter)).toBe(true);
+    // The RPC methods and handlers are the class's prototype members.
+    expect(typeof Reflect.get(Counter.prototype, 'increment')).toBe('function');
+    expect(typeof Reflect.get(Counter.prototype, 'alarm')).toBe('function');
+    expect(Reflect.get(Counter.prototype, 'fetch')).toBeUndefined();
+    expect(Reflect.get(Counter.prototype, 'onModuleInit')).toBeUndefined();
+  });
+
+  it('builds createCloudflareWorker from the same app definition', () => {
+    const options = { globalPrefix: '/api' };
+    const worker = createCloudflareWorker(AppModule, options);
+    expect(worker[CLOUDFLARE_WORKER].options).toBe(options);
+    expect(worker[CLOUDFLARE_WORKER].durableObjects).toEqual([]);
   });
 });

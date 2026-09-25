@@ -3,6 +3,7 @@ import { VelaFactory } from '@velajs/vela';
 import type {
   CorsOptions,
   GlobalPrefixOptions,
+  Type,
   VelaApplication,
   VelaCreateOptions,
   VelaEnv,
@@ -182,15 +183,46 @@ export async function configureCloudflareApplication(
 }
 
 /**
- * The well-known key under which a `createCloudflareWorker()` entry carries
- * its {@link CloudflareWorkerDescriptor}: `Symbol.for('vela.cloudflare.worker')`.
+ * The well-known key under which a Worker entry (`defineCloudflareApp().worker`
+ * or `createCloudflareWorker()`) carries its {@link CloudflareWorkerDescriptor}:
+ * `Symbol.for('vela.cloudflare.worker')`.
  */
 export const CLOUDFLARE_WORKER: unique symbol = Symbol.for('vela.cloudflare.worker');
+
+/**
+ * The well-known static key under which a Durable Object class that
+ * `VelaDurableObject()` or `VelaWebSocketDurableObject()` returns (and every
+ * class extending it) carries its {@link CloudflareDurableObjectDescriptor}:
+ * `Symbol.for('vela.cloudflare.durableObject')`.
+ */
+export const CLOUDFLARE_DURABLE_OBJECT: unique symbol = Symbol.for('vela.cloudflare.durableObject');
+
+/** What a Vela Durable Object class is built from, for tools such as `vela cf sync`. */
+export interface CloudflareDurableObjectDescriptor {
+  /**
+   * `host`: `VelaDurableObject(root, Host)`, whose RPC methods are the host's.
+   * `websocket`: `VelaWebSocketDurableObject(root)`, a gateway room's sockets.
+   */
+  readonly kind: 'host' | 'websocket';
+  readonly rootModule: CloudflareRoot;
+  /** The host class of a `host` Durable Object. */
+  readonly host?: Type;
+  /** The RPC methods the class exposes. */
+  readonly methods: readonly string[];
+  /** The class the factory returned: an exported Durable Object class extends it. */
+  readonly durableObject: abstract new (...args: never[]) => unknown;
+}
 
 /** What a Worker entry is built from, for tools that load it outside a platform event. */
 export interface CloudflareWorkerDescriptor {
   readonly rootModule: CloudflareRoot;
   readonly options: CloudflareWorkerOptions;
+  /**
+   * The Durable Object classes defined from the same {@link CloudflareApp}
+   * (`VelaDurableObject(app, Host)`, `VelaWebSocketDurableObject(app)`), in
+   * definition order; empty for `createCloudflareWorker()`.
+   */
+  readonly durableObjects: readonly CloudflareDurableObjectDescriptor[];
   /** The `VelaFactory.create()` options the Worker builds its application with for `env`. */
   createOptions(env: VelaEnv): VelaCreateOptions;
   /**
@@ -201,7 +233,7 @@ export interface CloudflareWorkerDescriptor {
   createApplication(env: VelaEnv): Promise<VelaApplication>;
 }
 
-/** The exported handlers of a `createCloudflareWorker()` entry. */
+/** The exported handlers of a Worker entry (`defineCloudflareApp().worker`, `createCloudflareWorker()`). */
 export interface CloudflareWorker {
   fetch(request: Request, env: VelaEnv, ctx: ExecutionContext): Promise<Response>;
   scheduled(
@@ -222,16 +254,70 @@ export interface CloudflareWorker {
 }
 
 /**
- * Worker entrypoint with one bootstrap per environment identity. Concurrent cold
- * events share construction, including `configure`; failed construction is
- * evicted so the next event can retry. Weak keys stop this cache from
- * retaining a replaced environment.
+ * One Cloudflare application: a static root module and its options, shared
+ * by the Worker's default export and every Durable Object class defined from
+ * it. Create it once, at module scope of the Worker entry, with
+ * {@link defineCloudflareApp}.
  */
-export function createCloudflareWorker(
+export interface CloudflareApp {
+  readonly rootModule: CloudflareRoot;
+  readonly options: CloudflareWorkerOptions;
+  /**
+   * The Worker's handlers (`export default app.worker`): one application per
+   * environment identity, built on the first event and shared by concurrent
+   * cold events.
+   */
+  readonly worker: CloudflareWorker;
+  /** The Durable Object classes defined from this app, in definition order. */
+  readonly durableObjects: readonly CloudflareDurableObjectDescriptor[];
+}
+
+const durableObjectsOf = new WeakMap<object, CloudflareDurableObjectDescriptor[]>();
+
+/** Whether `value` is an app {@link defineCloudflareApp} returned. */
+export function isCloudflareApp(value: unknown): value is CloudflareApp {
+  return typeof value === 'object' && value !== null && durableObjectsOf.has(value);
+}
+
+/**
+ * @internal Record a Durable Object class defined from `app`, so the Worker
+ * descriptor lists it. The `@velajs/cloudflare/durable-objects` factories call
+ * it at class definition.
+ */
+export function registerDurableObject(
+  app: CloudflareApp,
+  descriptor: CloudflareDurableObjectDescriptor,
+): void {
+  durableObjectsOf.get(app)?.push(descriptor);
+}
+
+/**
+ * Define one Cloudflare application from a static root module (a module class
+ * or a `DynamicModule`) and its options. The Worker entry exports its Worker
+ * and the Durable Object classes defined from it, which share the root and the
+ * options: runtime `adapters` configure every application and Durable Object
+ * context the app builds.
+ *
+ * ```ts
+ * import { defineCloudflareApp } from '@velajs/cloudflare';
+ * import { VelaDurableObject } from '@velajs/cloudflare/durable-objects';
+ *
+ * const app = defineCloudflareApp(AppModule, { globalPrefix: '/api' });
+ * export class Counter extends VelaDurableObject(app, CounterHost) {}
+ * export default app.worker;
+ * ```
+ *
+ * The Worker builds one application per environment identity; each Durable
+ * Object instance boots its own application context. `createCloudflareWorker`
+ * is `defineCloudflareApp(rootModule, options).worker`.
+ */
+export function defineCloudflareApp(
   rootModule: CloudflareRoot,
   options: CloudflareWorkerOptions = {},
-): CloudflareWorker {
+): CloudflareApp {
   const { configure, ...appOptions } = options;
+  const durableObjects: CloudflareDurableObjectDescriptor[] = [];
+  // Weak keys stop this cache from retaining a replaced environment.
   const applications = new WeakMap<VelaEnv, Promise<CloudflareApplication>>();
   const build = async (env: VelaEnv): Promise<CloudflareApplication> =>
     configureCloudflareApplication(
@@ -239,6 +325,8 @@ export function createCloudflareWorker(
       env,
       configure,
     );
+  // Concurrent cold events share construction, including `configure`; a
+  // failed construction is evicted so the next event can retry.
   const application = (env: VelaEnv): Promise<CloudflareApplication> => {
     const existing = applications.get(env);
     if (existing) return existing;
@@ -252,6 +340,7 @@ export function createCloudflareWorker(
   const descriptor: CloudflareWorkerDescriptor = {
     rootModule,
     options,
+    durableObjects,
     createOptions: (env) => cloudflareCreateOptions({ ...appOptions, env }),
     createApplication: (env) =>
       VelaFactory.create(rootModule, cloudflareCreateOptions({ ...appOptions, env })),
@@ -276,5 +365,21 @@ export function createCloudflareWorker(
     },
     [CLOUDFLARE_WORKER]: descriptor,
   };
-  return worker;
+  const app: CloudflareApp = { rootModule, options, worker, durableObjects };
+  durableObjectsOf.set(app, durableObjects);
+  return app;
+}
+
+/**
+ * Worker entrypoint with one bootstrap per environment identity: the Worker of
+ * `defineCloudflareApp(rootModule, options)`. Concurrent cold events share
+ * construction, including `configure`; failed construction is evicted so the
+ * next event can retry. Define the app with {@link defineCloudflareApp} when the
+ * entry also exports Durable Object classes built from it.
+ */
+export function createCloudflareWorker(
+  rootModule: CloudflareRoot,
+  options: CloudflareWorkerOptions = {},
+): CloudflareWorker {
+  return defineCloudflareApp(rootModule, options).worker;
 }
