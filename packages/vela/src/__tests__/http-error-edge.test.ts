@@ -318,7 +318,11 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
       expect(errorSpy).toHaveBeenCalledTimes(1);
 
       // A custom reporter receives it from the raw edge too.
-      app.useGlobalExceptionHandler({ report: (error) => reported.push(error) });
+      app.useGlobalExceptionHandler({
+        report: (error) => {
+          reported.push(error);
+        },
+      });
       await app.getHonoApp().request('/boom');
       expect(reported).toEqual([failure]);
     },
