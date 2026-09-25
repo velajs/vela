@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.32.0
+
+### Minor Changes
+
+- b4494a3: `CrudModule.forFeature()`'s duplicate-path check also reads repeated slashes as one, so `'//notes'`, `'/notes//'` and `'/orgs//:org/notes/'` are the same path as `'/notes'` and `'/orgs/:org/notes'`. Case still distinguishes paths, since routing is case-sensitive (`'/Notes'` and `'/notes'` serve different requests).
+  
+  **Behavior change:** two different features registered under spellings of one path, such as `'/notes'` and `'//notes'`, fail bootstrap, naming the path, where both used to mount and import order decided which one served. Mount each path once, or import one shared `defineCrudFeature(...)` definition wherever it is registered.
+- ef18e04: Generated CRUD routes answer and document their verbs' statuses under the core's success-status rule. The POST verbs that answer 200 (restore, import, batch restore and upsert, version rollback) declare it, so OpenAPI and `vela client generate` keep documenting 200 now that POST routes default to 201; the generated verbs send their own responses, so the statuses they answer do not change. The generated `upsert` declares 200 as well, but answers 201 when it creates the row and 200 when it updates one; OpenAPI documents only its 200. An `@Override`'d verb answers and documents the status of the verb it takes over unless it declares its own `@HttpCode`.
+  
+  **Behavior change:** an `@Override`'d `create`, `batchCreate` or `clone` handler without its own `@HttpCode` answers 201, the status of the verb it takes over, instead of 200, unless it returns a ready `Response`, which keeps its own status. Add `@HttpCode(200)` to such a handler whose clients expect 200. OpenAPI documents 201 for the generated `batchCreate` and `clone`, which already answered it, instead of 200; regenerate clients built from the document.
+
+### Patch Changes
+
+- Updated dependencies [9dea818]
+- Updated dependencies [524e422]
+- Updated dependencies [a7d0912]
+- Updated dependencies [04e7ac5]
+- Updated dependencies [ff98301]
+- Updated dependencies [38ab1e5]
+- Updated dependencies [38ab1e5]
+- Updated dependencies [9c1bd0b]
+- Updated dependencies [e412fc8]
+- Updated dependencies [bcdf5e3]
+- Updated dependencies [d5a8c60]
+  - @velajs/vela@1.32.0
+
 ## 1.31.0
 
 ### Minor Changes

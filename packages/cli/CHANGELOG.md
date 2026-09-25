@@ -1,5 +1,60 @@
 # @velajs/cli
 
+## 1.32.0
+
+### Minor Changes
+
+- 5410c9d: `vela add` and the generators' source edits are safer:
+  
+  - `vela add queue` plans its Wrangler file edit (the producer and consumer) before `wrangler queues create`, so a Wrangler file it cannot edit, such as one whose `queues` is not an object, fails with nothing created.
+  - A D1, KV or R2 `BINDING` that is a JavaScript reserved word (`delete`, `class`, `await`, `eval`, ...) or a name `bindings.module.ts` declares (a class, function, variable, destructured variable or enum) or imports (`ENV`, `Global`, `InjectionToken`, `Module`, `defineProvider`, its module class) is refused before anything is created. The `export const BINDING = new InjectionToken<T>('BINDING')` an earlier `vela add` declared is reused when `T` is the resource's type (`D1Database`, `KVNamespace` or `R2Bucket`); one of another type, or without a type argument, is refused, naming both types, before anything is created.
+  - An existing `bindings.module.ts` whose module class has another name is edited and imported by that name; one that does not export its class by name fails with nothing created. A root module that imports it through a relative barrel is registered through that import.
+  - A module edit no longer treats a name the file declares itself, imports from another module, or imports as another export of the module (`{ Other as B }`, a default or a namespace import) as the import it needs: the edit fails naming the binding, where it used to register the wrong class. A relative module spelled with or without its extension is the same module. The same holds for an entry the module lists already: `vela g module billing` with a root that lists `BillingModule` imported from `@acme/billing` fails with nothing created, where it used to create `src/billing/billing.module.ts` and leave it unregistered (`--skip-import` creates it and prints the registration). Only `vela add` leaves a root that lists its bindings module through a path alias or package import (`@/bindings.module`) as it is, since only the project's build resolves that specifier.
+  - Source edits keep a CRLF file CRLF, and a comment trailing the last import, export or declaration stays on its line.
+  
+  **Behavior change:** with a `wrangler.toml`, which neither Wrangler nor the CLI edits, `vela add d1|kv|r2|queue` still creates and registers the resource, but prints the binding table to add (`[[d1_databases]]`, `[[kv_namespaces]]` or `[[r2_buckets]]`, with a placeholder for the id Wrangler printed, or a queue's producer and consumer) and the type refresh under `Manual steps required`, numbered, and exits 2 instead of 0. D1, KV and R2 used to exit 0 with the binding missing from the Wrangler file. Exit codes: 0 means everything was applied, apart from the registration `--skip-import` prints; 1 that the command failed; 2 that the printed manual steps remain.
+- 5e75262: `vela cf sync` keeps the cron triggers no `@Cron` job declares: a Worker entry with its own `scheduled` handler may serve them. It reports each one as `triggers.crons: "30 5 * * *" is not declared by any @Cron job; kept (pass --prune to remove it).` The new `--prune` flag removes them, and lists their removal when comparing.
+  
+  **Behavior change:** `vela cf sync --write` no longer deletes cron triggers that no `@Cron` job declares, and a comparison no longer fails on them; pass `--prune` for the previous behavior.
+- 5a34826: The CLI reads the Durable Object classes a Worker entry defines through `@velajs/cloudflare`. It finds the root module of an entry that uses `defineCloudflareApp(AppModule)` as well as one that uses `createCloudflareWorker(AppModule)`.
+  
+  **Behavior change:** `vela g durable-object counter` writes an `@Injectable()` host (`counter.host.ts`, which injects `DO_STORAGE`) and a `VelaDurableObject` class instead of a hand-written `DurableObject` subclass. The class lists the host's `increment` method in `rpc`, typed on its binding once `vela cf sync --write` binds it and `wrangler types` runs; list further host methods there to expose them. Where the class goes follows the Worker entry, so it shares the app's runtime adapters:
+  
+  - An entry that binds its app (`const app = defineCloudflareApp(AppModule, options)`) gets `export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}` declared after the app. A separate file importing the entry would run before the entry defined the app.
+  - An entry that imports its app from its own module (`import { app } from './app.js'; export default app.worker;`) gets `counter.durable-object.ts`, which imports that app, exported from the entry.
+  - Otherwise `counter.durable-object.ts` builds the class from the root module the entry names (`VelaDurableObject(AppModule, CounterHost, { rpc: ['increment'] })`), exported from the entry as before. When the entry passes options, such as runtime adapters, to `createCloudflareWorker()` or an unnamed `defineCloudflareApp()`, the generator notes that the class does not share them and how to define the app once. An entry that names no root module fails with guidance.
+  - `--skip-import` prints the declaration or export to add instead.
+  
+  **Behavior change:** `vela cf sync` binds a gateway binding that no class serves to the one exported `VelaWebSocketDurableObject` class without a binding, or, when there is none, to the one unbound class that is not a `VelaDurableObject` host, and never to a host class. It also warns about a Durable Object class the app defines that the Worker entry does not export, naming the call that defined it with its `rpc` list, so you export that class.
+  
+  **Behavior change:** without a config, `vela entrypoint list` adds `cf:durable-object` rows: the Durable Object classes built by `@velajs/cloudflare` that the Worker entry exports, by export name, with what they serve and their RPC methods, and the classes the app defines without exporting them. `vela deploy check` reads those rows. It warns with `unbound-durable-object` about an exported class that no `durable_objects` binding of the selected environment names, and with `unexported-durable-object` about a class the entry does not export. It warns with `rpc-error-serialization` when an exported host class has RPC methods and the selected environment's `compatibility_date` predates 2026-04-21 without the `enhanced_error_serialization` flag (or sets `legacy_error_serialization`): workerd then delivers a failed call's `EntrypointError` without its status, code and details.
+- f19f43f: The CLI knows the Workflow and service entrypoint classes a Worker entry defines through `@velajs/cloudflare`.
+  
+  - `vela g workflow signup` writes `signup.host.ts`, an `@Injectable()` host whose `run(event, step)` takes `SignupParams`, and declares `export class Signup extends VelaWorkflow(app, SignupHost) {}`. `vela g entrypoint billing` writes `billing.host.ts` with a `ping` method and declares `export class Billing extends VelaEntrypoint(app, BillingHost, { rpc: ['ping'] }) {}`. Both run in the Worker's application, so the class is declared in the Worker entry after its app. An entry that default-exports `createCloudflareWorker(AppModule, options)` (or `defineCloudflareApp(AppModule, options).worker`) is first rewritten to `const app = defineCloudflareApp(AppModule, options);` and `export default app.worker;`; an entry that imports its app from its own module gets `signup.workflow.ts` or `billing.entrypoint.ts`, exported from the entry. An entry whose default export is anything else fails with guidance and nothing written. `--skip-import` prints the app definition and the declaration instead.
+  - Without a config, `vela entrypoint list` adds `cf:workflow` rows (exported Workflow classes built with `VelaWorkflow()`, with their host) and `cf:entrypoint` rows (exported service entrypoint classes built with `VelaEntrypoint()`, with their host and RPC methods), then, under each kind, the classes the app defines without exporting them. `@OnEmail()` and `@OnTail()` handlers list as `cf:email` and `cf:tail` rows.
+  - `vela deploy check` warns with `unbound-workflow` about an exported Workflow class that no `workflows` entry of the selected environment names (without `script_name`), and with `unexported-workflow` and `unexported-entrypoint` about classes the entry does not export. Exported service entrypoints with RPC methods join Durable Object hosts in the `rpc-error-serialization` warning.
+  - `vela cf sync` warns about a Workflow or service entrypoint class the app defines that the entry does not export, and about a service binding to an `entrypoint` of this Worker that the entry does not export.
+- ff98301: Module descriptions name their visibility flag `global`, as `ModuleMetadata` (`@Global()`) and `DynamicModule` do.
+  
+  **Behavior change:** `ModuleDescription.isGlobal` (from `Container.getModuleDescriptions()`, `@velajs/vela/module-kit`) is removed; read `ModuleDescription.global`. The internal `ModuleScope.isGlobal` passed to `Container.registerScope()` (`@velajs/vela/internal`) is renamed `global` too. `vela module graph --json` and the `vela mcp serve` `module_graph`/`token_describe` results report `global` instead of `isGlobal`. The Studio wire protocol moves to version 4 (`STUDIO_PROTOCOL_VERSION`): `app.modules` rows carry `global` instead of `isGlobal` (`ModuleNode.global` in `@velajs/studio-protocol`), so upgrade `@velajs/studio`, `@velajs/studio-host` and `@velajs/studio-ui` together (a host or UI on protocol 3 refuses a protocol-4 application, and the reverse). Studio and CLI 1.31.0 read `isGlobal` and accept core 1.32.0 through their `^1.31.0` peer ranges without a warning: the CLI then reports no module as global, and Studio sends module rows without the `isGlobal` field its protocol-3 UI requires, so upgrade `@velajs/cli` and `@velajs/studio` to 1.32.0 with the core. The `isGlobal` registration extra of `forRoot()` options is unchanged.
+
+### Patch Changes
+
+- `vela generate resource` and the `api` template of `vela new` write decorator routes whose options declare their `response` schemas when the project uses zod, so each route shapes, documents and types its result. Generated POST routes answer 201, and DELETE routes answer 204 through `response: null` instead of `@HttpCode(204)`.
+- 38ab1e5: `vela client generate` accepts query parameters documented with `style: form` and `explode: true`, the repeated-key serialization Vela now documents for array query parameters and `hc` sends. A parameter whose schema is a `oneOf` or `anyOf` of values, such as the one value or repeated keys Vela documents for a union or `unknown` named query parameter, is typed as the union of its members (`string | Array<string>`); an object member still fails generation. Other parameter styles, `explode: false` and styled path or header parameters still fail generation.
+- Updated dependencies [9dea818]
+- Updated dependencies [524e422]
+- Updated dependencies [a7d0912]
+- Updated dependencies [04e7ac5]
+- Updated dependencies [ff98301]
+- Updated dependencies [38ab1e5]
+- Updated dependencies [38ab1e5]
+- Updated dependencies [9c1bd0b]
+- Updated dependencies [e412fc8]
+- Updated dependencies [bcdf5e3]
+- Updated dependencies [d5a8c60]
+  - @velajs/vela@1.32.0
+
 ## 1.31.0
 
 ### Minor Changes
