@@ -30,6 +30,15 @@ type StoredEntry = {
 };
 const hash = (parts: readonly string[]) =>
   sha256Base64Url(new TextEncoder().encode(JSON.stringify(parts)));
+/**
+ * The address version of each key space's entries. A route entry holds the
+ * value the route sent, already parsed by its `response` schema, and a hit is
+ * sent as is; earlier releases stored the handler's raw result, so route
+ * entries use their own version and those entries miss instead of sending
+ * fields the schema strips. Generations keep one root, so tag and whole-scope
+ * invalidation still reach both key spaces.
+ */
+const ENTRY_VERSION = { service: 'v1', http: 'v2' } as const;
 
 const EMPTY_ENV: VelaEnv = Object.freeze({});
 
@@ -82,7 +91,7 @@ export class CacheService {
     const prefix = hash([this.options.namespace, scope.visibility, scope.partition]);
     const address = async (key: string) => {
       validateLabel(key, 'Cache key');
-      return `vela:response:v1:${await prefix}:${await hash([domain, key])}`;
+      return `vela:response:${ENTRY_VERSION[domain]}:${await prefix}:${await hash([domain, key])}`;
     };
     const generations = async (key: string, tags: readonly string[]): Promise<string[]> => {
       const store = this.options.invalidation;

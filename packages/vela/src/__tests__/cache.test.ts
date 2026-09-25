@@ -28,6 +28,7 @@ import {
   type CacheScope,
   type CacheStore,
 } from '../cache/index';
+import { sha256Base64Url } from '../crypto/hmac';
 import { setTrustedRequestIdentity } from '../module-kit';
 
 class AsyncStore implements CacheStore {
@@ -505,6 +506,56 @@ describe('response cache pipeline', () => {
       const stored = JSON.stringify([...store.values.values()]);
       for (const field of ['ada@example.test', 'internalRiskScore', 'stored-hash'])
         expect(stored).not.toContain(field);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('misses route entries an earlier release stored with the raw handler result', async () => {
+    let calls = 0;
+    const handlerResult = { id: '1', ownerEmail: 'private@example.test' };
+    @Controller('/users')
+    class Users {
+      @Get('/me', { response: z.object({ id: z.string() }) })
+      @CacheResponse({ ttl: 300 })
+      me() {
+        calls++;
+        return handlerResult;
+      }
+    }
+    // Earlier releases parsed a route's output after the cache, so their
+    // entries hold the handler's raw result under this address. Old isolates
+    // keep writing them during a gradual deployment.
+    const hash = (parts: readonly string[]) =>
+      sha256Base64Url(new TextEncoder().encode(JSON.stringify(parts)));
+    const earlierAddress = async (path: string) => {
+      const url = new URL(path, 'http://localhost');
+      const key = await hash([url.origin, url.pathname, '', '']);
+      const prefix = await hash(['profiles', publicScope.visibility, publicScope.partition]);
+      return `vela:response:v1:${prefix}:${await hash(['http', key])}`;
+    };
+    const store = new AsyncStore();
+    store.values.set(await earlierAddress('/users/me'), {
+      version: 1,
+      expiresAt: Date.now() + 300_000,
+      payload: JSON.stringify(handlerResult),
+      tags: [],
+      generations: [],
+    });
+    @Module({
+      imports: [CacheModule.forRoot({ namespace: 'profiles', store, scope: () => publicScope })],
+      controllers: [Users],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      for (let i = 0; i < 2; i++) {
+        const response = await app.getHonoApp().request('/users/me');
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ id: '1' });
+      }
+      // The earlier entry missed; the second request hits the parsed entry.
+      expect(calls).toBe(1);
     } finally {
       await app.close();
     }
