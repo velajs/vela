@@ -535,6 +535,49 @@ describe('deployment alignment', () => {
     ).toEqual(['invalid-metadata']);
   });
 
+  it('warns when Durable Object RPC failures would reach callers without their shape', () => {
+    const host = (methods: string[]) => [
+      {
+        kind: 'cf:durable-object',
+        target: 'Counter',
+        meta: { kind: 'host', host: 'CounterHost', methods },
+      },
+    ];
+    const bound = { durable_objects: { bindings: [{ name: 'COUNTER', class_name: 'Counter' }] } };
+    const warnings = (selected: object, methods = ['increment']) =>
+      checkDeployment(config({ ...bound, ...selected }), 'staging', host(methods)).warnings;
+    const codes = (selected: object, methods?: string[]) =>
+      warnings(selected, methods).map((warning) => warning.code);
+
+    const legacy = warnings({ compatibility_date: '2025-10-01' });
+    expect(legacy.map((warning) => warning.code)).toEqual([
+      'durable-object-error-serialization',
+      'static-only',
+    ]);
+    expect(legacy[0]?.message).toContain('Counter');
+    expect(legacy[0]?.message).toContain('2025-10-01');
+    expect(legacy[0]?.message).toContain('enhanced_error_serialization');
+    expect(codes({ compatibility_date: '2026-04-20' })).toContain(
+      'durable-object-error-serialization',
+    );
+    expect(
+      codes({
+        compatibility_date: '2026-09-20',
+        compatibility_flags: ['legacy_error_serialization'],
+      }),
+    ).toContain('durable-object-error-serialization');
+    // workerd keeps the error's own properties from 2026-04-21, or with the flag.
+    expect(codes({ compatibility_date: '2026-04-21' })).toEqual(['static-only']);
+    expect(
+      codes({
+        compatibility_date: '2025-10-01',
+        compatibility_flags: ['enhanced_error_serialization'],
+      }),
+    ).toEqual(['static-only']);
+    // A host without RPC methods rejects no RPC call.
+    expect(codes({ compatibility_date: '2025-10-01' }, [])).toEqual(['static-only']);
+  });
+
   it('requires the right binding kind in the selected environment', () => {
     expect(
       checkDeployment(config({ kv_namespaces: [{ binding: 'ROOM' }] }), 'staging', [
