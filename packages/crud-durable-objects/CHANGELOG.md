@@ -1,5 +1,22 @@
 # @velajs/crud-durable-objects
 
+## 1.29.0
+
+### Minor Changes
+
+- b7d0725: Enforce include allowlists and strict bulk mutation filters, run point-read hooks inside the read scope, and reject D1 mutations whose read policies require interactive transactions. Require transactional row locking for ETag resources and lock before validating If-Match to prevent concurrent lost updates.
+  
+  Remove nonfunctional relation cascade configuration and the CRUD cascade driver. Use database foreign keys for hard-delete actions or explicit transactional hooks for soft-delete propagation. Studio's CRUD source no longer advertises a cascade preview without database constraint metadata.
+  
+  Remove implicit Hono context arguments, process-global Logger configuration, and the ComponentManager interceptor alias. Use explicit @Ctx(), instance-owned logging or LoggingModule, and PipelineRunner.chainInterceptors.
+
+### Patch Changes
+
+- Updated dependencies [b7d0725]
+- Updated dependencies [b7d0725]
+  - @velajs/crud@1.33.0
+  - @velajs/crud-drizzle@1.29.0
+
 ## 1.28.0
 
 ### Minor Changes

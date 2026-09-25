@@ -1,5 +1,17 @@
 # @velajs/agent
 
+## 1.30.0
+
+### Minor Changes
+
+- e36ecd5: Publish starter templates pinned to the current core, Cloudflare, testing, and CLI releases. Raise the Agent integration's optional AI and mail peer minimums to the releases with the current contracts.
+
+### Patch Changes
+
+- Updated dependencies [b7d0725]
+  - @velajs/ai@1.1.0
+  - @velajs/mail@1.33.0
+
 ## 1.29.0
 
 ### Minor Changes
