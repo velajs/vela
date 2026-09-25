@@ -303,7 +303,8 @@ export interface CloudflareWorker {
   /**
    * The Tail Workers handler, present once a module imports `OnTail` from
    * `@velajs/cloudflare/tail`: it runs the application's `@OnTail()` handlers
-   * and never rejects.
+   * and never rejects, even when the application fails to start (the error is
+   * logged to the console, and the next batch retries).
    */
   readonly tail?: (events: TraceItem[], env: VelaEnv, ctx?: ExecutionContext) => Promise<void>;
   /**

@@ -5,7 +5,9 @@ import { EMAIL_METADATA, dispatchEmail, type OnEmailMetadata } from './email-dis
 // The entrypoint kind, declared next to its decorator; importing the decorator
 // also gives every Worker of the isolate its `email` handler.
 registerEntrypointKind({ kind: 'cf:email', metaKey: EMAIL_METADATA, level: 'method' });
-registerWorkerEvent('email', (application, message) => dispatchEmail(application, message));
+registerWorkerEvent('email', async (application, message) =>
+  dispatchEmail(await application(), message),
+);
 
 /** Options of {@link OnEmail}. */
 export interface OnEmailOptions {

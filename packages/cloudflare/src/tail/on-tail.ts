@@ -1,11 +1,11 @@
 import { MetadataRegistry, registerEntrypointKind } from '@velajs/vela/module-kit';
 import { registerWorkerEvent } from '../worker-events';
-import { TAIL_METADATA, dispatchTail, type OnTailMetadata } from './tail-dispatch';
+import { TAIL_METADATA, receiveTail, type OnTailMetadata } from './tail-dispatch';
 
 // The entrypoint kind, declared next to its decorator; importing the decorator
 // also gives every Worker of the isolate its `tail` handler.
 registerEntrypointKind({ kind: 'cf:tail', metaKey: TAIL_METADATA, level: 'method' });
-registerWorkerEvent('tail', (application, events) => dispatchTail(application, events));
+registerWorkerEvent('tail', (application, events) => receiveTail(application, events));
 
 /** A method decorator whose method receives a batch of Tail Workers events. */
 export type OnTailDecorator = <Handler extends (events: TraceItem[]) => unknown>(
@@ -35,7 +35,10 @@ export type OnTailDecorator = <Handler extends (events: TraceItem[]) => unknown>
  * Importing it gives the Worker (`app.worker`) its `tail` handler. Every
  * `@OnTail()` handler receives every batch, each in its own execution scope
  * through its scoped guards, interceptors and filters. A failure is reported
- * (`edge: 'tail'`) and never thrown into the platform's tail loop.
+ * (`edge: 'tail'`) and never thrown into the platform's tail loop. When the
+ * application fails to start, no ExceptionHandler exists to report through:
+ * the handler logs the error to the console and resolves, and the next batch
+ * retries the start.
  */
 export function OnTail(): OnTailDecorator {
   return (target, key) => {

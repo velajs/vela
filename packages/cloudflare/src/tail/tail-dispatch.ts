@@ -21,6 +21,26 @@ function handlerName(meta: unknown): string {
 }
 
 /**
+ * The Worker's `tail` handler: {@link dispatchTail} to the application built
+ * for the event's environment. An application that fails to start has no
+ * ExceptionHandler to report through, so the error is logged to the console
+ * and the handler still resolves; the next batch retries the start.
+ */
+export async function receiveTail(
+  application: () => Promise<CloudflareApplication>,
+  events: unknown,
+): Promise<void> {
+  let started: CloudflareApplication;
+  try {
+    started = await application();
+  } catch (error) {
+    console.error('[vela] tail events were not delivered: the application failed to start:', error);
+    return;
+  }
+  await dispatchTail(started, events);
+}
+
+/**
  * Deliver a batch of Tail Workers events to every `@OnTail()` handler of the
  * application, each in its own execution scope through its scoped guards,
  * interceptors and filters. A failure, in a handler or around it, is reported

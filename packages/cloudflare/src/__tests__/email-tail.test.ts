@@ -273,4 +273,48 @@ describe('@OnTail()', () => {
     ]);
     expect(String(reports[0]?.error)).toContain('tail sink unreachable');
   });
+
+  it('logs an application that fails to start and resolves, retrying on the next batch', async () => {
+    let starts = 0;
+    @Injectable()
+    class Settings {
+      onModuleInit(): void {
+        starts += 1;
+        if (starts === 1) throw new Error('config missing: SECRET_TOKEN');
+      }
+    }
+    const observed: number[] = [];
+    @Injectable()
+    class Observer {
+      @OnTail()
+      observe(events: TraceItem[]): void {
+        observed.push(events.length);
+      }
+    }
+    @Module({ providers: [Settings, Observer] })
+    class AppModule {}
+    const app = defineCloudflareApp(AppModule);
+    const env = {};
+    const handler = app.worker.tail;
+    if (!handler) throw new Error('The Worker has no tail handler');
+
+    const logged: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => void logged.push(args);
+    try {
+      // No application, so no ExceptionHandler: the console is where it goes.
+      await expect(handler([trace('exception')], env)).resolves.toBeUndefined();
+    } finally {
+      console.error = original;
+    }
+    expect(observed).toEqual([]);
+    expect(logged).toHaveLength(1);
+    expect(String(logged[0]?.[0])).toContain('tail');
+    expect(logged[0]?.[1]).toBeInstanceOf(Error);
+    expect(String(logged[0]?.[1])).toContain('config missing: SECRET_TOKEN');
+
+    // The failed construction was evicted: the next batch builds the application.
+    await expect(handler([trace('ok'), trace('ok')], env)).resolves.toBeUndefined();
+    expect(observed).toEqual([2]);
+  });
 });

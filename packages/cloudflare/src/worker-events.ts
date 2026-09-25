@@ -6,11 +6,13 @@ export type WorkerEventName = 'email' | 'tail';
 
 /**
  * @internal Deliver one platform event to the application built for its
- * environment: `payload` is the handler's first argument (the email message,
- * the tail events), `ctx` the platform's execution context.
+ * environment: `application` returns it, built on first use (it rejects when
+ * the application fails to start, and the next event retries), `payload` is
+ * the handler's first argument (the email message, the tail events), `ctx`
+ * the platform's execution context.
  */
 export type WorkerEventDispatcher = (
-  application: CloudflareApplication,
+  application: () => Promise<CloudflareApplication>,
   payload: unknown,
   ctx: ExecutionContext | undefined,
 ) => Promise<void>;
@@ -30,19 +32,20 @@ const applications = new WeakMap<object, ApplicationCache>();
  */
 const pending = new Set<object>();
 
-/** Give `worker` the `name` handler, unless its object already has one. */
-function defineHandler(worker: object, name: WorkerEventName): void {
+/** Give `worker` the `name` handler, delivered by `dispatch`, unless its object already has one. */
+function defineHandler(
+  worker: object,
+  name: WorkerEventName,
+  dispatch: WorkerEventDispatcher,
+): void {
   const application = applications.get(worker);
   if (application === undefined || Object.hasOwn(worker, name)) return;
   Object.defineProperty(worker, name, {
     enumerable: true,
     configurable: true,
     writable: true,
-    value: async (payload: unknown, env: VelaEnv, ctx?: ExecutionContext): Promise<void> => {
-      const dispatch = dispatchers.get(name);
-      if (dispatch === undefined) throw new Error(`No ${name} handler is registered.`);
-      return dispatch(await application(env), payload, ctx);
-    },
+    value: async (payload: unknown, env: VelaEnv, ctx?: ExecutionContext): Promise<void> =>
+      dispatch(() => application(env), payload, ctx),
   });
 }
 
@@ -57,7 +60,7 @@ export function registerWorkerEvent(
   dispatcher: WorkerEventDispatcher,
 ): void {
   dispatchers.set(name, dispatcher);
-  for (const worker of pending) defineHandler(worker, name);
+  for (const worker of pending) defineHandler(worker, name, dispatcher);
   if (dispatchers.size === EVENTS) pending.clear();
 }
 
@@ -69,6 +72,6 @@ export function registerWorkerEvent(
  */
 export function defineWorkerEvents(worker: object, application: ApplicationCache): void {
   applications.set(worker, application);
-  for (const name of dispatchers.keys()) defineHandler(worker, name);
+  for (const [name, dispatcher] of dispatchers) defineHandler(worker, name, dispatcher);
   if (dispatchers.size < EVENTS) pending.add(worker);
 }

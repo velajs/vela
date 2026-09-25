@@ -200,7 +200,9 @@ Importing `OnTail` gives the Worker its `tail` handler. Every `@OnTail()`
 handler receives every batch, each in its own execution scope through its
 scoped guards, interceptors and filters (`getType()` `'cf:tail'`). A failure,
 in a handler or around it, is reported (`edge: 'tail'`) and never thrown into
-the platform's tail loop.
+the platform's tail loop. When the application fails to start, there is no
+`ExceptionHandler` to report through: the handler logs the error to the
+console and resolves, and the next batch retries the start.
 
 ## Tests
 
