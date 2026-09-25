@@ -83,7 +83,8 @@ packages. See [the tooling guide](docs/tooling.md) for coverage and validation.
   bindings, typed by `wrangler types`, before providers and lifecycle hooks run.
   `export default createCloudflareWorker(AppModule)` exports the Worker handlers
   and shares bootstrap per environment identity.
-- **HTTP contract:** `defineEndpoint` connects a controller's input and output
+- **HTTP contract:** route options (`@Post({ response })` with `@Body(schema)`)
+  or a shared `defineRoute` contract connect a route's request and response
   schemas to runtime validation, OpenAPI, and upstream Hono `hc` types.
 - **CRUD:** model schemas determine row types, adapters validate returned rows,
   and D1 distinguishes request scope from atomic transaction capability.

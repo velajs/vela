@@ -21,14 +21,14 @@ class UsersController {
     return this.users.findOne(id);
   }
 
-  @Post()
+  @Post({ response: User })     // 201; the result is parsed through User
   create(@Body(CreateUser) body: ReturnType<typeof CreateUser.parse>) {
     return this.users.create(body);
   }
 }
 ```
 
-`@Controller` accepts a path string **or** `{ path?, version?, scope? }` (there is no `prefix` or `name` on the controller). Method decorators: `@Get @Post @Put @Patch @Delete @Options @Head @All @Sse`. Each is `@Verb(path?, options?)` where `options` is `{ name?: string }`.
+`@Controller` accepts a path string **or** `{ path?, version?, scope? }` (there is no `prefix` or `name` on the controller). Method decorators: `@Get @Post @Put @Patch @Delete @Options @Head @All @Sse`. Each is `@Verb(path?, options?)` — or `@Verb(options)` for the controller's own path (a trailing `/` in a path is significant) — where `options` is `{ name?, response?, status?, format?, contentType?, validate?, body? }` (see `validation.md`), or a `defineRoute` contract of the same method from `@velajs/vela/contract`.
 
 `@Sse(path?)` registers a GET route that streams Server-Sent Events, as Nest's `@Sse()`. Return an async iterable (an `async *` generator) of `MessageEvent` (`{ data, id?, type?, retry? }`; non-string `data` is JSON). Each event is written as it is produced through Hono's `streamSSE`, and the iterable is closed when the client disconnects. A failure mid-stream is reported and ends the stream without sending its message. A returned `Response` is sent as is.
 
@@ -41,7 +41,7 @@ async *events(): AsyncIterable<MessageEvent> {
 }
 ```
 
-Return a plain value (JSON) or a `Response`. Response-shaping method decorators: `@HttpCode(201)`, `@Header('allow', 'GET,POST')` (response header, stackable), `@Redirect('/path', 302)`.
+Return a plain value (JSON) or a `Response`. Statuses follow Nest: POST answers 201, `response: null` 204, every other method 200 — whatever the handler returns (`null`/`undefined` is an empty body at that status). Response-shaping method decorators: `@HttpCode(204)` (or the route's `status`, not both), `@Header('allow', 'GET,POST')` (response header, stackable), `@Redirect('/path', 302)`.
 
 ## Parameter decorators
 
@@ -54,10 +54,12 @@ Return a plain value (JSON) or a `Response`. Response-shaping method decorators:
 | `@Cookie(name?, schema?, ...pipes)` / `@Cookies()` | cookie(s) |
 | `@Ip()` | client IP (see `getClientIp` create-option) |
 | `@RawBody()` | raw body as `Uint8Array` |
-| `@Req()` | the platform `Request`, as Nest's `@Req()` |
+| `@Req()` | the platform `Request`, as Nest's `@Req()` (a body the route read is consumed on it; re-read through `@RawBody()` or `c.req`) |
 | `@Ctx()` / `@Res()` | `VelaContext` (the Hono context: request helpers, response headers, cookies) |
 
-`@Body()` parses JSON only: a body must arrive as `application/json` or a `+json` media type (parameters like `charset` are fine), otherwise the request fails with 415 `unsupported_media_type`; malformed JSON is 400 and a request without a body yields `undefined`. Send `content-type: application/json` in tests (`@velajs/testing` does this for you). Raw Hono routes can use `readJsonBody(c)` for the same rule.
+`@Body()` parses JSON only unless the route opts into a form: a body must arrive as `application/json` or a `+json` media type (parameters like `charset` are fine), otherwise the request fails with 415 `unsupported_media_type`; malformed JSON is 400 and a request without a body yields `undefined`. `@Post('/upload', { body: { multipart: { maxFileBytes } } })` or `body: { form: {} }` makes the route accept only that form encoding, within its limits (413 beyond them), checked after guards even when no parameter reads the body. `@Body()` without a schema validates a parameter class carrying a static schema (Standard Schema, `defineDto` descriptor or `parse()` parser) as the body is read, unless a `ValidationPipe` applies to the parameter, which then validates it (a named `@Body('item')` validates that member). Send `content-type: application/json` in tests (`@velajs/testing` does this for you). Raw Hono routes can use `readJsonBody(c)` for the same rule.
+
+`@Query()` and `@Query('tag')` return repeated keys (`?tag=a&tag=b`) as arrays; keys a query schema's JSON Schema declares as arrays are arrays even when sent once (also beside a `z.coerce.date()` field), and other keys stay strings; a schema without a JSON Schema converter gets arrays only for repeated keys. Without a schema, a named parameter typed `string`, `number` or `boolean` reads the first value, one typed as an array (without a pipe) always reads an array, and any other (a union, `unknown`, or an array `ParseArrayPipe` splits) reads one value or an array for repeated keys.
 
 Pipes attach positionally: `@Param('id', ParseIntPipe)`, `@Query('mode', new ParseEnumPipe(Mode))`. A schema in a pipe position (Standard Schema such as Zod, a `parse()` parser, or a `defineDto` descriptor) becomes `new ValidationPipe(schema)`: `@Body(CreateUser)`, `@Query('page', z.coerce.number().int().min(1))`, `@Param('id', z.uuid())`. Invalid input is a 400 with the normalized issues, OpenAPI documents the schema, and later pipes receive its parsed output. See `pipeline.md` for the pipe list. Custom factories run after guards. Use `createParamDecorator` with the actual required data argument; `createLazyParamDecorator` injects an explicit memoized thunk: declare the parameter as `() => User | undefined` and call it in the handler. Validate inside the factory; lazy decorators do not take parameter pipes. Type annotations alone do not validate the value.
 

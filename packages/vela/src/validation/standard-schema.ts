@@ -87,11 +87,15 @@ export function validateSchema<Input, Output>(
   return isPromiseLike(result) ? Promise.resolve(result).then(validated) : validated(result);
 }
 
-/** Conversion is independent of validation and never guesses a schema's shape. */
+/**
+ * Conversion is independent of validation and never guesses a schema's shape.
+ * `libraryOptions` pass through to the schema library's converter.
+ */
 export function standardJsonSchema(
   schema: unknown,
   direction: 'input' | 'output' = 'output',
   target = 'draft-2020-12',
+  libraryOptions?: Record<string, unknown>,
 ): unknown {
   if (
     schema === null ||
@@ -110,5 +114,5 @@ export function standardJsonSchema(
         ? converter.output
         : undefined;
   if (typeof convert !== 'function') return undefined;
-  return convert.call(converter, { target });
+  return convert.call(converter, libraryOptions ? { target, libraryOptions } : { target });
 }

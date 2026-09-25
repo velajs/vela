@@ -1,5 +1,11 @@
 import { MetadataRegistry } from './metadata.registry';
-import type { ComponentType, ComponentTypeMap, Constructor } from './types';
+import type {
+  ComponentType,
+  ComponentTypeMap,
+  Constructor,
+  ParameterMetadata,
+  RouteDefinition,
+} from './types';
 
 // Declarations on an ancestor class apply to the classes that extend it, as
 // reflect-metadata resolves them in Nest: class-level declarations along the
@@ -83,6 +89,54 @@ export function inheritedHandlerMeta(
   for (const owner of methodLineage(type, name)) {
     const value = MetadataRegistry.getCustomHandlerMeta(owner, name, key);
     if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+/**
+ * The routes `type` declares. A route without options of its own, serving a
+ * method `type` inherits unchanged, takes the options (or `defineRoute`
+ * contract) of the nearest ancestor's route for the same verb and method.
+ */
+export function inheritedRoutes(type: Constructor): RouteDefinition[] {
+  return MetadataRegistry.getRoutes(type).map((route) => {
+    if (route.contract) return route;
+    for (const owner of methodLineage(type, route.handlerName).slice(1)) {
+      const declared = MetadataRegistry.getRoutes(owner).find(
+        (candidate) =>
+          candidate.contract &&
+          candidate.handlerName === route.handlerName &&
+          candidate.method === route.method,
+      );
+      if (declared) return { ...route, contract: declared.contract };
+    }
+    return route;
+  });
+}
+
+/**
+ * The parameter declarations of method `name` as `type` serves it: its own,
+ * else those of the nearest ancestor whose method it inherits unchanged.
+ */
+export function inheritedParameters(type: Constructor, name: string | symbol): ParameterMetadata[] {
+  for (const owner of methodLineage(type, name)) {
+    const parameters = MetadataRegistry.getParameters(owner).get(name);
+    if (parameters?.length) return parameters;
+  }
+  return [];
+}
+
+/**
+ * The emitted parameter types (`design:paramtypes`) of method `name` as
+ * `type` serves it, from the nearest class in its method lineage that has them.
+ */
+export function inheritedParamTypes(
+  type: Constructor,
+  name: string | symbol,
+): unknown[] | undefined {
+  for (const owner of methodLineage(type, name)) {
+    const types: unknown = Reflect.getMetadata('design:paramtypes', owner.prototype, name);
+    if (Array.isArray(types)) return types;
   }
   return undefined;
 }

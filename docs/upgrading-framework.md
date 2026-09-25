@@ -200,25 +200,156 @@ headless engine calls still require raw input: do not parse a transforming schem
 first and submit its transformed result for another parse. There is no global
 validation receipt: `ValidationPipe.consumeValidated` has been removed.
 
-`@Serialize` still requires `SerializerInterceptor` and applies its schema to each
-array element. Standard Schema output validation now runs instead of allowing
-unfiltered values through; malformed metadata and output-contract failures raise
-server errors. Use `defineSerializer` to project domain objects through public
-methods, including objects with `#private` state. It does not hydrate classes or
-read private fields. Review response schemas if clients depended on extra fields
-that should have been filtered.
-
 See [schema contracts](types.md), [serialization](serialization.md) and
 [typed CRUD services](crud/services.md).
+
+## Schema-first routes
+
+Routes declare their contract on the method decorator. `@Endpoint`,
+`defineEndpoint`, `@Serialize`, `SerializerInterceptor` and `SERIALIZE_METADATA`
+are removed:
+
+- Replace `@Endpoint(defineEndpoint({ input, output, status }))` with route
+  options and schema arguments: `@Post({ response: Output, status })` and
+  `@Body(Json)`, `@Query(Query)`, `@Param('id', schema)`, `@Headers('x', schema)`
+  instead of one `input` object with `json`, `query`, `param` and `header`
+  groups. The handler takes ordinary parameters. To share the contract with a
+  browser client, declare it with `defineRoute({ method, path, params, query,
+  body, response, status })` from `@velajs/vela/contract` and serve it with
+  `@Post(contract)` or `@Get('/:id', contract)`.
+- Replace `body: { contentType: 'multipart/form-data', ...limits }` with
+  `body: { multipart: limits }`, `application/x-www-form-urlencoded` with
+  `body: { form: limits }` and `application/json` with `body: { json: { maxBytes } }`.
+  Multipart now defaults to one file and a body of `maxFiles × maxFileBytes` plus
+  1 MiB, and a route's own `maxBytes` replaces the application body limit for
+  that route, so upload routes no longer need a `streamingOverrides` entry;
+  remove such entries, which still take precedence. A default `maxBytes` never
+  exceeds a `security.body.maxBytes` (or `bodyLimit`) the application sets:
+  declare `maxBytes` on an upload route that must accept more. A route that
+  declares a body reads it after guards and before the handler, even when no
+  parameter reads it, so a `body: { json }` route answers 415 for other media
+  types and 400 for malformed JSON also when only `@RawBody()` reads it. Read
+  such a body again through `@RawBody()` or `c.req`: the route has consumed the
+  stream of the platform `Request` that `@Req()` injects.
+- Replace `format: 'binary' | 'stream' | 'response'` endpoint definitions with
+  the same `format` and `contentType` route options.
+- Replace `@Serialize(dto)` and `SerializerInterceptor` with
+  `@Get({ response: dto })`. The response is parsed as a whole, after
+  interceptors: use `z.array(item)` where `@Serialize` parsed each array element.
+  A `defineSerializer` result is a Standard Schema and serves as `response`
+  directly; it no longer has a `.schema` property.
+- `@ApiResponse(status, options)` becomes Nest's `@ApiResponse({ status,
+  description, schema })`, and `schema` is a Standard Schema or `defineDto`
+  descriptor; raw JSON Schema is rejected. Declare the success body with the
+  route's `response` option instead.
+
+Statuses follow Nest: POST answers 201, `response: null` or `@HttpCode(204)`
+answers 204, and every other method answers 200 — whatever the handler returns.
+A handler returning `null` or `undefined` no longer answers 204; it answers the
+route's status with an empty body. Declare `response: null` (or `@HttpCode(204)`)
+where clients expect 204, and `@HttpCode(200)` on POST routes that must keep 200.
+
+Without `response` or `format`, a route still sends strings as text and other
+values as JSON. The route parses its result through `response` after
+interceptors. `@CacheResponse` stores the response the route sent — its status,
+media type and body, after every interceptor and the schema — so a cache store
+never holds fields the schema strips, and a hit replays that response without
+running the handler or parsing again. Interceptors outside `CacheInterceptor`
+receive the replayed `Response` on a hit, and a value they return instead is
+ignored. This has a security consequence: an entry now includes what those
+interceptors did for the request that stored it, and they no longer redo it per
+request. An interceptor outside the cache that shapes the response per viewer
+(removing fields by role, localizing) has its output for the first viewer
+replayed to every request in the same cache scope. Make the cache `scope`
+partition by everything the handler or any interceptor varies the response on,
+or leave such routes uncached. `shouldCache` receives the body the route sends,
+JSON-decoded, instead of the handler's value, so it no longer sees fields the
+`response` schema strips. A fallback an interceptor outside `CacheInterceptor`
+sends when the call inside it throws or has not settled is not cached; a
+fallback an interceptor inside it (a controller or method interceptor, or a
+global one registered after `CacheModule`'s) returns for a failed handler is
+that call's result, and is cached. Route entries carry a new address and format version, so entries an
+earlier release stored with the handler's raw result miss once after the
+upgrade, also while older isolates still write them. When you tighten a
+`response` schema, change the cache `namespace` (or invalidate the affected
+scopes) for it to apply to entries stored before their TTL expires.
+
+`@Query()` without a schema returns repeated keys (`?tag=a&tag=b`) as arrays
+instead of the first value, and keys a query schema declares as arrays in its
+JSON Schema arrive as arrays even when sent once, beside fields JSON Schema
+cannot express such as `z.coerce.date()`; a repeated scalar fails its schema. A
+schema without a JSON Schema converter (a Valibot schema, a `parse()` parser)
+receives an array only for a repeated key. A named
+parameter without a schema follows its declared type: `string`, `number` and
+`boolean` parameters still receive the first value, an array parameter without
+a pipe always receives an array, and an `unknown` or union parameter, or an
+array a pipe such as `ParseArrayPipe` splits, receives an array for a repeated
+key. `string | undefined` and `string | null` are unions: declare such a
+parameter optional (`role?: string`) to keep the first value. OpenAPI documents
+the parameters that receive one value or repeated keys as such, and
+`vela client generate` types them `string | Array<string>`. Declare a schema,
+or `ParseArrayPipe`, for values that may be one or many.
+
+`@Body()` with no schema validates a parameter class carrying a static schema
+(a Standard Schema, a `defineDto` descriptor or a `parse()` parser, as
+`ValidationPipe` reads it) even without a global pipe, so bodies such a class
+rejects now answer 400; a named `@Body('item') item: Item` validates the `item` member. It
+validates as the body is read, before any pipe, unless a `ValidationPipe` (or a
+subclass) applies to the parameter; then that pipe validates it in pipe order,
+as in Nest, and every `ValidationPipe` that applies validates. A validation
+pipe of your own that is not a `ValidationPipe`, such as one parsing
+`metatype.schema`, now runs on the value the class already validated, which
+fails for schemas whose transforms do not accept their own output: make it
+extend `ValidationPipe`, or remove it. A global `ValidationPipe` still validates
+body parameters registered without a route reader. The class is read from the
+parameter's reflected type: an `import type` or a union annotation such as
+`Item | undefined` erases it to `Object`, and the body is then accepted
+unvalidated, so import the class as a value and annotate with it alone.
+
+A route validates every request group its `defineRoute` contract declares —
+`params`, `query` and `body`, with the body's encoding and limits — after guards
+and before the handler, whether or not a parameter reads it, as `@Endpoint` did.
+`@Body()`, `@Query()` and `@Param()` read the validated values, and a
+`ValidationPipe` does not validate them again. The application fails to start
+when a `params` schema leaves out a path parameter the route serves, when a
+named parameter reads a key its group's schema does not return, and when a
+parameter declares its own schema for a declared group or is typed with a class
+whose static schema is not the group's, which the route's schema replaces: type
+such a parameter with `ContractBody`, `ContractQuery` or `ContractParams`. A
+contract that declares a `body` schema without an encoding reads JSON within the
+application's limit, counted after guards. The key checks need a
+schema that lists its keys as JSON Schema without passing undeclared keys
+through, as a Zod object does. For any other, such as a Valibot schema, a
+`parse()` parser, a union or a transform that renames keys, a named parameter
+that reads a key the request carries but the validated value lacks fails that
+request with a 500 whose reported error names the key, as does a whole
+`@Param()` whose validated params lack a path parameter the request carries.
+OpenAPI documents a `params` or `query` schema JSON Schema cannot describe as an
+object as the decorator options do (path parameters as strings, the query as
+unsupported by `vela client generate`) instead of failing the document. The validation ships
+with `@Body`, `@Query` and `@Param`: a Worker bundle that uses none of them
+leaves it out, and a route declaring request groups or a form body then fails
+to start with an error saying so.
+
+Method decorators with `response` or `format` are `RouteMethodDecorator<Result>`
+values that check the handler's result; they are no longer assignable to
+`MethodDecorator`. Annotate wrapper helpers with `RouteMethodDecorator<T>` or
+let TypeScript infer them. Decorators without those options remain
+`MethodDecorator`s. A route serving a `defineRoute` contract rejects `@HttpCode`
+at startup; declare `status` in the contract, which types its clients.
+
+An `@Override`'d CRUD verb answers the verb's status (200 for restore, upsert,
+import, batch restore and upsert, version rollback) unless it declares its own
+`@HttpCode`, and OpenAPI documents that status.
 
 ## HTTP errors, request parameters and guards
 
 Every HTTP failure renders through `renderHttpError`. Clients see these changes:
 
-- Validation failures from `ValidationPipe` and `@Body(schema)` answer
+- Validation failures from `ValidationPipe`, `@Body(schema)` and route contracts
+  answer
   `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`
-  instead of `{ statusCode, message, errors }`; `@Endpoint` input failures answer the
-  same body with the message `'Endpoint input validation failed'`.
+  instead of `{ statusCode, message, errors }`.
 - Unmatched routes answer a JSON 404, `{ error: { code: 'not_found', message: 'Not Found' } }`,
   and oversized bodies a JSON 413 (`payload_too_large`), instead of Hono's plain text.
   Global exception filters receive these rejections, as in Nest, so a catch-all filter that
@@ -308,15 +439,18 @@ every `Reflector` form, so `@Roles(['admin'])` on an abstract base controller
 guards each controller that extends it. Class-level `@UseGuards`,
 `@UseInterceptors`, `@UsePipes`, `@UseFilters` and `@UseMiddleware` on an
 ancestor run for the subclass, ancestors first. On a method the controller
-inherits unchanged, the ancestors' method metadata, method-level enhancers,
-`@Serialize` and `SkipGuardPhases` apply; an override reads only its own. Opening
-markers are inherited too: `@Public()`, `@OptionalAuth()`, `@TenantIgnored()`,
+inherits unchanged, the ancestors' method metadata, method-level enhancers and
+`SkipGuardPhases` apply; an override reads only its own. Opening markers are
+inherited too: `@Public()`, `@OptionalAuth()`, `@TenantIgnored()`,
 `@CedarPublic()` or `@SkipThrottle()` on a base controller now opens its subclasses'
 routes. Remove a declaration from the base class, or override the method, where a
 subclass must not inherit it. Unlike Nest, route decorators (`@Get()`, `@Post()`, …)
 are still read from the controller class itself, so a method a base class routes
 is not mounted on its subclasses: route the inherited method on the subclass, for
-example `Get('list')(Sub.prototype, 'list', descriptor)`.
+example `Get('list')(Sub.prototype, 'list', descriptor)`. Such a route that
+declares no options of its own takes those of the nearest ancestor's route for
+the same verb and method (its `response`, `status` or `defineRoute` contract),
+and reads the parameters the ancestor declares on the method.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
 Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule`, `CedarModule` and

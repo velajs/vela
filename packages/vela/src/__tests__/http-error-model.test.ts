@@ -315,6 +315,73 @@ describe('HTTP edges share one renderer', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  it('renders route input failures as framework exceptions of their own status', async () => {
+    const seen: [string, number][] = [];
+    @Controller('/inputs')
+    class InputsController {
+      @Post({ body: { json: { maxBytes: 32 } } })
+      create(@Body(z.object({ title: z.string().min(1) })) body: { title: string }) {
+        return body;
+      }
+
+      @Post('/form', { body: { form: { maxFields: 1 } } })
+      form(@Body() body: unknown) {
+        return { body };
+      }
+    }
+    @Module({
+      controllers: [InputsController],
+      imports: [
+        ErrorsModule.forRoot({
+          handler: {
+            render: (error) => {
+              if (error instanceof HttpException)
+                seen.push([error.constructor.name, getErrorStatus(error)]);
+              return undefined;
+            },
+          },
+        }),
+      ],
+    })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule);
+    const post = (path: string, body: string, type: string) =>
+      app.getHonoApp().request(path, { method: 'POST', headers: { 'content-type': type }, body });
+    const cases: [Response, number, string][] = [
+      [
+        await post('/inputs', JSON.stringify({ title: 'x'.repeat(64) }), 'application/json'),
+        413,
+        'payload_too_large',
+      ],
+      [await post('/inputs', 'title=x', 'text/plain'), 415, 'unsupported_media_type'],
+      [await post('/inputs', '{', 'application/json'), 400, 'bad_request'],
+      [
+        await post('/inputs', JSON.stringify({ title: '' }), 'application/json'),
+        400,
+        'bad_request',
+      ],
+      [
+        await post('/inputs/form', 'a=1&b=2', 'application/x-www-form-urlencoded'),
+        413,
+        'payload_too_large',
+      ],
+      [await post('/inputs/form', '{}', 'application/json'), 415, 'unsupported_media_type'],
+    ];
+    for (const [response, status, code] of cases) {
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ error: { code } });
+    }
+    expect(seen).toEqual([
+      ['PayloadTooLargeException', 413],
+      ['UnsupportedMediaTypeException', 415],
+      ['BadRequestException', 400],
+      ['BadRequestException', 400],
+      ['PayloadTooLargeException', 413],
+      ['UnsupportedMediaTypeException', 415],
+    ]);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   it('uses toResponse() from handlers and Vela middleware, redacting 5xx only on raw Hono', async () => {
     @Controller('/owned')
     class OwnedController {

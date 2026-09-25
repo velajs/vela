@@ -2,14 +2,15 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   APP_GUARD,
+  Body,
   Controller,
   Get,
   Inject,
   Injectable,
   Module,
+  Post,
+  Query,
   Reflector,
-  Serialize,
-  SerializerInterceptor,
   UseGuards,
   UseInterceptors,
   VelaFactory,
@@ -20,6 +21,7 @@ import {
   type NestInterceptor,
 } from '../index.js';
 import { SkipGuardPhases } from '../module-kit.js';
+import { createOpenApiDocument } from '../openapi/index.js';
 
 // Declarations on an ancestor class apply to the controllers that extend it,
 // as reflect-metadata resolves them in Nest: class-level metadata and
@@ -69,29 +71,36 @@ function tracedGuard(name: string, allow = true) {
 }
 
 describe('declarations inherited from an ancestor method', () => {
-  it('serializes with the @Serialize an ancestor declares on a routed inherited method', async () => {
+  it('serves a routed inherited method with the route options an ancestor declares on it', async () => {
     const Public = z.object({ id: z.string() });
 
     class Base {
-      @Serialize({ schema: Public })
+      @Get({ response: Public })
       get() {
         return { id: '1', passwordHash: 'secret' };
+      }
+
+      @Post({ status: 202 })
+      queue() {
+        return { queued: true };
       }
     }
     const inherited = Object.getOwnPropertyDescriptor(Base.prototype, 'get')!;
     @Controller('/inherited')
-    @UseInterceptors(SerializerInterceptor)
     class Inherited extends Base {}
     Get()(Inherited.prototype, 'get', inherited);
-    // Its own override reads only its own declarations.
+    Post()(Inherited.prototype, 'queue', Object.getOwnPropertyDescriptor(Base.prototype, 'queue')!);
+    // Its own override reads only its own declarations, and so do its own options.
     @Controller('/override')
-    @UseInterceptors(SerializerInterceptor)
     class Override extends Base {
       @Get()
       override get() {
         return { id: '2', passwordHash: 'own' };
       }
     }
+    @Controller('/restated')
+    class Restated extends Base {}
+    Get({ response: z.looseObject({ id: z.string() }) })(Restated.prototype, 'get', inherited);
 
     // Siblings sharing an undecorated method: only the one that declares it strips.
     class Shared {
@@ -101,25 +110,68 @@ describe('declarations inherited from an ancestor method', () => {
     }
     const shared = Object.getOwnPropertyDescriptor(Shared.prototype, 'get')!;
     @Controller('/strict')
-    @UseInterceptors(SerializerInterceptor)
     class Strict extends Shared {}
-    Get()(Strict.prototype, 'get', shared);
-    Serialize({ schema: Public })(Strict.prototype, 'get', shared);
+    Get({ response: Public })(Strict.prototype, 'get', shared);
     @Controller('/loose')
-    @UseInterceptors(SerializerInterceptor)
     class Loose extends Shared {}
     Get()(Loose.prototype, 'get', shared);
 
-    @Module({ controllers: [Inherited, Override, Strict, Loose] })
+    @Module({ controllers: [Inherited, Override, Restated, Strict, Loose] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
     const body = async (path: string) => (await app.getHonoApp().request(path)).json();
     try {
       expect(await body('/inherited')).toEqual({ id: '1' });
+      const queued = await app.getHonoApp().request('/inherited', { method: 'POST' });
+      expect(queued.status).toBe(202);
       expect(await body('/override')).toEqual({ id: '2', passwordHash: 'own' });
+      expect(await body('/restated')).toEqual({ id: '1', passwordHash: 'secret' });
       expect(await body('/strict')).toEqual({ id: '3' });
       expect(await body('/loose')).toEqual({ id: '3', passwordHash: 'shared' });
+
+      const document = createOpenApiDocument(AppModule);
+      expect(document.paths['/inherited']!.get!.responses['200']).toMatchObject({
+        content: { 'application/json': { schema: { type: 'object', properties: { id: {} } } } },
+      });
+      expect(Object.keys(document.paths['/inherited']!.post!.responses)).toEqual(['202']);
+      expect(document.paths['/loose']!.get!.responses['200']).not.toHaveProperty('content');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reads the parameters an ancestor declares on a routed inherited method', async () => {
+    class Note {
+      static schema = z.object({ text: z.string().min(1) });
+      declare text: string;
+    }
+    class Base {
+      create(@Body() body: Note, @Query('tag') tag: string) {
+        return { text: body.text, tag: tag ?? null };
+      }
+    }
+    @Controller('/notes')
+    class Notes extends Base {}
+    Post()(Notes.prototype, 'create', Object.getOwnPropertyDescriptor(Base.prototype, 'create')!);
+    @Module({ controllers: [Notes] })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule);
+    const post = (body: unknown) =>
+      app.getHonoApp().request('/notes?tag=a', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    try {
+      expect((await post({ text: '' })).status).toBe(400);
+      const created = await post({ text: 'hi' });
+      expect(created.status).toBe(201);
+      expect(await created.json()).toEqual({ text: 'hi', tag: 'a' });
+      const document = createOpenApiDocument(AppModule);
+      expect(document.paths['/notes']!.post!.parameters).toEqual([
+        { name: 'tag', in: 'query', required: false, schema: { type: 'string' } },
+      ]);
     } finally {
       await app.close();
     }

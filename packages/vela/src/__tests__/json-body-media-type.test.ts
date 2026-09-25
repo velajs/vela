@@ -2,7 +2,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { Body, Controller, Module, Post, VelaFactory } from '../index';
-import { Endpoint, defineEndpoint } from '../openapi/index';
 import { readJsonBody } from '../module-kit';
 
 const unsupported = {
@@ -70,7 +69,7 @@ describe('@Body() requires a JSON media type', () => {
     try {
       for (const contentType of acceptedContentTypes) {
         const res = await app.fetch(post('/transfers', contentType, '{"amount":100}'));
-        expect(res.status, contentType).toBe(200);
+        expect(res.status, contentType).toBe(201);
         expect(await res.json()).toEqual({ body: { amount: 100 } });
       }
     } finally {
@@ -84,7 +83,7 @@ describe('@Body() requires a JSON media type', () => {
       const res = await app.fetch(
         new Request('https://example.test/transfers', { method: 'POST' }),
       );
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(201);
       expect(await res.json()).toEqual({ body: null });
     } finally {
       await app.close();
@@ -92,18 +91,17 @@ describe('@Body() requires a JSON media type', () => {
   });
 });
 
-async function createEndpointApp(maxBytes?: number) {
-  const definition = defineEndpoint({
-    input: z.object({ json: z.object({ amount: z.number() }) }),
-    output: z.number(),
-    ...(maxBytes === undefined ? {} : { body: { contentType: 'application/json', maxBytes } }),
-  });
+const Transfer = z.object({ amount: z.number() });
+
+async function createRouteApp(maxBytes?: number) {
   @Controller('/transfers')
   class Transfers {
-    @Post()
-    @Endpoint(definition)
-    create(value: { json: { amount: number } }) {
-      return value.json.amount;
+    @Post({
+      response: z.number(),
+      ...(maxBytes === undefined ? {} : { body: { json: { maxBytes } } }),
+    })
+    create(@Body(Transfer) value: { amount: number }) {
+      return value.amount;
     }
   }
   @Module({ controllers: [Transfers] })
@@ -139,10 +137,10 @@ describe('readJsonBody', () => {
   });
 });
 
-describe('endpoint json groups require a JSON media type', () => {
+describe('routes with a bounded JSON body require a JSON media type', () => {
   for (const maxBytes of [undefined, 64]) {
     it(`rejects non-JSON media types with 415 (maxBytes: ${String(maxBytes)})`, async () => {
-      const app = await createEndpointApp(maxBytes);
+      const app = await createRouteApp(maxBytes);
       try {
         for (const contentType of [...rejectedContentTypes, undefined]) {
           const res = await app.fetch(post('/transfers', contentType, '{"amount":100}'));
@@ -151,7 +149,7 @@ describe('endpoint json groups require a JSON media type', () => {
         }
         for (const contentType of acceptedContentTypes) {
           const res = await app.fetch(post('/transfers', contentType, '{"amount":100}'));
-          expect(res.status, contentType).toBe(200);
+          expect(res.status, contentType).toBe(201);
           expect(await res.json()).toBe(100);
         }
       } finally {

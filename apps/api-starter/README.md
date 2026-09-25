@@ -49,7 +49,13 @@ public and protected routes, sign-up, the LiveRoom Durable Object upgrade and
 its refusals, two environments building separate applications from the one
 `AppModule`, and constructor injection that relies only on the emitted metadata.
 
-`src/contracts.ts` is the shared runtime contract for live arguments and rows.
+`src/contracts.ts` is the shared runtime contract for live arguments and rows,
+the `/me` response schema, and the `/healthz` route contract (`defineRoute` from
+the browser-safe `@velajs/vela/contract` entry). `MeController` declares its
+response with route options (`@Get({ response: meSchema })`), which strips the
+session user to its public fields; `HealthController` serves the shared
+contract with `@Get(health)`. Both styles validate the handler's result and
+document it for the generated client.
 `web/api.generated.ts` is generated from the module's OpenAPI document and has
 no runtime server imports. `pnpm client:generate` and `pnpm client:check` run
 `vela client generate` (through the workspace CLI entry, since the workspace

@@ -6,6 +6,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  HttpCode,
   Inject,
   Injectable,
   Module,
@@ -418,6 +419,45 @@ describe("id: 'client' PK strategy", () => {
 });
 
 describe('@Override', () => {
+  it('answers and documents the status of the verb it overrides, unless it declares its own', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1, deletedAt: 1 });
+    @Controller('/kept')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      only: ['restore', 'upsert'],
+    })
+    class KeptController {
+      @Override('restore')
+      customRestore() {
+        return { restored: true };
+      }
+      @Override('upsert')
+      @HttpCode(202)
+      customUpsert() {
+        return { queued: true };
+      }
+    }
+
+    @Module({ controllers: [KeptController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/kept/a/restore', { method: 'POST' })).status).toBe(200);
+    expect((await hono.request('/kept/upsert', json('POST', { id: 'b' }))).status).toBe(202);
+    const doc = createOpenApiDocument(AppModule);
+    expect(Object.keys(doc.paths['/kept/{id}/restore']?.post?.responses ?? {}).toSorted()).toEqual([
+      '200',
+      '404',
+    ]);
+    expect(Object.keys(doc.paths['/kept/upsert']?.post?.responses ?? {}).toSorted()).toEqual([
+      '202',
+      '400',
+    ]);
+  });
+
   it('takes over the verb with the route name and skips synthesis', async () => {
     const store = new Map<string, Row>();
     store.set('a', { id: 'a', name: 'A', qty: 1 });

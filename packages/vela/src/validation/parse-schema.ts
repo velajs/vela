@@ -61,6 +61,19 @@ export function isValidationSchema(value: unknown): value is ValidationSchema {
   return isStandardSchema(value) || isParser(value);
 }
 
+/**
+ * The schema a parameter class carries: its static `schema` (a Standard
+ * Schema, a `defineDto` descriptor or a `parse()` parser, as `ValidationPipe`
+ * reads it), or the class itself when it is a Standard Schema. `@Body()`
+ * validates such a parameter class.
+ */
+export function staticSchema(metatype: unknown): ValidationSchema | undefined {
+  if (typeof metatype !== 'function') return undefined;
+  if (isStandardSchema(metatype)) return metatype;
+  const schema: unknown = Reflect.get(metatype, 'schema');
+  return isValidationSchema(schema) ? schema : undefined;
+}
+
 function isParser(value: unknown): value is RuntimeParser {
   return (
     value !== null &&

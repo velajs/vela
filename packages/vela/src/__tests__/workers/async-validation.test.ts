@@ -1,2 +1,3 @@
-// Run the real async input/output and #private domain boundary cases in bare workerd.
-import '../async-endpoint.test';
+// Run the real async response-schema and #private domain boundary cases in bare workerd.
+import '../serialization-async.test';
+import '../serialization-projection.test';

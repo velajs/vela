@@ -53,9 +53,10 @@ describe('OpenAPI HTTP client contract', () => {
     class Users {
       @Get('/:id')
       @Version([2, 3])
-      @ApiResponse(200, {
+      @ApiResponse({
+        status: 200,
         description: 'User',
-        schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        schema: z.object({ id: z.string() }),
       })
       find(@Param('id') id: string) {
         return { id };
@@ -63,7 +64,7 @@ describe('OpenAPI HTTP client contract', () => {
 
       @Post()
       @HttpCode(201)
-      @ApiResponse(201, { description: 'Created', schema: { type: 'object' } })
+      @ApiResponse({ status: 201, description: 'Created', schema: z.object({}) })
       create() {
         return { id: 'u1' };
       }

@@ -77,7 +77,7 @@ function respondWithEvents(
  * }
  * ```
  */
-export function Sse(path = '', options?: RouteOptions) {
+export function Sse(path = '', options?: Pick<RouteOptions, 'name'>) {
   return <Handler extends (...args: never[]) => SseResult | Promise<SseResult>>(
     target: object,
     propertyKey: string | symbol,

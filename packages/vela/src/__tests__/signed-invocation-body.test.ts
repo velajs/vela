@@ -141,7 +141,7 @@ describe('SignedInvocation guard — @Body()-carrying signed routes', () => {
     const token = await tokenFor(ROUTE, { bodyHash });
 
     const res = await send(app, ROUTE, token, bodyText);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(observed).toEqual([{ tenant: 'acme', n: 7 }]);
     await app.dispose();
   });
@@ -201,7 +201,7 @@ describe('SignedInvocation guard — @Body()-carrying signed routes', () => {
     const token = await tokenFor(BARE_ROUTE, { bodyHash });
 
     const res = await send(app, BARE_ROUTE, token, bodyText);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(bareHits).toEqual(['bare']);
     await app.dispose();
   });
