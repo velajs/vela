@@ -552,17 +552,20 @@ export function addExport(file: string, source: string, name: string, from: stri
   return { source: code.toString(), changed: true };
 }
 
+/** The `@velajs/cloudflare` factories that take the application's root module first. */
+const ROOT_FACTORIES = new Set(['createCloudflareWorker', 'defineCloudflareApp']);
+
 /**
- * The root module the Worker entry passes to `createCloudflareWorker(...)`:
- * the name its file exports it under (`default` for a default import) and the
- * relative import source, or undefined when the entry builds the Worker
- * another way.
+ * The root module the Worker entry passes to `createCloudflareWorker(...)` or
+ * `defineCloudflareApp(...)`: the name its file exports it under (`default`
+ * for a default import) and the relative import source, or undefined when the
+ * entry builds the Worker another way.
  */
 export function workerRootImport(file: string, source: string): NamedImport | undefined {
   const program = parse(file, source);
   let root: string | undefined;
   for (const node of walk(program.body)) {
-    if (node.type !== 'CallExpression' || calleeName(node) !== 'createCloudflareWorker') continue;
+    if (node.type !== 'CallExpression' || !ROOT_FACTORIES.has(calleeName(node) ?? '')) continue;
     const [argument] = node.arguments;
     if (argument?.type === 'Identifier') root = argument.name;
     break;

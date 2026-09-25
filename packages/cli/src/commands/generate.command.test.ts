@@ -294,9 +294,22 @@ export class AppModule {}
     await scaffold('minimal');
     const result = await generate('g', 'durable-object', 'counter');
     expect(result.code, result.output).toBe(0);
-    expect(await read('src/counter/counter.durable-object.ts')).toContain(
-      'export class Counter extends DurableObject {',
+    expect(result.output).toContain('CREATE src/counter/counter.host.ts');
+    const host = await read('src/counter/counter.host.ts');
+    expect(host).toContain('@Injectable()\nexport class CounterHost {');
+    expect(host).toContain(
+      'constructor(@Inject(DO_STORAGE) private readonly storage: DurableObjectStorage) {}',
     );
+    expect(await read('src/counter/counter.durable-object.ts'))
+      .toBe(`import { VelaDurableObject } from '@velajs/cloudflare/durable-objects';
+import { AppModule } from '../app.module.js';
+import { CounterHost } from './counter.host.js';
+
+// Each instance boots AppModule with CounterHost as one of its providers. The
+// host's public methods are this class's RPC methods, and its guards, pipes,
+// interceptors and filters run around every call.
+export class Counter extends VelaDurableObject(AppModule, CounterHost) {}
+`);
     expect(await read('src/worker.ts'))
       .toBe(`import { createCloudflareWorker } from '@velajs/cloudflare';
 import { AppModule } from './app.module.js';

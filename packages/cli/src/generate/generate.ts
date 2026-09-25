@@ -7,6 +7,7 @@ import { names, singular } from './names.js';
 import {
   controllerSource,
   cronSource,
+  durableObjectHostSource,
   durableObjectSource,
   moduleSource,
   processorSource,
@@ -181,7 +182,7 @@ export async function resolveModuleClass(
   return visit(file, name, false);
 }
 
-/** The root module: the file, and the class, the Worker entry passes to createCloudflareWorker(). */
+/** The root module: the file, and the class, the Worker entry passes to createCloudflareWorker() or defineCloudflareApp(). */
 interface RootModule {
   readonly file: string;
   /** The name the file exports the class under, when the Worker entry names it. */
@@ -401,8 +402,33 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
       break;
     }
     case 'durable-object': {
+      if (root?.name === undefined) {
+        throw new Error(
+          'A Durable Object boots the application from its root module, but the Worker entry ' +
+            'names none: pass the root module to createCloudflareWorker() or ' +
+            'defineCloudflareApp() in the Worker entry.',
+        );
+      }
+      const hostFile = file('host.ts');
       target = file('durable-object.ts');
-      creates.push({ path: target, content: durableObjectSource(name) });
+      const rootFrom = specifier(target, root.file, ext);
+      const rootName = root.name === 'default' ? 'AppModule' : root.name;
+      const rootImport =
+        root.name === 'default'
+          ? `import ${rootName} from '${rootFrom}';`
+          : `import { ${rootName} } from '${rootFrom}';`;
+      creates.push(
+        { path: hostFile, content: durableObjectHostSource(name) },
+        {
+          path: target,
+          content: durableObjectSource(
+            name,
+            rootName,
+            rootImport,
+            specifier(target, hostFile, ext),
+          ),
+        },
+      );
       exported = { name: name.pascal, file: target };
       notes.push(
         `Next: vela cf sync --write adds the ${name.constant} binding and a migration, and your types script types ENV.${name.constant}.`,

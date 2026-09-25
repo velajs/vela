@@ -221,6 +221,21 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
   return { project, api };
 }
 
+// Drives the generated Durable Object over JS-RPC in workerd, typed through
+// the COUNTER binding `wrangler types` declares once cf sync binds the class.
+const COUNTER_SPEC = `import { env } from 'cloudflare:workers';
+import { describe, expect, it } from 'vitest';
+
+describe('Counter', () => {
+  it('counts per id over RPC', async () => {
+    const counter = env.COUNTER.getByName('spec');
+    expect(await counter.increment()).toBe(1);
+    expect(await counter.increment()).toBe(2);
+    expect(await env.COUNTER.getByName('other').increment()).toBe(1);
+  });
+});
+`;
+
 /** Grow the scaffold with every generator, then keep it typed, tested, synced and deployable. */
 async function verifyGenerators(project, vela, run) {
   for (const args of [
@@ -241,6 +256,11 @@ async function verifyGenerators(project, vela, run) {
     assert.ok(app.includes(registered), `AppModule registers ${registered}`);
   }
   assert.match(await readFile(join(project, 'src/worker.ts'), 'utf8'), /export \{ Counter \}/);
+  assert.match(
+    await readFile(join(project, 'src/counter/counter.durable-object.ts'), 'utf8'),
+    /export class Counter extends VelaDurableObject\(AppModule, CounterHost\) \{\}/,
+  );
+  await writeFile(join(project, 'test/counter.spec.ts'), COUNTER_SPEC);
   // The Wrangler file is out of date until cf sync writes the new triggers and bindings.
   assert.throws(() => vela(['cf', 'sync']), /Command failed/);
   vela(['cf', 'sync', '--write']);
@@ -251,6 +271,17 @@ async function verifyGenerators(project, vela, run) {
   assert.match(types, /COUNTER: DurableObjectNamespace/);
   run(['typecheck']);
   run(['test']);
+  const entrypoints = JSON.parse(vela(['entrypoint', 'list', '--json']));
+  assert.deepEqual(
+    entrypoints.filter((row) => row.kind === 'cf:durable-object'),
+    [
+      {
+        kind: 'cf:durable-object',
+        target: 'Counter',
+        meta: JSON.stringify({ kind: 'host', host: 'CounterHost', methods: ['increment'] }),
+      },
+    ],
+  );
   vela(['deploy', 'check']);
   const routes = JSON.parse(vela(['route', 'list', '--json'])).map(
     ({ method, path }) => `${method} ${path}`,

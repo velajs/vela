@@ -2,6 +2,8 @@ import type { VelaApplication } from '@velajs/vela';
 import type { Entrypoint, ModuleDescription, RouteDescription } from '@velajs/vela/module-kit';
 import { SCHEDULE_DISPATCH } from '@velajs/vela/schedule';
 import { describeToken, getEntrypointKinds, scheduledJobComponents } from '@velajs/vela/module-kit';
+import type { LoadedVelaConfig } from './config.js';
+import { classifyWorkerExports, type WorkerExports } from './project/worker-entry.js';
 
 /** One row of `vela route list`. */
 export interface RouteRow {
@@ -94,6 +96,38 @@ export interface EntrypointRow {
   kind: string;
   target: string;
   meta: string;
+}
+
+/**
+ * The Durable Object classes `@velajs/cloudflare` built that the Worker entry
+ * exports (`cf:durable-object` rows by export name: what they serve and their
+ * RPC methods), then those its app defines without exporting them.
+ */
+export function collectDurableObjects(exports: WorkerExports): EntrypointRow[] {
+  return [
+    ...exports.velaDurableObjects.map(({ name, kind, host, methods }) => ({
+      kind: 'cf:durable-object',
+      target: name,
+      meta: JSON.stringify({ kind, ...(host === undefined ? {} : { host }), methods }),
+    })),
+    ...exports.unexportedDurableObjects.map((described) => ({
+      kind: 'cf:durable-object',
+      target: `(not exported) ${described}`,
+      meta: JSON.stringify({ exported: false }),
+    })),
+  ];
+}
+
+/**
+ * The `cf:durable-object` rows of the Worker entry an app was loaded from
+ * (none for a `vela.config`, which names no Worker entry).
+ */
+export async function collectWorkerDurableObjects(
+  loaded: Pick<LoadedVelaConfig, 'main' | 'importModule'>,
+): Promise<EntrypointRow[]> {
+  if (loaded.main === undefined) return [];
+  const entry = await loaded.importModule(loaded.main);
+  return collectDurableObjects(await classifyWorkerExports(entry, loaded.importModule));
 }
 
 function safeMeta(meta: unknown): string {

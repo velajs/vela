@@ -51,6 +51,12 @@ const registrationSchema = z.object({
   consumers: z.array(queueName),
 });
 const moduleConsumerSchema = z.object({ consumers: z.array(queueName) });
+const durableObjectSchema = z.object({
+  kind: z.enum(['host', 'websocket']).optional(),
+  host: z.string().optional(),
+  methods: z.array(z.string()).optional(),
+  exported: z.boolean().optional(),
+});
 
 /** Kinds older CLIs listed; their rows would silently stop counting. */
 const removedKinds: Readonly<Record<string, string>> = {
@@ -123,6 +129,7 @@ export function checkDeployment(
         'queue:registration',
         'rpc:client',
         'websocket',
+        'cf:durable-object',
       ].includes(row.kind)
     )
       continue;
@@ -132,6 +139,33 @@ export function checkDeployment(
       continue;
     }
     const meta = parsed.data;
+    if (row.kind === 'cf:durable-object') {
+      // `vela entrypoint list` lists the Durable Object classes built by
+      // @velajs/cloudflare that the Worker entry exports, and those its app
+      // defines without exporting them.
+      const durable = durableObjectSchema.safeParse(meta);
+      if (!durable.success) {
+        report('invalid-metadata', `Invalid ${row.kind} metadata.`);
+        continue;
+      }
+      if (durable.data.exported === false) {
+        warnings.push({
+          code: 'unexported-durable-object',
+          message:
+            `The app defines a Durable Object class (${row.target.replace(/^\(not exported\) /, '')}) ` +
+            'that the Worker entry does not export, so no binding can reach it.',
+        });
+      } else if (!target.durableObjectClasses.includes(row.target)) {
+        warnings.push({
+          code: 'unbound-durable-object',
+          message:
+            `The Worker exports the Durable Object class ${JSON.stringify(row.target)}, which no ` +
+            'durable_objects binding of the selected environment names; bind it (vela cf sync ' +
+            '--write) unless another Worker binds it.',
+        });
+      }
+      continue;
+    }
     if (row.kind === 'rpc:client') {
       // HTTP RPC clients need no Worker binding; declared bindings are mandatory.
       if (meta.binding === undefined) continue;

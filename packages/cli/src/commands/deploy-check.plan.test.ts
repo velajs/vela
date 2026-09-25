@@ -493,6 +493,48 @@ describe('deployment alignment', () => {
     ).toEqual(['missing-queue-consumer', 'unhandled-queue-consumer']);
   });
 
+  it('checks the Durable Object classes the Worker entry defines and exports', () => {
+    const snapshot = [
+      {
+        kind: 'cf:durable-object',
+        target: 'Counter',
+        meta: { kind: 'host', host: 'CounterHost', methods: ['increment'] },
+      },
+      {
+        kind: 'cf:durable-object',
+        target: 'Lobby',
+        meta: JSON.stringify({ kind: 'websocket', methods: ['broadcast'] }),
+      },
+      { kind: 'cf:durable-object', target: '(not exported) AuditHost', meta: { exported: false } },
+    ];
+    const bound = checkDeployment(
+      config({
+        durable_objects: {
+          bindings: [
+            { name: 'COUNTER', class_name: 'Counter' },
+            // Another Worker's class of the same name does not bind this one.
+            { name: 'REMOTE', class_name: 'Lobby', script_name: 'rooms' },
+          ],
+        },
+      }),
+      'staging',
+      snapshot,
+    );
+    expect(bound.status).toBe('passed');
+    expect(bound.warnings.map((warning) => warning.code)).toEqual([
+      'unbound-durable-object',
+      'unexported-durable-object',
+      'static-only',
+    ]);
+    expect(bound.warnings[0]?.message).toContain('"Lobby"');
+    expect(bound.warnings[1]?.message).toContain('AuditHost');
+    expect(
+      checkDeployment(config(), 'staging', [
+        { kind: 'cf:durable-object', target: 'Counter', meta: { kind: 'mystery' } },
+      ]).errors.map((error) => error.code),
+    ).toEqual(['invalid-metadata']);
+  });
+
   it('requires the right binding kind in the selected environment', () => {
     expect(
       checkDeployment(config({ kv_namespaces: [{ binding: 'ROOM' }] }), 'staging', [

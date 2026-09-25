@@ -75,6 +75,8 @@ export interface LoadedVelaConfig {
   /** Absolute path of the imported config file, or of the Wrangler file without one. */
   readonly path: string;
   readonly source: ConfigResolution['source'];
+  /** The absolute path of the Worker entry the app was loaded from, without a config. */
+  readonly main?: string;
   /** Import another project file through the same module runner (and Workers stand-ins). */
   importModule(path: string): Promise<unknown>;
   /**
@@ -197,6 +199,7 @@ async function loadWorker(
     config,
     path: wrangler.path,
     source: 'wrangler',
+    main,
     importModule: (file) => runner.import(file),
     async dispose() {
       try {

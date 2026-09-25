@@ -80,20 +80,47 @@ export class ${name.pascal}Processor {
 `;
 }
 
-export function durableObjectSource(name: Names): string {
-  return `import { DurableObject } from 'cloudflare:workers';
+export function durableObjectHostSource(name: Names): string {
+  return `import { Inject, Injectable } from '@velajs/vela';
+import { DO_STORAGE } from '@velajs/cloudflare/durable-objects';
 
 /**
- * One instance per id, with its own storage. Reach it through its binding:
- * \`env.${name.constant}.getByName('id').increment()\`.
+ * The ${name.pascal} Durable Object's host: one instance per id, with its own
+ * storage. Its public methods are the object's RPC methods, typed on its
+ * binding: \`await env.${name.constant}.getByName('id').increment()\`. Keep
+ * helpers in #private methods or other providers.
  */
-export class ${name.pascal} extends DurableObject {
+@Injectable()
+export class ${name.pascal}Host {
+  constructor(@Inject(DO_STORAGE) private readonly storage: DurableObjectStorage) {}
+
   async increment(): Promise<number> {
-    const value = ((await this.ctx.storage.get<number>('value')) ?? 0) + 1;
-    await this.ctx.storage.put('value', value);
+    const value = ((await this.storage.get<number>('value')) ?? 0) + 1;
+    await this.storage.put('value', value);
     return value;
   }
 }
+`;
+}
+
+/**
+ * The Durable Object class the Worker entry exports: \`rootImport\` imports
+ * the root module as \`rootName\`, \`hostFrom\` is the host file's specifier.
+ */
+export function durableObjectSource(
+  name: Names,
+  rootName: string,
+  rootImport: string,
+  hostFrom: string,
+): string {
+  return `import { VelaDurableObject } from '@velajs/cloudflare/durable-objects';
+${rootImport}
+import { ${name.pascal}Host } from '${hostFrom}';
+
+// Each instance boots ${rootName} with ${name.pascal}Host as one of its providers. The
+// host's public methods are this class's RPC methods, and its guards, pipes,
+// interceptors and filters run around every call.
+export class ${name.pascal} extends VelaDurableObject(${rootName}, ${name.pascal}Host) {}
 `;
 }
 
