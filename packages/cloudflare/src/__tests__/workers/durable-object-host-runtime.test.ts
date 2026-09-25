@@ -95,6 +95,11 @@ describe('VelaDurableObject under workerd', () => {
     expect(await stub.increment(1)).toBe(1);
   });
 
+  it('keeps request-scoped providers open while a fetch body streams', async () => {
+    const response = await counter('streaming').fetch('https://counter.test/stream');
+    expect(await response.text()).toBe('first closed=false\nlater closed=false\n');
+  });
+
   it('runs guards on RPC methods', async () => {
     const error = await rejection(counter('guarded').denied());
     expect(isDurableObjectError(error)).toBe(true);

@@ -203,10 +203,14 @@ class CounterStore {
   readonly instanceId = crypto.randomUUID();
 }
 
-/** Request-scoped: built for each RPC call and event. */
+/** Request-scoped: built for each RPC call and event, disposed when it ends. */
 @Injectable({ scope: Scope.REQUEST })
 class CallTrace {
   readonly callId = crypto.randomUUID();
+  closed = false;
+  dispose(): void {
+    this.closed = true;
+  }
 }
 
 @Injectable()
@@ -290,7 +294,23 @@ export class CounterHost {
   dispose(): void {}
 
   fetch(request: Request): Response {
-    return Response.json({ path: new URL(request.url).pathname, name: this.id.name ?? null });
+    const path = new URL(request.url).pathname;
+    if (path === '/stream') {
+      // Request-scoped providers stay open until the streamed body finishes.
+      const trace = this.trace;
+      const encoder = new TextEncoder();
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(encoder.encode(`first closed=${trace.closed}\n`));
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            controller.enqueue(encoder.encode(`later closed=${trace.closed}\n`));
+            controller.close();
+          },
+        }),
+      );
+    }
+    return Response.json({ path, name: this.id.name ?? null });
   }
 }
 

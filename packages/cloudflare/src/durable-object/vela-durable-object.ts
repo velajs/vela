@@ -139,8 +139,9 @@ async function startedDispatcher(instance: object): Promise<DurableObjectHostDis
  *   rooms and live invalidation as the Worker does.
  * - Each call and event runs in its own execution scope through the host's
  *   scoped guards, pipes, interceptors and filters (`getType()` is `rpc`, or
- *   `cf:do:fetch`, `cf:do:alarm`, `cf:do:websocket`). Failures are reported;
- *   an RPC call rejects with a {@link DurableObjectError} and nothing else.
+ *   `cf:do:fetch`, `cf:do:alarm`, `cf:do:websocket`); a streamed `fetch()`
+ *   body keeps its scope open until it finishes. Failures are reported; an
+ *   RPC call rejects with a {@link DurableObjectError} and nothing else.
  */
 export function VelaDurableObject<
   Host extends object,
@@ -162,7 +163,12 @@ export function VelaDurableObject<
           createDurableObjectHost(
             definition.rootModule,
             host,
-            { env, state: ctx, adapters: definition.adapters },
+            {
+              env,
+              state: ctx,
+              adapters: definition.adapters,
+              waitUntil: (promise) => ctx.waitUntil(promise),
+            },
             members,
           ),
         ),

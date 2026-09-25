@@ -56,7 +56,7 @@ async function host<H extends object>(
   root: Parameters<typeof createDurableObjectHost>[0],
   hostClass: new (...args: never[]) => H,
   rpc: readonly DurableObjectRpcMethod<H>[] = [],
-  options: { env?: VelaEnv } = {},
+  options: { env?: VelaEnv; waitUntil?: (promise: Promise<unknown>) => void } = {},
 ): Promise<{ dispatcher: DurableObjectHostDispatcher; reports: unknown[] }> {
   const dispatcher = await createDurableObjectHost(
     root,
@@ -64,6 +64,7 @@ async function host<H extends object>(
     {
       env: options.env ?? {},
       adapters: [{ name: 'reports', configureContainer: recordReports }],
+      waitUntil: options.waitUntil,
     },
     durableObjectHostMembers(hostClass, rpc),
   );
@@ -589,6 +590,61 @@ describe('Durable Object host dispatch', () => {
       void host(AppModule, LedgerHost, ['dispose']);
     };
     void typed;
+    await dispatcher.context.dispose();
+  });
+
+  it('keeps the execution scope open until a streamed fetch body finishes', async () => {
+    const resources: Resource[] = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Resource {
+      closed = false;
+      constructor() {
+        resources.push(this);
+      }
+      dispose(): void {
+        this.closed = true;
+      }
+    }
+    @Injectable()
+    class StreamingHost {
+      constructor(@Inject(Resource) private readonly resource: Resource) {}
+      fetch(request: Request): Response {
+        const resource = this.resource;
+        const encoder = new TextEncoder();
+        if (request.method === 'HEAD') return new Response('ignored');
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              controller.enqueue(encoder.encode(`first closed=${resource.closed}\n`));
+              await new Promise((resolve) => setTimeout(resolve, 20));
+              controller.enqueue(encoder.encode(`later closed=${resource.closed}\n`));
+              controller.close();
+            },
+          }),
+          { headers: { 'content-type': 'text/plain' } },
+        );
+      }
+    }
+    @Module({ providers: [Resource] })
+    class AppModule {}
+    const completions: Promise<unknown>[] = [];
+    const { dispatcher } = await host(AppModule, StreamingHost, [], {
+      waitUntil: (promise) => void completions.push(promise),
+    });
+
+    const response = await dispatcher.fetch(new Request('https://do.test/export'));
+    expect(response.headers.get('content-type')).toBe('text/plain');
+    expect(completions).toHaveLength(1);
+    // Request-scoped providers stay open while the body streams.
+    expect(await response.text()).toBe('first closed=false\nlater closed=false\n');
+    await Promise.all(completions);
+    expect(resources.map((resource) => resource.closed)).toEqual([true]);
+
+    // A HEAD response sends no body: the scope finishes before it returns.
+    const head = await dispatcher.fetch(new Request('https://do.test/export', { method: 'HEAD' }));
+    expect(head.body).toBeNull();
+    expect(resources.map((resource) => resource.closed)).toEqual([true, true]);
+    expect(completions).toHaveLength(1);
     await dispatcher.context.dispose();
   });
 });

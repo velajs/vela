@@ -14,9 +14,11 @@ import {
   resolveErrorReporter,
   resolveScopedComponentsAsync,
   shouldFilterCatch,
+  trackResponseStream,
   type Container,
   type EntrypointExecutionContext,
   type ErrorReporter,
+  type ExecutionScope,
 } from '@velajs/vela/module-kit';
 import type { CloudflareRoot } from '../root-module';
 import {
@@ -53,6 +55,16 @@ interface Failure {
   readonly context: DurableObjectExecutionContext;
   readonly reporter: ErrorReporter;
   readonly report: ErrorReportContext;
+}
+
+/** How an invocation's result is sent after its handler returned. */
+interface Transmission<T> {
+  /** What the invocation returns in place of the handler's result. */
+  readonly value: T;
+  /** Settles once the result was sent, failed or was cancelled. */
+  readonly sent: Promise<unknown>;
+  /** Finish the scope after the invocation returns, rather than before. */
+  readonly background: boolean;
 }
 
 /** How one kind of invocation ends: its result, and what a failure becomes. */
@@ -174,17 +186,20 @@ export class DurableObjectHostDispatcher {
   readonly #host: Type;
   readonly #moduleId: string | undefined;
   readonly #methods: ReadonlySet<string>;
+  readonly #waitUntil: ((promise: Promise<unknown>) => void) | undefined;
 
   constructor(
     context: VelaApplicationContext,
     host: Type,
     moduleId: string | undefined,
     members: DurableObjectHostMembers,
+    waitUntil?: (promise: Promise<unknown>) => void,
   ) {
     this.context = context;
     this.#host = host;
     this.#moduleId = moduleId;
     this.#methods = new Set(members.methods);
+    this.#waitUntil = waitUntil;
   }
 
   /**
@@ -209,10 +224,16 @@ export class DurableObjectHostDispatcher {
     }
   }
 
-  /** Serve the host's `fetch()`; any failure becomes a JSON error response. */
+  /**
+   * Serve the host's `fetch()`; any failure becomes a JSON error response. A
+   * streamed body keeps the invocation's scope (its request-scoped providers
+   * and managed work) open until it is sent.
+   */
   async fetch(request: Request): Promise<Response> {
     try {
-      return await this.#invoke('cf:do:fetch', 'fetch', [request], fetchSettlement);
+      return await this.#invoke('cf:do:fetch', 'fetch', [request], fetchSettlement, (response) =>
+        this.#transmit(request, response),
+      );
     } catch (error) {
       reportOutside(this.context.getContainer(), error, this.#report('cf:do:fetch', 'fetch'));
       const failure = internalFailure();
@@ -235,11 +256,32 @@ export class DurableObjectHostDispatcher {
     return this.#invoke('cf:do:websocket', handler, args, webSocketSettlement);
   }
 
+  /**
+   * How a `fetch()` response is sent: a streamed body keeps the scope open
+   * until it was read, failed or was cancelled, and the object's `waitUntil`
+   * holds that completion. A HEAD response sends no body, so its body is
+   * cancelled before the scope finishes. A WebSocket upgrade (101) and a
+   * bodyless response need nothing.
+   */
+  #transmit(request: Request, response: Response): Transmission<Response> | undefined {
+    if (response.body === null || response.status === 101) return undefined;
+    if (request.method === 'HEAD') {
+      return {
+        value: new Response(null, response),
+        sent: response.body.cancel(),
+        background: false,
+      };
+    }
+    const stream = trackResponseStream(response.body);
+    return { value: new Response(stream.body, response), sent: stream.done, background: true };
+  }
+
   async #invoke<T>(
     kind: DurableObjectInvocationKind,
     method: string,
     args: readonly unknown[],
     settlement: Settlement<T>,
+    transmit?: (value: T) => Transmission<T> | undefined,
   ): Promise<T> {
     const root = this.context.getContainer();
     const report = this.#report(kind, method);
@@ -253,10 +295,16 @@ export class DurableObjectHostDispatcher {
     } catch (error) {
       outcome = { ok: false, error };
     }
+    const transmission = outcome.ok ? transmit?.(outcome.value) : undefined;
+    if (transmission?.background) {
+      // The scope outlives the invocation until its body is sent.
+      this.#finishLater(scope, transmission.sent, report);
+      return transmission.value;
+    }
     try {
       // Request-scoped providers and managed work (`EXECUTION_LIFETIME`)
       // settle before the invocation does.
-      await scope.finish();
+      await scope.finish(transmission?.sent);
     } catch (completion) {
       reportOutside(root, completion, {
         ...report,
@@ -265,7 +313,22 @@ export class DurableObjectHostDispatcher {
       if (settlement.completionFails && outcome.ok) outcome = { ok: false, error: completion };
     }
     if (!outcome.ok) throw outcome.error;
-    return outcome.value;
+    return transmission ? transmission.value : outcome.value;
+  }
+
+  /** Finish `scope` after `boundary` settles, reporting a failure; the object waits for it. */
+  #finishLater(
+    scope: ExecutionScope,
+    boundary: Promise<unknown>,
+    report: ErrorReportContext,
+  ): void {
+    const completion = scope.finish(boundary).catch((error: unknown) => {
+      reportOutside(this.context.getContainer(), error, {
+        ...report,
+        note: 'managed work failed after the response',
+      });
+    });
+    this.#waitUntil?.(completion);
   }
 
   async #run<T>(
@@ -351,7 +414,10 @@ export class DurableObjectHostDispatcher {
 }
 
 /** @internal Options of {@link createDurableObjectHost}. */
-export type DurableObjectHostOptions = DurableObjectContextOptions;
+export interface DurableObjectHostOptions extends DurableObjectContextOptions {
+  /** Keeps the object alive for work that outlives an invocation, such as a streamed body. */
+  readonly waitUntil?: (promise: Promise<unknown>) => void;
+}
 
 /**
  * Boot one Durable Object instance's application context from `root` with
@@ -370,5 +436,5 @@ export async function createDurableObjectHost(
   const owners = container.getOwnerModuleIds(host);
   const moduleId =
     owners.find((owner) => container.getModuleScope(owner)?.moduleClass === rootClass) ?? owners[0];
-  return new DurableObjectHostDispatcher(context, host, moduleId, members);
+  return new DurableObjectHostDispatcher(context, host, moduleId, members, options.waitUntil);
 }
