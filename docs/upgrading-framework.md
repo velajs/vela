@@ -12,7 +12,7 @@ Studio). Update the core and affected integrations together; consult each packag
 changelog for its version. Published dependency ranges alone do not keep them in
 step: the 1.31.0 integrations declare `^1.31.0` peer ranges, which accept core 1.32.0
 without a warning. Install core 1.32.0 with `@velajs/cli` 1.32.0, `@velajs/cloudflare`
-1.32.0, `@velajs/crud` 1.32.0, `@velajs/mail` 1.32.0, `@velajs/storage` 1.31.1,
+1.32.0, `@velajs/crud` 1.32.0, `@velajs/mail` 1.32.0, `@velajs/storage` 1.32.0,
 `@velajs/testing` 1.32.0 and `@velajs/studio` 1.32.0 (with `@velajs/studio-host`
 1.24.0 and `@velajs/studio-ui` 1.25.0): `@velajs/crud` 1.31.0 calls the removed
 `@ApiResponse(status, options)` form and fails at import, Studio and CLI 1.31.0 read
@@ -21,11 +21,11 @@ fails on a document with an array query parameter or a named query parameter tha
 takes one value or repeated keys, which core 1.32.0 documents with `style: form`
 and `explode: true`, and OpenAPI and `vela client generate` document the POST
 routes of `@velajs/storage` 1.31.0 as 201 while they answer 200.
-In the other direction, the integrations released with core 1.32.0, storage 1.31.1
+In the other direction, the integrations released with core 1.32.0, storage 1.32.0
 included, declare `^1.32.0` core peer ranges, and `@velajs/testing` 1.32.0 would
 silently not apply `overrideProvider()` or `useMocker` on core 1.31. Studio's
-optional Cloudflare and CRUD peer ranges also become `^1.32.0`, and Cloudflare's
-optional storage and testing peer ranges `^1.31.1` and `^1.32.0`. A prepared
+optional Cloudflare and CRUD peer ranges also become `^1.32.0`, and so do
+Cloudflare's optional storage and testing peer ranges. A prepared
 version in this repository becomes installable only after publication to npm.
 
 ## Import paths
