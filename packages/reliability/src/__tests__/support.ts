@@ -52,6 +52,7 @@ export function contract<Tx>(name: string, setup: () => Promise<Fixture<Tx>>) {
       await cleanup?.();
       cleanup = undefined;
     });
+    // 16 contended claims serialize 110 emulated D1 statements: ~1.3s idle, past 5s on loaded CI.
     it('races independent claimers without losing fingerprint conflicts or tenant separation', async () => {
       const { store, other } = await open();
       const services = [store, other].map((s) =>
@@ -91,7 +92,7 @@ export function contract<Tx>(name: string, setup: () => Promise<Fixture<Tx>>) {
       expect(await services[1]!.claim(scope, { key: 'request', fingerprint: 'two' })).toEqual({
         kind: 'conflict',
       });
-    });
+    }, 20_000);
     it('fences expired workers after restart and persists retry state', async () => {
       const fixture = await open();
       const outbox = createOutbox({ store: fixture.store, parsePayload });
