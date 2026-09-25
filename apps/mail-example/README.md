@@ -20,7 +20,7 @@ verdicts are fixture data, not verification of a real email.
 
 ## Cloudflare Email Service and queued responses
 
-The separate [Worker](cloudflare/worker.ts) receives native email with the existing
+The separate [Worker](src/cloudflare/worker.ts) receives native email with the existing
 `@OnEmail()` decorator, reads it with `readInboundEmail()`, and enqueues a response
 through `MailService.queue()`. `MailModule` owns its mail processor and queue
 registration; the root selects `cloudflareQueues()` once. The existing Worker
@@ -47,11 +47,19 @@ Run locally from the repository root:
 
 ```sh
 pnpm --filter vela-mail-example... build
-pnpm --filter vela-mail-example types:workers
+pnpm --filter vela-mail-example cf:types
 pnpm --filter vela-mail-example typecheck
 pnpm --filter vela-mail-example test:workers
-pnpm --filter vela-mail-example exec wrangler deploy --dry-run --config cloudflare/wrangler.jsonc
+pnpm --filter vela-mail-example exec wrangler deploy --dry-run
 ```
+
+`build` uses Vite and the Cloudflare plugin to bundle the native TypeScript entry
+and write its deployment configuration, then builds the portable catcher example
+to `dist/portable`. `start` and `test` run that portable example. `dev` serves the
+native Worker with Vite. Vite and Vitest share Oxc legacy decorator and constructor
+metadata settings; neither native path precompiles with SWC. To rebuild only the
+portable example after its dependencies are built, run `pnpm --filter
+vela-mail-example build:portable`.
 
 Tests run in workerd without `nodejs_compat`. Native-shaped binding doubles prove
 email → queue → send composition, cross-environment isolation, recipient/header
@@ -60,7 +68,7 @@ Redelivery is tested explicitly: the same successful job can send twice. The
 transport does not provide idempotency or retry policy.
 
 One test uses the actual local `send_email` simulator with structured recipients,
-bodies, headers and reply-to. [Wrangler configuration](cloudflare/wrangler.jsonc)
+bodies, headers and reply-to. [Wrangler configuration](wrangler.jsonc)
 sets `remote: false`; no live email or cloud resources are used by these checks.
 The simulator does not prove production acceptance or delivery. Cloudflare's
 [local sending guide](https://developers.cloudflare.com/email-service/local-development/sending/)

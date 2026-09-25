@@ -1,7 +1,7 @@
 {
-  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "vela-mail-example",
-  "main": "worker.ts",
+  "main": "src/cloudflare/worker.ts",
   "compatibility_date": "2026-09-25",
   "send_email": [{ "name": "EMAIL", "remote": false }],
   "queues": {
