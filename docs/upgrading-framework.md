@@ -16,8 +16,11 @@ without a warning. Install core 1.32.0 with `@velajs/cli` 1.32.0, `@velajs/cloud
 `@velajs/testing` 1.32.0 and `@velajs/studio` 1.32.0 (with `@velajs/studio-host`
 1.24.0 and `@velajs/studio-ui` 1.25.0): `@velajs/crud` 1.31.0 calls the removed
 `@ApiResponse(status, options)` form and fails at import, Studio and CLI 1.31.0 read
-the removed `ModuleDescription.isGlobal`, and OpenAPI and `vela client generate`
-document the POST routes of `@velajs/storage` 1.31.0 as 201 while they answer 200.
+the removed `ModuleDescription.isGlobal`, `vela client generate` from CLI 1.31.0
+fails on a document with an array query parameter or a named query parameter that
+takes one value or repeated keys, which core 1.32.0 documents with `style: form`
+and `explode: true`, and OpenAPI and `vela client generate` document the POST
+routes of `@velajs/storage` 1.31.0 as 201 while they answer 200.
 In the other direction, the integrations released with core 1.32.0, storage 1.31.1
 included, declare `^1.32.0` core peer ranges, and `@velajs/testing` 1.32.0 would
 silently not apply `overrideProvider()` or `useMocker` on core 1.31. Studio's
