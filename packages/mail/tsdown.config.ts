@@ -4,6 +4,7 @@ export default defineConfig({
   entry: [
     'src/index.ts',
     'src/transports/resend/index.ts',
+    'src/transports/cloudflare/index.ts',
     'src/transports/catcher/index.ts',
     'src/testing/index.ts',
   ],

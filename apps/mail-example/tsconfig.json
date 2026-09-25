@@ -1,5 +1,5 @@
 {
   "extends": "../../tools/tsconfig/decorators.json",
-  "include": ["src/**/*.ts"],
+  "include": ["src/index.ts"],
   "exclude": ["dist", "node_modules"]
 }

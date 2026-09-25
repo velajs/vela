@@ -93,3 +93,29 @@ describe('RPC envelopes', () => {
     expect(() => parseStudioRpcResponse('app.routes', value)).toThrow();
   });
 });
+
+describe('feature flag provider metadata', () => {
+  it('preserves open provider reasons, variants and error codes', () => {
+    const details = {
+      flagKey: 'layout',
+      value: 'safe',
+      reason: 'PROVIDER_DEFAULT',
+      variant: 'control',
+      errorCode: 'FLAG_NOT_FOUND',
+    };
+    expect(parseStudioResponse('flags.evaluate', details)).toEqual(details);
+  });
+  it.each([{ reason: 4 }, { variant: false }, { errorCode: {} }])(
+    'rejects invalid metadata %j',
+    (metadata) => {
+      expect(() =>
+        parseStudioResponse('flags.evaluate', {
+          flagKey: 'flag',
+          value: false,
+          reason: 'UNKNOWN',
+          ...metadata,
+        }),
+      ).toThrow();
+    },
+  );
+});

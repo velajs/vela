@@ -2,7 +2,7 @@
 //
 // The main entry couples to `@velajs/vela` for the module/service/entrypoint
 // wiring. The pure transports and the dev catcher live behind vela-free
-// subpaths (`./transports/resend`, `./transports/catcher`, `./testing`) so
+// subpaths (`./transports/resend`, `./transports/cloudflare`, `./transports/catcher`, `./testing`) so
 // importing one never pulls the framework.
 
 // Errors

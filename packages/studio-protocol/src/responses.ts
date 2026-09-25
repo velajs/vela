@@ -270,7 +270,9 @@ export const STUDIO_RESPONSE_PARSERS: {
   'flags.evaluate': z.object({
     flagKey: z.string(),
     value: flagValue,
-    reason: z.enum(['STATIC', 'DEFAULT', 'ERROR']),
+    reason: z.string(),
+    variant: z.string().optional(),
+    errorCode: z.string().optional(),
     errorMessage: z.string().optional(),
   }).parse,
   'logs.tail': z.array(

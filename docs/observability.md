@@ -114,6 +114,16 @@ and transport failures use `error`; `AbortError` uses `cancelled`. Client metric
 are `http.client.request.count` and `http.client.request.duration` (seconds), with
 method, status when available, and outcome only. No URL or host label is recorded.
 
+## Native Cloudflare tracing
+
+For native Cloudflare handler spans, use
+[`CloudflareTracingInterceptor`](../packages/cloudflare/README.md#native-handler-tracing)
+from `@velajs/cloudflare/tracing`. It wraps awaited HTTP and service RPC handler
+work in the platform's `tracing.enterSpan` callback, leaving sampling and export
+to Cloudflare. Its boundary is the handler promise, so it does not include the
+full response/deferred/disposal lifetime described above. It does not implement
+`Telemetry`, expose trace IDs or bridge explicit propagation to native spans.
+
 ## OpenTelemetry
 
 Use an already configured OpenTelemetry tracer and optional meter. This bridge

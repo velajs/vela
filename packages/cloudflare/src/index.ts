@@ -33,7 +33,17 @@ export type { EntrypointErrorInit } from './rpc/entrypoint-error';
 
 // Name-based binding factories: { binding } references resolved from each
 // application's ENV when used
-export { d1, durableObject, kv, queue, r2, rateLimit, workflow } from './bindings';
+export {
+  d1,
+  durableObject,
+  flagship,
+  kv,
+  queue,
+  r2,
+  rateLimit,
+  secretsStoreSecret,
+  workflow,
+} from './bindings';
 
 // Services
 export {

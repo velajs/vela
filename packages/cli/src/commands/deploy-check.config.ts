@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { bindingInventory, bindingRows } from '../project/bindings.js';
 import { parseWranglerText } from '../project/wrangler.js';
 
 const record = z.record(z.string(), z.unknown());
@@ -102,59 +103,12 @@ export function selectDeploymentTarget(raw: unknown, environment?: string): Depl
     inherit('build'),
     'build',
   );
-  const bindings: DeploymentBinding[] = [];
-  const workflowClasses: string[] = [];
-  const names = new Set<string>();
-  const add = (name: string, kind: string): void => {
-    if (names.has(name)) throw new Error(`Duplicate Worker binding name: ${name}.`);
-    names.add(name);
-    bindings.push({ name, kind });
-  };
-  // Resource bindings and vars are NOT inherited by a named environment.
-  const variables = checked(record.optional(), selected.vars, 'vars') ?? {};
-  for (const name of Object.keys(variables))
-    add(checked(bindingName, name, 'vars binding name'), 'var');
-  for (const kind of [
-    'kv_namespaces',
-    'd1_databases',
-    'r2_buckets',
-    'services',
-    'hyperdrive',
-    'vectorize',
-    'workflows',
-    'analytics_engine_datasets',
-  ]) {
-    const rows = checked(z.array(record).optional(), selected[kind], kind) ?? [];
-    for (const row of rows) {
-      add(checked(bindingName, row.binding, `${kind}.binding`), kind);
-      // Omitted IDs are supported by Wrangler auto-provisioning. Never print IDs/values.
-      for (const field of ['id', 'database_id', 'database_name', 'bucket_name']) {
-        if (Object.hasOwn(row, field)) checked(text, row[field], `${kind}.${field}`);
-      }
-      if (kind === 'services') checked(workerName, row.service, 'services.service');
-      if (kind === 'workflows') {
-        const className = checked(text, row.class_name, 'workflows.class_name');
-        const script = checked(workerName.optional(), row.script_name, 'workflows.script_name');
-        if (script === undefined) workflowClasses.push(className);
-      }
-    }
-  }
-  const durable = checked(
-    z
-      .object({
-        bindings: z.array(
-          z.object({
-            name: bindingName,
-            class_name: text,
-            script_name: workerName.optional(),
-          }),
-        ),
-      })
-      .optional(),
-    selected.durable_objects,
-    'durable_objects',
-  );
-  for (const row of durable?.bindings ?? []) add(row.name, 'durable_objects');
+  const inventory = bindingInventory(root, selected);
+  const bindings = inventory.map(({ name, kind }) => ({ name, kind }));
+  const localClasses = (kind: string) =>
+    bindingRows(inventory, kind)
+      .filter((row) => row.script_name === undefined)
+      .map((row) => checked(text, row.class_name, `${kind}.class_name`));
   const queues = checked(
     z
       .object({
@@ -166,7 +120,6 @@ export function selectDeploymentTarget(raw: unknown, environment?: string): Depl
     'queues',
   );
   const queueProducers = (queues?.producers ?? []).map(({ binding, queue }) => {
-    add(binding, 'queues');
     return { binding, queue };
   });
   const queueConsumers = queues?.consumers?.map((row) => row.queue) ?? [];
@@ -182,10 +135,8 @@ export function selectDeploymentTarget(raw: unknown, environment?: string): Depl
     bindings,
     queueProducers,
     queueConsumers,
-    durableObjectClasses: (durable?.bindings ?? [])
-      .filter((row) => row.script_name === undefined)
-      .map((row) => row.class_name),
-    workflowClasses,
+    durableObjectClasses: localClasses('durable_objects'),
+    workflowClasses: localClasses('workflows'),
     customBuild: build?.command !== undefined,
   };
 }

@@ -26,6 +26,8 @@ export async function verifyWorkflowPackage(tarballs) {
         devDependencies: {
           typescript: await version('typescript'),
           '@types/node': await version('@types/node'),
+          '@cloudflare/workers-types': await version('@cloudflare/workers-types'),
+          wrangler: await version('wrangler'),
         },
         overrides: tarballs,
       },
@@ -46,7 +48,7 @@ export async function verifyWorkflowPackage(tarballs) {
           verbatimModuleSyntax: true,
           types: ['node'],
         },
-        include: ['*.ts'],
+        include: ['example.ts', 'contract.ts'],
       },
       null,
       2,
@@ -56,6 +58,33 @@ export async function verifyWorkflowPackage(tarballs) {
   await cp(
     new URL('tests/release/fixtures/workflow-consumer.ts', root),
     join(consumer, 'contract.ts'),
+  );
+  await cp(
+    new URL('tests/release/fixtures/workflow-cloudflare.ts', root),
+    join(consumer, 'cloudflare.ts'),
+  );
+  await writeFile(
+    join(consumer, 'tsconfig.cloudflare.json'),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: 'ES2024',
+          module: 'NodeNext',
+          moduleResolution: 'NodeNext',
+          strict: true,
+          noEmit: true,
+          lib: ['ES2024'],
+          types: ['@cloudflare/workers-types'],
+        },
+        include: ['cloudflare.ts'],
+      },
+      null,
+      2,
+    ),
+  );
+  await writeFile(
+    join(consumer, 'wrangler.toml'),
+    'name = "workflow-archive-check"\nmain = "cloudflare.ts"\ncompatibility_date = "2026-09-25"\n',
   );
   const run = (command, args) => execFileSync(command, args, { cwd: consumer, stdio: 'inherit' });
   run('npm', [
@@ -67,10 +96,12 @@ export async function verifyWorkflowPackage(tarballs) {
     join(consumer, '.npm-cache'),
   ]);
   run('npx', ['--no-install', 'tsc', '--noEmit']);
+  run('npx', ['--no-install', 'tsc', '-p', 'tsconfig.cloudflare.json']);
+  run('npx', ['--no-install', 'wrangler', 'deploy', '--dry-run', '--outdir', 'bundle']);
   run('node', ['example.ts']);
   run('node', ['contract.ts']);
   console.log(
-    `PASS: workflow root and /harness archive imports, Zod 4 types and replay: ${consumer}`,
+    `PASS: workflow root, /harness and /cloudflare archive imports and Worker bundle, Zod 4 types and replay: ${consumer}`,
   );
   return consumer;
 }

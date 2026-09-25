@@ -22,6 +22,7 @@ declare namespace Cloudflare {
     >;
     NAP_WORKFLOW: Workflow<Parameters<import('./entry').NapWorkflow['run']>[0]['payload']>;
     BILLING: Service<typeof import('./entry').Billing>;
+    TRACING_RPC: Service<typeof import('./entry').TracingRpc>;
     CACHE: KVNamespace;
     DB: D1Database;
     FILES: R2Bucket;

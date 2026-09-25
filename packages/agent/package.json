@@ -46,6 +46,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
     }
   },
   "publishConfig": {
@@ -60,7 +64,8 @@
     "format:check": "oxfmt --check .",
     "publint": "publint",
     "attw": "attw --pack . --profile esm-only",
-    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw",
+    "test:workers": "vitest run --config vitest.config.workers.ts"
   },
   "dependencies": {
     "@cfworker/json-schema": "catalog:",
@@ -71,6 +76,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "@types/node": "catalog:",
     "@velajs/ai": "workspace:*",
     "@velajs/mail": "workspace:*",

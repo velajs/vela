@@ -5,7 +5,8 @@ Use it when an AI task must survive replay, persist a conversation, or pause for
 human approval. Use the AI SDK directly for a single request or streaming chat;
 use workflows directly for predetermined business processes. Agent adds the
 model-directed tool loop and its storage/approval contracts. It does not add an
-agent server, scheduler, database, model provider, or automatic Worker discovery.
+agent server, scheduler, model provider, or automatic Worker discovery. An optional
+Cloudflare subpath supplies durable thread persistence.
 
 ## Install and supported imports
 
@@ -23,6 +24,7 @@ its email types. MCP's SDK is needed only for URL-based connections.
 | --- | --- |
 | `@velajs/agent` | `defineAgent`, `compileAgent`, `defineAgentTool`, `functionTool`, `agentAsTool`, guards, `stepCountIs`, `hasToolCall`, model-message/generation seams, naming helpers, `firstEmailRun`, types and errors |
 | `@velajs/agent/mcp` | `mcpTools`, `closeMcpTools`, structural MCP client/options types |
+| `@velajs/agent/cloudflare` | `AgentThreadDurableObject`, `durableAgentThreadStore`, `agentRunParamsSchema`, `DurableAgentThreadStore` (Workers and Zod 4 required) |
 | `@velajs/agent/testing` | `memoryThreadStore`, `memoryRag`, `scriptedGenerate`, `toolCallTurn`, `finalTurn`, `createAgentHarness`, workflow harness types |
 
 Root imports use Web APIs and do not load Vela core, Cloudflare virtual modules,
@@ -128,10 +130,73 @@ values from authenticated runtime metadata. Trigger `owner`/`tenantId` values ar
 selectors to verify, never proof of identity. Store implementations must enforce
 scope for every operation, including reads and completion.
 
+## SQLite Durable Object driver
+
+`@velajs/agent/cloudflare` implements the existing `AgentThreadStore` contract.
+Export `class Threads extends AgentThreadDurableObject {}` and register it with
+`new_sqlite_classes` in a Wrangler migration. Construct
+`durableAgentThreadStore(env.THREADS)` per environment; never cache a namespace
+from another deployment. Each thread key routes to one object, independent of
+untrusted owner/tenant selectors. The first writer establishes immutable scope.
+Each read/write compares that scope inside `storage.transactionSync`, along with
+claim changes, message sequence allocation and deduplication. Private helpers use
+JavaScript private names and are not RPC methods.
+
+The binding is a trusted server capability, not an authentication service.
+Resolve identity before invoking it. An attacker who can invoke arbitrary RPC
+with the real owner/tenant scope already has the binding's authority. Do not
+publish generic RPC/HTTP passthrough routes. Schema checks at RPC ingress and
+stored-row reads reject invalid data; each written JSON value is bounded to
+256 KiB. `listMessages` returns the entire history as required by the portable
+contract, so applications must bound thread growth to fit Workers RPC/memory
+limits and their model context budget.
+
+The native extension adds two methods:
+
+- `recordApproval(scope, event)`: call from an authenticated approval endpoint
+  after deriving the approver from verified identity. It atomically checks the
+  persisted challenge, active run and expiry, and records an immutable decision.
+  Identical delivery is idempotent; a changed verdict or binding fails.
+- `verifyApproval(scope, event)`: compare the workflow-delivered event with that
+  durable decision. Use it in `defineAgent({ verifyApproval })`. The same stored
+  verdict survives a crash before the native verification checkpoint; it is not
+  an in-memory nonce set. The agent loop also validates bindings and expiry.
+
+Record the decision before `instance.sendEvent`. If delivery fails, resend the
+same decision. It is acceptable for a recorded approval never to be delivered;
+no tool runs until the workflow has received and verified it. This does not
+implement a general approval service or an outbox.
+
+Compile with `compileAgent`, then call `runCloudflareWorkflow` from the native or
+Vela host, using `schema: agentRunParamsSchema`. That schema validates at native
+ingress; `resolveRunIdentity` still verifies trigger selectors. The
+[deployment example](../../apps/agent-approvals/README.md#native-worker) exercises
+the DI host and authenticated dispatch without model credentials.
+
+Claims, messages, decisions and completed results are retained indefinitely.
+There is deliberately no TTL, automatic failed-run takeover, garbage collection,
+or public deletion method. An unexpected error keeps the owning claim. Recovery
+requires proving the native instance cannot execute again before transactionally
+changing its claim; deleting/restarting native history alone is insufficient.
+Remote effects still require idempotency. This driver provides durable local
+transactions, not exactly-once remote effects or a replacement Agents SDK.
+
+Cloudflare documents the underlying
+[SQLite transactions](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#transactionsync).
+Native tests exercise concurrent claims and appends, scope rejection on every
+operation, rollback, restart recovery, approval wait/resume and duplicate delivery.
+
+### Native event-name migration
+
+The approval event type is now `agent-approval`. The old `agent:approval` contains
+an unsupported native event-name character. Update senders and listeners together;
+always import `AGENT_APPROVAL_EVENT_TYPE`. Drain existing portable/harness waits
+or run the old definition separately before switching an in-flight deployment.
+
 ## Approvals
 
 A gated tool records the gate, nonce, expiry, and approval placeholder before
-waiting for `AGENT_APPROVAL_EVENT_TYPE` (`agent:approval`). The default TTL is
+waiting for `AGENT_APPROVAL_EVENT_TYPE` (`agent-approval`). The default TTL is
 15 minutes. Load the challenge from the stored placeholder when a live event
 was missed. The application's authenticated resume endpoint sends that challenge
 plus `decision: 'approve' | 'reject'`, `approverId`, and an optional note.

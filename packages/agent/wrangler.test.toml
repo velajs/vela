@@ -1,0 +1,21 @@
+name = "agent-native-tests"
+main = "src/__tests__/workers/entry.ts"
+compatibility_date = "2026-09-25"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "THREADS"
+class_name = "Threads"
+
+[[durable_objects.bindings]]
+name = "OTHER_THREADS"
+class_name = "OtherThreads"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Threads", "OtherThreads"]
+
+[[workflows]]
+name = "compiled-agent"
+binding = "AGENT"
+class_name = "AgentWorkflow"

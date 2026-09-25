@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "vela-mail-example",
+  "main": "src/cloudflare/worker.ts",
+  "compatibility_date": "2026-09-25",
+  "send_email": [{ "name": "EMAIL", "remote": false }],
+  "queues": {
+    "producers": [{ "binding": "MAIL_QUEUE", "queue": "mail-example-replies" }],
+    "consumers": [{ "queue": "mail-example-replies", "max_retries": 2 }],
+  },
+  "vars": {
+    "MAIL_FROM": "support@example.com",
+    "REPLY_RECIPIENT": "reader@example.net",
+  },
+}

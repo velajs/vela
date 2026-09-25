@@ -164,6 +164,15 @@ importers:
       '@velajs/agent':
         specifier: workspace:*
         version: link:../../packages/agent
+      '@velajs/cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare
+      '@velajs/vela':
+        specifier: workspace:*
+        version: link:../../packages/vela
+      '@velajs/workflow':
+        specifier: workspace:*
+        version: link:../../packages/workflow
       ai:
         specifier: 'catalog:'
         version: 7.0.26(zod@4.4.3)
@@ -171,12 +180,24 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@cloudflare/vite-plugin':
+        specifier: 'catalog:'
+        version: 1.56.0(@types/node@24.13.3)(vite@8.3.0(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(wrangler@4.135.0(@cloudflare/workers-types@5.20260920.1)(@types/node@24.13.3))
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 5.20260920.1
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: 8.3.0(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.135.0(@cloudflare/workers-types@5.20260920.1)(@types/node@24.13.3)
 
   apps/api-starter:
     dependencies:
@@ -438,6 +459,9 @@ importers:
 
   apps/mail-example:
     dependencies:
+      '@velajs/cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare
       '@velajs/mail':
         specifier: workspace:*
         version: link:../../packages/mail
@@ -445,12 +469,30 @@ importers:
         specifier: workspace:*
         version: link:../../packages/vela
     devDependencies:
+      '@cloudflare/vite-plugin':
+        specifier: 'catalog:'
+        version: 1.56.0(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(wrangler@4.135.0(@cloudflare/workers-types@5.20260920.1)(@types/node@26.6.2))
+      '@cloudflare/vitest-plugin':
+        specifier: 'catalog:'
+        version: 1.1.13(@cloudflare/workers-types@5.20260920.1)(@types/node@26.6.2)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11(@types/node@26.6.2)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(yaml@2.9.1))
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 5.20260920.1
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(@arethetypeswrong/core@0.18.5)(publint@0.3.21)(typescript@7.0.2)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: 8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.6.2)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(yaml@2.9.1)
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.135.0(@cloudflare/workers-types@5.20260920.1)(@types/node@26.6.2)
 
   apps/module-workers:
     dependencies:
@@ -686,6 +728,9 @@ importers:
       '@changesets/cli':
         specifier: 'catalog:'
         version: 3.0.1
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 5.20260920.1
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -2003,6 +2048,9 @@ importers:
 
   packages/workflow:
     dependencies:
+      '@standard-schema/spec':
+        specifier: 1.1.0
+        version: 1.1.0
       '@velajs/errors':
         specifier: workspace:*
         version: link:../errors
@@ -2010,6 +2058,9 @@ importers:
       '@arethetypeswrong/cli':
         specifier: 'catalog:'
         version: 0.18.5
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 5.20260920.1
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3

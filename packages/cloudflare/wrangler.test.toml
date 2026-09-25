@@ -5,6 +5,11 @@ name = "vela-cloudflare-security-test"
 main = "src/__tests__/workers/entry.ts"
 compatibility_date = "2026-07-01"
 
+# Native tracing must remain transparent when an invocation is not sampled.
+[observability.traces]
+enabled = true
+head_sampling_rate = 0
+
 [[durable_objects.bindings]]
 name = "TEST_ROOM"
 class_name = "TestRoom"
@@ -74,6 +79,11 @@ binding = "BILLING"
 service = "vela-cloudflare-security-test"
 entrypoint = "Billing"
 props = { tenant = "acme" }
+
+[[services]]
+binding = "TRACING_RPC"
+service = "vela-cloudflare-security-test"
+entrypoint = "TracingRpc"
 
 [[kv_namespaces]]
 binding = "CACHE"

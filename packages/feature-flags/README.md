@@ -90,8 +90,8 @@ export interface FeatureFlagDriver {
 }
 ```
 
-A driver returns the caller's `fallback` (never throws) when it can't resolve a key; the service
-additionally absorbs any thrown error into the same fallback and logs a warning.
+A driver returns the caller's `fallback` for unresolved keys. Unexpected failures may
+reject; the service absorbs them into the same fallback and logs a warning.
 
 ## Validating object flags
 
@@ -144,3 +144,39 @@ const { service, driver } = createTestFeatureFlags({ 'new-checkout': true });
 expect(await service.getBooleanValue('new-checkout')).toBe(true);
 driver.set('new-checkout', false);
 ```
+
+## Evaluation metadata
+
+A driver can implement `getBooleanDetails`, `getStringDetails`, `getNumberDetails`
+and `getObjectDetails` alongside its value methods. The service calls the matching
+method once and preserves `reason`, `variant`, `errorCode`, and `errorMessage`.
+Reasons are provider-defined strings. Providers without details report `UNKNOWN`;
+a value equal to the fallback is not evidence of either a hit or a miss. Missing
+native reasons also become `UNKNOWN`. Malformed values or metadata produce the
+caller fallback with `reason: 'ERROR'` and `errorCode: 'GENERAL'`.
+
+A provider result with an error code or `reason: 'ERROR'` always returns the
+caller's fallback, including object fallbacks without parsing them again. Route
+guards explicitly use `false` as the fallback and deny any error code, even when
+its reason is `DEFAULT`. Value-only providers must honor the supplied fallback;
+the service cannot reconstruct errors they conceal. Feature flags are rollout
+controls and do not replace application authorization.
+
+The Cloudflare Flagship driver validates targeting context as strings, finite
+numbers, and booleans. Nested objects, arrays, null, undefined attributes and
+non-finite numbers fail with `INVALID_CONTEXT` on detail reads before contacting
+the binding. Trusted request identity still wins when contexts are merged.
+
+```ts
+const result = await flags.getBooleanDetails('new-navigation', false, { plan: 'trial' });
+// Native details may include TARGETING_MATCH, a variant, or FLAG_NOT_FOUND.
+if (result.errorCode !== undefined) {
+  // The value is the supplied fallback; report the code through application telemetry.
+}
+```
+
+Migration: detail reads from drivers without metadata now return `UNKNOWN`
+instead of the previously synthesized `STATIC`. Accept provider-defined reason
+strings and use `errorCode` as well as `reason === 'ERROR'` when checking failure.
+See the [native Flagship contract](https://developers.cloudflare.com/flagship/binding/types/)
+and [failure behavior](https://developers.cloudflare.com/flagship/binding/methods/).

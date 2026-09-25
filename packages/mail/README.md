@@ -2,7 +2,7 @@
 
 Portable outbound mail and a trusted inbound dispatch seam for Vela. The package
 keeps rendering, validation, message building, and delivery separate. It provides
-an optional SDK-free Resend transport and a local mail catcher; applications can
+optional SDK-free Resend and Cloudflare Email Service transports and a local mail catcher; applications can
 supply any `MailTransport`. No provider account is required.
 
 ## Install and exports
@@ -18,6 +18,7 @@ framework-free subpaths. Install Vela when importing the main entry.
 | --- | --- | --- |
 | `@velajs/mail` | Module/service, pipeline, address guards, raw rendering, inbound parsing/gating/dispatch, types/tokens | Yes |
 | `@velajs/mail/transports/resend` | `resendTransport({ apiKey, baseUrl?, fetch? })` | No |
+| `@velajs/mail/transports/cloudflare` | `cloudflareEmailTransport({ binding })` and structural binding/payload types | No |
 | `@velajs/mail/transports/catcher` | `createMailCatcher()` and capture types | No |
 | `@velajs/mail/testing` | Catcher, `assertSent`, `assertNotSent`, `assertCount`, `lastMessage`, `extractLink`, `waitForMail` | No |
 
@@ -116,6 +117,64 @@ distinct `key`: `MailModule.forRoot({ ..., key: 'marketing' })`. Keys are
 per application, so separate applications can reuse one. Consumers of multiple
 mailers should import the intended registration in separate feature modules;
 root `app.get(MailService)` is not a multi-mailer selector.
+
+### Cloudflare Email Service
+
+Use the native `send_email` binding with Email Service's transactional sending
+API. This transport uses the structured builder overload of `SendEmail.send()`;
+it does not use the older raw-MIME, verified-destination Email Routing recipe.
+It requires no API token, SDK, Vela runtime, or `cloudflare:email` import itself.
+The normal mail build/validation boundary still applies when calling `deliver`
+directly with a `BuiltMessage`.
+
+```ts
+import { ENV } from '@velajs/vela';
+import { MailModule } from '@velajs/mail';
+import { cloudflareEmailTransport } from '@velajs/mail/transports/cloudflare';
+
+// wrangler types declares EMAIL: SendEmail in Cloudflare.Env.
+// Import @velajs/cloudflare in the Worker to type ENV from those bindings.
+const mail = MailModule.forRootAsync({
+  inject: [ENV],
+  useFactory: (env) => ({
+    from: 'support@example.com',
+    transport: cloudflareEmailTransport({ binding: env.EMAIL }),
+    limits: { maxRecipients: 50 },
+  }),
+});
+```
+
+Configure `"send_email": [{ "name": "EMAIL" }]` in Wrangler, onboard the sending
+domain to Email Service, and apply any required sender/recipient restrictions.
+Construct the transport from each application's environment, as above. It retains
+that binding and calls its method with the binding as receiver; no global binding
+lookup or environment cache is used. See Cloudflare's [Workers sending API](https://developers.cloudflare.com/email-service/api/send-emails/workers-api/)
+and [binding configuration](https://developers.cloudflare.com/email-service/configuration/send-bindings/).
+
+The adapter preserves recipient roles and display names, both body alternatives
+(including explicit empty strings), `replyTo`, and custom headers. It omits empty
+CC/BCC lists and absent optional fields. It rejects more than 50 combined To/CC/BCC
+entries before sending, including repeated entries; it never splits a message.
+Set the mailer's recipient limit to 50 to reject oversized jobs before enqueue.
+Cloudflare also enforces [message and header limits](https://developers.cloudflare.com/email-service/platform/limits/)
+and its own [header allowlist](https://developers.cloudflare.com/email-service/reference/headers/).
+Those provider rules can be stricter than Vela's guards. Headers are forwarded
+unchanged, never silently dropped to satisfy the provider. Reserved Vela headers
+remain reserved, including `In-Reply-To` and `References`. No attachment contract
+or automatic reply threading is added.
+
+A fulfilled send returns `{ provider: 'cloudflare', id: result.messageId }` when
+the ID is a nonempty string, otherwise just the provider. Missing tracking data
+does not manufacture a failure/retry after submission. This records a fulfilled
+provider call, not recipient acceptance, inbox placement, or an exactly-once
+guarantee; delivery has its own [lifecycle](https://developers.cloudflare.com/email-service/concepts/email-lifecycle/).
+Rejected sends throw a fixed `MailError` with `code: 'provider_error'` and
+`internal: true`. The original error, including native `.code`, remains only in
+`cause` for server-side handling. The adapter does not retry. Queue redelivery
+after an ambiguous failure or a crash after sending may submit the email again.
+
+The [native Workers example](../../apps/mail-example/README.md#cloudflare-email-service-and-queued-responses)
+composes `@OnEmail`, `MailService.queue()`, and the existing Cloudflare queue host.
 
 ## Queued delivery
 
@@ -274,13 +333,14 @@ viewer with `?format=html`, or clears messages on DELETE. Mount this viewer only
 in local development; it has no authentication or persistence. Testing assertions
 throw plain `Error` and have no test-framework dependency.
 
-The portable runtime uses Web APIs. No native Cloudflare send-email adapter,
-SMTP transport, or full MIME parser is implemented in this monorepo. A Worker
-receives Email Workers messages through `@OnEmail()` handlers of
-`@velajs/cloudflare/email`, which read them with `readInboundEmail()`; the
-dispatch seam can be wired by an application host, but native Email Workers
-behavior is not claimed or tested by this package. The Resend transport uses fetch; tests exercise injected responses,
-not a live provider account.
+The portable runtime uses Web APIs. The Cloudflare transport accepts a structural
+native binding without importing Workers runtime modules. Its workerd example
+tests inbound `@OnEmail` routing, queued responses, environment isolation, invalid
+jobs, and provider failures with native-shaped doubles. A separate test submits
+to Wrangler's local `send_email` simulator (`remote: false`), without Node
+compatibility or live sending. This verifies local runtime compatibility, not
+production delivery. The Resend transport tests use injected fetch responses.
+No SMTP transport or full MIME/attachment parser is implemented.
 
 `MailError` exposes `code`, `internal`, optional `status`, and `cause`. Codes include
 `invalid_address`, `invalid_header`, `invalid_message`, `no_transport`,

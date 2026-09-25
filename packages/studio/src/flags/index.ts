@@ -59,6 +59,8 @@ export class StudioFlagsOps {
       flagKey: details.flagKey,
       value: details.value,
       reason: details.reason,
+      ...(details.variant !== undefined ? { variant: details.variant } : {}),
+      ...(details.errorCode !== undefined ? { errorCode: details.errorCode } : {}),
       ...(details.errorMessage !== undefined ? { errorMessage: details.errorMessage } : {}),
     };
   }

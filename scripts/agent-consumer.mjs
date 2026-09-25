@@ -35,11 +35,13 @@ export async function verifyAgentPackage(releaseTarballs) {
   }
   const consumer = await mkdtemp(join(tmpdir(), 'vela-agent-consumer-'));
   const versionOf = async (path) => JSON.parse(await readFile(new URL(path, root), 'utf8')).version;
-  const [ai, zod, typescript, nodeTypes] = await Promise.all([
+  const [ai, zod, typescript, nodeTypes, workersTypes, wrangler] = await Promise.all([
     versionOf('packages/agent/node_modules/ai/package.json'),
     versionOf('packages/agent/node_modules/zod/package.json'),
     versionOf('node_modules/typescript/package.json'),
     versionOf('node_modules/@types/node/package.json'),
+    versionOf('node_modules/@cloudflare/workers-types/package.json'),
+    versionOf('node_modules/wrangler/package.json'),
   ]);
   await cp(new URL('tests/release/fixtures/agent-consumer/', root), consumer, { recursive: true });
   await writeFile(
@@ -54,7 +56,12 @@ export async function verifyAgentPackage(releaseTarballs) {
           ai,
           zod,
         },
-        devDependencies: { typescript, '@types/node': nodeTypes },
+        devDependencies: {
+          typescript,
+          '@types/node': nodeTypes,
+          '@cloudflare/workers-types': workersTypes,
+          wrangler,
+        },
         overrides: tarballs,
       },
       null,
@@ -71,6 +78,14 @@ export async function verifyAgentPackage(releaseTarballs) {
     join(consumer, '.npm-cache'),
   ]);
   run('node', ['node_modules/typescript/bin/tsc', '--noEmit']);
+  run('node', ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.cloudflare.json']);
+  run('node', [
+    'node_modules/wrangler/bin/wrangler.js',
+    'deploy',
+    '--dry-run',
+    '--outdir',
+    'bundle',
+  ]);
   run('node', ['smoke.mjs']);
   run('node', ['optional.mjs']);
   const archives = {};
@@ -83,7 +98,7 @@ export async function verifyAgentPackage(releaseTarballs) {
     path: consumer,
     status: 'passed',
     package: '@velajs/agent',
-    subpaths: ['.', './mcp', './testing'],
+    subpaths: ['.', './mcp', './testing', './cloudflare'],
     archives,
   };
   await writeFile(join(consumer, 'proof.json'), JSON.stringify(proof, null, 2) + '\n');

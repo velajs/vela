@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 const root = new URL('../', import.meta.url);
 const versionOf = async (path) => JSON.parse(await readFile(new URL(path, root), 'utf8')).version;
 
-/** Verify both public entrypoints independently of api-starter and provider packages. */
+/** Verify public entrypoints independently of api-starter and provider packages. */
 export async function verifyAiPackage(tarball) {
   const archive = resolve(tarball);
   const consumer = await mkdtemp(join(tmpdir(), 'vela-ai-consumer-'));
@@ -48,7 +48,7 @@ export async function verifyAiPackage(tarball) {
     path: consumer,
     status: 'passed',
     package: '@velajs/ai',
-    subpaths: ['.', './rag'],
+    subpaths: ['.', './rag', './ai-search'],
     ai,
     zod,
     archiveIntegrity: `sha512-${createHash('sha512')
@@ -57,7 +57,7 @@ export async function verifyAiPackage(tarball) {
   };
   await writeFile(join(consumer, 'proof.json'), JSON.stringify(proof, null, 2) + '\n');
   process.stdout.write(
-    `PASS: packed @velajs/ai base and /rag imports, types, tools and tenant re-sync (${consumer})\n`,
+    `PASS: packed @velajs/ai base, /rag and /ai-search imports, types, tools and tenant isolation (${consumer})\n`,
   );
   return proof;
 }

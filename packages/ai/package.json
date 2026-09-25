@@ -23,6 +23,7 @@
   },
   "files": [
     "dist",
+    "docs",
     "examples",
     "README.md",
     "LICENSE",
@@ -40,6 +41,10 @@
     "./rag": {
       "types": "./dist/rag/index.d.ts",
       "import": "./dist/rag/index.js"
+    },
+    "./ai-search": {
+      "types": "./dist/ai-search/index.d.ts",
+      "import": "./dist/ai-search/index.js"
     }
   },
   "publishConfig": {
@@ -48,6 +53,7 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
+    "test:workers": "vitest run --config vitest.config.workers.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "lint": "oxlint .",
     "format": "oxfmt .",

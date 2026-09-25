@@ -7,11 +7,13 @@
     "noEmit": true
   },
   "files": [
+    "src/__tests__/workers/pipelines-runtime.test.ts",
     "src/__tests__/workers/worker-configuration.d.ts",
     "src/__tests__/workers/entry.ts",
     "src/__tests__/workers/cache-runtime.test.ts",
     "src/__tests__/workers/env-runtime.test.ts",
     "src/__tests__/workers/queues-runtime.test.ts",
+    "src/__tests__/workers/queue-events-runtime.test.ts",
     "src/__tests__/workers/scheduled-runtime.test.ts",
     "src/__tests__/workers/entrypoint-bindings-runtime.test.ts",
     "src/__tests__/workers/entrypoint-lifetime-runtime.test.ts",
@@ -22,6 +24,7 @@
     "src/__tests__/workers/durable-object-host-runtime.test.ts",
     "src/__tests__/workers/workflow-runtime.test.ts",
     "src/__tests__/workers/service-rpc-runtime.test.ts",
+    "src/__tests__/workers/tracing-runtime.test.ts",
     "src/__tests__/workers/email-tail-runtime.test.ts"
   ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],

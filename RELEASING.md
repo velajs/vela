@@ -87,8 +87,9 @@ tenant isolation, tool validation, and re-sync. Run it independently with
 `node scripts/ai-consumer.mjs /absolute/path/to/velajs-ai-<version>.tgz`.
 
 When the release includes `@velajs/workflow`, the consumer gate also installs its
-archive in an independent project, checks the root and `/harness` declarations
-with Zod 4, and runs the approval/retry/replay example. This coverage does not
+archive in an independent project, checks the root, `/harness`, and `/cloudflare`
+declarations with Zod 4, bundles the native entrypoint with Wrangler without Node
+compatibility, and runs the approval/retry/replay example. This coverage does not
 depend on the API starter importing workflow. For a prepared archive manifest,
 run it directly with `node scripts/workflow-consumer.mjs /absolute/artifact/path`.
 
@@ -98,13 +99,13 @@ main entry, injection types, queue delivery, and inbound scope disposal. This
 coverage runs even though mail is not an API starter dependency. It can also be
 run directly with `node scripts/mail-consumer.mjs /absolute/path/to/artifacts`.
 
-When agent is present, its dedicated consumer checks root, `/mcp`, and `/testing`
-with the migrated AI, workflow, and mail packages. The release agent archive is
+When agent is present, its dedicated consumer checks root, `/mcp`, `/testing`, and
+`/cloudflare` with the migrated AI, workflow, and mail packages. The release agent archive is
 used unchanged; absent companion archives are packed from the built workspace
 for testing only and recorded by integrity in the proof. This leaves the
 publication plan unchanged. It checks strict declarations, RAG/mail integration,
-persisted approvals, duplicate delivery, and imports without optional runtime
-peers. Run `node scripts/agent-consumer.mjs /absolute/path/to/artifacts` directly.
+persisted approvals, duplicate delivery, native Worker bundling, and imports
+without optional runtime peers. Run `node scripts/agent-consumer.mjs /absolute/path/to/artifacts` directly.
 
 The edge-capabilities consumer checks exact tenant, Cedar, crypto, CRUD and adapter
 archives, optional imports, Standard Schema type inference, and Wrangler WASM

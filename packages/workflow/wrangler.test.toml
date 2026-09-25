@@ -1,0 +1,12 @@
+name = "workflow-native-tests"
+main = "src/__tests__/workers/entry.ts"
+compatibility_date = "2026-09-25"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+LABEL = "native"
+
+[[workflows]]
+name = "portable-bridge"
+binding = "BRIDGE"
+class_name = "BridgeWorkflow"
