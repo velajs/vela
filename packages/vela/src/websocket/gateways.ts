@@ -32,6 +32,18 @@ type Push = (rooms: readonly string[], event: string, data: unknown) => Promise<
 
 /** Failed rooms a multi-room push's rejection message names; `errors` holds all. */
 const MAX_NAMED_FAILED_ROOMS = 10;
+/** Characters of each room id that message shows; each room's own error names it in full. */
+const MAX_NAMED_ROOM_CHARS = 32;
+
+/** A room id as a rejection message names it, shortened to a bounded prefix. */
+function shortRoom(room: string): string {
+  const chars = [...room];
+  return JSON.stringify(
+    chars.length > MAX_NAMED_ROOM_CHARS
+      ? `${chars.slice(0, MAX_NAMED_ROOM_CHARS).join('')}…`
+      : room,
+  );
+}
 
 function isGatewayOptions(value: unknown): value is WebSocketGatewayOptions {
   if (typeof value !== 'object' || value === null) return false;
@@ -218,19 +230,16 @@ export class Gateways {
     if (first === undefined) return;
     if (deliveries.length === 1) throw first.reason;
     // Name each room that missed the push; the others received it.
-    const missed = failed.map(({ room, reason }) => {
-      const name = JSON.stringify(room);
-      return {
-        name,
-        error: new Error(`${target.name} push to room ${name} failed`, { cause: reason }),
-      };
-    });
-    // Room ids reach 512 bytes: the message names the first few, and `errors`
-    // keeps one entry per failed room.
-    const named = missed.slice(0, MAX_NAMED_FAILED_ROOMS).map(({ name }) => name);
+    const missed = failed.map(
+      ({ room, reason }) =>
+        new Error(`${target.name} push to room ${JSON.stringify(room)} failed`, { cause: reason }),
+    );
+    // Room ids reach 512 bytes: the message names the first few, each
+    // shortened, and `errors` keeps one entry per failed room.
+    const named = failed.slice(0, MAX_NAMED_FAILED_ROOMS).map(({ room }) => shortRoom(room));
     const more = missed.length - named.length;
     throw new AggregateError(
-      missed.map(({ error }) => error),
+      missed,
       `${failed.length} of ${deliveries.length} ${target.name} room pushes failed: ` +
         named.join(', ') +
         (more > 0 ? ` and ${more} more` : ''),

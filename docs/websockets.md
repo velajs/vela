@@ -16,7 +16,7 @@ Every message is a JSON envelope:
 { "id": "optional-correlation-id", "event": "chat", "data": { "text": "hi" } }
 ```
 
-- The server routes by `event` to the matching `@SubscribeMessage('event')` handler.
+- The server routes by `event` to the matching `@SubscribeMessage('event')` handler. A gateway also serves the handlers an ancestor class declares on methods it inherits unchanged, as in Nest; its own declaration of an event wins, and a method it overrides without the decorator is not a handler.
 - A handler that returns a value replies to the **sender only**, echoing `id`. Return a `WsResponse` (`{ event, data }`) to control the reply event; return any other value to reply on the same `event`; return `undefined`/`void` for no reply.
 - Errors are framed as `{ "event": "exception", "data": { ... } }`.
 - Framework keepalive: send the reserved `{"event":"$ping"}` → the server replies `{"event":"$pong"}` (on Cloudflare this is answered *without waking* a hibernated Durable Object). Application gateways cannot register `$…` events.
@@ -187,9 +187,9 @@ gateway addresses every gateway's sockets; push to one gateway's rooms with
 `WebSocketModule` connects each gateway's server while the application starts,
 before any lifecycle hook runs, from the `WS_SERVER` the gateway's module sees
 when it sees exactly one (a provider with an async `useFactory` included).
-When it sees none, or only the servers of several `WebSocketModule` instances
-it imports, a `WebSocketModule` instance's own server serves the gateway. A
-module that sees another module's `WS_SERVER` beside those is ambiguous:
+When it sees none, the `WebSocketModule` instance's own server serves the
+gateway. A module that sees two or more, from several `WebSocketModule`
+instances or another module's `WS_SERVER` beside one, is ambiguous:
 bootstrap fails with an error that names each module providing one. A
 `WS_SERVER` without `WebSocketModule` connects nothing: the gateway's server
 then refuses each push with guidance. To push to a test double, keep `WebSocketModule.forRoot()`
@@ -310,8 +310,9 @@ command.
 A push that `deliver` carries to several gateway rooms settles every delivery
 before it answers. When some fail, it rejects with an `AggregateError` whose
 message names the failed rooms (`2 of 3 ChatGateway room pushes failed: "b",
-"c"`; past ten, the first ten and how many more) and whose `errors` hold one
-error per failed room, naming it, with the transport's error as its `cause`;
+"c"`; past ten, the first ten and how many more; each room id shortened to 32
+characters) and whose `errors` hold one error per failed room, naming it in
+full, with the transport's error as its `cause`;
 the other rooms received the push. A push delivered to one room (every push to
 a gateway without `roomParam`) rejects with the transport's own error.
 

@@ -323,6 +323,41 @@ describe('Gateways', () => {
     }
   });
 
+  it('bounds the message of a multi-room push failure whatever the room ids', async () => {
+    const transport: WebSocketTransport = {
+      async deliver() {
+        throw new Error('the platform is unavailable');
+      },
+    };
+    const app = await makeApp([transportAdapter(transport)]);
+    try {
+      // Room ids reach 512 bytes; the message shortens each one it names.
+      const rooms = Array.from({ length: 12 }, (_, index) => `${'r'.repeat(508)}${index}`);
+      let push = app
+        .get(Gateways)
+        .of<ChatEvents>(ChatGateway)
+        .to(rooms[0] ?? '');
+      for (const room of rooms.slice(1)) push = push.to(room);
+      const failure: unknown = await push.emit('typing').then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(AggregateError);
+      if (!(failure instanceof AggregateError)) return;
+      const shortened = `"${'r'.repeat(32)}…"`;
+      expect(failure.message).toBe(
+        `12 of 12 ChatGateway room pushes failed: ${Array(10).fill(shortened).join(', ')} and 2 more`,
+      );
+      expect(failure.message.length).toBeLessThan(512);
+      // Each failed room's own error names it in full.
+      expect(failure.errors.map((error: Error) => error.message)).toEqual(
+        rooms.map((room) => `ChatGateway push to room "${room}" failed`),
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
   it('names at most ten failed rooms in the message of a multi-room push', async () => {
     const outage = new Error('the platform is unavailable');
     const transport: WebSocketTransport = {
