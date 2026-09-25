@@ -1,8 +1,6 @@
 ---
 '@velajs/vela': minor
 '@velajs/cloudflare': minor
-'@velajs/cli': patch
-'@velajs/studio': patch
 ---
 
 Routes compose like Nest's `setGlobalPrefix(prefix, { exclude })` and URI versioning:
