@@ -102,11 +102,15 @@ vela deploy check
 - **Loading the application.** Without a `vela.config`, the CLI reads `main`
   from `wrangler.json`, `wrangler.jsonc` or `wrangler.toml` (`--env` selects a
   named environment) and imports that entry through the Vite module runner.
-  `createCloudflareWorker(AppModule, options)` attaches a descriptor under
+  The Worker of `defineCloudflareApp(AppModule, options)` (and
+  `createCloudflareWorker(AppModule, options)`) attaches a descriptor under
   `Symbol.for('vela.cloudflare.worker')`, from which the CLI builds the same
-  application the Worker builds. `cloudflare:*` modules resolve to inert Node
-  stand-ins through a Node module hook, so the entry may export Durable Object
-  and Workflow classes. Listing commands (`route list`, `module graph`,
+  application the Worker builds; it also lists the Durable Object classes
+  defined from the app, and each class `VelaDurableObject()` or
+  `VelaWebSocketDurableObject()` builds carries its own descriptor under
+  `Symbol.for('vela.cloudflare.durableObject')`. `cloudflare:*` modules resolve
+  to inert Node stand-ins through a Node module hook, so the entry may export
+  Durable Object and Workflow classes. Listing commands (`route list`, `module graph`,
   `entrypoint list`, `openapi dump`, `client generate`, `doctor --app`,
   `deploy check`, `cf sync`) seed `ENV` with the Wrangler `vars` only; `db seed`
   uses Wrangler's `getPlatformProxy()` local bindings. A `vela.config` in the
@@ -128,7 +132,12 @@ vela deploy check
   nothing written: an entry added there would replace the spread list or be
   replaced by it. `queue` adds
   `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module only
-  when no source file configures the driver yet. `--skip-import` prints the
+  when no source file configures the driver yet. `durable-object` writes an
+  `@Injectable()` host (`counter.host.ts`, injecting `DO_STORAGE`) and the
+  class the Worker entry exports,
+  `export class Counter extends VelaDurableObject(AppModule, CounterHost) {}`,
+  built from the root module the Worker entry names (see
+  [Durable Objects](durable-objects.md)). `--skip-import` prints the
   registration instead.
   TypeScript 7 has no stable compiler API, which is why the CLI uses Oxc here.
 - **Resources.** `vela add d1|kv|r2|queue <BINDING>` wraps
@@ -146,7 +155,10 @@ vela deploy check
   `--skip-import` needs no editable root.
 - **Wrangler sync.** `vela cf sync` derives cron triggers, queue producers and
   consumers, Durable Object bindings and migrations, and Workflows from the
-  application and the Worker entry's exports; it exits 1 on differences, and
+  application and the Worker entry's exports. A gateway binding no class serves
+  is paired with the one exported `VelaWebSocketDurableObject` class without a
+  binding, never with a host Durable Object, and a Durable Object class the app
+  defines but the entry does not export is reported. It exits 1 on differences, and
   `--write` edits JSON/JSONC through `jsonc-parser`, one element at a time
   (a cron trigger is appended or removed on its own), keeping comments. An
   added element follows its array's or object's layout: on the line of the

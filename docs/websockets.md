@@ -461,8 +461,8 @@ export class AppModule {}
 ```
 
 The module is the same one node, Bun and Deno use. The Cloudflare adapter,
-which `createCloudflareWorker` and `VelaWebSocketDurableObject` register,
-supplies the platform through the global `WS_TRANSPORT` token: in the Worker,
+which the Worker of `defineCloudflareApp` (or `createCloudflareWorker`) and
+`VelaWebSocketDurableObject` register, supplies the platform through the global `WS_TRANSPORT` token: in the Worker,
 `WebSocketModule` mounts an upgrade route for every gateway that names a
 `binding` and forwards each authenticated upgrade to that room's Durable
 Object; inside the Durable Object, the server gateways inject broadcasts to the
@@ -475,18 +475,25 @@ diagnostics policy (a warning by default).
 
 ```ts
 // Worker entry (src/index.ts)
-import { createCloudflareWorker } from '@velajs/cloudflare';
+import { defineCloudflareApp } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 import { AppModule } from './app.module.js';
 
-// The DO class name must match wrangler `class_name`.
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
+// One app definition: the Worker and the room Durable Object share its root
+// module and options. The DO class name must match wrangler `class_name`.
+const app = defineCloudflareApp(AppModule);
 
-export default createCloudflareWorker(AppModule);
+export class ChatRoom extends VelaWebSocketDurableObject(app) {}
+
+export default app.worker;
 ```
 
-The Worker and each Durable Object seed their native environment as the
-framework `ENV`; the gateway resolves its `binding` by name from it. Run
+`VelaWebSocketDurableObject(AppModule)` builds the same class from a bare
+root. The Worker and each Durable Object seed their native environment as the
+framework `ENV`; the gateway resolves its `binding` by name from it. The room
+object boots its application context like every Vela Durable Object (see
+[Durable Objects](durable-objects.md)): it injects `DO_STATE`, `DO_STORAGE`
+and `DO_ID`, and the app's runtime adapters configure it. Run
 `wrangler types --include-runtime=false` so `worker-configuration.d.ts` types
 `CHAT_ROOM` (and every other binding) on `VelaEnv` for code that injects `ENV`.
 

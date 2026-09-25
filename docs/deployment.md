@@ -81,6 +81,17 @@ queue names for `cf:queue`, and gateway bindings for `websocket`. Missing
 triggers/consumers and configured triggers/consumers with no metadata handler
 fail.
 
+When the snapshot is computed from the Worker entry, it also lists the
+[Durable Object](durable-objects.md) classes `@velajs/cloudflare` built as
+`cf:durable-object` rows: each exported class by its export name (Wrangler's
+`class_name`), with what it serves (`host` and its host class, or `websocket`)
+and its RPC methods, and each class the app defines with `VelaDurableObject(app,
+Host)` or `VelaWebSocketDurableObject(app)` but the entry does not export, as
+`(not exported) <Host>`. An exported class that no `durable_objects` binding of
+the selected environment names warns with `unbound-durable-object` (another
+Worker may bind it through `script_name`), and a class the entry does not export
+warns with `unexported-durable-object`: nothing can bind it.
+
 Queues registered with `QueueModule.registerQueue()` appear as
 `queue:registration` rows. Each registered `binding` must be a
 `queues.producers[].binding` of the selected environment
@@ -173,7 +184,9 @@ proof that a resource already exists. See Wrangler's
 The binding inventory checks names and selected shapes for vars, KV, D1, R2,
 services, Hyperdrive, Vectorize, workflows, analytics datasets, Durable Objects
 and queues. Distinct databases of the same engine are valid. Duplicate binding
-names fail; gateway bindings must name a Durable Object in the selected target.
+names fail; gateway bindings must name a Durable Object in the selected target,
+and the Durable Object classes the Worker exports are expected to be bound in
+it.
 Other Wrangler settings and the bindings application code reads from `ENV`
 remain Wrangler/application responsibilities. No resource lookup, migration
 ownership, cross-database transaction check or cloud authentication occurs here.

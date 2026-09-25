@@ -23,9 +23,9 @@ export default createCloudflareWorker(AppModule);
 
 `ENV` (`InjectionToken<VelaEnv>` from `@velajs/vela`) is the native environment; the Worker entry only exports. Type it with `wrangler types --include-runtime=false` (keep `@cloudflare/workers-types` for runtime types): include the generated `worker-configuration.d.ts` in tsconfig and regenerate it when the Wrangler file changes; `@velajs/cloudflare` extends `VelaEnv` with its `Cloudflare.Env`. Do not hand-write an `Env` interface or mint an environment `InjectionToken`. Inject `ENV` directly (`@InjectEnv()`, `inject: [ENV]`) or derive a narrower binding token with `defineProvider(TOKEN, { inject: [ENV], useFactory: env => env.DB })`. There is no environment parameter decorator; binding wrapper modules/services are not part of the API. Secrets in `ENV` drive framework features automatically: `URL_SIGNING_SECRET` (signed URLs and invocations) and `VELA_STUDIO_TOKEN` (Studio).
 
-The root is static: a module class, or a `DynamicModule` such as `AppModule.forRoot(...)`, declared once at module scope and passed as-is to `createCloudflareWorker`, `createCloudflareApp` and `VelaWebSocketDurableObject`. There is no environment-factory root (`{ create(env) }`) and nothing is decorated inside a function. Read bindings in `forRootAsync({ inject: [ENV], useFactory })` factories, `useFactory` providers and `@InjectEnv()` constructors; they run for each application, so a second environment builds new instances but declares no new classes.
+The root is static: a module class, or a `DynamicModule` such as `AppModule.forRoot(...)`, declared once at module scope and passed as-is to `defineCloudflareApp`, `createCloudflareWorker`, `createCloudflareApp`, `VelaDurableObject` and `VelaWebSocketDurableObject`. There is no environment-factory root (`{ create(env) }`) and nothing is decorated inside a function. Read bindings in `forRootAsync({ inject: [ENV], useFactory })` factories, `useFactory` providers and `@InjectEnv()` constructors; they run for each application, so a second environment builds new instances but declares no new classes.
 
-The worker exposes `fetch`, `queue`, and `scheduled`, plus a descriptor under the symbol key `CLOUDFLARE_WORKER` (`Symbol.for('vela.cloudflare.worker')`: `rootModule`, `options`, `createOptions(env)`, `createApplication(env)`) that `@velajs/cli` and `@velajs/cloudflare/testing` build the same application from. It is enumerable, so an entry that adds handlers by spreading (`export default { ...worker, email }`) or `Object.assign` keeps it. Applications are cached by environment object identity; concurrent first events share bootstrap, different environments get separate applications, and failed bootstrap retries on the next event. For explicit construction use `createCloudflareApp(AppModule, { env })` or `cloudflareAdapter({ env })`; `adapters: RuntimeAdapter[]` on either entry composes further adapters. There is no `middleware(env)` option: request middleware is a consumer middleware class (`configure(consumer)` in a module) that injects `ENV` like any provider. `createCloudflareWorker(AppModule, { configure(app, env) {} })` finishes each application's HTTP surface (extra Hono routes) once per environment, synchronously and without I/O, before any event, including concurrent cold events, reaches it; a throw fails that construction and the next event retries. `createTestingWorker()` runs the same `configure`; the descriptor's `createApplication(env)` builds the application without it. Bindings exist before DI factories run; binding I/O still belongs inside a platform event. An explicitly constructed app rejects events from another environment. Separate Workers sharing one repository type-check as separate programs, each with its own `wrangler types` output.
+The worker exposes `fetch`, `queue`, and `scheduled`, plus a descriptor under the symbol key `CLOUDFLARE_WORKER` (`Symbol.for('vela.cloudflare.worker')`: `rootModule`, `options`, `durableObjects` (the Durable Object classes defined from the same app), `createOptions(env)`, `createApplication(env)`) that `@velajs/cli` and `@velajs/cloudflare/testing` build the same application from. It is enumerable, so an entry that adds handlers by spreading (`export default { ...worker, email }`) or `Object.assign` keeps it. Applications are cached by environment object identity; concurrent first events share bootstrap, different environments get separate applications, and failed bootstrap retries on the next event. For explicit construction use `createCloudflareApp(AppModule, { env })` or `cloudflareAdapter({ env })`; `adapters: RuntimeAdapter[]` on either entry composes further adapters. There is no `middleware(env)` option: request middleware is a consumer middleware class (`configure(consumer)` in a module) that injects `ENV` like any provider. `createCloudflareWorker(AppModule, { configure(app, env) {} })` finishes each application's HTTP surface (extra Hono routes) once per environment, synchronously and without I/O, before any event, including concurrent cold events, reaches it; a throw fails that construction and the next event retries. `createTestingWorker()` runs the same `configure`; the descriptor's `createApplication(env)` builds the application without it. Bindings exist before DI factories run; binding I/O still belongs inside a platform event. An explicitly constructed app rejects events from another environment. Separate Workers sharing one repository type-check as separate programs, each with its own `wrangler types` output.
 
 ## Queue and cron handlers
 
@@ -39,6 +39,7 @@ For portable jobs, use `QueueModule.forRoot({ driver: cloudflareQueues() })` (fr
 import { Module } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
 import { WebSocketModule } from '@velajs/vela/websocket';
+import { defineCloudflareApp } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
 // RoomsGateway: @WebSocketGateway({ path: '/rooms/:room/ws', roomParam: 'room', binding: 'ROOMS', ... })
@@ -47,10 +48,42 @@ import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
   providers: [RoomsGateway, TodoLive],
 })
 class RoomModule {}
-export class Room extends VelaWebSocketDurableObject(RoomModule) {}
+const app = defineCloudflareApp(RoomModule);
+export class Room extends VelaWebSocketDurableObject(app) {}
+export default app.worker;
 ```
 
 Import the core modules on every runtime; there is no Cloudflare WebSocket module. `cloudflareAdapter` registers the platform as the global `WS_TRANSPORT` and `LIVE_PLATFORM` tokens before modules load and never replaces module providers. In the Worker, `WebSocketModule` serves an upgrade route for every gateway naming a `binding` (authenticating before the Durable Object is derived) and forwards it to the gateway + room Durable Object; without `WebSocketModule` no upgrade route mounts (upgrades answer 404) and the adapter reports each binding-backed gateway. The Worker's `@WebSocketServer()` throws on push; `Gateways.of(Gateway).to(room).emit()` calls the gateway + room Durable Object's `broadcast` RPC, and inside a Durable Object pushes to its own room locally and forwards other rooms. `LiveInspector` (and Studio's `livePanel({ rooms })`) reads a room through the same binding with its `inspectLive` RPC. `LiveModule` defaults to `durableObjectLive()`: Worker invalidations go to the room Durable Object of the single binding-backed gateway, its namespace read from `ENV` when first needed; with several, the first invalidation fails with an ambiguity error, so pass `driver: () => durableObjectLive({ gatewayPath })` (or `{ binding }`, `defaultRoom`). A gateway without `roomParam` has one room Durable Object, named by its path, and its invalidations and inspections always go there. Inside the Durable Object, the server broadcasts to its hibernatable sockets, invalidations apply locally, and the cursor log is a SQLite `DoCursorLog` (in memory without `new_sqlite_classes`). A Worker configured with `localLive()` warns once. Import native classes only in Worker entry files. Configure the namespace and `new_sqlite_classes` migration in Wrangler. Gateway options declare `path`, `roomParam`, `binding`, `allowedOrigins` (origins or `(env) => origins`) and `authenticator`, an `UpgradeAuthenticator` class each application resolves through DI from the declaring module (`websocket.md`); a gateway without one refuses every upgrade. Core trusted identity, tenant, and expiry cross the upgrade boundary; caller-supplied identity headers are not authority. Driver/log factories return fresh state per application. Read `live-queries.md` for shared query schemas and delivery authorization.
+
+## Durable Object hosts
+
+```ts
+import { Inject, Injectable, UseGuards } from '@velajs/vela';
+import { defineCloudflareApp } from '@velajs/cloudflare';
+import { DO_STORAGE, VelaDurableObject } from '@velajs/cloudflare/durable-objects';
+
+@Injectable()
+export class CounterHost {
+  constructor(@Inject(DO_STORAGE) private readonly storage: DurableObjectStorage) {}
+  async increment(by: number): Promise<number> {
+    const value = ((await this.storage.get<number>('value')) ?? 0) + by;
+    await this.storage.put('value', value);
+    return value;
+  }
+  @UseGuards(CallerGuard)
+  async reset(): Promise<void> {
+    await this.storage.deleteAll();
+  }
+}
+
+const app = defineCloudflareApp(AppModule); // one definition: Worker + Durable Object classes
+export class Counter extends VelaDurableObject(app, CounterHost) {}
+export default app.worker;
+// Elsewhere, with wrangler types: COUNTER is DurableObjectNamespace<Counter>
+// await env.COUNTER.getByName('orders').increment(1)  // typed: (by: number) => Promise<number>
+```
+
+`VelaDurableObject(appOrRoot, Host)` returns a class whose instances each boot one application context (`VelaFactory.createApplicationContext`) in the constructor under `blockConcurrencyWhile`, with `Host` added to the root module's providers (never list the host in a module the Worker builds). The app form shares the root and its runtime adapters (`configureContainer`) with the Worker; a bare root works too. The context injects `ENV`, `DO_STATE` (`DurableObjectState`), `DO_STORAGE` and `DO_ID`, and reaches gateway rooms and live invalidation like the Worker. The host's string-keyed prototype methods (own and inherited, not lifecycle hooks or accessors) become JS-RPC methods typed on the stub; TypeScript `private` is compile-time only, so keep helpers `#private`; methods named `ctx`, `env`, `connect`, `dup` are rejected. Host `fetch`, `alarm`, `webSocketMessage/Close/Error` become the object's handlers (no host `alarm`, no alarm handler). Each call/event runs in a fresh execution scope (request-scoped providers per call; `EXECUTION_LIFETIME` work settles before it returns) through the host's scoped guards, pipes (RPC arguments only, `{ type: 'custom' }`), interceptors and filters; `APP_*` components do not apply. `ExecutionContext.getType()` is `'rpc'`, `'cf:do:fetch'`, `'cf:do:alarm'` or `'cf:do:websocket'`; `getPayload()` is the arguments. Failures are reported first (`edge: 'durable-object'`); an RPC call rejects only with `DurableObjectError` (`status`, `code`, `message`, `details` for 4xx; everything else `500 internal "Internal Server Error"`, stack-free), recognized on the caller side with `isDurableObjectError()`; `fetch` renders the JSON error body; alarms/WebSocket events rethrow for the platform. A claiming filter's non-undefined value becomes an RPC result; for alarms it handles the failure. A context that fails to start resets the object and callers get only the redacted 500. Shutdown hooks do not run on eviction. `VelaWebSocketDurableObject(app)` boots its context the same way. See `docs/durable-objects.md`.
 
 ## Bindings by name: storage, caches, and flags
 
