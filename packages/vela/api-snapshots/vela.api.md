@@ -1359,7 +1359,7 @@ export declare function ApiTags(...tags: string[]): MethodDecorator & ClassDecor
 
 export declare function ApiResponse(options: ApiResponseOptions): MethodDecorator;
 
-export declare function zodToJsonSchema(schema: unknown, direction?: 'input' | 'output'): JsonSchema;
+export declare function zodToJsonSchema(schema: unknown, direction?: 'input' | 'output', libraryOptions?: Record<string, unknown>): JsonSchema;
 
 export type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions, CreateOpenApiDocumentOptions, HttpVerb, JsonSchema, MountOpenApiOptions, OpenApiDocument, OpenApiInfo, OpenApiModuleOptions, OpenApiOperation, OpenApiParameter, OpenApiPathItem, OpenApiRequestBody, OpenApiResponse, OpenApiUi };
 ```
