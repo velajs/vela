@@ -258,7 +258,7 @@ async function verifyGenerators(project, vela, run) {
   assert.match(await readFile(join(project, 'src/worker.ts'), 'utf8'), /export \{ Counter \}/);
   assert.match(
     await readFile(join(project, 'src/counter/counter.durable-object.ts'), 'utf8'),
-    /export class Counter extends VelaDurableObject\(AppModule, CounterHost\) \{\}/,
+    /export class Counter extends VelaDurableObject\(AppModule, CounterHost, \{\n {2}rpc: \['increment'\],\n\}\) \{\}/,
   );
   await writeFile(join(project, 'test/counter.spec.ts'), COUNTER_SPEC);
   // The Wrangler file is out of date until cf sync writes the new triggers and bindings.

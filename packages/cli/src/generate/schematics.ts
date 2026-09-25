@@ -80,15 +80,19 @@ export class ${name.pascal}Processor {
 `;
 }
 
+/** The RPC methods of the host `vela generate durable-object` writes. */
+export const DURABLE_OBJECT_RPC = ['increment'] as const;
+
 export function durableObjectHostSource(name: Names): string {
   return `import { Inject, Injectable } from '@velajs/vela';
 import { DO_STORAGE } from '@velajs/cloudflare/durable-objects';
 
 /**
  * The ${name.pascal} Durable Object's host: one instance per id, with its own
- * storage. Its public methods are the object's RPC methods, typed on its
- * binding: \`await env.${name.constant}.getByName('id').increment()\`. Keep
- * helpers in #private methods or other providers.
+ * storage. The methods its Durable Object class lists in \`rpc\` are the
+ * object's RPC methods, typed on its binding:
+ * \`await env.${name.constant}.getByName('id').increment()\`. No other method
+ * is reachable over RPC; list a new public method there to expose it.
  */
 @Injectable()
 export class ${name.pascal}Host {
@@ -103,24 +107,49 @@ export class ${name.pascal}Host {
 `;
 }
 
+const rpcList = (): string => DURABLE_OBJECT_RPC.map((method) => `'${method}'`).join(', ');
+
 /**
- * The Durable Object class the Worker entry exports: \`rootImport\` imports
- * the root module as \`rootName\`, \`hostFrom\` is the host file's specifier.
+ * The exported Durable Object class, built from \`root\`: the root module, or
+ * the app from \`defineCloudflareApp()\` when \`app\` is set.
+ */
+export function durableObjectDeclaration(name: Names, root: string, app: boolean): string {
+  const boots = app
+    ? `// Each instance boots ${root}, configured by its runtime adapters, with ${name.pascal}Host
+// as one of its providers. The host methods rpc names are this class's RPC
+// methods, and the host's guards, pipes, interceptors and filters run around
+// every call.`
+    : `// Each instance boots ${root} with ${name.pascal}Host as one of its providers. The
+// host methods rpc names are this class's RPC methods, and the host's guards,
+// pipes, interceptors and filters run around every call.`;
+  return `${boots}
+export class ${name.pascal} extends VelaDurableObject(${root}, ${name.pascal}Host, {
+  rpc: [${rpcList()}],
+}) {}`;
+}
+
+/** {@link durableObjectDeclaration}'s class on one line, for printed instructions. */
+export function durableObjectClassLine(name: Names, root: string): string {
+  return `export class ${name.pascal} extends VelaDurableObject(${root}, ${name.pascal}Host, { rpc: [${rpcList()}] }) {}`;
+}
+
+/**
+ * The file declaring the Durable Object class the Worker entry exports:
+ * \`rootImport\` imports \`root\` (the root module, or the app when \`app\` is
+ * set), \`hostFrom\` is the host file's specifier.
  */
 export function durableObjectSource(
   name: Names,
-  rootName: string,
+  root: string,
   rootImport: string,
   hostFrom: string,
+  app = false,
 ): string {
   return `import { VelaDurableObject } from '@velajs/cloudflare/durable-objects';
 ${rootImport}
 import { ${name.pascal}Host } from '${hostFrom}';
 
-// Each instance boots ${rootName} with ${name.pascal}Host as one of its providers. The
-// host's public methods are this class's RPC methods, and its guards, pipes,
-// interceptors and filters run around every call.
-export class ${name.pascal} extends VelaDurableObject(${rootName}, ${name.pascal}Host) {}
+${durableObjectDeclaration(name, root, app)}
 `;
 }
 

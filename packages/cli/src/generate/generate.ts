@@ -7,6 +7,8 @@ import { names, singular } from './names.js';
 import {
   controllerSource,
   cronSource,
+  durableObjectClassLine,
+  durableObjectDeclaration,
   durableObjectHostSource,
   durableObjectSource,
   moduleSource,
@@ -19,10 +21,14 @@ import {
   SourceEditError,
   addExport,
   addToModule,
+  addWorkerDeclaration,
   callsMethod,
+  importedWorkerApp,
   moduleExport,
+  workerApp,
   workerRootImport,
   type NamedImport,
+  type WorkerDeclaration,
 } from './source-editor.js';
 
 export const SCHEMATICS = [
@@ -321,6 +327,8 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
   const notes: string[] = [];
   let target = '';
   let exported: { name: string; file: string } | undefined;
+  // A declaration added to the Worker entry itself (a class built from its app).
+  let declared: WorkerDeclaration | undefined;
   const file = (suffix: string) => join(directory, `${name.kebab}.${suffix}`);
 
   switch (options.schematic) {
@@ -402,24 +410,64 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
       break;
     }
     case 'durable-object': {
-      if (root?.name === undefined) {
-        throw new Error(
-          'A Durable Object boots the application from its root module, but the Worker entry ' +
-            'names none: pass the root module to createCloudflareWorker() or ' +
-            'defineCloudflareApp() in the Worker entry.',
-        );
-      }
       const hostFile = file('host.ts');
-      target = file('durable-object.ts');
-      const rootFrom = specifier(target, root.file, ext);
-      const rootName = root.name === 'default' ? 'AppModule' : root.name;
-      const rootImport =
-        root.name === 'default'
-          ? `import ${rootName} from '${rootFrom}';`
-          : `import { ${rootName} } from '${rootFrom}';`;
-      creates.push(
-        { path: hostFile, content: durableObjectHostSource(name) },
-        {
+      const hostName = `${name.pascal}Host`;
+      creates.push({ path: hostFile, content: durableObjectHostSource(name) });
+      const entryText = await readText(entry);
+      const app = entryText === undefined ? undefined : workerApp(entry, entryText);
+      const imported =
+        entryText === undefined || app !== undefined
+          ? undefined
+          : importedWorkerApp(entry, entryText);
+      if (app?.binding !== undefined) {
+        // The class uses the entry's app, so it is declared beside it: a file
+        // importing the entry would run before the entry defined the app.
+        target = entry;
+        declared = {
+          after: app.binding,
+          name: name.pascal,
+          declaration: durableObjectDeclaration(name, app.binding, true),
+          imports: [
+            { name: 'VelaDurableObject', from: '@velajs/cloudflare/durable-objects' },
+            { name: hostName, from: specifier(entry, hostFile, ext) },
+          ],
+        };
+      } else if (imported !== undefined) {
+        // An app in its own module: the class imports it, as the entry does.
+        target = file('durable-object.ts');
+        const appName = imported.name === 'default' ? 'app' : imported.name;
+        const appFrom = specifier(target, await importedSource(entry, imported.from), ext);
+        const appImport =
+          imported.name === 'default'
+            ? `import ${appName} from '${appFrom}';`
+            : `import { ${appName} } from '${appFrom}';`;
+        creates.push({
+          path: target,
+          content: durableObjectSource(
+            name,
+            appName,
+            appImport,
+            specifier(target, hostFile, ext),
+            true,
+          ),
+        });
+        exported = { name: name.pascal, file: target };
+      } else {
+        if (root?.name === undefined) {
+          throw new Error(
+            'A Durable Object boots the application from its root module, but the Worker entry ' +
+              'names none: pass the root module to createCloudflareWorker() or ' +
+              'defineCloudflareApp() in the Worker entry.',
+          );
+        }
+        target = file('durable-object.ts');
+        const rootFrom = specifier(target, root.file, ext);
+        const rootName = root.name === 'default' ? 'AppModule' : root.name;
+        const rootImport =
+          root.name === 'default'
+            ? `import ${rootName} from '${rootFrom}';`
+            : `import { ${rootName} } from '${rootFrom}';`;
+        creates.push({
           path: target,
           content: durableObjectSource(
             name,
@@ -427,9 +475,18 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
             rootImport,
             specifier(target, hostFile, ext),
           ),
-        },
-      );
-      exported = { name: name.pascal, file: target };
+        });
+        exported = { name: name.pascal, file: target };
+        if (app?.options) {
+          notes.push(
+            `${name.pascal} is built from the bare root module ${rootName}, so the options the ` +
+              `Worker entry passes to ${app.factory}(), such as its runtime adapters, do not ` +
+              'configure it. To share them, define the app once in the Worker entry ' +
+              `(const app = defineCloudflareApp(${rootName}, options); export default app.worker;) ` +
+              `and build ${name.pascal} from app.`,
+          );
+        }
+      }
       notes.push(
         `Next: vela cf sync --write adds the ${name.constant} binding and a migration, and your types script types ENV.${name.constant}.`,
       );
@@ -446,6 +503,20 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
   const display = (path: string) => relative(cwd, path).split(sep).join('/');
   // With --skip-import: what to register by hand, listed before the next steps.
   const manual: string[] = [];
+
+  if (declared) {
+    if (options.skipImport) {
+      const lines = declared.imports.map(
+        (named) => `import { ${named.name} } from '${named.from}';`,
+      );
+      manual.push(
+        `Declare it in the Worker entry ${display(entry)}, after ${declared.after}: ` +
+          `${lines.join(' ')} ${durableObjectClassLine(name, declared.after)}`,
+      );
+    } else {
+      updates.set(entry, addWorkerDeclaration(entry, await read(entry), declared).source);
+    }
+  }
 
   if (exported) {
     const from = specifier(entry, exported.file, ext);
