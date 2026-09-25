@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.31.0
+
+### Minor Changes
+
+- 1bfc1c1: `StorageModule` from `@velajs/storage` is the one storage module. Its `driver` may be a function of the application's `ENV`, called on the first storage operation of each application, so one static `StorageModule.forRoot` serves every environment without reading a binding at boot. On Cloudflare Workers, `r2Storage({ binding: 'UPLOADS' })` from the new `@velajs/cloudflare/storage` subpath is its native R2 driver: the bucket is resolved by name from `ENV` and validated, and a missing binding fails the operation naming `r2_buckets`. `@velajs/storage` is an optional peer of `@velajs/cloudflare`, needed only by that subpath.
+  
+  **Behavior change:** the Cloudflare `StorageModule` is removed, with `StorageService`, `StorageManagerService`, `StorageController`, `R2StorageDriver`, `STORAGE_OPTIONS` and the `StorageModuleOptions`, `DiskConfig` and `PresignedUrlConfig` types from `@velajs/cloudflare`. Register a `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })` from `@velajs/storage` per former disk and inject its `StorageService` (`@InjectStorage(name)` for a named bucket). A disk's `root` becomes the bucket's `prefix`, which is static: the `{date}`, `{year}`, `{month}`, `{day}` and `{uuid}` tokens have no replacement, so build such keys in the application. Its HMAC presign-proxy route (`GET /storage/:disk`) is gone and URLs it issued stop working: serve downloads through `publicBaseUrl`, the authorized `http: { download: 'proxy' }` controller, or provider-signed URLs from the S3 or R2 HTTP/hybrid drivers.
+  
+  **Behavior change:** the `@velajs/vela/storage` subpath is removed with the second `StorageDriver` contract, `expandPathTemplate` and `joinStoragePath` it held for that module, and `STORAGE_SIGNED_URL_PURPOSE` leaves `@velajs/vela/security`. Use `@velajs/storage`'s driver contract and key helpers (`joinKey`, `normalizePrefix`, `sanitizeKey`); `signUrl` and `verifySignedUrl` stay on `@velajs/vela/security` with an application-chosen `purpose`.
+- b227d22: Build `StorageModule` on `defineModule`. `name` and `http` are its structural options (`StorageStructuralOption`); the driver may be a function that builds it on the first storage operation (and again on the next one until it succeeds), and the top-level `multipartGrantSecret` option carries a secret from `ENV`.
+  
+  **Behavior change:** a `forRootAsync` factory returns the module options instead of a bare driver or `{ driver, multipartGrantSecret }`: `useFactory: (env) => ({ driver: () => r2Driver({ bucket: env.FILES }), multipartGrantSecret: env.SECRET })`, with `name` and `http` next to the factory. `prefix`, `readonly` and `hooks`, which `forRootAsync` took next to the factory, come from the factory result too. The factory runs while the application initializes; return `driver` as a function to keep construction on first use. `StorageAsyncResult` is removed.
+  
+  **Behavior change:** each bucket name is one module instance, keyed by the name (never by a secret). A second registration of a name with different options (another driver, `http` block or authorizer) fails bootstrap instead of becoming another instance, so two features that each need a bucket give them distinct names; and `key` is the standard explicit instance key rather than a namespace combined with the driver identity. The process-wide identity tables, including the one that retained secret strings, are removed.
+  
+  **Behavior change:** the deprecated `http.defaultPolicy` option is removed; HTTP routes deny every request without `authorize`, as before.
+  
+  `name` defaults to `'default'` as a structural default, so `forRoot({ driver })` and `forRoot({ driver, name: 'default' })` are one configuration.
+- 3fc6f2b: The storage HTTP controller carries `SkipGuardPhases(['tenant', 'authorize'])` from `@velajs/vela/module-kit`, because its `http.authorize` callback decides every action: the global tenant and authorization guards whose class declares `static readonly skippable = true` (`TenantGuard`, `PermissionGuard`, `RolesGuard` and `CedarGuard`) do not run on its routes. Authentication, throttling and the other global guards still run there.
+  
+  **Behavior change:** those guards no longer run on storage routes, including one the application registers itself, such as `{ provide: APP_GUARD, useClass: TenantGuard }`, and an application guard that extends one without declaring `static override readonly skippable = false`. @velajs/storage 1.30.0 ran every global guard on these routes. Check tenant membership and permissions for storage actions in `http.authorize`, which receives the request (`{ req, ctx, driver }`).
+
+### Patch Changes
+
+- 3fc6f2b: The storage HTTP controller and the GraphQL endpoint inject the Hono context with `@Ctx()`, because `@Req()` injects the platform `Request` from @velajs/vela 1.31.0.
+- 05bbfdf: Call the platform `fetch` without a receiver in the S3 client. On workerd, every S3 and R2-over-HTTP request made through the default `fetch` failed with "Illegal invocation" because the client invoked it as one of its own methods; Node accepted the call, so only Workers deployments were affected. A Workers-runtime test now covers the default transport.
+- Updated dependencies [0b8c649]
+- Updated dependencies [1011653]
+- Updated dependencies [088f4d4]
+- Updated dependencies [f267c2f]
+- Updated dependencies [dfe925c]
+- Updated dependencies [fd11d20]
+- Updated dependencies [748e4f8]
+- Updated dependencies [096e259]
+- Updated dependencies [fd11d20]
+- Updated dependencies [3418c55]
+- Updated dependencies [fd11d20]
+- Updated dependencies [d51dbb3]
+- Updated dependencies [f267c2f]
+- Updated dependencies [4a06057]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1bfc1c1]
+- Updated dependencies [f267c2f]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1ef55ac]
+- Updated dependencies [f267c2f]
+- Updated dependencies [b227d22]
+- Updated dependencies [2c92243]
+  - @velajs/vela@1.31.0
+
 ## 1.30.0
 
 ### Minor Changes
