@@ -316,6 +316,15 @@ Use native `env.DB`, `env.CACHE`, `env.FILES`, `env.JOBS`, `env.AI`,
 (`@InjectEnv()`) and factories (`inject: [ENV]`); it works the same in HTTP,
 queue, cron and Durable Object code.
 
+## Platform event subscriptions
+
+`@velajs/cloudflare/queue-events` composes inside `@QueueConsumer` to validate
+Cloudflare event subscription envelopes and Standard Schema payloads. It awaits
+explicit handlers, acknowledges each success and retries failed messages through
+the native queue policy. Use a dedicated queue with trusted producer permissions;
+metadata checks are not authentication and duplicate deliveries require consumer
+idempotency. See the [Worker build example and settlement guide](../../docs/cloudflare-queue-events.md).
+
 ## Queues and cron
 
 ```ts

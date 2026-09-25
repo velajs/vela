@@ -56,6 +56,10 @@
       "types": "./dist/pipelines.d.ts",
       "import": "./dist/pipelines.js"
     },
+    "./queue-events": {
+      "types": "./dist/queue-events.d.ts",
+      "import": "./dist/queue-events.js"
+    },
     "./queues": {
       "types": "./dist/queues.d.ts",
       "import": "./dist/queues.js"
