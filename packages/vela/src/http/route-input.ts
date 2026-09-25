@@ -11,7 +11,11 @@ import {
   staticSchema,
   type ValidationSchema,
 } from '../validation/parse-schema';
-import { SchemaValidationError, standardJsonSchema } from '../validation/standard-schema';
+import {
+  isStandardSchema,
+  SchemaValidationError,
+  standardJsonSchema,
+} from '../validation/standard-schema';
 import { ValidationPipe } from '../validation/validation.pipe';
 import { readBoundedBody, readJsonBody } from './json-body';
 import type { ResolvedRouteBody } from './route-contract';
@@ -116,6 +120,11 @@ function anyValue(json: JsonObject): boolean {
   return !['type', 'enum', 'const', 'anyOf', 'oneOf', 'allOf', '$ref', 'not'].some(
     (keyword) => keyword in json,
   );
+}
+
+// The schema a descriptor or schema-carrying class wraps.
+function innermost(schema: ValidationSchema): unknown {
+  return !isStandardSchema(schema) && 'schema' in schema ? innermost(schema.schema) : schema;
 }
 
 function properties(json: JsonObject | undefined): [string, JsonObject][] {
@@ -357,15 +366,18 @@ function lacks(value: unknown, name: string): boolean {
 
 // A parameter reading a group the route declares: the validated value, whole
 // or one key, left alone by `ValidationPipe`s. Its own schema would validate
-// the value twice, and a key the schema does not return would read nothing:
-// the application fails to start when the schema lists the keys it returns,
-// and otherwise the request fails (500) when it carries a key the validated
-// value lacks. A whole `@Param()` on a params schema that cannot list the keys
-// it accepts (which the route checks at startup) fails the request when the
-// validated params lack a path parameter the request carries.
+// the value twice, and a static schema its class carries, other than the
+// group's, would never run: the application fails to start with either. A key
+// the schema does not return would read nothing: the application fails to
+// start when the schema lists the keys it returns, and otherwise the request
+// fails (500) when it carries a key the validated value lacks. A whole
+// `@Param()` on a params schema that cannot list the keys it accepts (which
+// the route checks at startup) fails the request when the validated params
+// lack a path parameter the request carries.
 function readDeclared(
   route: Parameters<ParamExtractorFactory>[0],
   param: ParamMetadata,
+  metatype: unknown,
   group: Group,
   schema: ValidationSchema,
 ): ParamReader {
@@ -374,6 +386,11 @@ function readDeclared(
   if (parameterSchema(param) !== undefined)
     throw new Error(
       `${route.source}: the route declares the ${group} schema; remove the schema from @${DECORATOR[group]}()`,
+    );
+  const carried = staticSchema(metatype);
+  if (carried && typeof metatype === 'function' && innermost(carried) !== innermost(schema))
+    throw new Error(
+      `${route.source}: the route declares the ${group} schema; ${decorator} is typed ${metatype.name}, whose static schema would not run: type it from the contract`,
     );
   const keys = name === undefined ? undefined : declaredKeys(schema, 'output');
   if (name !== undefined && keys && !keys.has(name))
@@ -418,7 +435,8 @@ function readDeclared(
  */
 export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => {
   const contract = route.contract;
-  if (contract?.bodySchema) return readDeclared(route, param, 'body', contract.bodySchema);
+  if (contract?.bodySchema)
+    return readDeclared(route, param, metatype, 'body', contract.bodySchema);
   const body = contract?.body;
   const own = parameterSchema(param);
   const auto = own === undefined ? staticSchema(metatype) : undefined;
@@ -448,7 +466,7 @@ export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => 
  */
 export const readQueryParam: ParamExtractorFactory = (route, param, metatype) => {
   const group = route.contract?.query;
-  if (group) return readDeclared(route, param, 'query', group);
+  if (group) return readDeclared(route, param, metatype, 'query', group);
   const schema = parameterSchema(param) ?? (isValidationSchema(metatype) ? metatype : undefined);
   const json = describe(schema);
   const name = param.name;
@@ -466,8 +484,8 @@ export const readQueryParam: ParamExtractorFactory = (route, param, metatype) =>
 };
 
 /** `@Param()`: path parameters, or the values the route's params schema validated. */
-export const readPathParam: ParamExtractorFactory = (route, param) => {
+export const readPathParam: ParamExtractorFactory = (route, param, metatype) => {
   const group = route.contract?.params;
-  if (group) return readDeclared(route, param, 'params', group);
+  if (group) return readDeclared(route, param, metatype, 'params', group);
   return (c) => (param.name === undefined ? c.req.param() : c.req.param(param.name));
 };

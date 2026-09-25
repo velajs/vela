@@ -22,6 +22,7 @@ import {
   type ContractParams,
   type ContractQuery,
 } from '../contract/index';
+import { ValidationPipe } from '../validation/index';
 
 // Declared means enforced: a route validates every request group it declares
 // once, after guards, whether or not a parameter reads it.
@@ -220,6 +221,86 @@ describe('declared request groups', () => {
     await expect(start(Drafts)).rejects.toThrow(
       /Drafts\.create: the route declares the body schema; remove the schema from @Body\(\)/,
     );
+  });
+});
+
+describe('parameter classes on declared groups', () => {
+  // The schema a contract declares for the body, carried by a parameter class.
+  const TodoInput = z.object({ title: z.string() });
+  class TodoBody {
+    static schema = TodoInput;
+    declare title: string;
+  }
+  // A stricter class the route would never apply.
+  class StrictTodo {
+    static schema = z.object({ title: z.string().max(5) });
+    declare title: string;
+  }
+  class Filter {
+    static schema = z.object({ page: z.string().regex(/^\d+$/) });
+    declare page: string;
+  }
+
+  it('fails to start when a parameter class carries a schema the declared group replaces', async () => {
+    const create = defineRoute({
+      method: 'POST',
+      path: '/strict',
+      body: z.looseObject({ title: z.string() }),
+    });
+    @Controller('/strict')
+    class Strict {
+      @Post(create)
+      create(@Body() body: StrictTodo) {
+        return body;
+      }
+    }
+    await expect(start(Strict)).rejects.toThrow(
+      'Strict.create: the route declares the body schema; @Body() is typed StrictTodo, whose static schema would not run: type it from the contract',
+    );
+    const list = defineRoute({
+      method: 'GET',
+      path: '/filtered',
+      query: z.object({ page: z.string().optional() }),
+    });
+    @Controller('/filtered')
+    class Filtered {
+      @Get(list)
+      list(@Query() query: Filter) {
+        return query;
+      }
+    }
+    await expect(start(Filtered)).rejects.toThrow(
+      'Filtered.list: the route declares the query schema; @Query() is typed Filter, whose static schema would not run: type it from the contract',
+    );
+  });
+
+  it("reads the body with a parameter class carrying the contract's own schema", async () => {
+    const create = defineRoute({ method: 'POST', path: '/todos', body: TodoInput });
+    const byClass = defineRoute({ method: 'POST', path: '/todos/class', body: TodoBody });
+    @Controller('/todos')
+    class Todos {
+      @Post(create)
+      create(@Body() body: TodoBody) {
+        return body;
+      }
+
+      @Post('/class', byClass)
+      byClass(@Body() body: TodoBody) {
+        return body;
+      }
+    }
+    const app = await start(Todos);
+    app.useGlobalPipes(new ValidationPipe());
+    try {
+      for (const path of ['/todos', '/todos/class']) {
+        const created = await send(app, 'POST', path, json({ title: 'Ship', extra: 1 }));
+        expect(created.status).toBe(201);
+        expect(await created.json()).toEqual({ title: 'Ship' });
+        expect((await send(app, 'POST', path, json({}))).status).toBe(400);
+      }
+    } finally {
+      await app.close();
+    }
   });
 });
 
