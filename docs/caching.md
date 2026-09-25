@@ -177,12 +177,18 @@ CacheModule.forRoot({
 ```
 
 `store` and `invalidation` also take a function of `ENV`, which builds them per
-application; use it to compose tiers:
+application; use it to compose tiers. `kvCache({ binding })` is itself such a
+function, so a tier still names its namespace instead of reading `ENV` directly:
 
 ```ts
+import { CacheModule, MemoryCacheStore, TieredCacheStore } from '@velajs/vela/cache';
+import { kvCache, kvCacheInvalidation } from '@velajs/cloudflare';
+
+const values = kvCache({ binding: 'CACHE_VALUES' });
+
 CacheModule.forRoot({
   namespace: 'catalog-v1',
-  store: (env) => new TieredCacheStore([new MemoryCacheStore(), new KVCacheStore(env.CACHE_VALUES)]),
+  store: (env) => new TieredCacheStore([new MemoryCacheStore(), values(env)]),
   invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' }),
   scope: trustedCacheScope,
 });
