@@ -5,6 +5,7 @@ import { InternalDispatcher, SignedInvocation } from '@velajs/vela/dispatch';
 import { defineCloudflareApp } from '@velajs/cloudflare';
 import { VelaWorkflow } from '@velajs/cloudflare/workflows';
 import { compileAgent, defineAgent, functionTool, AGENT_APPROVAL_EVENT_TYPE } from '@velajs/agent';
+import type { AgentRunResult } from '@velajs/agent';
 import {
   AgentThreadDurableObject,
   agentRunParamsSchema,
@@ -12,19 +13,6 @@ import {
 } from '@velajs/agent/cloudflare';
 import { WorkflowNonRetryableError } from '@velajs/workflow';
 import { runCloudflareWorkflow, workflowEventStream } from '@velajs/workflow/cloudflare';
-
-declare global {
-  namespace Cloudflare {
-    interface Env {
-      THREADS: DurableObjectNamespace<Threads>;
-      REVIEW: Workflow;
-      DEMO_OWNER: string;
-      DEMO_TENANT: string;
-      DEMO_TOKEN: string;
-      URL_SIGNING_SECRET: string;
-    }
-  }
-}
 
 export class Threads extends AgentThreadDurableObject {}
 const identitySchema = z.object({
@@ -59,7 +47,7 @@ class ReviewHost {
     @Inject(InternalDispatcher) private readonly dispatcher: InternalDispatcher,
   ) {}
 
-  run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  run(event: WorkflowEvent<unknown>, step: WorkflowStep): Promise<AgentRunResult> {
     const store = durableAgentThreadStore(this.env.THREADS);
     const agent = defineAgent({
       name: 'reviewer',

@@ -28,15 +28,21 @@ no model credentials or external APIs are needed.
 ```sh
 pnpm install --frozen-lockfile
 pnpm --filter @velajs/agent-approvals-example... build
+pnpm --filter @velajs/agent-approvals-example cf:types
 pnpm --filter @velajs/agent-approvals-example test:workers
 pnpm --filter @velajs/agent-approvals-example dev
 ```
 
-Before local development, create `apps/agent-approvals/.dev.vars` with distinct
-random values for `DEMO_TOKEN` and `URL_SIGNING_SECRET`. Before a deployment, set
+Before local development, copy `.dev.vars.example` to `apps/agent-approvals/.dev.vars`
+and replace both placeholders with distinct random values for `DEMO_TOKEN` and
+`URL_SIGNING_SECRET`. Before a deployment, set
 those secrets with Wrangler. `wrangler.toml` includes the Workflow binding, class
-and SQLite migration; `build` only performs a deployment dry run. Deploy explicitly
-with `pnpm --dir apps/agent-approvals exec wrangler deploy` when ready.
+and SQLite migration. Vite builds the deployable Worker with Oxc decorator
+metadata; the native tests use the same Oxc settings. `cf:types` regenerates the
+committed binding types from the source entry and example secret names.
+After building, verify the bundle with
+`pnpm --dir apps/agent-approvals exec wrangler deploy --dry-run`.
+Deploy explicitly with `pnpm --dir apps/agent-approvals exec wrangler deploy` when ready.
 
 The demo token authenticates one configured `DEMO_OWNER`/`DEMO_TENANT` and grants
 access to every run in that deployment. A multi-user service must replace this
