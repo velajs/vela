@@ -72,10 +72,18 @@ class BillingModule {}
 class CatalogModule {}
 ```
 
-The same applies to `ThrottlerModule`, `I18nModule`, `CacheModule` and `MailModule`
-(two mailers that differ only in `from`, `transport` or `render`). `StorageModule`
+The same applies to `ThrottlerModule`, `I18nModule`, `MailModule` (two mailers that
+differ only in `from`, `transport` or `render`) and `CryptoModule`. `CacheModule`
+allows one instance per application, whatever its `key`. `StorageModule`
 keys by bucket `name`, `GraphqlModule` by `path` and `RpcClientModule` by `name`
 and `binding`, so registering one of those again with other options fails too.
+`AuthzModule`, `TenantModule`, `CloudflareAccessModule` and `FeatureFlagsModule`
+key by `guard`, and `CedarModule` by `guard` and `undeclared`: a second
+registration with the same `guard` and other options, such as a feature module's
+own `AuthzModule` with other roles, fails bootstrap unless it has its own `key`.
+For several `AuthzModule`, `TenantModule` or `CedarModule` registrations, keep
+`guard: 'global'` on one and pass `guard: 'none'` on the others; the installed
+guard resolves the registration the route's module sees.
 `CrudModule.forFeature()` registrations that mount one path with different
 definitions fail bootstrap; register one shared `defineCrudFeature(...)` value
 wherever the path is mounted.
