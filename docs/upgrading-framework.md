@@ -5,7 +5,9 @@ baseline. The DI, execution, schema, transport and database sections cover the A
 that require core 1.25.0: RPC and GraphQL 1.1.0 require this core version, and named
 databases require CRUD 1.25.0 with compatible adapters. The module contract, HTTP
 error and guard, Cloudflare adapter, realtime, feature surface, and CLI and testing
-sections cover core 1.31.0 and the integrations released with it. Update the core
+sections cover core 1.31.0 and the integrations released with it. The schema-first
+routes section and the paragraphs marked *1.32.0* cover core 1.32.0 and the
+integrations released with it (Cloudflare, CLI, CRUD, mail and Studio). Update the core
 and affected integrations together using their published dependency ranges; consult
 each package's changelog for its version. A prepared version in this repository
 becomes installable only after publication to npm.
@@ -144,6 +146,14 @@ the class with `@Global()`, or pass the `isGlobal` extra to one `forRoot` call.
 `ModuleMetadata.isGlobal` is renamed `global`. The `isGlobal` extra only makes an
 instance's exports visible everywhere; options that install application-wide guards
 are named `guard` (see [guards](#http-errors-request-parameters-and-guards)).
+
+*1.32.0:* module descriptions use the same name. `ModuleDescription.isGlobal`
+(`Container.getModuleDescriptions()` from `@velajs/vela/module-kit`) and the
+internal `ModuleScope.isGlobal` are `global`, and `vela module graph --json` and the
+`vela mcp serve` `module_graph` and `token_describe` results report `global`. The
+Studio wire protocol moves to version 4, whose `app.modules` rows carry `global`:
+upgrade `@velajs/studio`, `@velajs/studio-host` and `@velajs/studio-ui` together,
+since a host or UI on protocol 3 refuses a protocol-4 application, and the reverse.
 
 Renamed and removed APIs, with no aliases:
 
@@ -340,7 +350,10 @@ at startup; declare `status` in the contract, which types its clients.
 
 An `@Override`'d CRUD verb answers the verb's status (200 for restore, upsert,
 import, batch restore and upsert, version rollback) unless it declares its own
-`@HttpCode`, and OpenAPI documents that status.
+`@HttpCode`, and OpenAPI documents that status. An overridden `create`,
+`batchCreate` or `clone` therefore answers 201 instead of 200; add `@HttpCode(200)`
+to keep 200. OpenAPI documents 201 for the generated `batchCreate` and `clone`,
+the status they already answered.
 
 ## HTTP errors, request parameters and guards
 
@@ -447,7 +460,7 @@ routes. Remove a declaration from the base class, or override the method, where 
 subclass must not inherit it. Unlike Nest, route decorators (`@Get()`, `@Post()`, …)
 are still read from the controller class itself, so a method a base class routes
 is not mounted on its subclasses: route the inherited method on the subclass, for
-example `Get('list')(Sub.prototype, 'list', descriptor)`. Such a route that
+example `Get('list')(Sub.prototype, 'list', descriptor)`. *1.32.0:* such a route that
 declares no options of its own takes those of the nearest ancestor's route for
 the same verb and method (its `response`, `status` or `defineRoute` contract),
 and reads the parameters the ancestor declares on the method.
@@ -674,6 +687,60 @@ A custom runtime adapter wires its platform the same way, through the global
 `WS_TRANSPORT` (`@velajs/vela/websocket`) and `LIVE_PLATFORM` (`@velajs/vela/live`)
 tokens. See [Cloudflare integration](../packages/cloudflare/README.md).
 
+*1.32.0:* define the application once with `defineCloudflareApp` when the Worker
+entry also exports Durable Object, Workflow or service entrypoint classes built
+from it; `createCloudflareWorker(AppModule, options)` is
+`defineCloudflareApp(AppModule, options).worker`. A hand-written Durable Object
+can become an `@Injectable()` host that injects the object's storage and the
+application's providers:
+
+```ts
+// Before (1.31.0)
+export class Counter extends DurableObject {
+  async increment(by: number): Promise<number> {
+    const value = ((await this.ctx.storage.get<number>('value')) ?? 0) + by;
+    await this.ctx.storage.put('value', value);
+    return value;
+  }
+}
+export default createCloudflareWorker(AppModule);
+```
+
+```ts
+// After
+@Injectable()
+export class CounterHost {
+  constructor(@Inject(DO_STORAGE) private readonly storage: DurableObjectStorage) {}
+
+  async increment(by: number): Promise<number> {
+    const value = ((await this.storage.get<number>('value')) ?? 0) + by;
+    await this.storage.put('value', value);
+    return value;
+  }
+}
+
+const app = defineCloudflareApp(AppModule);
+export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
+export default app.worker;
+```
+
+Only the methods `rpc` lists are reachable over RPC, and a failed call rejects
+with an `EntrypointError` whose status, code and details survive the RPC boundary
+from `compatibility_date` 2026-04-21 (or the `enhanced_error_serialization`
+flag); `vela deploy check` warns with `rpc-error-serialization` before that date.
+Host invocations, like Workflow runs (`VelaWorkflow`), service entrypoint calls
+(`VelaEntrypoint`) and `@OnEmail()`/`@OnTail()` handlers, run the guards,
+interceptors, pipes and filters declared on the host or handler class and method;
+application-wide `APP_GUARD`, `APP_INTERCEPTOR`, `APP_PIPE` and `APP_FILTER`
+components do not apply, so declare the guards those entrypoints need on them.
+`vela g durable-object` now writes such a host and class. See
+[Durable Objects](durable-objects.md) and [entrypoints](entrypoints.md).
+
+`VelaWebSocketDurableObject` boots through the same application context and also
+accepts the app. When its application fails to start, a waiting caller receives a
+redacted `EntrypointError` (`500 internal`) instead of the startup error, which the
+object logs; read the object's logs for the cause.
+
 ## Realtime
 
 Each live query, gateway push and presence roster is declared once.
@@ -761,6 +828,14 @@ every gateway. A `WS_SERVER` test double receives a gateway's pushes only while
 differs from `cmd.gatewayPath`, and every `redis()` instance is upgraded
 together.
 
+*1.32.0:* a gateway whose module sees two or more `WS_SERVER` providers fails
+bootstrap, also when they all come from `WebSocketModule` instances it imports:
+import one `WebSocketModule` instance in the gateway's module, or provide
+`WS_SERVER` there. A gateway now handles the `@SubscribeMessage()` events an
+ancestor class declares on methods it inherits unchanged, with the guards that
+apply to them, as in Nest; override such a method without the decorator where a
+gateway must not serve it.
+
 `PresenceService.beat()`, `PresenceService.roster()` and `presenceTag()` take the
 gateway path first, and a presence tag is `$presence:` plus a SHA-256 hex digest.
 `LiveQueryContext.path` is required, so code that builds a context, such as a
@@ -801,7 +876,7 @@ handles; pass `{ unhandled: 'ignore' }` to resolve with `handled: 0` instead.
 `addBulk` entries are typed one by one and keep the `{ job, data, options }`
 shape of `add()`.
 
-`@velajs/mail` reports an unclaimed `@OnInboundEmail` handler failure on the
+*1.32.0:* `@velajs/mail` reports an unclaimed `@OnInboundEmail` handler failure on the
 `'email'` edge of `ErrorReportContext` (with `kind: 'mail:inbound'`) instead of
 `'queue'`: an `ExceptionHandler` that selects inbound mail failures by
 `edge === 'queue'` matches `'email'` now. Cloudflare Workflows, Email Workers
@@ -896,6 +971,23 @@ ThrottlerModule.forRoot({
   `cloudflareTimeTravelPanel({ binding })`. `StudioAppHolder.capture(app, routePathOptions)`
   takes the application's `RoutePathOptions` (`app.getRoutePathOptions()`) instead
   of the global prefix string.
+- **Throttling (1.32.0):** the default in-memory `ThrottlerStorage` keeps each
+  counter for its own `ttl` and tracks at most `maxKeys` open windows (default
+  50,000). When they are all open, a request with a new key answers 429 until the
+  earliest window ends, instead of the store forgetting counters. Raise the bound
+  with `storage: () => new ThrottlerStorage({ maxKeys })`, keep in-memory windows
+  short, or count long ones in a shared store.
+- **Studio (1.32.0):** `StudioModule.forRoot({ plugins })` and `forRootAsync` fail
+  when a plugin provides `ENV`, `APP_LOGGER`, `ROOT_MODULE`, `Container`,
+  `DiscoveryService` or `EntrypointRegistry`; provide them in the application.
+  Studio reads these tokens application-wide, as `app.get()` does, and an
+  application with Studio fails to boot when a `@Global()` module exports a
+  `Container` other than the application's. `StudioDispatchRegistry` no longer
+  takes a `DiscoveryService` in its constructor.
+- **CRUD (1.32.0):** `CrudModule.forFeature()` reads repeated slashes as one when
+  it checks for duplicate paths, so two different features registered under
+  `'/notes'` and `'//notes'` fail bootstrap instead of both mounting. Mount each
+  path once, or import one shared `defineCrudFeature(...)` definition.
 
 See [caching](caching.md), [security](security.md) for CORS and throttling,
 [storage](../packages/storage/README.md) and [Studio](../packages/studio/README.md).
@@ -932,6 +1024,23 @@ Worker does inside the Workers Vitest pool, and its `fetch()`, `queue()` and
 `overrideModule(Module).useModule(Replacement)` and `useMocker(factory)`, and
 `Test.createTestingModule(metadata, options)` accepts every `VelaFactory.create`
 option. See [tooling](tooling.md) and [testing](testing.md).
+
+*1.32.0:*
+
+- `vela cf sync --write` keeps cron triggers no `@Cron` job declares, which a
+  Worker entry's own `scheduled` handler may serve, and a comparison reports them
+  without failing; pass `--prune` to remove them as before.
+- With a `wrangler.toml`, `vela add d1|kv|r2|queue` creates and registers the
+  resource, prints the binding table to add under `Manual steps required`, and
+  exits 2 instead of 0. Scripts that call it should treat 2 as "done, apart from
+  the printed steps" (1 still means failure).
+- `vela g durable-object` writes an `@Injectable()` host and a
+  `VelaDurableObject` class built from the Worker entry's app instead of a
+  `DurableObject` subclass, and `vela cf sync` binds a gateway binding that no
+  class serves only to a `VelaWebSocketDurableObject` class.
+- A module class that implements `NestModule` is built, and its `configure()`
+  called, after the whole graph is registered and, in `@velajs/testing`, after
+  provider overrides and `useMocker` apply.
 
 ## Optional transports and multiple databases
 

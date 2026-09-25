@@ -162,7 +162,8 @@ export class SupportInbox {
   silent.
 - Each handler runs in its own execution scope, in the Worker's application,
   through its scoped guards, interceptors and filters (`getType()`
-  `'cf:email'`, `getPayload()` the message). A failure is reported
+  `'cf:email'`, `getPayload()` the message); application-wide `APP_*`
+  components do not apply. A failure is reported
   (`edge: 'email'`) and rethrown to the platform once every handler settled,
   unless a scoped filter handles it (a filter can call `setReject()` on
   `getPayload()`).
@@ -198,7 +199,8 @@ export class ExceptionTail {
 
 Importing `OnTail` gives the Worker its `tail` handler. Every `@OnTail()`
 handler receives every batch, each in its own execution scope through its
-scoped guards, interceptors and filters (`getType()` `'cf:tail'`). A failure,
+scoped guards, interceptors and filters (`getType()` `'cf:tail'`);
+application-wide `APP_*` components do not apply. A failure,
 in a handler or around it, is reported (`edge: 'tail'`) and never thrown into
 the platform's tail loop. When the application fails to start, there is no
 `ExceptionHandler` to report through: the handler logs the error to the
