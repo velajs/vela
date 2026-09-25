@@ -403,6 +403,8 @@ export interface ModuleScope {
   lazy?: boolean;
   /** Class this module instance was loaded from; carries module-level `@Use*` metadata. */
   moduleClass?: Constructor;
+  /** Instance key of `moduleClass` (`DynamicModule.key`, or the default key). */
+  moduleKey?: string;
   /** Controllers declared by this module instance. */
   controllers?: ReadonlySet<Constructor>;
 }

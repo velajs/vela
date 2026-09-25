@@ -4,6 +4,7 @@
     "noEmit": true
   },
   "include": [
+    "src/__tests__/application-context.test.ts",
     "src/__tests__/cron-dialects.test.ts",
     "src/__tests__/schedule-lifetime.test.ts",
     "src/__tests__/schedule-invoke.test.ts",

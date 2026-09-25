@@ -23,7 +23,10 @@ class JobsModule {}
 ```
 
 Use `export default createCloudflareWorker(RootModule)` for each entrypoint; it
-seeds that Worker's native environment as the framework `ENV`. Give each Worker
+seeds that Worker's native environment as the framework `ENV`. An entry that
+also exports Durable Object classes built from its root defines the app once
+with `defineCloudflareApp(RootModule)` and exports `app.worker` (see
+[Durable Objects](durable-objects.md)). Give each Worker
 its own `wrangler types` output and type-check it as its own program, so its
 `VelaEnv` only has the bindings its Wrangler file declares.
 A root may also be a `DynamicModule` such as `AppModule.forRoot(...)`, declared

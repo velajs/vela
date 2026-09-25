@@ -444,6 +444,7 @@ export class ModuleLoader {
         global,
         lazy: isLazy,
         moduleClass,
+        moduleKey: key,
         controllers,
       });
 

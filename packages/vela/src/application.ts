@@ -1,8 +1,9 @@
 import type { VelaHono as Hono } from './http/hono.types';
 import { findRequestContainer } from './http/request-container';
 import { HTTPException } from 'hono/http-exception';
+import { VelaApplicationContext } from './application-context';
 import type { Container } from './container/container';
-import type { InferToken, Token, Type } from './container/types';
+import type { Type } from './container/types';
 import { defineProvider } from './container/types';
 import { APP_EXCEPTION_HANDLER } from './pipeline/tokens';
 import type { ExceptionHandler } from './exceptions/exception-handler';
@@ -10,56 +11,28 @@ import { isClientErrorStatus } from './exceptions/render-http-error';
 import { resolveErrorReporter } from './exceptions/reporter';
 import { buildMiddlewareExecutionContext } from './http/execution-context';
 import { sendHttpError } from './http/error-response';
-import { DiscoveryService } from './discovery/discovery.service';
-import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
-import { LazyModuleManager } from './module/lazy-modules';
 import type { CorsOptions } from './http/cors';
 import type { RouteDescription, RouteManager } from './http/route.manager';
 import type { RoutePathOptions } from './http/route-paths';
-import {
-  hasBeforeApplicationShutdown,
-  hasOnApplicationBootstrap,
-  hasOnApplicationShutdown,
-  hasOnModuleDestroy,
-  hasOnModuleInit,
-} from './lifecycle/index';
 import type { MountOpenApiOptions, OpenApiUi } from './openapi/types';
 import { renderScalarUi } from './openapi/scalar-ui';
 import { renderSwaggerUi } from './openapi/swagger-ui';
 import { renderRedocUi } from './openapi/redoc-ui';
 import type { FilterType, GuardType, InterceptorType, PipeType } from './registry/types';
 
-export class VelaApplication {
-  private instances: unknown[] = [];
+/**
+ * The HTTP application: an application context ({@link VelaApplicationContext})
+ * with the routes built on Hono, as Nest's `NestApplication` extends its
+ * application context.
+ */
+export class VelaApplication extends VelaApplicationContext {
   private honoApp: Hono | null = null;
-  private entrypointRegistry: EntrypointRegistry | null = null;
-  #disposal: Promise<void> | undefined;
-  private readonly lazyManager: LazyModuleManager | undefined;
-  // Identity guard for the instance flow: a token registered by BOTH a lazy
-  // and an eager module reaches us through the eager pass AND the absorbed
-  // batch — without dedup its hooks would run twice.
-  private readonly knownInstances = new Set<unknown>();
 
   constructor(
-    private readonly container: Container,
+    container: Container,
     private readonly routeManager: RouteManager,
   ) {
-    // bootstrap() registers the manager; a hand-built container may not have
-    // one (container unit tests) — lazy semantics simply don't engage then.
-    this.lazyManager = container.has(LazyModuleManager)
-      ? container.resolve(LazyModuleManager)
-      : undefined;
-    // Live-phase materializations join the instance flow so close()/dispose()
-    // run shutdown hooks over them (LIFO — appended last, destroyed first).
-    this.lazyManager?.setOnMaterialized((instances) => {
-      this.instances.push(...this.trackNew(instances));
-    });
-  }
-
-  private trackNew(batch: unknown[]): unknown[] {
-    const fresh = batch.filter((i) => !this.knownInstances.has(i));
-    for (const i of fresh) this.knownInstances.add(i);
-    return fresh;
+    super(container);
   }
 
   /** Pre-build routes (handles async CRUD imports). Called by VelaFactory. */
@@ -73,7 +46,7 @@ export class VelaApplication {
     // unredacted. `onError` funnels it through the same report-first + canonical
     // redacted body path every other edge uses.
     this.honoApp.onError((err, c) => {
-      const reporter = resolveErrorReporter(findRequestContainer(c) ?? this.container);
+      const reporter = resolveErrorReporter(findRequestContainer(c) ?? this.getContainer());
       // A Hono HTTPException with a 4xx status (an auth challenge, say) is a
       // deliberate client response, not a server fault. Everything else is
       // reported, as on the handler edge, including one with a status the
@@ -99,30 +72,6 @@ export class VelaApplication {
 
   get fetch(): Hono['fetch'] {
     return this.getApp().fetch;
-  }
-
-  getInstances(): unknown[] {
-    return this.instances;
-  }
-
-  getContainer(): Container {
-    return this.container;
-  }
-
-  setInstances(instances: unknown[]): void {
-    this.instances = instances;
-    this.knownInstances.clear();
-    for (const i of instances) this.knownInstances.add(i);
-  }
-
-  /**
-   * Resolve a provider from the application root. Request-scoped providers
-   * (declared or bubbled) have no root instance and throw; resolve them in an
-   * execution scope (`runInEntrypointScope`, `getRequestContainer(c)`) or
-   * with `ModuleRef.resolve(token, context)`.
-   */
-  get<K extends Token>(token: K): InferToken<K> {
-    return this.container.resolve(token);
   }
 
   getHonoApp(): Hono {
@@ -200,7 +149,7 @@ export class VelaApplication {
    * ```
    */
   useGlobalExceptionHandler(handler: Type<ExceptionHandler> | ExceptionHandler): this {
-    this.container.register(
+    this.getContainer().register(
       typeof handler === 'function'
         ? defineProvider(APP_EXCEPTION_HANDLER, { useClass: handler })
         : defineProvider(APP_EXCEPTION_HANDLER, { useValue: handler }),
@@ -263,185 +212,4 @@ export class VelaApplication {
 
     return this;
   }
-
-  // Lifecycle hooks
-
-  /**
-   * Pull instances materialized during the bootstrap phase (lazy modules
-   * dragged in by eager consumers) into the front of the instance list —
-   * dependency-before-consumer: a group absorbed because an eager provider
-   * injected it must be initialized before that consumer's hooks read it.
-   */
-  private absorbLazyInstances(prepend: boolean): unknown[] {
-    const batch = this.trackNew(this.lazyManager?.takeAbsorbed() ?? []);
-    if (batch.length === 0) return batch;
-    if (prepend) {
-      this.instances = [...batch, ...this.instances];
-    } else {
-      this.instances.push(...batch);
-    }
-    return batch;
-  }
-
-  async callOnModuleInit(): Promise<void> {
-    this.absorbLazyInstances(true);
-    // Index loop: hooks can trigger further absorptions, which append —
-    // the loop naturally covers them.
-    for (let i = 0; i < this.instances.length; i++) {
-      const instance = this.instances[i];
-      if (hasOnModuleInit(instance)) {
-        await instance.onModuleInit();
-      }
-      this.absorbLazyInstances(false);
-    }
-  }
-
-  async callOnApplicationBootstrap(): Promise<void> {
-    for (let i = 0; i < this.instances.length; i++) {
-      const instance = this.instances[i];
-      if (hasOnApplicationBootstrap(instance)) {
-        await instance.onApplicationBootstrap();
-      }
-      // Instances absorbed mid-phase already missed the init pass — run
-      // onModuleInit now; the loop then reaches them for the bootstrap hook.
-      for (const late of this.absorbLazyInstances(false)) {
-        if (hasOnModuleInit(late)) await late.onModuleInit();
-      }
-    }
-
-    // Computed-entrypoint contributors (ContributesEntrypoints) in lazy
-    // modules must exist before the snapshot below — materialize them now
-    // (the documented cost of contributing computed entrypoints), then run
-    // their hooks through the same absorb loop.
-    if (this.lazyManager) {
-      await this.lazyManager.materializeContributors();
-      let batch: unknown[];
-      while ((batch = this.absorbLazyInstances(false)).length > 0) {
-        for (const late of batch) {
-          if (hasOnModuleInit(late)) await late.onModuleInit();
-        }
-        for (const late of batch) {
-          if (hasOnApplicationBootstrap(late)) await late.onApplicationBootstrap();
-        }
-      }
-      // From here on, materializations replay their hooks at the trigger.
-      this.lazyManager.setPhaseLive();
-    }
-
-    // Build the per-app entrypoint registry AFTER the hooks: dispatchers that
-    // implement ContributesEntrypoints (WsDispatcher) finish their own
-    // discovery inside onApplicationBootstrap. Built here — not in
-    // VelaFactory/initRoutes — so slim bootstrap paths that never build HTTP
-    // routes (the Cloudflare Durable Object) still get `app.entrypoints`.
-    // Lazy-pending providers of declared kinds yield metadata-only entries
-    // (instance: undefined) — dispatchers re-resolve by token per event,
-    // which materializes the owning module at dispatch time.
-    const discovery = this.container.has(DiscoveryService)
-      ? this.container.resolve(DiscoveryService)
-      : new DiscoveryService(this.container);
-    this.entrypointRegistry = await EntrypointRegistry.build(discovery, this.instances, {
-      deferLazy: true,
-    });
-
-    // Make the per-app registry injectable (global token): providers that
-    // dispatch entrypoints themselves (the queue module's in-process driver
-    // binding) resolve it instead of needing a back-reference to the app.
-    // Registered AFTER build so anything resolving it sees the final registry;
-    // pre-bootstrap resolution attempts fail the `has()` probe and defer.
-    this.container.register(
-      defineProvider(EntrypointRegistry, { useValue: this.entrypointRegistry }),
-    );
-    this.container.markGlobalToken(EntrypointRegistry);
-  }
-
-  /**
-   * Materialize every still-pending lazy module (async-safe): construct the
-   * groups, replay their lifecycle hooks, and add their instances to the
-   * shutdown flow. Warmup escape hatch for tests and node runtimes that want
-   * eager-everything semantics back after bootstrap.
-   */
-  async materializeLazyModules(): Promise<void> {
-    await this.lazyManager?.materializeAll();
-  }
-
-  /**
-   * Every entrypoint contributed by the module graph, grouped by kind —
-   * what runtime adapters/transports query instead of re-scanning providers:
-   * `app.entrypoints.ofKind('websocket')`.
-   */
-  get entrypoints(): EntrypointRegistry {
-    if (!this.entrypointRegistry) {
-      throw new Error(
-        'Entrypoints are not built yet — they are assembled at the end of ' +
-          'callOnApplicationBootstrap(). Finish bootstrapping before querying them.',
-      );
-    }
-    return this.entrypointRegistry;
-  }
-
-  async close(signal?: string): Promise<void> {
-    const reversed = [...this.instances].reverse();
-
-    for (const instance of reversed) {
-      if (hasBeforeApplicationShutdown(instance)) {
-        await instance.beforeApplicationShutdown(signal);
-      }
-    }
-
-    for (const instance of reversed) {
-      if (hasOnModuleDestroy(instance)) {
-        await instance.onModuleDestroy();
-      }
-    }
-
-    for (const instance of reversed) {
-      if (hasOnApplicationShutdown(instance)) {
-        await instance.onApplicationShutdown(signal);
-      }
-    }
-  }
-
-  /**
-   * Full teardown: run shutdown lifecycle hooks ({@link close}) then dispose
-   * container-held instances (LIFO) and clear cached singletons. Use for
-   * graceful shutdown and dev HMR so old and new DI graphs never coexist.
-   *
-   * On runtimes/TS supporting explicit resource management this is also exposed
-   * as `Symbol.asyncDispose`, enabling `await using app = await VelaFactory.create(...)`.
-   */
-  dispose(signal?: string): Promise<void> {
-    // Share completion, including a failure, with every concurrent shutdown caller.
-    this.#disposal ??= Promise.resolve().then(async () => {
-      const failures: unknown[] = [];
-      try {
-        await this.close(signal);
-      } catch (error) {
-        failures.push(error);
-      }
-      try {
-        await this.container.dispose();
-      } catch (error) {
-        failures.push(error);
-      }
-      if (failures.length === 1) throw failures[0];
-      if (failures.length > 1)
-        throw new AggregateError(failures, 'Application cleanup failed', {
-          cause: failures[0],
-        });
-      return undefined;
-    });
-    return this.#disposal;
-  }
-}
-
-// Attach the well-known async-dispose symbol at runtime (it is not in the
-// ES2022 lib the project compiles against) so `await using` works where
-// supported, without a type dependency on esnext.disposable.
-const ASYNC_DISPOSE: symbol | undefined = (Symbol as { asyncDispose?: symbol }).asyncDispose;
-if (ASYNC_DISPOSE) {
-  (VelaApplication.prototype as unknown as Record<PropertyKey, unknown>)[ASYNC_DISPOSE] = function (
-    this: VelaApplication,
-  ): Promise<void> {
-    return this.dispose();
-  };
 }

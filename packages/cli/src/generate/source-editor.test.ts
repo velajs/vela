@@ -404,6 +404,21 @@ export default createCloudflareWorker(AppModule);
     ).toEqual({ name: 'AppModule', from: './app.module.js' });
     expect(workerRootImport('worker.ts', 'export default { fetch() {} };\n')).toBeUndefined();
   });
+
+  it('finds the root module defineCloudflareApp() receives', () => {
+    const entry = `import { defineCloudflareApp } from '@velajs/cloudflare';
+import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
+import { AppModule } from './app.module.js';
+
+const app = defineCloudflareApp(AppModule, { globalPrefix: '/api' });
+export class Room extends VelaWebSocketDurableObject(app) {}
+export default app.worker;
+`;
+    expect(workerRootImport('worker.ts', entry)).toEqual({
+      name: 'AppModule',
+      from: './app.module.js',
+    });
+  });
 });
 
 const WORKER_ENTRY = `import { createCloudflareWorker } from '@velajs/cloudflare';

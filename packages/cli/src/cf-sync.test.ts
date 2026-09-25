@@ -46,7 +46,13 @@ const APP: CloudflareFacts = {
     row('cf:queue', 'AuditConsumer#handle', { queueName: 'audit-log' }),
     row('websocket', 'ChatGateway', { options: { binding: 'CHAT_ROOM', path: '/chat' } }),
   ],
-  exports: { durableObjects: ['ChatRoom'], workflows: ['SignupFlow'], entrypoints: [] },
+  exports: {
+    durableObjects: ['ChatRoom'],
+    workflows: ['SignupFlow'],
+    entrypoints: [],
+    velaDurableObjects: [],
+    unexportedDurableObjects: [],
+  },
 };
 
 const TEXT = `{
@@ -139,7 +145,13 @@ describe('vela cf sync plan', () => {
 `;
     const plan = planCloudflareSync(wrangler(text), undefined, {
       entrypoints: APP.entrypoints.filter((entry) => entry.kind !== 'websocket'),
-      exports: { durableObjects: ['ChatRoom', 'Legacy'], workflows: [], entrypoints: [] },
+      exports: {
+        durableObjects: ['ChatRoom', 'Legacy'],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [],
+        unexportedDurableObjects: [],
+      },
     });
     const written = applyCloudflareSync(text, plan.changes);
     expect(written).toContain('// Keep me.');
@@ -170,7 +182,13 @@ describe('vela cf sync plan', () => {
       entrypoints: expressions.map((expression) =>
         row('schedule:cron', 'Jobs#run', { expression, methodName: 'run', dialect: 'cloudflare' }),
       ),
-      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+      exports: {
+        durableObjects: [],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [],
+        unexportedDurableObjects: [],
+      },
     });
     const sync = (text: string, facts: CloudflareFacts) =>
       applyCloudflareSync(
@@ -324,14 +342,26 @@ describe('vela cf sync plan', () => {
       '{\r\n\t"name": "shop",\r\n\t"main": "src/worker.ts",\r\n\t"triggers": { "crons": [] },\r\n\t"env": { "staging": {} }\r\n}\r\n';
     const plan = planCloudflareSync(wrangler(tabs), undefined, {
       entrypoints: APP.entrypoints.filter((entry) => entry.kind === 'schedule:cron'),
-      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+      exports: {
+        durableObjects: [],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [],
+        unexportedDurableObjects: [],
+      },
     });
     expect(applyCloudflareSync(tabs, plan.changes)).toBe(
       '{\r\n\t"name": "shop",\r\n\t"main": "src/worker.ts",\r\n\t"triggers": { "crons": ["0 3 * * *"] },\r\n\t"env": { "staging": {} }\r\n}\r\n',
     );
     const staging = planCloudflareSync(wrangler(tabs), 'staging', {
       entrypoints: APP.entrypoints.filter((entry) => entry.kind === 'queue:registration'),
-      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+      exports: {
+        durableObjects: [],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [],
+        unexportedDurableObjects: [],
+      },
     });
     expect(applyCloudflareSync(tabs, staging.changes)).toContain(
       '\t"env": { "staging": { "queues": { "producers": [{ "binding": "EMAILS", "queue": "shop-staging-emails" }] } } }\r\n',
@@ -342,7 +372,13 @@ describe('vela cf sync plan', () => {
         own,
         planCloudflareSync(wrangler(own), undefined, {
           entrypoints: [],
-          exports: { durableObjects: [], workflows: ['SignupFlow'], entrypoints: [] },
+          exports: {
+            durableObjects: [],
+            workflows: ['SignupFlow'],
+            entrypoints: [],
+            velaDurableObjects: [],
+            unexportedDurableObjects: [],
+          },
         }).changes,
       ),
     ).toBe(`{
@@ -367,7 +403,13 @@ describe('vela cf sync plan', () => {
         entrypoints: APP.entrypoints.filter(
           (entry) => entry.kind === 'schedule:cron' || entry.kind.startsWith('queue'),
         ),
-        exports: { durableObjects: [], workflows: [], entrypoints: [] },
+        exports: {
+          durableObjects: [],
+          workflows: [],
+          entrypoints: [],
+          velaDurableObjects: [],
+          unexportedDurableObjects: [],
+        },
       },
       { prune: true },
     );
@@ -398,7 +440,13 @@ describe('vela cf sync plan', () => {
 `;
     const plan = planCloudflareSync(wrangler(text), undefined, {
       entrypoints: APP.entrypoints.filter((entry) => entry.kind === 'queue:registration'),
-      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+      exports: {
+        durableObjects: [],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [],
+        unexportedDurableObjects: [],
+      },
     });
     expect(applyCloudflareSync(text, plan.changes)).toContain(
       `  "queues": { "producers": [{ "binding": "OTHER", "queue": "other" }, { "binding": "EMAILS", "queue": "shop-emails" }] },\n`,
@@ -447,7 +495,13 @@ describe('vela cf sync plan', () => {
         row('queue', 'Orphan', { queueName: 'orphans' }),
         row('websocket', 'Lobby', { binding: 'LOBBY' }),
       ],
-      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+      exports: {
+        durableObjects: [],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [],
+        unexportedDurableObjects: [],
+      },
     });
     expect(plan.changes).toEqual([]);
     expect(plan.warnings).toEqual([
@@ -456,6 +510,51 @@ describe('vela cf sync plan', () => {
       'A WebSocket gateway uses the Durable Object binding "LOBBY", which no exported class serves: export a VelaWebSocketDurableObject class from the Worker entry.',
       'The Durable Object binding "GONE" names class "Removed", which the Worker entry does not export.',
       'The Workflow "old" names class "OldFlow", which the Worker entry does not export.',
+    ]);
+  });
+
+  it('binds the gateway binding to the exported WebSocket Durable Object class', () => {
+    const text = `{\n  "name": "shop",\n  "main": "src/worker.ts"\n}\n`;
+    const plan = planCloudflareSync(wrangler(text), undefined, {
+      entrypoints: [row('websocket', 'Lobby', { binding: 'LOBBY' })],
+      exports: {
+        durableObjects: ['Counter', 'ChatRoom'],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [
+          { name: 'Counter', kind: 'host', host: 'CounterHost', methods: ['increment'] },
+          { name: 'ChatRoom', kind: 'websocket', methods: ['broadcast'] },
+        ],
+        unexportedDurableObjects: [],
+      },
+    });
+    expect(
+      plan.changes
+        .filter((change) => change.path.join('.') === 'durable_objects.bindings')
+        .map((change) => change.value),
+    ).toEqual([
+      { name: 'COUNTER', class_name: 'Counter' },
+      { name: 'LOBBY', class_name: 'ChatRoom' },
+    ]);
+    expect(plan.warnings).toEqual([]);
+  });
+
+  it('warns about Durable Object classes the app defines but the Worker entry does not export', () => {
+    const text = `{\n  "name": "shop",\n  "main": "src/worker.ts"\n}\n`;
+    const plan = planCloudflareSync(wrangler(text), undefined, {
+      entrypoints: [],
+      exports: {
+        durableObjects: [],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [],
+        unexportedDurableObjects: ['AuditHost', 'WebSocket'],
+      },
+    });
+    expect(plan.changes).toEqual([]);
+    expect(plan.warnings).toEqual([
+      'The app defines a Durable Object class for AuditHost, which the Worker entry does not export: export it (export class Name extends VelaDurableObject(app, AuditHost) {}) so Wrangler can bind it.',
+      'The app defines a Durable Object class for WebSocket, which the Worker entry does not export: export it (export class Name extends VelaWebSocketDurableObject(app) {}) so Wrangler can bind it.',
     ]);
   });
 
@@ -469,7 +568,13 @@ describe('vela cf sync plan', () => {
         'cf:queue:module',
         'cf:queue',
       ].map(placeholder),
-      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+      exports: {
+        durableObjects: [],
+        workflows: [],
+        entrypoints: [],
+        velaDurableObjects: [],
+        unexportedDurableObjects: [],
+      },
     });
     expect(plan).toEqual({ changes: [], warnings: [] });
   });

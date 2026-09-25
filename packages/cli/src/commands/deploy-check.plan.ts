@@ -51,6 +51,26 @@ const registrationSchema = z.object({
   consumers: z.array(queueName),
 });
 const moduleConsumerSchema = z.object({ consumers: z.array(queueName) });
+const durableObjectSchema = z.object({
+  kind: z.enum(['host', 'websocket']).optional(),
+  host: z.string().optional(),
+  methods: z.array(z.string()).optional(),
+  exported: z.boolean().optional(),
+});
+
+/**
+ * workerd keeps an error's own properties (`name`, `status`, `code`,
+ * `details`) across JS-RPC from this compatibility date, or with the
+ * `enhanced_error_serialization` flag. Before it, a caller receives a plain
+ * `Error` carrying only the message.
+ */
+const ENHANCED_ERROR_SERIALIZATION_DATE = '2026-04-21';
+
+function serializesErrorProperties(target: DeploymentTarget): boolean {
+  if (target.compatibilityFlags.includes('enhanced_error_serialization')) return true;
+  if (target.compatibilityFlags.includes('legacy_error_serialization')) return false;
+  return target.compatibilityDate >= ENHANCED_ERROR_SERIALIZATION_DATE;
+}
 
 /** Kinds older CLIs listed; their rows would silently stop counting. */
 const removedKinds: Readonly<Record<string, string>> = {
@@ -94,6 +114,8 @@ export function checkDeployment(
   let moduleConsumer = false;
   // Physical queues the native module consumer pins (its cf:queue:module rows).
   const modulePins = new Set<string>();
+  // Exported Durable Object hosts whose RPC calls reject with DurableObjectError.
+  const rpcHosts: string[] = [];
   const stale = (kind: string, replacement: string): void => {
     report(
       'stale-entrypoint-snapshot',
@@ -123,6 +145,7 @@ export function checkDeployment(
         'queue:registration',
         'rpc:client',
         'websocket',
+        'cf:durable-object',
       ].includes(row.kind)
     )
       continue;
@@ -132,6 +155,38 @@ export function checkDeployment(
       continue;
     }
     const meta = parsed.data;
+    if (row.kind === 'cf:durable-object') {
+      // `vela entrypoint list` lists the Durable Object classes built by
+      // @velajs/cloudflare that the Worker entry exports, and those its app
+      // defines without exporting them.
+      const durable = durableObjectSchema.safeParse(meta);
+      if (!durable.success) {
+        report('invalid-metadata', `Invalid ${row.kind} metadata.`);
+        continue;
+      }
+      if (durable.data.exported === false) {
+        warnings.push({
+          code: 'unexported-durable-object',
+          message:
+            `The app defines a Durable Object class (${row.target.replace(/^\(not exported\) /, '')}) ` +
+            'that the Worker entry does not export, so no binding can reach it.',
+        });
+      } else {
+        if (durable.data.kind === 'host' && (durable.data.methods?.length ?? 0) > 0) {
+          rpcHosts.push(row.target);
+        }
+        if (!target.durableObjectClasses.includes(row.target)) {
+          warnings.push({
+            code: 'unbound-durable-object',
+            message:
+              `The Worker exports the Durable Object class ${JSON.stringify(row.target)}, which no ` +
+              'durable_objects binding of the selected environment names; bind it (vela cf sync ' +
+              '--write) unless another Worker binds it.',
+          });
+        }
+      }
+      continue;
+    }
     if (row.kind === 'rpc:client') {
       // HTTP RPC clients need no Worker binding; declared bindings are mandatory.
       if (meta.binding === undefined) continue;
@@ -420,6 +475,20 @@ export function checkDeployment(
         'unhandled-queue-consumer',
         `No metadata handler for selected queue ${JSON.stringify(queue)}.`,
       );
+  if (rpcHosts.length > 0 && !serializesErrorProperties(target)) {
+    warnings.push({
+      code: 'durable-object-error-serialization',
+      message:
+        `The Durable Object ${rpcHosts.length === 1 ? 'class' : 'classes'} ` +
+        `${rpcHosts.map((name) => JSON.stringify(name)).join(', ')} reject failed RPC calls with ` +
+        `a DurableObjectError, but compatibility_date ${target.compatibilityDate} predates ` +
+        `${ENHANCED_ERROR_SERIALIZATION_DATE} without the enhanced_error_serialization flag: ` +
+        'callers receive a plain Error without its status, code and details, so ' +
+        'isDurableObjectError() is false. Set compatibility_date to ' +
+        `${ENHANCED_ERROR_SERIALIZATION_DATE} or later, or add enhanced_error_serialization to ` +
+        'compatibility_flags.',
+    });
+  }
   warnings.push({
     code: 'static-only',
     message:

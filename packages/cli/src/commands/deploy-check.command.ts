@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { Command, Option } from 'clipanion';
 import { loadConfig } from '../config.js';
-import { collectEntrypoints } from '../introspect.js';
+import { collectEntrypoints, collectWorkerDurableObjects } from '../introspect.js';
 import { readInput } from '../project/files.js';
 import { findWranglerConfig } from '../project/wrangler.js';
 import { withApp } from '../with-app.js';
@@ -92,7 +92,7 @@ export class DeployCheckCommand extends Command {
     category: 'Deployment',
     description: 'Check a Wrangler target against the application entrypoints.',
     details:
-      'Compares cron triggers, queue producers and consumers, and WebSocket Durable Object bindings of the Wrangler file in the working directory (or --config), at the top level or in the --env environment, and rejects directly dispatched cron jobs that declare guards. Without --entrypoints, the CLI builds the application from vela.config or the Worker entry with the Wrangler `vars` only (no bindings or secrets) and reads its entrypoints; with a saved `vela entrypoint list --json` snapshot, no application code is imported. Never runs a custom build, loads credentials or uploads. Wrangler remains the deployment tool. The suggested next step runs in the Wrangler file directory. For a project the Cloudflare Vite plugin builds (a vite.config.* beside the Wrangler file that references @cloudflare/vite-plugin, or the .wrangler/deploy/config.json redirect a Vite build writes), it builds the environment with Vite and dry-runs that build with the same --env, since `wrangler deploy --config` would bundle the source with esbuild, which emits no decorator metadata.',
+      'Compares cron triggers, queue producers and consumers, WebSocket Durable Object bindings and the Durable Object classes the Worker entry defines and exports (and whether the compatibility date keeps the shape of their RPC errors) with the Wrangler file in the working directory (or --config), at the top level or in the --env environment, and rejects directly dispatched cron jobs that declare guards. Without --entrypoints, the CLI builds the application from vela.config or the Worker entry with the Wrangler `vars` only (no bindings or secrets) and reads its entrypoints; with a saved `vela entrypoint list --json` snapshot, no application code is imported. Never runs a custom build, loads credentials or uploads. Wrangler remains the deployment tool. The suggested next step runs in the Wrangler file directory. For a project the Cloudflare Vite plugin builds (a vite.config.* beside the Wrangler file that references @cloudflare/vite-plugin, or the .wrangler/deploy/config.json redirect a Vite build writes), it builds the environment with Vite and dry-runs that build with the same --env, since `wrangler deploy --config` would bundle the source with esbuild, which emits no decorator metadata.',
     examples: [
       ['Check the top-level Worker', 'vela deploy check'],
       [
@@ -126,7 +126,10 @@ export class DeployCheckCommand extends Command {
       if (this.entrypoints === undefined) {
         const rows = await withApp(
           () => loadConfig(cwd, undefined, { environment: this.environment, wrangler: configPath }),
-          collectEntrypoints,
+          async (app, loaded) => [
+            ...collectEntrypoints(app),
+            ...(await collectWorkerDurableObjects(loaded)),
+          ],
           (message) => this.context.stderr.write(`${message}\n`),
           this.context.stderr,
         );

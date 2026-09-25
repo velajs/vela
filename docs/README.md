@@ -37,6 +37,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Observability](observability.md): optional request tracing, metrics, explicit context propagation,
   and an OpenTelemetry bridge.
 - [WebSockets](websockets.md): gateways, transports, rooms, and authentication.
+- [Durable Objects](durable-objects.md): one app definition, host classes as
+  typed JS-RPC methods through the pipeline, and standalone application contexts.
 - [Live queries](live-queries.md): subscriptions, invalidation, reconnects,
   delivery guarantees, and runtime limits.
 

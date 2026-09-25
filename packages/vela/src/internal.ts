@@ -18,7 +18,7 @@ export { countRegisteredClasses } from './registry/metadata.registry';
 // non-HTTP consumer (CLI tools, custom runtimes).
 export { bootstrap } from './factory/bootstrap';
 export type { BootstrapInternals, BootstrapOptions, BootstrapResult } from './factory/bootstrap';
-export { finalizeApplication } from './factory/finalize';
+export { finalizeApplication, finalizeApplicationContext } from './factory/finalize';
 export { applyRuntimeAdapters } from './factory/adapter';
 
 // Managers

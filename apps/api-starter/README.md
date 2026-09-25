@@ -63,8 +63,10 @@ because the general CRUD surface allows custom envelopes and projections; parse
 those responses before consuming them. The browser renders rows validated by
 the live contract.
 
-`AppModule` is declared once at module scope, and `src/worker.ts` passes it to
-both `createCloudflareWorker` and `VelaWebSocketDurableObject`. Bindings reach
+`AppModule` is declared once at module scope, and `src/worker.ts` defines the
+app once with `defineCloudflareApp(AppModule)`: it exports `app.worker` and the
+`LiveRoom` class built by `VelaWebSocketDurableObject(app)`, which share the
+root module and its options. Bindings reach
 the graph through dependency injection only: the `forRootAsync({ inject: [ENV] })`
 factories of Better Auth and CRUD run for each native environment, so every
 environment builds its own auth instance and adapter.

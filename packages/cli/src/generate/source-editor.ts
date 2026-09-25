@@ -690,17 +690,20 @@ function addExportText(file: string, source: string, name: string, from: string)
   return { source: code.toString(), changed: true };
 }
 
+/** The `@velajs/cloudflare` factories that take the application's root module first. */
+const ROOT_FACTORIES = new Set(['createCloudflareWorker', 'defineCloudflareApp']);
+
 /**
- * The root module the Worker entry passes to `createCloudflareWorker(...)`:
- * the name its file exports it under (`default` for a default import) and the
- * relative import source, or undefined when the entry builds the Worker
- * another way.
+ * The root module the Worker entry passes to `createCloudflareWorker(...)` or
+ * `defineCloudflareApp(...)`: the name its file exports it under (`default`
+ * for a default import) and the relative import source, or undefined when the
+ * entry builds the Worker another way.
  */
 export function workerRootImport(file: string, source: string): NamedImport | undefined {
   const program = parse(file, source);
   let root: string | undefined;
   for (const node of walk(program.body)) {
-    if (node.type !== 'CallExpression' || calleeName(node) !== 'createCloudflareWorker') continue;
+    if (node.type !== 'CallExpression' || !ROOT_FACTORIES.has(calleeName(node) ?? '')) continue;
     const [argument] = node.arguments;
     if (argument?.type === 'Identifier') root = argument.name;
     break;
@@ -714,6 +717,156 @@ export function workerRootImport(file: string, source: string): NamedImport | un
     return { name, from: declaration.source.value };
   }
   return undefined;
+}
+
+/** How the Worker entry builds its application, as {@link workerApp} reads it. */
+export interface WorkerApp {
+  /** The `@velajs/cloudflare` factory the entry calls with the root module. */
+  readonly factory: 'createCloudflareWorker' | 'defineCloudflareApp';
+  /** Whether the call passes options (runtime adapters, a global prefix, ...). */
+  readonly options: boolean;
+  /** The top-level `const` bound to `defineCloudflareApp(...)`, such as `app`. */
+  readonly binding?: string;
+}
+
+/** Whether `statement` declares the top-level `const` or `let` binding `name`. */
+function declaresBinding(statement: Program['body'][number], name: string): boolean {
+  const declaration =
+    statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement;
+  return (
+    declaration?.type === 'VariableDeclaration' &&
+    declaration.declarations.some(
+      (declarator) => declarator.id.type === 'Identifier' && declarator.id.name === name,
+    )
+  );
+}
+
+/**
+ * How the Worker entry builds its application: the factory it calls, whether
+ * it passes options, and the top-level `const` it binds the app to
+ * (`const app = defineCloudflareApp(AppModule, options)`), or undefined when
+ * it calls neither factory.
+ */
+export function workerApp(file: string, source: string): WorkerApp | undefined {
+  const program = parse(file, source);
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement;
+    if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') continue;
+    for (const declarator of declaration.declarations) {
+      const init = declarator.init;
+      if (
+        declarator.id.type === 'Identifier' &&
+        init?.type === 'CallExpression' &&
+        calleeName(init) === 'defineCloudflareApp'
+      ) {
+        return {
+          factory: 'defineCloudflareApp',
+          options: init.arguments.length > 1,
+          binding: declarator.id.name,
+        };
+      }
+    }
+  }
+  for (const node of walk(program.body)) {
+    if (node.type !== 'CallExpression') continue;
+    const factory = calleeName(node);
+    if (factory === 'createCloudflareWorker' || factory === 'defineCloudflareApp') {
+      return { factory, options: node.arguments.length > 1 };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The app a Worker entry imports and default-exports the Worker of
+ * (`import { app } from './app.js'; export default app.worker;`): the name its
+ * module exports it under (`default` for a default import) and the relative
+ * import source, or undefined.
+ */
+export function importedWorkerApp(file: string, source: string): NamedImport | undefined {
+  const program = parse(file, source);
+  const statement = program.body.find((node) => node.type === 'ExportDefaultDeclaration');
+  const expression =
+    statement?.type === 'ExportDefaultDeclaration' ? statement.declaration : undefined;
+  if (
+    expression?.type !== 'MemberExpression' ||
+    expression.computed ||
+    expression.object.type !== 'Identifier' ||
+    expression.property.type !== 'Identifier' ||
+    expression.property.name !== 'worker'
+  ) {
+    return undefined;
+  }
+  const local = expression.object.name;
+  for (const declaration of importDeclarations(program)) {
+    if (!declaration.source.value.startsWith('.')) continue;
+    const specifier = declaration.specifiers.find((candidate) => candidate.local.name === local);
+    if (specifier === undefined || specifier.type === 'ImportNamespaceSpecifier') continue;
+    const name = specifier.type === 'ImportSpecifier' ? exportName(specifier.imported) : 'default';
+    return { name, from: declaration.source.value };
+  }
+  return undefined;
+}
+
+/** What {@link addWorkerDeclaration} declares in the Worker entry. */
+export interface WorkerDeclaration {
+  /** The top-level binding the declaration uses, such as the app: it goes after it. */
+  readonly after: string;
+  /** The name it declares. */
+  readonly name: string;
+  /** The statement, with its leading comment. */
+  readonly declaration: string;
+  readonly imports: readonly NamedImport[];
+}
+
+/**
+ * Declare a statement that uses a top-level binding of the Worker entry, such
+ * as `export class Counter extends VelaDurableObject(app, CounterHost) {}`:
+ * before the default export when it follows the binding (keeping the default
+ * export's leading comments with it), else right after the binding.
+ */
+export function addWorkerDeclaration(
+  file: string,
+  source: string,
+  { after, name, declaration, imports }: WorkerDeclaration,
+): SourceEdit {
+  const { program, comments } = parseModule(file, source);
+  for (const node of walk(program.body)) {
+    if (
+      (node.type === 'ClassDeclaration' && node.id?.name === name) ||
+      (node.type === 'ExportSpecifier' && exportName(node.exported) === name) ||
+      (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.id.name === name)
+    ) {
+      throw new SourceEditError(`${file} already declares ${name}; choose another name.`);
+    }
+  }
+  const index = program.body.findIndex((statement) => declaresBinding(statement, after));
+  const binding = program.body[index];
+  if (binding === undefined) throw new SourceEditError(`${file} does not declare ${after}.`);
+  const code = new MagicString(source);
+  const exported = program.body.findIndex(
+    (statement) => statement.type === 'ExportDefaultDeclaration',
+  );
+  const defaultExport = exported > index ? program.body[exported] : undefined;
+  if (defaultExport) {
+    const lineStart = (offset: number): number => source.lastIndexOf('\n', offset - 1) + 1;
+    const startsLine = (offset: number): boolean =>
+      source.slice(lineStart(offset), offset).trim() === '';
+    let at = defaultExport.start;
+    // Comments on their own lines right above the default export stay with it.
+    for (const comment of comments.toReversed()) {
+      if (comment.end > at) continue;
+      if (source.slice(comment.end, at).trim() !== '' || !startsLine(comment.start)) break;
+      at = comment.start;
+    }
+    if (startsLine(at)) at = lineStart(at);
+    code.appendLeft(at, `${declaration}\n\n`);
+  } else {
+    code.appendLeft(binding.end, `\n\n${declaration}`);
+  }
+  addImports(code, source, program, imports);
+  return { source: code.toString(), changed: true };
 }
 
 /** Whether the module calls `object.method(...)` for one of `methods`, such as `QueueModule.forRoot()`. */

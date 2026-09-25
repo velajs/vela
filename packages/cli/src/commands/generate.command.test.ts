@@ -294,9 +294,24 @@ export class AppModule {}
     await scaffold('minimal');
     const result = await generate('g', 'durable-object', 'counter');
     expect(result.code, result.output).toBe(0);
-    expect(await read('src/counter/counter.durable-object.ts')).toContain(
-      'export class Counter extends DurableObject {',
+    expect(result.output).toContain('CREATE src/counter/counter.host.ts');
+    const host = await read('src/counter/counter.host.ts');
+    expect(host).toContain('@Injectable()\nexport class CounterHost {');
+    expect(host).toContain(
+      'constructor(@Inject(DO_STORAGE) private readonly storage: DurableObjectStorage) {}',
     );
+    expect(await read('src/counter/counter.durable-object.ts'))
+      .toBe(`import { VelaDurableObject } from '@velajs/cloudflare/durable-objects';
+import { AppModule } from '../app.module.js';
+import { CounterHost } from './counter.host.js';
+
+// Each instance boots AppModule with CounterHost as one of its providers. The
+// host methods rpc names are this class's RPC methods, and the host's guards,
+// pipes, interceptors and filters run around every call.
+export class Counter extends VelaDurableObject(AppModule, CounterHost, {
+  rpc: ['increment'],
+}) {}
+`);
     expect(await read('src/worker.ts'))
       .toBe(`import { createCloudflareWorker } from '@velajs/cloudflare';
 import { AppModule } from './app.module.js';
@@ -306,6 +321,128 @@ export default createCloudflareWorker(AppModule);
 `);
     expect(result.output).toContain(
       'vela cf sync --write adds the COUNTER binding and a migration',
+    );
+  });
+
+  it('defines a Durable Object from the app the Worker entry binds', async () => {
+    await scaffold('minimal');
+    const entry = `import { defineCloudflareApp } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+import { reporting } from './reporting.js';
+
+// The app: its Worker and its Durable Object classes share the adapters.
+const app = defineCloudflareApp(AppModule, { adapters: [reporting] });
+
+// The Worker's handlers.
+export default app.worker;
+`;
+    await writeFile(join(project, 'src/worker.ts'), entry);
+    const result = await generate('g', 'durable-object', 'ledger');
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain('CREATE src/ledger/ledger.host.ts');
+    expect(result.output).toContain('UPDATE src/worker.ts');
+    // The class uses the app, so it lives beside it: a separate file importing
+    // the entry would run before the entry defined the app.
+    await expect(read('src/ledger/ledger.durable-object.ts')).rejects.toThrow();
+    expect(await read('src/worker.ts'))
+      .toBe(`import { defineCloudflareApp } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+import { reporting } from './reporting.js';
+import { VelaDurableObject } from '@velajs/cloudflare/durable-objects';
+import { LedgerHost } from './ledger/ledger.host.js';
+
+// The app: its Worker and its Durable Object classes share the adapters.
+const app = defineCloudflareApp(AppModule, { adapters: [reporting] });
+
+// Each instance boots app, configured by its runtime adapters, with LedgerHost
+// as one of its providers. The host methods rpc names are this class's RPC
+// methods, and the host's guards, pipes, interceptors and filters run around
+// every call.
+export class Ledger extends VelaDurableObject(app, LedgerHost, {
+  rpc: ['increment'],
+}) {}
+
+// The Worker's handlers.
+export default app.worker;
+`);
+  });
+
+  it('imports the app a Worker entry imports into a new Durable Object', async () => {
+    await scaffold('minimal');
+    await writeFile(
+      join(project, 'src/app.ts'),
+      `import { defineCloudflareApp } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+
+export const app = defineCloudflareApp(AppModule);
+`,
+    );
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      `import { app } from './app.js';
+
+export default app.worker;
+`,
+    );
+    const result = await generate('g', 'durable-object', 'ledger');
+    expect(result.code, result.output).toBe(0);
+    expect(await read('src/ledger/ledger.durable-object.ts'))
+      .toBe(`import { VelaDurableObject } from '@velajs/cloudflare/durable-objects';
+import { app } from '../app.js';
+import { LedgerHost } from './ledger.host.js';
+
+// Each instance boots app, configured by its runtime adapters, with LedgerHost
+// as one of its providers. The host methods rpc names are this class's RPC
+// methods, and the host's guards, pipes, interceptors and filters run around
+// every call.
+export class Ledger extends VelaDurableObject(app, LedgerHost, {
+  rpc: ['increment'],
+}) {}
+`);
+    expect(await read('src/worker.ts')).toBe(`import { app } from './app.js';
+export { Ledger } from './ledger/ledger.durable-object.js';
+
+export default app.worker;
+`);
+  });
+
+  it('says when a new Durable Object cannot share the options of an unnamed app', async () => {
+    await scaffold('minimal');
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      `import { createCloudflareWorker } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+import { reporting } from './reporting.js';
+
+export default createCloudflareWorker(AppModule, { adapters: [reporting] });
+`,
+    );
+    const result = await generate('g', 'durable-object', 'ledger');
+    expect(result.code, result.output).toBe(0);
+    expect(await read('src/ledger/ledger.durable-object.ts')).toContain(
+      'export class Ledger extends VelaDurableObject(AppModule, LedgerHost, {',
+    );
+    expect(result.output).toContain(
+      'Ledger is built from the bare root module AppModule, so the options the Worker entry ' +
+        'passes to createCloudflareWorker(), such as its runtime adapters, do not configure it.',
+    );
+    expect(result.output).toContain('const app = defineCloudflareApp(AppModule, options)');
+  });
+
+  it('prints the Durable Object declaration an app-bound entry needs with --skip-import', async () => {
+    await scaffold('minimal');
+    const entry = `import { defineCloudflareApp } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+
+const app = defineCloudflareApp(AppModule);
+export default app.worker;
+`;
+    await writeFile(join(project, 'src/worker.ts'), entry);
+    const result = await generate('g', 'durable-object', 'ledger', '--skip-import');
+    expect(result.code, result.output).toBe(0);
+    expect(await read('src/worker.ts')).toBe(entry);
+    expect(result.output).toContain(
+      "Declare it in the Worker entry src/worker.ts, after app: import { VelaDurableObject } from '@velajs/cloudflare/durable-objects'; import { LedgerHost } from './ledger/ledger.host.js'; export class Ledger extends VelaDurableObject(app, LedgerHost, { rpc: ['increment'] }) {}",
     );
   });
 

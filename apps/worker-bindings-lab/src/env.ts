@@ -10,7 +10,7 @@ declare global {
       ASSETS: R2Bucket;
       JOB_QUEUE: Queue<unknown>;
       REPORT_QUEUE: Queue<unknown>;
-      COUNTER_DO: DurableObjectNamespace;
+      COUNTER_DO: DurableObjectNamespace<import('./worker.js').Counter>;
       AI: Ai;
       VECTORIZE: VectorizeIndex;
       HYPERDRIVE: Hyperdrive;
