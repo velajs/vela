@@ -151,15 +151,20 @@ vela deploy check
   `wrangler queues create`, then the producer and consumer are written to the
   Wrangler file), runs the project's `types` script and registers the binding.
   A d1/kv/r2 `BINDING` becomes a constant in `bindings.module.ts`, so a
-  JavaScript reserved word, or a name that file declares or imports (`ENV`,
-  `Global`, `InjectionToken`, `Module`, `defineProvider`, its module class), is
-  refused before anything is created. An existing `bindings.module.ts` keeps
-  its class name, which the root module imports. A queue's producer and
-  consumer are planned before `wrangler queues create`; in a `wrangler.toml`,
-  which the CLI does not edit, they are printed under
-  `Manual steps required` and the command exits 2 (0 means everything was
-  applied, 1 that it failed). Source edits keep a CRLF file CRLF and a comment
-  trailing a line on that line.
+  JavaScript reserved word, or a name that file declares (a class, function,
+  variable or enum) or imports (`ENV`, `Global`, `InjectionToken`, `Module`,
+  `defineProvider`, its module class), is refused before anything is created;
+  the `InjectionToken` an earlier `vela add` declared for that binding is
+  reused. An existing `bindings.module.ts` keeps its class name, which the
+  root module imports; a root module that already lists it, imported through a
+  path alias or a barrel, is left as it is. A queue's producer and consumer
+  are planned before `wrangler queues create`. Wrangler and the CLI edit
+  `wrangler.json` and `wrangler.jsonc` only: with a `wrangler.toml`, the
+  resource is created and registered, but its binding (a queue's producer and
+  consumer) is printed under `Manual steps required` and the command exits 2.
+  Exit code 0 means everything was applied, apart from the registration
+  `--skip-import` prints, and 1 that the command failed. Source edits keep a
+  CRLF file CRLF and a comment trailing a line on that line.
   `--config` is passed on to Wrangler; with a Wrangler file other than the
   default one, the `types` script (which reads the default file) is left for
   you to run against it. Every module edit is computed on the current sources

@@ -126,14 +126,19 @@ driver added to the root module unless a module already configures it.
 Wrangler file edit, is computed before anything is created, so a root module,
 `bindings.module.ts` or Wrangler file the CLI cannot edit fails with nothing
 created; a failed type refresh only warns. A D1, KV or R2 `BINDING` that is a
-JavaScript reserved word, or a name `bindings.module.ts` declares or imports
-(`ENV`, `Global`, `InjectionToken`, `Module`, `defineProvider` or its module
-class), is refused first. An existing `bindings.module.ts` keeps its class
-name. With a `wrangler.toml`, which the CLI does not edit, a queue is created
-and registered, but its producer and consumer are printed under
-`Manual steps required` and the command exits 2; exit code 0 means everything
-was applied, 1 that it failed. Source edits keep CRLF files CRLF.
-`--skip-import` prints the registration instead and needs no editable root.
+JavaScript reserved word, or a name `bindings.module.ts` declares (a class,
+function, variable or enum) or imports (`ENV`, `Global`, `InjectionToken`,
+`Module`, `defineProvider` or its module class), is refused first; the
+`InjectionToken` an earlier `vela add` declared for that binding is reused. An
+existing `bindings.module.ts` keeps its class name, and a root module that
+already lists it through a path alias or a barrel is left as it is. Wrangler
+and the CLI edit `wrangler.json` and `wrangler.jsonc` only: with a
+`wrangler.toml`, the resource is created and registered, but its binding (for a
+queue, its producer and consumer) is printed under `Manual steps required` and
+the command exits 2. Exit code 0 means everything was applied, apart from the
+registration `--skip-import` prints; 1 means the command failed. Source edits
+keep CRLF files CRLF. `--skip-import` prints the registration instead and needs
+no editable root.
 
 ### Keep Wrangler in sync
 

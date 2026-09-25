@@ -9,8 +9,10 @@ import {
   SourceEditError,
   addDeclaration,
   addToModule,
-  importedAndDeclaredNames,
+  declaresBindingToken,
+  importBinding,
   moduleClassExport,
+  topLevelNames,
   workerRootImport,
   type NamedImport,
 } from './generate/source-editor.js';
@@ -245,6 +247,50 @@ export const ${binding} = new InjectionToken<${type}>('${binding}');
 export class BindingsModule {}
 `;
 
+/**
+ * How the root module imports the bindings module class `name` declared in
+ * `file`: through the relative import it has already when that import names
+ * the class (directly or through files re-exporting it, such as a barrel),
+ * else through a new relative import. The module edit refuses a root that
+ * binds the name another way.
+ */
+async function bindingsImport(
+  root: NamedImport & { readonly source: string },
+  name: string,
+  file: string,
+): Promise<NamedImport> {
+  const planned = { name, from: importSpecifier(root.from, file, root.source) };
+  const bound = importBinding(root.from, root.source, name);
+  if (bound?.name === undefined || !bound.from.startsWith('.')) return planned;
+  const resolved = await resolveModuleClass(
+    await importedSource(root.from, bound.from),
+    bound.name,
+  );
+  return resolved?.file === file && resolved.name === name ? { name, from: bound.from } : planned;
+}
+
+/** The table a created D1, KV or R2 resource needs in a `wrangler.toml`, which Wrangler prints but does not write. */
+function tomlBinding(
+  resource: Exclude<Resource, 'queue'>,
+  binding: string,
+  name: string,
+  environment: string | undefined,
+): string {
+  const env = environment === undefined ? '' : `env.${environment}.`;
+  switch (resource) {
+    case 'd1':
+      return `[[${env}d1_databases]]\nbinding = "${binding}"\ndatabase_name = "${name}"\ndatabase_id = "<the database_id Wrangler printed above>"`;
+    case 'kv':
+      return `[[${env}kv_namespaces]]\nbinding = "${binding}"\nid = "<the id Wrangler printed above>"`;
+    case 'r2':
+      return `[[${env}r2_buckets]]\nbinding = "${binding}"\nbucket_name = "${name}"`;
+  }
+}
+
+/** The step that types a binding declared by hand. */
+const typesStep = (binding: string) =>
+  `Then run your types script (or wrangler types --include-runtime=false) so ENV.${binding} is typed.`;
+
 /** The files a registration writes and what to tell people, planned before anything is created. */
 interface RegistrationPlan {
   readonly writes: readonly { readonly path: string; readonly content: string }[];
@@ -326,12 +372,14 @@ async function planRegistration(
   // The bindings module may carry another name; the root imports it by that one.
   const bindingsClass =
     current === undefined ? 'BindingsModule' : moduleClassExport(bindingsFile, current);
-  const taken = new Set([
-    ...BINDINGS_MODULE_IMPORTS,
-    bindingsClass,
-    ...(current === undefined ? [] : importedAndDeclaredNames(bindingsFile, current)),
-  ]);
-  if (taken.has(binding)) {
+  // The token an earlier run declared for this binding is reused; any other
+  // name the module binds would be taken for the token.
+  const reused = current !== undefined && declaresBindingToken(bindingsFile, current, binding);
+  if (
+    BINDINGS_MODULE_IMPORTS.includes(binding) ||
+    binding === bindingsClass ||
+    (current !== undefined && !reused && topLevelNames(bindingsFile, current).has(binding))
+  ) {
     throw new Error(
       `${binding} would collide with a name ${bindingsLabel} declares or imports; choose another binding name.`,
     );
@@ -364,7 +412,7 @@ async function planRegistration(
     });
   }
   const imported = addToModule(root.from, root.source, 'imports', bindingsClass, {
-    imports: [{ name: bindingsClass, from: importSpecifier(root.from, bindingsFile, root.source) }],
+    imports: [await bindingsImport(root, bindingsClass, bindingsFile)],
     module: root.name,
   });
   if (imported.changed) writes.push({ path: root.from, content: imported.source });
@@ -426,8 +474,9 @@ function queueEditError(binding: string, label: string, cause: unknown): Error {
  * project's Wrangler (which adds the binding to the Wrangler file), register
  * it in the application, and refresh the binding types. The module edits and
  * a queue's Wrangler file edit are planned first: when one cannot be made,
- * nothing is created or written. What it cannot apply itself (a queue's
- * producer and consumer in a `wrangler.toml`) is returned as manual steps.
+ * nothing is created or written. What neither it nor Wrangler applies (the
+ * binding, or a queue's producer and consumer, in a `wrangler.toml`) is
+ * returned as manual steps.
  */
 export async function addResource(options: AddOptions): Promise<AddResult> {
   const { resource, binding, log } = options;
@@ -485,7 +534,7 @@ export async function addResource(options: AddOptions): Promise<AddResult> {
         options.environment === undefined ? 'queues' : `env.${options.environment}.queues`;
       manualSteps.push(
         `Add the queue to ${configLabel}:\n[[${table}.producers]]\nbinding = "${binding}"\nqueue = "${name}"\n\n[[${table}.consumers]]\nqueue = "${name}"`,
-        `Then run your types script (or wrangler types --include-runtime=false) so ENV.${binding} is typed.`,
+        typesStep(binding),
       );
     } else {
       await writeFile(configPath, planned, 'utf8');
@@ -504,6 +553,14 @@ export async function addResource(options: AddOptions): Promise<AddResult> {
       ...envArgs,
       ...configArgs,
     ]);
+    // Wrangler writes the binding into wrangler.json(c) only; for a TOML file
+    // it prints the snippet, which is left to the developer.
+    if (config.format === 'toml') {
+      manualSteps.push(
+        `Add the binding to ${configLabel}:\n${tomlBinding(resource, binding, name, options.environment)}`,
+        typesStep(binding),
+      );
+    }
   }
   for (const { path, content } of registration.writes) {
     // eslint-disable-next-line no-await-in-loop -- One file after the other.

@@ -1,6 +1,8 @@
 import MagicString from 'magic-string';
 import {
   parseSync,
+  type BindingPattern,
+  type BindingRestElement,
   type CallExpression,
   type Class,
   type Comment,
@@ -143,7 +145,29 @@ const sameModule = (a: string, b: string): boolean => {
   return file(a) === file(b);
 };
 
-/** The names the file's top-level statements declare (classes, functions, variables). */
+/** The names a binding pattern declares: `B`, `{ B }`, `[B]`, `{ a: { B = x } }`, `...B`. */
+function patternNames(pattern: BindingPattern | BindingRestElement): string[] {
+  switch (pattern.type) {
+    case 'Identifier':
+      return [pattern.name];
+    case 'AssignmentPattern':
+      return patternNames(pattern.left);
+    case 'RestElement':
+      return patternNames(pattern.argument);
+    case 'ArrayPattern':
+      return pattern.elements.flatMap((element) => (element === null ? [] : patternNames(element)));
+    case 'ObjectPattern':
+      return pattern.properties.flatMap((property) =>
+        patternNames(property.type === 'RestElement' ? property : property.value),
+      );
+  }
+}
+
+/**
+ * The value names the file's top-level statements declare: classes,
+ * functions, variables (destructured ones included), enums, namespaces and
+ * `import X = ...` aliases.
+ */
 function declaredNames(program: Program): Set<string> {
   const names = new Set<string>();
   for (const statement of program.body) {
@@ -160,40 +184,72 @@ function declaredNames(program: Program): Set<string> {
       names.add(node.id.name);
     } else if (node.type === 'VariableDeclaration') {
       for (const declarator of node.declarations) {
-        if (declarator.id.type === 'Identifier') names.add(declarator.id.name);
+        for (const name of patternNames(declarator.id)) names.add(name);
       }
+    } else if (node.type === 'TSEnumDeclaration' || node.type === 'TSImportEqualsDeclaration') {
+      names.add(node.id.name);
+    } else if (node.type === 'TSModuleDeclaration' && node.id.type === 'Identifier') {
+      names.add(node.id.name);
     }
   }
   return names;
 }
 
+/** What an import binds its local name to, for messages. */
+function importedAs(specifier: ImportDeclarationSpecifier): string {
+  if (specifier.type === 'ImportNamespaceSpecifier') return 'the module namespace';
+  if (specifier.type === 'ImportDefaultSpecifier') return 'the default export';
+  const imported = exportName(specifier.imported);
+  return imported === 'default' ? 'the default export' : `the export ${imported}`;
+}
+
 /**
  * Throw when a name of `wanted` is bound in the file to something else: a
- * name the file imports from another module, or declares itself, would be a
- * different binding, so the edit fails instead of treating it as imported.
+ * name the file declares itself, imports from another module, or imports
+ * from that module as another export (`{ Other as B }`, a default or
+ * namespace import) would be a different binding, so the edit fails instead
+ * of treating it as imported. With `listed`, the entry is in the list
+ * already and nothing is added: a name imported through a path alias or a
+ * package, which only the project's build resolves, is left as the file has
+ * it, since it may well name the same module.
  */
 function assertImportable(
   file: string,
   entry: string,
   program: Program,
   wanted: readonly NamedImport[],
+  listed: boolean,
 ): void {
-  const boundFrom = new Map<string, string>();
+  const bindings = new Map<
+    string,
+    { readonly from: string; readonly specifier: ImportDeclarationSpecifier }
+  >();
   for (const declaration of importDeclarations(program)) {
     for (const specifier of declaration.specifiers) {
-      boundFrom.set(specifier.local.name, declaration.source.value);
+      bindings.set(specifier.local.name, { from: declaration.source.value, specifier });
     }
   }
   const declared = declaredNames(program);
   for (const { name, from } of wanted) {
-    const current = boundFrom.get(name);
-    if (current !== undefined && !sameModule(current, from)) {
+    const current = bindings.get(name);
+    if (current === undefined) {
+      if (declared.has(name)) {
+        throw new SourceEditError(`${file} declares ${name} itself; register ${entry} yourself.`);
+      }
+      continue;
+    }
+    if (listed && !current.from.startsWith('.')) continue;
+    if (!sameModule(current.from, from)) {
       throw new SourceEditError(
-        `${file} imports ${name} from '${current}', not from '${from}'; register ${entry} yourself.`,
+        `${file} imports ${name} from '${current.from}', not from '${from}'; register ${entry} yourself.`,
       );
     }
-    if (current === undefined && declared.has(name)) {
-      throw new SourceEditError(`${file} declares ${name} itself; register ${entry} yourself.`);
+    const { specifier } = current;
+    if (specifier.type !== 'ImportSpecifier' || exportName(specifier.imported) !== name) {
+      throw new SourceEditError(
+        `${file} binds ${name} to ${importedAs(specifier)} of '${current.from}', not to its ` +
+          `export ${name}; register ${entry} yourself.`,
+      );
     }
   }
 }
@@ -564,8 +620,7 @@ function addToModuleText(
   options: { imports?: readonly NamedImport[]; unless?: RegExp; module?: string },
 ): SourceEdit {
   const { program, comments } = parseModule(file, source);
-  // Before anything else: an entry listed under a name bound elsewhere is not this one.
-  assertImportable(file, entry, program, options.imports ?? []);
+  const wanted = options.imports ?? [];
   const call = moduleDecorator(file, program, options.module, entry);
   const code = new MagicString(source);
   const [argument] = call.arguments;
@@ -592,6 +647,8 @@ function addToModuleText(
       const elements = array.elements.filter((element) => element !== null);
       const texts = elements.map((element) => source.slice(element.start, element.end));
       if (texts.includes(entry) || texts.some((text) => options.unless?.test(text))) {
+        // Listed under a name the file binds to another module, it is not this entry.
+        assertImportable(file, entry, program, wanted, true);
         return { source, changed: false };
       }
       const lineStart = source.lastIndexOf('\n', array.start) + 1;
@@ -614,7 +671,8 @@ function addToModuleText(
       }
     }
   }
-  addImports(code, source, program, options.imports ?? []);
+  assertImportable(file, entry, program, wanted, false);
+  addImports(code, source, program, wanted);
   return { source: code.toString(), changed: true };
 }
 
@@ -639,28 +697,68 @@ export function moduleClassExport(file: string, source: string): string {
   );
 }
 
-/** The names a module's top-level scope binds: its imports and its class and function declarations. */
-export function importedAndDeclaredNames(file: string, source: string): Set<string> {
-  const program = parse(file, source);
-  const names = new Set<string>();
-  for (const statement of program.body) {
-    const node =
-      (statement.type === 'ExportNamedDeclaration' ||
-        statement.type === 'ExportDefaultDeclaration') &&
-      statement.declaration !== null
-        ? statement.declaration
-        : statement;
-    if (
-      (node.type === 'ClassDeclaration' || node.type === 'FunctionDeclaration') &&
-      node.id !== null
-    ) {
-      names.add(node.id.name);
-    }
+/**
+ * The import binding the local name `name`: its module specifier and the
+ * export it names (`default` for a default import, undefined for a namespace
+ * import), or undefined when no import binds it.
+ */
+export function importBinding(
+  file: string,
+  source: string,
+  name: string,
+): { readonly from: string; readonly name: string | undefined } | undefined {
+  for (const declaration of importDeclarations(parse(file, source))) {
+    const specifier = declaration.specifiers.find((candidate) => candidate.local.name === name);
+    if (specifier === undefined) continue;
+    return {
+      from: declaration.source.value,
+      name:
+        specifier.type === 'ImportSpecifier'
+          ? exportName(specifier.imported)
+          : specifier.type === 'ImportDefaultSpecifier'
+            ? 'default'
+            : undefined,
+    };
   }
+  return undefined;
+}
+
+/** The value names a module's top-level scope binds: its imports and its declarations. */
+export function topLevelNames(file: string, source: string): Set<string> {
+  const program = parse(file, source);
+  const names = declaredNames(program);
   for (const declaration of importDeclarations(program)) {
     for (const specifier of declaration.specifiers) names.add(specifier.local.name);
   }
   return names;
+}
+
+/**
+ * Whether the module declares `name` as the injection token `vela add`
+ * writes for a binding of that name,
+ * `export const NAME = new InjectionToken<T>('NAME')`, and nothing else.
+ */
+export function declaresBindingToken(file: string, source: string, name: string): boolean {
+  const program = parse(file, source);
+  return program.body.some((statement) => {
+    if (statement.type !== 'ExportNamedDeclaration') return false;
+    const declaration = statement.declaration;
+    if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') return false;
+    const [declarator, ...others] = declaration.declarations;
+    const init = declarator?.init;
+    const [argument, ...rest] = init?.type === 'NewExpression' ? init.arguments : [];
+    return (
+      others.length === 0 &&
+      declarator?.id.type === 'Identifier' &&
+      declarator.id.name === name &&
+      init?.type === 'NewExpression' &&
+      init.callee.type === 'Identifier' &&
+      init.callee.name === 'InjectionToken' &&
+      rest.length === 0 &&
+      argument?.type === 'Literal' &&
+      argument.value === name
+    );
+  });
 }
 
 /** Add `export { name } from 'from';` to a module (the Worker entry), unless it exports `name`. */
