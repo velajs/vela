@@ -12,7 +12,7 @@ Make `defineModule` the one module engine with a uniform contract. A module decl
 
 **Behavior change:** removed with no alias: `defineConfigurableModule` and `DefineConfigurableModuleSpec` (use `defineModule`), `defineDynamicModule` (return a `DynamicModule` literal), `moduleKey` (use `stableHash` or `referenceKey`), `moduleToken` (use `new InjectionToken`), `provideGlobal` (use the `global:` slot of `setup`, or `{ provide: APP_GUARD, useClass }`), and the plugin API: `definePlugin`, `composePlugins`, `PluginRegistry`, `PluginRootModule`, `PLUGIN_REGISTRY_TOKEN` and the `Plugin` type (compose modules with `imports`).
 
-**Behavior change:** `@Module` no longer accepts `isGlobal`. A module class is global with `@Global()`, which now applies in either decorator order; one instance is global through `DynamicModule.global` (the `isGlobal` extra). `ModuleMetadata.isGlobal` is renamed `global`.
+**Behavior change:** `@Module` no longer accepts `isGlobal`. A module class is global with `@Global()`, which now applies in either decorator order; one instance is global through `DynamicModule.global` (the `isGlobal` extra). `ModuleMetadata.isGlobal` is renamed `global`. `ConfigModuleOptions` no longer declares `isGlobal`: `ConfigModule.forRoot({ load, isGlobal: true })` still takes it, as the extra it is on every module.
 
 **Behavior change:** `defineModule`'s `DefineModuleSpec`, `ModuleSetupContext`, `ConfigurableModuleAsyncOptions`, `ConfigurableModuleClassType` and `ConfigurableModuleHost` take the structural type argument (`ModuleFactoryOptions<Opts, S>` names the factory result).
 
