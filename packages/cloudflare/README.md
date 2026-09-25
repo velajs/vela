@@ -287,6 +287,78 @@ handlers still need the idempotency appropriate to their delivery semantics.
 See [execution scopes](../../docs/execution-scopes.md) for lifetime ownership,
 stream boundaries, cancellation and optional transport integration.
 
+## Native handler tracing
+
+Import `CloudflareTracingInterceptor` from the optional
+`@velajs/cloudflare/tracing` entrypoint and register it on HTTP controllers or
+`VelaEntrypoint` hosts with `@UseInterceptors`. It uses the native
+`cloudflare:workers` tracing API; the package root does not import it.
+
+```ts
+import { Controller, Get, Injectable, Module, UseInterceptors } from '@velajs/vela';
+import { defineCloudflareApp } from '@velajs/cloudflare';
+import { VelaEntrypoint } from '@velajs/cloudflare/entrypoints';
+import { CloudflareTracingInterceptor } from '@velajs/cloudflare/tracing';
+
+@Controller('/status')
+@UseInterceptors(CloudflareTracingInterceptor)
+class StatusController {
+  @Get()
+  async read() {
+    return { ready: true };
+  }
+}
+
+@Injectable()
+@UseInterceptors(CloudflareTracingInterceptor)
+class StatusHost {
+  async read() {
+    return { ready: true };
+  }
+}
+
+@Module({ controllers: [StatusController] })
+class AppModule {}
+
+const app = defineCloudflareApp(AppModule);
+export class Status extends VelaEntrypoint(app, StatusHost, { rpc: ['read'] }) {}
+export default app.worker;
+```
+
+Enable traces in Wrangler and choose an application sampling rate:
+
+```toml
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+```
+
+The interceptor calls `next.handle()` inside `tracing.enterSpan()` and returns
+its promise. Native child spans and awaited platform calls run within that
+callback's async context. Cloudflare owns sampling, span completion and export,
+including its service RPC transport instrumentation. Unsampled calls still run
+normally. Use a Workers runtime with the
+[native custom-span API](https://developers.cloudflare.com/workers/observability/traces/custom-spans/).
+
+Span names are fixed: `vela.http.handler` and `vela.rpc.handler`. Sampled spans
+add only `vela.handler.class` and `vela.handler.method`, each limited to 128
+characters. Symbol method names are omitted. Labels use runtime names, which
+may change with minification. No request values, arguments, errors, identifiers,
+HTTP status or outcome attributes are added by this interceptor. Other execution
+kinds pass through without a span.
+
+The span covers the handler and inner interceptors until their returned promise
+settles. Guards and pipes run earlier; response streams, deferred work and scope
+disposal can outlive it. This integration does not implement Vela's portable
+`Telemetry` interface or expose parent selection, span IDs or trace-header
+propagation. See [observability](../../docs/observability.md) for that separate API.
+
+The workerd tests exercise nested HTTP/RPC and KV calls, concurrent environments,
+errors and disabled sampling. They do not inspect exported span trees or assert
+parent IDs. Inspect sampled traces with Wrangler's
+[local tracing tools](https://developers.cloudflare.com/changelog/post/2026-08-04-local-tracing/)
+when verifying the runtime's exported hierarchy.
+
 ## Typed provider factories
 
 Bindings retain their full native API and generic parameters. There are no

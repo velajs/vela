@@ -12,6 +12,7 @@ const shared: UserConfig = {
     'src/storage.ts',
     'src/tail.ts',
     'src/testing.ts',
+    'src/tracing.ts',
     'src/workflows.ts',
   ],
   format: ['esm'],

@@ -8,6 +8,7 @@ import {
   VelaWebSocketDurableObject,
 } from '../../durable-objects';
 import { ENTRYPOINT_PROPS, VelaEntrypoint } from '../../entrypoints';
+import { TracingHost, TracingModule } from './tracing-fixture';
 import { VelaWorkflow, type WorkflowParams } from '../../workflows';
 import {
   APP_EXCEPTION_HANDLER,
@@ -497,7 +498,7 @@ export class BillingHost {
 }
 
 @Module({
-  imports: [WebSocketModule.forRoot()],
+  imports: [WebSocketModule.forRoot(), TracingModule],
   controllers: [PushController, CounterController, LedgerController],
   providers: [TestGateway, CounterStore, CallTrace, DenyGuard, Ledger, TenantGuard],
 })
@@ -515,6 +516,8 @@ export class NapWorkflow extends VelaWorkflow(app, NapHost) {}
 export class Billing extends VelaEntrypoint(app, BillingHost, {
   rpc: ['charge', 'leak', 'denied', 'reported'],
 }) {}
+
+export class TracingRpc extends VelaEntrypoint(app, TracingHost, { rpc: ['read', 'fail'] }) {}
 
 export class TestRoom extends VelaWebSocketDurableObject(app) {}
 
