@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   BadRequestException,
   Controller,
   Delete,
@@ -8,6 +9,8 @@ import {
   Param,
   Post,
   VelaFactory,
+  defineProvider,
+  type ErrorReportContext,
   type VelaApplication,
 } from '../index';
 import { WebSocketModule } from '../websocket/index';
@@ -80,6 +83,16 @@ function request(method: string, path: string): Request {
   return new Request(`http://app.test${path}`, { method });
 }
 
+/** A driver whose every dispatch fails, as an unreachable room would. */
+class FailingDriver implements LiveDriver {
+  readonly kind = 'failing';
+  readonly failure = new Error('live room unreachable');
+  bind(): void {}
+  dispatch(): Promise<CommitStamp> {
+    return Promise.reject(this.failure);
+  }
+}
+
 describe('@LiveInvalidates', () => {
   it('invalidates the declared tags after the handler and stamps the commit on its response', async () => {
     const driver = new RecordingDriver();
@@ -143,6 +156,143 @@ describe('@LiveInvalidates', () => {
       ]);
     } finally {
       await app.close();
+    }
+  });
+
+  it("reports a failed invalidation and still answers with the handler's committed result", async () => {
+    const driver = new FailingDriver();
+    const reports: Array<{ error: unknown; context: ErrorReportContext }> = [];
+    const writes: string[] = [];
+    const tagFailure = new Error('tags callback failed');
+
+    @Controller('/notes')
+    class NotesController {
+      @Post()
+      @LiveInvalidates(['notes'])
+      create(): { id: string } {
+        writes.push('n1');
+        return { id: 'n1' };
+      }
+
+      @Post('/derived')
+      @LiveInvalidates((): string[] => {
+        throw tagFailure;
+      })
+      derived(): { id: string } {
+        writes.push('n2');
+        return { id: 'n2' };
+      }
+    }
+
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot({ driver: () => driver })],
+      controllers: [NotesController],
+      providers: [
+        defineProvider(APP_EXCEPTION_HANDLER, {
+          useValue: {
+            report(error: unknown, context: ErrorReportContext) {
+              reports.push({ error, context });
+            },
+          },
+        }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const created = await app.fetch(request('POST', '/notes'));
+      expect(created.ok).toBe(true);
+      expect(await created.json()).toEqual({ id: 'n1' });
+      expect(created.headers.get(COMMIT_CURSOR_HEADER)).toBeNull();
+
+      const derived = await app.fetch(request('POST', '/notes/derived'));
+      expect(derived.ok).toBe(true);
+      expect(await derived.json()).toEqual({ id: 'n2' });
+
+      expect(writes).toEqual(['n1', 'n2']);
+      expect(reports).toEqual([
+        {
+          error: driver.failure,
+          context: expect.objectContaining({
+            edge: 'live',
+            source: 'NotesController.create',
+            note: 'invalidation failed after the handler succeeded',
+          }),
+        },
+        {
+          error: tagFailure,
+          context: expect.objectContaining({
+            edge: 'live',
+            source: 'NotesController.derived',
+            note: 'invalidation failed after the handler succeeded',
+          }),
+        },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('applies an ancestor declaration to the inherited method a controller routes', async () => {
+    class NotesBase {
+      @LiveInvalidates(['notes'])
+      create(): { id: string } {
+        return { id: 'n1' };
+      }
+    }
+    const inherited = Object.getOwnPropertyDescriptor(NotesBase.prototype, 'create')!;
+    @Controller('/notes')
+    class NotesController extends NotesBase {}
+    Post()(NotesController.prototype, 'create', inherited);
+
+    const reports: Array<{ error: unknown; context: ErrorReportContext }> = [];
+    const makeNotesApp = async (driver: LiveDriver) => {
+      @Module({
+        imports: [WebSocketModule.forRoot(), LiveModule.forRoot({ driver: () => driver })],
+        controllers: [NotesController],
+        providers: [
+          defineProvider(APP_EXCEPTION_HANDLER, {
+            useValue: {
+              report(error: unknown, context: ErrorReportContext) {
+                reports.push({ error, context });
+              },
+            },
+          }),
+        ],
+      })
+      class AppModule {}
+      return VelaFactory.create(AppModule);
+    };
+
+    const recording = new RecordingDriver();
+    const app = await makeNotesApp(recording);
+    try {
+      const response = await app.fetch(request('POST', '/notes'));
+      expect(await response.json()).toEqual({ id: 'n1' });
+      expect(recording.commands).toEqual([{ tags: ['notes'] }]);
+      expect(response.headers.get(COMMIT_CURSOR_HEADER)).toBe('1');
+    } finally {
+      await app.close();
+    }
+
+    // A failed invalidation of the inherited declaration is reported as the
+    // controller serves it, and the committed result still answers.
+    const failing = new FailingDriver();
+    const failingApp = await makeNotesApp(failing);
+    try {
+      const response = await failingApp.fetch(request('POST', '/notes'));
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toEqual({ id: 'n1' });
+      expect(response.headers.get(COMMIT_CURSOR_HEADER)).toBeNull();
+      expect(reports).toEqual([
+        {
+          error: failing.failure,
+          context: expect.objectContaining({ edge: 'live', source: 'NotesController.create' }),
+        },
+      ]);
+    } finally {
+      await failingApp.close();
     }
   });
 

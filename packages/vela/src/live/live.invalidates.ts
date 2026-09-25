@@ -1,4 +1,6 @@
 import { COMMIT_CURSOR_HEADER, COMMIT_EPOCH_HEADER } from '@velajs/live-protocol';
+import type { Container } from '../container/container';
+import { resolveErrorReporter } from '../exceptions/reporter';
 import { UseInterceptors } from '../pipeline/decorators';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '../pipeline/types';
 import { LiveInvalidation, stampCommitHeaders } from './live.invalidation';
@@ -25,12 +27,21 @@ function withCommitHeaders(response: Response, stamp: CommitStamp): Response {
   return stamped;
 }
 
-async function resolveInvalidation(context: ExecutionContext): Promise<LiveInvalidation> {
+function managedContainer(context: ExecutionContext): Container {
   const container = context.getContainer();
-  const owner = context.getClass().name;
   if (!container) {
-    throw new Error(`@LiveInvalidates on ${owner} runs only inside a Vela-managed handler.`);
+    throw new Error(
+      `@LiveInvalidates on ${context.getClass().name} runs only inside a Vela-managed handler.`,
+    );
   }
+  return container;
+}
+
+async function resolveInvalidation(
+  container: Container,
+  context: ExecutionContext,
+): Promise<LiveInvalidation> {
+  const owner = context.getClass().name;
   try {
     return await container.resolveAsync(LiveInvalidation, context.getModuleId());
   } catch (error) {
@@ -51,21 +62,44 @@ class LiveInvalidatesInterceptor<Result> implements NestInterceptor {
   async intercept(context: ExecutionContext, next: CallHandler): Promise<unknown> {
     // Resolve first: a module that cannot reach LiveModule fails before the
     // handler commits a write nobody would be told about.
-    const invalidation = await resolveInvalidation(context);
+    const container = managedContainer(context);
+    const invalidation = await resolveInvalidation(container, context);
     // The declaring decorator binds `Result` to this handler's awaited return type.
     const result = (await next.handle()) as Result;
-    const tags = typeof this.tags === 'function' ? this.tags(result, context) : this.tags;
-    if (tags.length === 0) return result;
-    const { room } = this.options;
-    const target = typeof room === 'function' ? room(result, context) : room;
-    const stamp = await invalidation.invalidate({
-      tags: [...tags],
-      ...(target === undefined ? {} : { room: target }),
-    });
+    let stamp: CommitStamp | undefined;
+    try {
+      stamp = await this.invalidate(invalidation, result, context);
+    } catch (error) {
+      // The handler's write is committed: a failed response would invite a
+      // retry that repeats it, and cannot repair the invalidation. Report it,
+      // answer with the handler's result, and let a later invalidation of the
+      // same tags bring subscribers up to date.
+      resolveErrorReporter(container).report(error, {
+        edge: 'live',
+        source: `${context.getClass().name}.${String(context.getHandlerName())}`,
+        note: 'invalidation failed after the handler succeeded',
+      });
+      return result;
+    }
     if (!stamp || context.getType() !== 'http') return result;
     if (result instanceof Response) return withCommitHeaders(result, stamp);
     stampCommitHeaders(context.switchToHttp().getResponse(), stamp);
     return result;
+  }
+
+  private async invalidate(
+    invalidation: LiveInvalidation,
+    result: Result,
+    context: ExecutionContext,
+  ): Promise<CommitStamp | undefined> {
+    const tags = typeof this.tags === 'function' ? this.tags(result, context) : this.tags;
+    if (tags.length === 0) return undefined;
+    const { room } = this.options;
+    const target = typeof room === 'function' ? room(result, context) : room;
+    return invalidation.invalidate({
+      tags: [...tags],
+      ...(target === undefined ? {} : { room: target }),
+    });
   }
 }
 
@@ -93,6 +127,16 @@ class LiveInvalidatesInterceptor<Result> implements NestInterceptor {
  * from the module that declares the controller, so that module must reach
  * `LiveModule`. On a WebSocket gateway handler it invalidates without
  * stamping.
+ *
+ * The invalidation runs after the handler committed its write. When it fails
+ * (the tags or room callback throws, or the live driver cannot reach the
+ * room), the failure goes to the application's error reporter (`edge:
+ * 'live'`) and the request still answers with the handler's result, without
+ * commit headers: a failed response would invite a retry that repeats the
+ * write, and a retry cannot repair the invalidation. Subscribers catch up at
+ * the next invalidation of the same tags. Keep writes idempotent (or accept an
+ * idempotency key) anyway, since a client may still retry a request whose
+ * response it never received.
  */
 export function LiveInvalidates<Result = unknown>(
   tags: LiveInvalidatesTags<Result>,

@@ -39,6 +39,11 @@ const idQuery = defineLiveQuery({
   args: z.object({ id: z.number() }),
   result: z.object({ id: z.number() }),
 });
+const pathQuery = defineLiveQuery({
+  name: 'gateway.list',
+  args: z.object({ listId: z.string() }),
+  result: z.object({ path: z.string(), version: z.number() }),
+});
 
 interface RawFrame {
   event: string;
@@ -96,6 +101,13 @@ function subscribeFrame(sub: string, args: unknown, extra?: Record<string, unkno
   return JSON.stringify({
     event: '$live',
     data: { t: 'sub', sub, query: 'shared.list', args, v: LIVE_PROTOCOL, ...extra },
+  });
+}
+
+function pathSubscribeFrame(sub: string): string {
+  return JSON.stringify({
+    event: '$live',
+    data: { t: 'sub', sub, query: pathQuery.name, args: { listId: 'l1' }, v: LIVE_PROTOCOL },
   });
 }
 
@@ -462,5 +474,58 @@ describe('LiveEngine refresh execution coalescing', () => {
     await engine.whenIdle();
 
     expect(executions).toBe(516);
+  });
+
+  it("never shares a run across gateways, so each subscriber sees its own gateway's result", async () => {
+    let version = 1;
+    let executions = 0;
+
+    @LiveResolver()
+    class SharedList {
+      @LiveQuery(pathQuery, { tags: ['rows'], coalesceBy: () => 'all-subscribers' })
+      list(_args: unknown, context: LiveQueryContext) {
+        executions += 1;
+        return { path: context.path, version };
+      }
+    }
+
+    @WebSocketGateway({ path: '/alpha' })
+    class AlphaGateway {}
+
+    @WebSocketGateway({ path: '/beta' })
+    class BetaGateway {}
+
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [AlphaGateway, BetaGateway, SharedList],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const dispatcher = app.get(WsDispatcher);
+    const engine = app.get(LiveEngine);
+    const invalidation = app.get(LiveInvalidation);
+    const alpha = new CoalescingClient('alpha-1', { tenantId: 'tenant-a' });
+    const alphaPeer = new CoalescingClient('alpha-2', { tenantId: 'tenant-a' });
+    const beta = new CoalescingClient('beta-1', { tenantId: 'tenant-a' });
+
+    await dispatcher.dispatchMessage('/alpha', alpha, pathSubscribeFrame('s1'));
+    await dispatcher.dispatchMessage('/alpha', alphaPeer, pathSubscribeFrame('s2'));
+    await dispatcher.dispatchMessage('/beta', beta, pathSubscribeFrame('s3'));
+    for (const client of [alpha, alphaPeer, beta]) client.clear();
+
+    version = 2;
+    await invalidation.invalidate({ tags: ['rows'] });
+    await engine.whenIdle();
+
+    // Three initial runs, then one refresh per gateway: the two /alpha
+    // subscribers still share theirs.
+    expect(executions).toBe(5);
+    expect(alpha.live()[0]).toMatchObject({ t: 'data', snapshot: { path: '/alpha', version: 2 } });
+    expect(alphaPeer.live()[0]).toMatchObject({
+      t: 'data',
+      snapshot: { path: '/alpha', version: 2 },
+    });
+    expect(beta.live()[0]).toMatchObject({ t: 'data', snapshot: { path: '/beta', version: 2 } });
   });
 });

@@ -4,7 +4,12 @@ import type { DynamicModule } from '../registry/types';
 import { Gateways } from './gateways';
 import { WebSocketPlatform, WebSocketRoutesModule } from './upgrade-routes';
 import { WsDispatcher } from './ws-dispatcher';
-import { RemoteSocketsWsServer, WsServerImpl } from './ws-server';
+import {
+  ForwardedUpgradesWsServer,
+  forwardedSocketsUnreachable,
+  RemoteSocketsWsServer,
+  WsServerImpl,
+} from './ws-server';
 import { InMemoryRoomRegistry, local, type RoomRegistry, type SyncDriver } from './ws-sync';
 import { WS_MODULE_OPTIONS, WS_ROOM_REGISTRY, WS_SERVER, WS_SYNC_DRIVER } from './websocket.tokens';
 
@@ -73,6 +78,10 @@ const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions, 'sync'>
           if (transport?.createServer) return transport.createServer(driver);
           // A transport that delivers pushes elsewhere keeps no sockets here.
           if (transport?.deliver) return new RemoteSocketsWsServer();
+          // Neither the transport nor the driver reaches a forwarded gateway's sockets.
+          if (forwardedSocketsUnreachable(transport, driver)) {
+            return new ForwardedUpgradesWsServer(driver);
+          }
           return new WsServerImpl(driver);
         },
         inject: [WS_SYNC_DRIVER, WebSocketPlatform],
