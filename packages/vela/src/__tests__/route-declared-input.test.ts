@@ -16,7 +16,12 @@ import {
   VelaFactory,
   type VelaApplication,
 } from '../index';
-import { defineRoute, type ContractBody, type ContractParams } from '../contract/index';
+import {
+  defineRoute,
+  type ContractBody,
+  type ContractParams,
+  type ContractQuery,
+} from '../contract/index';
 
 // Declared means enforced: a route validates every request group it declares
 // once, after guards, whether or not a parameter reads it.
@@ -215,6 +220,76 @@ describe('declared request groups', () => {
     await expect(start(Drafts)).rejects.toThrow(
       /Drafts\.create: the route declares the body schema; remove the schema from @Body\(\)/,
     );
+  });
+});
+
+describe('declared array fields beside fields JSON Schema cannot express', () => {
+  const Since = z.object({
+    since: z.coerce.date().optional(),
+    tags: z.array(z.string()).optional(),
+  });
+  const Scheduled = z.object({ at: z.coerce.date(), tags: z.array(z.string()) });
+  const list = defineRoute({ method: 'GET', path: '/agenda', query: Since });
+  const schedule = defineRoute({
+    method: 'POST',
+    path: '/agenda',
+    form: {},
+    body: Scheduled,
+  });
+  @Controller('/agenda')
+  class Agenda {
+    @Get(list)
+    list(@Query() query: ContractQuery<typeof list>) {
+      return { tags: query.tags ?? [] };
+    }
+
+    @Post(schedule)
+    schedule(@Body() body: ContractBody<typeof schedule>) {
+      return { at: body.at.toISOString(), tags: body.tags };
+    }
+  }
+
+  it('keeps a query key the contract declares as an array an array when sent once', async () => {
+    const app = await start(Agenda);
+    try {
+      const response = await send(app, 'GET', '/agenda?tags=a');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ tags: ['a'] });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the form fields the contract declares, rejecting unknown ones', async () => {
+    const app = await start(Agenda);
+    try {
+      const form = (entries: string[][]) => ({ body: new URLSearchParams(entries) });
+      const created = await send(
+        app,
+        'POST',
+        '/agenda',
+        form([
+          ['at', '2026-01-02'],
+          ['tags', 'x'],
+        ]),
+      );
+      expect(created.status).toBe(201);
+      expect(await created.json()).toEqual({ at: '2026-01-02T00:00:00.000Z', tags: ['x'] });
+      const unknown = await send(
+        app,
+        'POST',
+        '/agenda',
+        form([
+          ['at', '2026-01-02'],
+          ['tags', 'x'],
+          ['junk', '1'],
+        ]),
+      );
+      expect(unknown.status).toBe(400);
+      expect((await unknown.json()).error.message).toBe('Unknown form field: junk');
+    } finally {
+      await app.close();
+    }
   });
 });
 

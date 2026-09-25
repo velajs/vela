@@ -1,3 +1,4 @@
+import { hc } from 'hono/client';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -9,6 +10,7 @@ import {
   VelaFactory,
   type VelaApplication,
 } from '../index';
+import { defineRoute, type ContractApp, type ContractQuery } from '../contract/index';
 import { createOpenApiDocument } from '../openapi/index';
 import { ValidationPipe, type SchemaOutput } from '../validation/index';
 
@@ -275,5 +277,103 @@ describe('array-aware @Query', () => {
     expect(document.paths['/search/named']!.get!.parameters).toEqual([
       { name: 'tag', ...oneOrMany },
     ]);
+  });
+});
+
+// A list filter with a field JSON Schema cannot express beside an array field.
+const Since = z.object({
+  since: z.coerce.date().optional(),
+  tags: z.array(z.string()).optional(),
+});
+const Checked = z.object({
+  cursor: z.custom<string>((value) => typeof value === 'string').optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+// The same filter on a query class, validated by a global ValidationPipe.
+class SinceDto {
+  static schema = Since;
+  declare since?: Date;
+  declare tags?: string[];
+}
+
+const listEvents = defineRoute({
+  method: 'GET',
+  path: '/events',
+  query: Since,
+  response: z.object({ since: z.string().nullable(), tags: z.array(z.string()) }),
+});
+
+const shown = (query: SchemaOutput<typeof Since>) => ({
+  since: query.since?.toISOString() ?? null,
+  tags: query.tags ?? [],
+});
+
+@Controller('/events')
+class EventsController {
+  @Get(listEvents)
+  list(@Query() query: ContractQuery<typeof listEvents>) {
+    return shown(query);
+  }
+
+  @Get('/schema')
+  schema(@Query(Since) query: SchemaOutput<typeof Since>) {
+    return shown(query);
+  }
+
+  @Get('/checked')
+  checked(@Query(Checked) query: SchemaOutput<typeof Checked>) {
+    return { tags: query.tags ?? [] };
+  }
+
+  @Get('/dto')
+  dto(@Query() query: SinceDto) {
+    return shown(query);
+  }
+
+  @Get('/days')
+  days(@Query('days', z.array(z.coerce.date())) days: Date[]) {
+    return { days: days.map((day) => day.toISOString()) };
+  }
+}
+
+@Module({ controllers: [EventsController] })
+class EventsApp {}
+
+describe('array keys beside fields JSON Schema cannot express', () => {
+  it('keeps a key the schema declares as an array an array when sent once', async () => {
+    const app = await VelaFactory.create(EventsApp);
+    app.useGlobalPipes(new ValidationPipe());
+    try {
+      const events = (path: string) => app.fetch(new Request(`https://example.test/events${path}`));
+      for (const path of ['?tags=a', '/schema?tags=a', '/dto?tags=a']) {
+        const response = await events(path);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ since: null, tags: ['a'] });
+      }
+      const dated = await events('/schema?since=2026-01-02&tags=a');
+      expect(await dated.json()).toEqual({ since: '2026-01-02T00:00:00.000Z', tags: ['a'] });
+      expect(await (await events('/checked?cursor=c1&tags=a')).json()).toEqual({ tags: ['a'] });
+      expect(await (await events('/days?days=2026-01-02')).json()).toEqual({
+        days: ['2026-01-02T00:00:00.000Z'],
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('answers the query a typed contract client sends with one array element', async () => {
+    const app = await VelaFactory.create(EventsApp);
+    try {
+      const client = hc<ContractApp<[typeof listEvents]>>('https://example.test', {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          app.fetch(new Request(input, init)),
+      });
+      const listed = await client.events.$get({ query: { tags: ['a'] } });
+      expect(listed.status).toBe(200);
+      expect(await listed.json()).toEqual({ since: null, tags: ['a'] });
+    } finally {
+      await app.close();
+    }
   });
 });

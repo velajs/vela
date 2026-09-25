@@ -50,6 +50,11 @@ const Signup = z.object({
     .transform((value) => Number(value)),
 });
 
+// Fields JSON Schema cannot express (a coerced date, an instanceof check)
+// beside declared array fields.
+const Scheduled = z.object({ at: z.coerce.date(), tags: z.array(z.string()) });
+const Attachment = z.object({ file: z.instanceof(File), labels: z.array(z.string()) });
+
 let transforms = 0;
 const Counted = z.object({
   count: z.string().transform((value) => {
@@ -118,6 +123,16 @@ class Uploads {
   @Post('/explicit', { body: { multipart: { maxFileBytes: 4 * MiB, maxBytes: 5 * MiB } } })
   explicit(@Body('file', z.file()) file: File) {
     return { bytes: file.size };
+  }
+
+  @Post('/scheduled', { body: { form: {} } })
+  scheduled(@Body(Scheduled) form: SchemaOutput<typeof Scheduled>) {
+    return { at: form.at.toISOString(), tags: form.tags };
+  }
+
+  @Post('/attachment', { body: { multipart: {} } })
+  attachment(@Body(Attachment) form: SchemaOutput<typeof Attachment>) {
+    return { name: form.file.name, labels: form.labels };
   }
 
   @Post('/named', { body: { multipart: {} } })
@@ -567,6 +582,58 @@ describe('per-route URL-encoded and JSON bodies', () => {
       expect(document.paths['/uploads/json']!.post!.requestBody!['x-vela-body-limits']).toEqual({
         maxBytes: 64,
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps declared form fields beside fields JSON Schema cannot express', async () => {
+    const { app } = await start();
+    try {
+      const scheduled = await post(
+        app,
+        '/scheduled',
+        new URLSearchParams([
+          ['at', '2026-01-02'],
+          ['tags', 'x'],
+        ]),
+      );
+      expect(scheduled.status).toBe(201);
+      expect(await scheduled.json()).toEqual({ at: '2026-01-02T00:00:00.000Z', tags: ['x'] });
+      const unknown = await post(
+        app,
+        '/scheduled',
+        new URLSearchParams([
+          ['at', '2026-01-02'],
+          ['tags', 'x'],
+          ['junk', '1'],
+        ]),
+      );
+      expect(unknown.status).toBe(400);
+      expect((await unknown.json()).error.message).toBe('Unknown form field: junk');
+      const repeated = await post(
+        app,
+        '/scheduled',
+        new URLSearchParams([
+          ['at', '2026-01-02'],
+          ['at', '2026-01-03'],
+          ['tags', 'x'],
+        ]),
+      );
+      expect(repeated.status).toBe(400);
+      expect((await repeated.json()).error.message).toBe('Form field at must not be repeated');
+      // A field JSON Schema cannot express receives its entry as sent, for its
+      // schema to check.
+      const attached = new FormData();
+      attached.append('file', new File(['x'], 'x.txt'));
+      attached.append('labels', 'one');
+      const response = await post(app, '/attachment', attached);
+      expect(response.status).toBe(201);
+      expect(await response.json()).toEqual({ name: 'x.txt', labels: ['one'] });
+      const text = new FormData();
+      text.append('file', 'not a file');
+      text.append('labels', 'one');
+      expect((await post(app, '/attachment', text)).status).toBe(400);
     } finally {
       await app.close();
     }

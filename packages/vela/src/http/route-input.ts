@@ -33,7 +33,8 @@ type Group = keyof RouteInputValues;
 
 interface FormField {
   readonly multiple: boolean;
-  readonly file: boolean;
+  /** Undefined for a field JSON Schema cannot express: text or a file. */
+  readonly file?: boolean;
 }
 
 const DECORATOR: Record<Group, string> = { params: 'Param', query: 'Query', body: 'Body' };
@@ -73,24 +74,51 @@ function parameterSchema(param: ParamMetadata): ValidationSchema | undefined {
   return undefined;
 }
 
-/** The JSON Schema of a schema that can describe itself; undefined otherwise. */
-function describe(
-  schema: ValidationSchema | undefined,
-  direction: 'input' | 'output' = 'input',
-  libraryOptions?: Record<string, unknown>,
-): JsonObject | undefined {
-  if (!schema) return undefined;
-  let json: unknown;
+// A field JSON Schema cannot express (a coerced date, a custom check) is
+// described as any value (`{}`), for converters that take this option, so it
+// never hides the fields beside it. A converter that rejects the option
+// converts without it.
+const KEYS_ONLY = { unrepresentable: 'any' };
+
+function converted(convert: () => unknown): JsonObject | undefined {
   try {
-    json = standardJsonSchema(schema, direction, undefined, libraryOptions);
-    if (json === undefined && 'toJSONSchema' in schema && typeof schema.toJSONSchema === 'function')
-      json = 'schema' in schema ? schema.toJSONSchema(direction) : schema.toJSONSchema();
-    if (json === undefined && 'schema' in schema)
-      return describe(schema.schema, direction, libraryOptions);
+    const json = convert();
+    return isObject(json) ? json : undefined;
   } catch {
     return undefined;
   }
-  return isObject(json) ? json : undefined;
+}
+
+/**
+ * The JSON Schema of a schema that can describe itself; undefined otherwise. A
+ * descriptor or schema-carrying class that cannot convert itself is described
+ * by the schema it wraps.
+ */
+function describe(
+  schema: ValidationSchema | undefined,
+  direction: 'input' | 'output' = 'input',
+): JsonObject | undefined {
+  if (!schema) return undefined;
+  return (
+    converted(() => standardJsonSchema(schema, direction, undefined, KEYS_ONLY)) ??
+    converted(() => standardJsonSchema(schema, direction)) ??
+    converted(() =>
+      !('toJSONSchema' in schema) || typeof schema.toJSONSchema !== 'function'
+        ? undefined
+        : 'schema' in schema
+          ? schema.toJSONSchema(direction)
+          : schema.toJSONSchema(),
+    ) ??
+    ('schema' in schema ? describe(schema.schema, direction) : undefined)
+  );
+}
+
+// Whether a JSON Schema allows any value: `{}`, what a field JSON Schema
+// cannot express converts to.
+function anyValue(json: JsonObject): boolean {
+  return !['type', 'enum', 'const', 'anyOf', 'oneOf', 'allOf', '$ref', 'not'].some(
+    (keyword) => keyword in json,
+  );
 }
 
 function properties(json: JsonObject | undefined): [string, JsonObject][] {
@@ -101,10 +129,6 @@ function properties(json: JsonObject | undefined): [string, JsonObject][] {
     : [];
 }
 
-// A field JSON Schema cannot express (a coerced date, a custom check) still
-// names its key, for converters that take this option.
-const KEYS_ONLY = { unrepresentable: 'any' };
-
 /**
  * The keys an object schema accepts (`input`) or returns (`output`), or
  * undefined when it cannot say: it describes no object properties, or passes
@@ -114,7 +138,7 @@ function declaredKeys(
   schema: ValidationSchema,
   direction: 'input' | 'output',
 ): Set<string> | undefined {
-  const json = describe(schema, direction, KEYS_ONLY);
+  const json = describe(schema, direction);
   if (!isObject(json?.properties) || (json.additionalProperties ?? false) !== false)
     return undefined;
   return new Set(Object.keys(json.properties));
@@ -134,20 +158,26 @@ async function validate(schema: ValidationSchema, value: unknown): Promise<unkno
 }
 
 // Form fields a schema declares, checked before the route accepts requests: a
-// field is text or a file (`format: binary`), or an array of either.
+// field is text or a file (`format: binary`), or an array of either. A field
+// JSON Schema cannot express receives its entry as sent, text or a file, for
+// its schema to check; a whole body it cannot express declares no fields.
 function formFields(
   schema: ValidationSchema | undefined,
   body: ResolvedRouteBody,
   source: string,
 ): Map<string, FormField> | undefined {
   const json = describe(schema);
-  if (!json) return undefined;
+  if (!json || anyValue(json)) return undefined;
   if (json.type !== 'object' || !isObject(json.properties) || json.anyOf || json.oneOf)
     throw new Error(`${source}: a form body schema must be an object with named fields`);
   const fields = new Map<string, FormField>();
   for (const [name, field] of properties(json)) {
     const multiple = field.type === 'array';
-    const value = multiple ? field.items : field;
+    const value = multiple ? (field.items ?? {}) : field;
+    if (isObject(value) && anyValue(value)) {
+      fields.set(name, { multiple });
+      continue;
+    }
     if (!isObject(value) || value.type !== 'string')
       throw new Error(
         `${source}: form field ${name} must receive strings or files; transform wire strings in its schema`,
@@ -219,7 +249,7 @@ function formRecord(body: unknown, fields: Map<string, FormField> | undefined): 
     const file = typeof value !== 'string';
     const field = fields?.get(name);
     if (fields && !field) throw new BadRequestException(`Unknown form field: ${name}`);
-    if (field && file !== field.file)
+    if (field?.file !== undefined && file !== field.file)
       throw new BadRequestException(`Form field ${name} must be ${field.file ? 'a file' : 'text'}`);
     const previous = Object.hasOwn(result, name) ? result[name] : undefined;
     if (previous === undefined) {
