@@ -606,8 +606,8 @@ ThrottlerModule.forRoot({
 - **CORS:** `CorsModule` and `CORS_OPTIONS` are removed, and `CorsOptions` moves to
   `@velajs/vela`. Call `app.enableCors(options)` or pass the `cors` create option
   (`createCloudflareWorker(AppModule, { cors })` on Workers). CORS runs ahead of
-  body limits, middleware and guards. A credentialed `'*'` origin or a negative
-  `maxAge` throws, and framework CORS cannot be combined with `SecurityModule`'s
+  body limits, middleware and guards. A credentialed `'*'` origin or a `maxAge` that is
+  not a non-negative integer throws, and framework CORS cannot be combined with `SecurityModule`'s
   exact-origin `cors` option (pass `cors: false` there).
 - **Throttling:** `ThrottlerModule.forRoot({ limit, ttl })` becomes
   `forRoot({ throttlers: [{ limit, ttl }] })`, and `@Throttle({ limit, ttl })`
