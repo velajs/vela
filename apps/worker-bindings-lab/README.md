@@ -46,3 +46,14 @@ send it through the `REPORT_QUEUE` producer binding, and the Worker's `queue()`
 handler routes the delivered envelope to `@Processor('reports')`. `POST /lab/queue`
 sends a raw body with the native `JOB_QUEUE` binding, and
 `@QueueConsumer('JOB_QUEUE')` receives that physical queue's batches whole.
+
+The Worker entry also exports a `Signup` Workflow
+(`VelaWorkflow(app, SignupHost)`) and a `Quotes` service entrypoint
+(`VelaEntrypoint(app, QuotesHost, { rpc: ['quote'] })`), both of which run in
+the Worker's own application. `POST /lab/signups` creates a Signup instance
+through the `SIGNUP_WORKFLOW` binding, typed from the exported class's `run`;
+the tests then run the instance with an in-memory step and call `quote()` with
+a binding's `props`, which the host reads as `ENTRYPOINT_PROPS`. `@OnEmail({ to:
+'reports@lab.example' })` and `@OnTail()` on `WorkerEvents` give the Worker its
+`email` and `tail` handlers: mail for another address is rejected, and tail
+batches are counted into `EVENT_LOG`.

@@ -1,4 +1,5 @@
 import type { ExecutionContext } from 'hono';
+import type { WorkflowStep } from 'cloudflare:workers';
 import { ENV } from '@velajs/vela';
 import { CLOUDFLARE_DURABLE_OBJECT, CLOUDFLARE_WORKER } from '@velajs/cloudflare';
 import type { MockWorkerEnv } from '../src/mock-env.js';
@@ -199,4 +200,108 @@ describe('Worker bindings lab consumer project', () => {
 
     expect(env.EVENT_LOG).toEqual(['quarter-hourly:3000', 'queue:1']);
   });
+
+  it('runs Workflows, service entrypoints, email and tail in the Worker application', async () => {
+    const { default: worker, Quotes, Signup } = await import('../src/worker.js');
+    const descriptor = worker[CLOUDFLARE_WORKER];
+    expect(descriptor.workflows.map(({ host }) => host.name)).toEqual(['SignupHost']);
+    expect(descriptor.entrypoints).toMatchObject([{ methods: ['quote'] }]);
+    const env = createMockWorkerEnv();
+    const ctx = createExecutionContext();
+
+    // Worker code starts an instance through the typed Workflow binding.
+    const started = await fetchJson(worker.fetch, '/lab/signups', env, ctx, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'ada@lab.example' }),
+    });
+    expect(started.body).toEqual({ id: 'signup-1' });
+    expect(env.SIGNUP_WORKFLOW._created).toEqual([
+      { id: 'signup-1', params: { email: 'ada@lab.example' } },
+    ]);
+
+    // The engine runs the instance: its step passes through to the host.
+    const steps: string[] = [];
+    const step: WorkflowStep = {
+      async do<T>(name: string, ...rest: unknown[]): Promise<T> {
+        steps.push(name);
+        const callback = rest.find((value) => typeof value === 'function');
+        if (typeof callback !== 'function') throw new TypeError('step.do needs a callback');
+        return Reflect.apply(callback, undefined, []);
+      },
+      sleep: async () => {},
+      sleepUntil: async () => {},
+      async waitForEvent() {
+        throw new Error('The lab Workflow waits for no event.');
+      },
+    };
+    const run = await new Signup(platformContext(), env).run(
+      {
+        payload: { email: 'ada@lab.example' },
+        timestamp: new Date(0),
+        instanceId: 'signup-1',
+        workflowName: 'signups',
+      },
+      step,
+    );
+    expect(run).toEqual({ welcomed: 'ada@lab.example' });
+    expect(steps).toEqual(['welcome']);
+
+    // A service binding's props reach the host as ENTRYPOINT_PROPS.
+    await env.CACHE.put('price:sku-1', '1250');
+    const quote = await new Quotes(platformContext({ caller: 'storefront' }), env).quote('sku-1');
+    expect(quote).toEqual({ sku: 'sku-1', cents: 1250, caller: 'storefront' });
+
+    // Email and tail handlers exist because the app declares them.
+    const archived: string[] = [];
+    const rejected: string[] = [];
+    const inbound = (to: string): ForwardableEmailMessage => ({
+      from: 'ops@partner.example',
+      to,
+      headers: new Headers(),
+      raw: new ReadableStream(),
+      rawSize: 0,
+      setReject: (reason) => void rejected.push(reason),
+      forward: async (rcptTo) => {
+        archived.push(rcptTo);
+        return { messageId: 'archived' };
+      },
+      reply: async () => ({ messageId: 'reply' }),
+    });
+    await worker.email?.(inbound('reports@lab.example'), env, ctx);
+    await worker.email?.(inbound('unknown@lab.example'), env, ctx);
+    expect(archived).toEqual(['archive@lab.example']);
+    expect(rejected).toEqual(['No handler accepts mail for this address.']);
+    const failed: TraceItem = {
+      event: null,
+      eventTimestamp: 0,
+      logs: [],
+      exceptions: [],
+      diagnosticsChannelEvents: [],
+      scriptName: 'storefront',
+      outcome: 'exception',
+      executionModel: 'stateless',
+      truncated: false,
+      cpuTime: 1,
+      wallTime: 1,
+    };
+    await worker.tail?.([failed], env, ctx);
+
+    expect(env.EVENT_LOG).toEqual([
+      'signup:ada@lab.example',
+      'email:ops@partner.example',
+      'tail:1',
+    ]);
+  });
 });
+
+function isPlatformContext(value: object): value is globalThis.ExecutionContext {
+  return 'waitUntil' in value && 'props' in value;
+}
+
+/** The context the platform hands a Workflow run or a service entrypoint call. */
+function platformContext(props: unknown = {}): globalThis.ExecutionContext {
+  const ctx = { waitUntil() {}, passThroughOnException() {}, props, exports: {} };
+  if (!isPlatformContext(ctx)) throw new Error('Not an execution context.');
+  return ctx;
+}
