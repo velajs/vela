@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.32.0
+
+### Minor Changes
+
+- ef18e04: The storage controller's POST routes (`/sign-upload`, `/multipart/create`, `/multipart/sign-part`, `/multipart/complete`, `/multipart/abort`, `/delete` and `/sign-download`) declare `@HttpCode(200)`, so OpenAPI and `vela client generate` keep documenting 200 now that POST routes default to 201. They already answered 200, since their handlers return their own `c.json()` responses. **Behavior change:** the `@velajs/vela` peer range becomes `^1.32.0`, the core this release ships with, so this is a minor release even though the routes behave as before: a release that raises a peer floor never ships as a patch that an existing range would install. With core 1.31, keep `@velajs/storage` 1.31.0, which already sent and documented these routes as 200.
+
+### Patch Changes
+
+- Updated dependencies [9dea818]
+- Updated dependencies [524e422]
+- Updated dependencies [a7d0912]
+- Updated dependencies [04e7ac5]
+- Updated dependencies [ff98301]
+- Updated dependencies [38ab1e5]
+- Updated dependencies [38ab1e5]
+- Updated dependencies [9c1bd0b]
+- Updated dependencies [e412fc8]
+- Updated dependencies [bcdf5e3]
+- Updated dependencies [d5a8c60]
+  - @velajs/vela@1.32.0
+
 ## 1.31.0
 
 ### Minor Changes

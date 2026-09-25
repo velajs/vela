@@ -1,5 +1,44 @@
 # @velajs/studio
 
+## 1.32.0
+
+### Minor Changes
+
+- ff98301: Module descriptions name their visibility flag `global`, as `ModuleMetadata` (`@Global()`) and `DynamicModule` do.
+  
+  **Behavior change:** `ModuleDescription.isGlobal` (from `Container.getModuleDescriptions()`, `@velajs/vela/module-kit`) is removed; read `ModuleDescription.global`. The internal `ModuleScope.isGlobal` passed to `Container.registerScope()` (`@velajs/vela/internal`) is renamed `global` too. `vela module graph --json` and the `vela mcp serve` `module_graph`/`token_describe` results report `global` instead of `isGlobal`. The Studio wire protocol moves to version 4 (`STUDIO_PROTOCOL_VERSION`): `app.modules` rows carry `global` instead of `isGlobal` (`ModuleNode.global` in `@velajs/studio-protocol`), so upgrade `@velajs/studio`, `@velajs/studio-host` and `@velajs/studio-ui` together (a host or UI on protocol 3 refuses a protocol-4 application, and the reverse). Studio and CLI 1.31.0 read `isGlobal` and accept core 1.32.0 through their `^1.31.0` peer ranges without a warning: the CLI then reports no module as global, and Studio sends module rows without the `isGlobal` field its protocol-3 UI requires, so upgrade `@velajs/cli` and `@velajs/studio` to 1.32.0 with the core. The `isGlobal` registration extra of `forRoot()` options is unchanged.
+- e412fc8: Studio and its panels read the framework tokens `ENV`, `APP_LOGGER`, `ROOT_MODULE`, `Container`, `DiscoveryService` and `EntrypointRegistry` from the application, application-wide as `app.get()` does. They injected them in StudioModule's scope, which plugin providers and the modules plugins import join, so a plugin's provider, or an export of a module a plugin imported, answered before the application's registration: Studio read the panel's `ENV` (its admin token among it), described another root module or inspected another container, while `app.get()` returned the application's. That included a module another plugin's import had already loaded with those exports and a `@Global()` module nested inside a plugin import exporting `ENV` while the application seeded one.
+  
+  Studio reads the `ENV` the runtime seeds (`@velajs/cloudflare`, `VelaFactory.create(App, { env })`), else the one a `@Global()` module exports to every module. An `ENV` a module registers for itself or exports to its importers only is not the application's and leaves Studio closed, as does a `@Global()` module listing `ENV` among its exports without providing it or importing a module that exports one.
+  
+  **Behavior change:** `StudioModule.forRoot({ plugins })` and `forRootAsync` fail, naming the plugin and the token, when a plugin provides one of these tokens: in Studio's scope it would answer first for the panels' providers, and where the application registers none (no `LoggingModule`, no seeded `ENV`) application-wide lookups would return it. Previously the plugin's provider silently replaced the application's inside Studio. Provide these tokens in the application, not in a panel. A plugin's imports are not checked: what they export to their importers never answers for Studio when the application registers the token. Where it registers none, such as `APP_LOGGER` without `LoggingModule` or an `ENV` neither seeded nor exported by a `@Global()` module, Studio's lookups fall back to another module's registration exactly as `app.get()` does; Studio's own `VELA_STUDIO_*` settings never read such an `ENV`. An explicit application registration, such as a seeded `ENV`, answers first; a `@Global()` module exporting `ROOT_MODULE` or `DiscoveryService`, one a plugin imports included, overrides that framework default for the whole application, for `app.get()` and Studio alike. An application with Studio now fails to boot when a `@Global()` module exports a `Container` other than the application's; Studio used that container and read its `ENV` and admin token. Remove that export. A custom panel's provider that injects one of these tokens directly resolves it in Studio's scope, where every plugin's imports are visible; `moduleRef.get(TOKEN, { strict: false })` reads the application's. `StudioDispatchRegistry` resolves `DiscoveryService` from the application, so its constructor no longer takes one.
+
+### Patch Changes
+
+- 77f36c9: The admin routes and `studioRuntimeAdapter` read Studio's own `STUDIO_RESOLVED_CONFIG`, `AdminSubTokenSigner`, `StudioDispatchRegistry` and `StudioAppHolder` in StudioModule's scope. They looked them up application-wide, where a module registering one of them without exporting it answered when it loaded before StudioModule, as a module a plugin imports does: the admin surface then accepted that module's token, minted sub-tokens with its signer and filled its route holder.
+- Updated dependencies [9dea818]
+- Updated dependencies [524e422]
+- Updated dependencies [0dccc7f]
+- Updated dependencies [8f3d0a6]
+- Updated dependencies [b4494a3]
+- Updated dependencies [ef18e04]
+- Updated dependencies [a7d0912]
+- Updated dependencies [04e7ac5]
+- Updated dependencies [ff98301]
+- Updated dependencies [38ab1e5]
+- Updated dependencies [1522c33]
+- Updated dependencies [38ab1e5]
+- Updated dependencies [9c1bd0b]
+- Updated dependencies [e412fc8]
+- Updated dependencies [bcdf5e3]
+- Updated dependencies [d5a8c60]
+  - @velajs/vela@1.32.0
+  - @velajs/cloudflare@1.32.0
+  - @velajs/crud@1.32.0
+  - @velajs/studio-protocol@1.25.0
+  - @velajs/better-auth@1.31.0
+  - @velajs/feature-flags@1.31.0
+
 ## 1.31.0
 
 ### Minor Changes
