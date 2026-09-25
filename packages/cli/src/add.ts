@@ -1,3 +1,4 @@
+import { parse } from 'jsonc-parser';
 import { spawnSync } from 'node:child_process';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -8,6 +9,8 @@ import {
   SourceEditError,
   addDeclaration,
   addToModule,
+  importedAndDeclaredNames,
+  moduleClassExport,
   workerRootImport,
   type NamedImport,
 } from './generate/source-editor.js';
@@ -26,12 +29,35 @@ export type Resource = (typeof RESOURCES)[number];
 
 const BINDING = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/**
+ * Words a module cannot declare as a constant: JavaScript's reserved words,
+ * those reserved in strict mode and modules, the literals, and the names
+ * strict code cannot bind.
+ */
+const RESERVED = new Set(
+  (
+    'await break case catch class const continue debugger default delete do else enum export ' +
+    'extends false finally for function if implements import in instanceof interface let new ' +
+    'null package private protected public return static super switch this throw true try ' +
+    'typeof var void while with yield eval arguments'
+  ).split(' '),
+);
+
+/** The names the generated bindings module imports. */
+const BINDINGS_MODULE_IMPORTS = ['ENV', 'Global', 'InjectionToken', 'Module', 'defineProvider'];
+
 /** The native type DI hands out for each bound resource. */
 const TYPES: Record<Exclude<Resource, 'queue'>, string> = {
   d1: 'D1Database',
   kv: 'KVNamespace',
   r2: 'R2Bucket',
 };
+
+/** What `vela add` could not do itself, printed for the developer to apply. */
+export interface AddResult {
+  /** Steps printed for manual application; empty when everything was applied. */
+  readonly manualSteps: readonly string[];
+}
 
 export interface AddOptions {
   readonly resource: Resource;
@@ -290,11 +316,25 @@ async function planRegistration(
     return { writes, notes };
   }
   const bindingsFile = join(dirname(root.from), 'bindings.module.ts');
+  const bindingsLabel = relative(cwd, bindingsFile).split(sep).join('/');
   let current: string | undefined;
   try {
     current = await readFile(bindingsFile, 'utf8');
   } catch (error) {
     if (!hasErrorCode(error, 'ENOENT')) throw error;
+  }
+  // The bindings module may carry another name; the root imports it by that one.
+  const bindingsClass =
+    current === undefined ? 'BindingsModule' : moduleClassExport(bindingsFile, current);
+  const taken = new Set([
+    ...BINDINGS_MODULE_IMPORTS,
+    bindingsClass,
+    ...(current === undefined ? [] : importedAndDeclaredNames(bindingsFile, current)),
+  ]);
+  if (taken.has(binding)) {
+    throw new Error(
+      `${binding} would collide with a name ${bindingsLabel} declares or imports; choose another binding name.`,
+    );
   }
   if (current === undefined) {
     writes.push({ path: bindingsFile, content: BINDINGS_MODULE(binding, type) });
@@ -323,28 +363,80 @@ async function planRegistration(
       content: addToModule(bindingsFile, provided, 'exports', binding).source,
     });
   }
-  const imported = addToModule(root.from, root.source, 'imports', 'BindingsModule', {
-    imports: [
-      { name: 'BindingsModule', from: importSpecifier(root.from, bindingsFile, root.source) },
-    ],
+  const imported = addToModule(root.from, root.source, 'imports', bindingsClass, {
+    imports: [{ name: bindingsClass, from: importSpecifier(root.from, bindingsFile, root.source) }],
     module: root.name,
   });
   if (imported.changed) writes.push({ path: root.from, content: imported.source });
   notes.push(
-    `Inject it anywhere with @Inject(${binding}) ${binding.toLowerCase()}: ${type} (import ${binding} from ${relative(cwd, bindingsFile).split(sep).join('/')}), or read ENV.${binding}.`,
+    `Inject it anywhere with @Inject(${binding}) ${binding.toLowerCase()}: ${type} (import ${binding} from ${bindingsLabel}), or read ENV.${binding}.`,
   );
   return { writes, notes };
 }
 
 /**
+ * The Wrangler file with the queue's producer and consumer added, checked
+ * before Wrangler creates the queue: a file the edit cannot reach fails with
+ * nothing created.
+ */
+function plannedQueueConfig(
+  config: WranglerConfig,
+  environment: string | undefined,
+  binding: string,
+  queue: string,
+  label: string,
+): string {
+  const base = environment === undefined ? ['queues'] : ['env', environment, 'queues'];
+  const changes: SyncChange[] = [
+    { path: [...base, 'producers'], value: { binding, queue }, op: 'append', summary: '' },
+    { path: [...base, 'consumers'], value: { queue }, op: 'append', summary: '' },
+  ];
+  let text: string;
+  try {
+    text = applyCloudflareSync(config.text, changes);
+  } catch (cause) {
+    throw queueEditError(binding, label, cause);
+  }
+  // The edit must declare both where Wrangler reads them.
+  let section: unknown = parse(text, [], { allowTrailingComma: true });
+  for (const key of base) section = isRecord(section) ? section[key] : undefined;
+  const rows = (key: string) =>
+    isRecord(section) && Array.isArray(section[key]) ? section[key].filter(isRecord) : [];
+  if (
+    !rows('producers').some((row) => row.binding === binding && row.queue === queue) ||
+    !rows('consumers').some((row) => row.queue === queue)
+  ) {
+    throw queueEditError(binding, label, undefined);
+  }
+  return text;
+}
+
+function queueEditError(binding: string, label: string, cause: unknown): Error {
+  const reason = cause instanceof Error ? ` (${cause.message})` : '';
+  return new Error(
+    `${label}: cannot add the ${binding} producer and its consumer under queues${reason}.\n` +
+      'Nothing was created; fix the queues section of the Wrangler file, or create the queue ' +
+      'with wrangler queues create and declare it yourself.',
+    { cause },
+  );
+}
+
+/**
  * `vela add <d1|kv|r2|queue> <BINDING>`: create the resource with the
  * project's Wrangler (which adds the binding to the Wrangler file), register
- * it in the application, and refresh the binding types. The module edits are
- * planned first: when one cannot be made, nothing is created or written.
+ * it in the application, and refresh the binding types. The module edits and
+ * a queue's Wrangler file edit are planned first: when one cannot be made,
+ * nothing is created or written. What it cannot apply itself (a queue's
+ * producer and consumer in a `wrangler.toml`) is returned as manual steps.
  */
-export async function addResource(options: AddOptions): Promise<void> {
+export async function addResource(options: AddOptions): Promise<AddResult> {
   const { resource, binding, log } = options;
   if (!BINDING.test(binding)) throw new Error(`${JSON.stringify(binding)} is not a binding name.`);
+  if (resource !== 'queue' && RESERVED.has(binding)) {
+    throw new Error(
+      `${binding} is a JavaScript reserved word; vela add declares the binding as a constant, so choose another name.`,
+    );
+  }
   const configPath = options.config
     ? resolve(options.cwd, options.config)
     : (await findWranglerConfig(options.cwd)).path;
@@ -379,20 +471,24 @@ export async function addResource(options: AddOptions): Promise<void> {
     );
   }
 
+  const configLabel = relative(options.cwd, configPath).split(sep).join('/') || configPath;
+  const manualSteps: string[] = [];
   if (resource === 'queue') {
+    // Planned before Wrangler creates anything.
+    const planned =
+      config.format === 'toml'
+        ? undefined
+        : plannedQueueConfig(config, options.environment, binding, name, configLabel);
     wrangler(project, ['queues', 'create', name, ...configArgs]);
-    const base =
-      options.environment === undefined ? ['queues'] : ['env', options.environment, 'queues'];
-    const changes: SyncChange[] = [
-      { path: [...base, 'producers'], value: { binding, queue: name }, op: 'append', summary: '' },
-      { path: [...base, 'consumers'], value: { queue: name }, op: 'append', summary: '' },
-    ];
-    if (config.format === 'toml') {
-      log(
-        `Add the queue to ${configPath}:\n[[queues.producers]]\nbinding = "${binding}"\nqueue = "${name}"\n\n[[queues.consumers]]\nqueue = "${name}"`,
+    if (planned === undefined) {
+      const table =
+        options.environment === undefined ? 'queues' : `env.${options.environment}.queues`;
+      manualSteps.push(
+        `Add the queue to ${configLabel}:\n[[${table}.producers]]\nbinding = "${binding}"\nqueue = "${name}"\n\n[[${table}.consumers]]\nqueue = "${name}"`,
+        `Then run your types script (or wrangler types --include-runtime=false) so ENV.${binding} is typed.`,
       );
     } else {
-      await writeFile(configPath, applyCloudflareSync(config.text, changes), 'utf8');
+      await writeFile(configPath, planned, 'utf8');
     }
   } else {
     const create = {
@@ -415,4 +511,5 @@ export async function addResource(options: AddOptions): Promise<void> {
   }
   await refreshTypes(project, configPath === defaultConfig ? undefined : configPath, log);
   for (const note of registration.notes) log(note);
+  return { manualSteps };
 }

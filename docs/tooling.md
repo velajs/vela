@@ -135,6 +135,16 @@ vela deploy check
   `wrangler <resource> create --binding --update-config` (queues:
   `wrangler queues create`, then the producer and consumer are written to the
   Wrangler file), runs the project's `types` script and registers the binding.
+  A d1/kv/r2 `BINDING` becomes a constant in `bindings.module.ts`, so a
+  JavaScript reserved word, or a name that file declares or imports (`ENV`,
+  `Global`, `InjectionToken`, `Module`, `defineProvider`, its module class), is
+  refused before anything is created. An existing `bindings.module.ts` keeps
+  its class name, which the root module imports. A queue's producer and
+  consumer are planned before `wrangler queues create`; in a `wrangler.toml`,
+  which the CLI does not edit, they are printed under
+  `Manual steps required` and the command exits 2 (0 means everything was
+  applied, 1 that it failed). Source edits keep a CRLF file CRLF and a comment
+  trailing a line on that line.
   `--config` is passed on to Wrangler; with a Wrangler file other than the
   default one, the `types` script (which reads the default file) is left for
   you to run against it. Every module edit is computed on the current sources
@@ -162,9 +172,12 @@ vela deploy check
   one. See [deployment](deployment.md).
 
 `scripts/cli-consumer.mjs` verifies the packed CLI end to end: it scaffolds
-both templates, installs them from the release archives, runs every generator,
-`cf sync --write`, the type check, the workerd specs, `deploy check`, the Vite
-build and the dev server. The templates pin the workspace versions
+both templates, installs them from the release archives, runs every
+`vela generate` schematic (`module`, `controller`, `service`, `resource`,
+`queue`, `cron`, `durable-object`), `cf sync --write`, the type check, the
+workerd specs, `deploy check`, the Vite build and the dev server. `vela add`
+creates Cloudflare resources through Wrangler, so it is covered by the CLI's
+own tests against a stubbed Wrangler instead. The templates pin the workspace versions
 (`scripts/starter-pins.mjs`), which `pnpm check:workspace` enforces and
 `pnpm version-packages` updates.
 
@@ -184,7 +197,9 @@ command also runs cross-package conformance and native Workers tests.
 the bundled agent skill against the built packages (after `pnpm build`). Each
 block compiles as its own module, retried as class members or a function body
 when it is a fragment; names a fragment leaves undeclared are tolerated, while
-missing packages, subpaths or exports and mismatched signatures fail. Mark a
+missing `@velajs/*` packages, subpaths or exports and mismatched signatures
+fail. An import of a relative file, or of a third-party package the workspace
+does not install, is tolerated, since examples import the reader's own code. Mark a
 block that shows invalid code on purpose with ```` ```ts nocheck ````.
 
 ## API documentation

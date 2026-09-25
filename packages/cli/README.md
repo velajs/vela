@@ -122,9 +122,17 @@ bindings become injection tokens of a global `BindingsModule` next to the root
 module (`constructor(@Inject(DB) db: D1Database)`), and a queue becomes
 `QueueModule.registerQueue({ name, binding })`, with the `cloudflareQueues()`
 driver added to the root module unless a module already configures it.
-`--config <file>` is passed on to Wrangler. Every module edit is computed
-before anything is created, so a root module or `bindings.module.ts` the CLI
-cannot edit fails with nothing created; a failed type refresh only warns.
+`--config <file>` is passed on to Wrangler. Every module edit, and a queue's
+Wrangler file edit, is computed before anything is created, so a root module,
+`bindings.module.ts` or Wrangler file the CLI cannot edit fails with nothing
+created; a failed type refresh only warns. A D1, KV or R2 `BINDING` that is a
+JavaScript reserved word, or a name `bindings.module.ts` declares or imports
+(`ENV`, `Global`, `InjectionToken`, `Module`, `defineProvider` or its module
+class), is refused first. An existing `bindings.module.ts` keeps its class
+name. With a `wrangler.toml`, which the CLI does not edit, a queue is created
+and registered, but its producer and consumer are printed under
+`Manual steps required` and the command exits 2; exit code 0 means everything
+was applied, 1 that it failed. Source edits keep CRLF files CRLF.
 `--skip-import` prints the registration instead and needs no editable root.
 
 ### Keep Wrangler in sync

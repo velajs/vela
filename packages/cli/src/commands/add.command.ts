@@ -13,9 +13,13 @@ export class AddCommand extends Command {
       'consumer are added to wrangler.json(c) in place), registers it, and regenerates the binding ' +
       'types: a d1/kv/r2 binding as an injection token of a global BindingsModule next to the root ' +
       'module, a queue as QueueModule.registerQueue({ name, binding }) with the cloudflareQueues() ' +
-      'driver in the root module. The module edits are computed first: when one cannot be made, ' +
-      'nothing is created. Creating a resource uses your Cloudflare account; log in with ' +
-      '`wrangler login` first.',
+      "driver in the root module. The module edits, and a queue's Wrangler file edit, are computed " +
+      'first: when one cannot be made, nothing is created. A BINDING that is a JavaScript reserved ' +
+      'word, or a name the bindings module declares or imports, is refused. A queue in a ' +
+      'wrangler.toml is created and registered, but its producer and consumer are printed under ' +
+      '"Manual steps required" for you to add, and the command exits 2. Exit codes: 0 done, ' +
+      '1 failed, 2 done except the printed manual steps. Creating a resource uses your Cloudflare ' +
+      'account; log in with `wrangler login` first.',
     examples: [
       ['A D1 database bound as DB', 'vela add d1 DB'],
       ['A KV namespace with a chosen name', 'vela add kv CACHE --name shop-cache'],
@@ -43,8 +47,9 @@ export class AddCommand extends Command {
     if (resource === undefined) {
       throw new UsageError(`The resource must be one of: ${RESOURCES.join(', ')}.`);
     }
+    let manualSteps: readonly string[];
     try {
-      await addResource({
+      ({ manualSteps } = await addResource({
         resource,
         binding: this.binding,
         cwd: process.cwd(),
@@ -53,11 +58,16 @@ export class AddCommand extends Command {
         environment: this.environment,
         skipImport: this.skipImport,
         log: (line) => this.context.stdout.write(`${line}\n`),
-      });
+      }));
     } catch (error) {
       this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
       return 1;
     }
-    return 0;
+    if (manualSteps.length === 0) return 0;
+    this.context.stdout.write(
+      'Manual steps required: vela add edits wrangler.json and wrangler.jsonc files only.\n' +
+        manualSteps.map((step, index) => `${index + 1}. ${step}\n`).join(''),
+    );
+    return 2;
   }
 }

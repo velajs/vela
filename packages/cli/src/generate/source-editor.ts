@@ -136,6 +136,69 @@ const typeOnly = (declaration: ImportDeclaration, specifier: ImportDeclarationSp
   declaration.importKind === 'type' ||
   (specifier.type === 'ImportSpecifier' && specifier.importKind === 'type');
 
+/** A module specifier as it names a file: a relative one without its script extension. */
+const sameModule = (a: string, b: string): boolean => {
+  const file = (specifier: string) =>
+    specifier.startsWith('.') ? specifier.replace(/\.[cm]?[jt]sx?$/, '') : specifier;
+  return file(a) === file(b);
+};
+
+/** The names the file's top-level statements declare (classes, functions, variables). */
+function declaredNames(program: Program): Set<string> {
+  const names = new Set<string>();
+  for (const statement of program.body) {
+    const node =
+      (statement.type === 'ExportNamedDeclaration' ||
+        statement.type === 'ExportDefaultDeclaration') &&
+      statement.declaration !== null
+        ? statement.declaration
+        : statement;
+    if (
+      (node.type === 'ClassDeclaration' || node.type === 'FunctionDeclaration') &&
+      node.id !== null
+    ) {
+      names.add(node.id.name);
+    } else if (node.type === 'VariableDeclaration') {
+      for (const declarator of node.declarations) {
+        if (declarator.id.type === 'Identifier') names.add(declarator.id.name);
+      }
+    }
+  }
+  return names;
+}
+
+/**
+ * Throw when a name of `wanted` is bound in the file to something else: a
+ * name the file imports from another module, or declares itself, would be a
+ * different binding, so the edit fails instead of treating it as imported.
+ */
+function assertImportable(
+  file: string,
+  entry: string,
+  program: Program,
+  wanted: readonly NamedImport[],
+): void {
+  const boundFrom = new Map<string, string>();
+  for (const declaration of importDeclarations(program)) {
+    for (const specifier of declaration.specifiers) {
+      boundFrom.set(specifier.local.name, declaration.source.value);
+    }
+  }
+  const declared = declaredNames(program);
+  for (const { name, from } of wanted) {
+    const current = boundFrom.get(name);
+    if (current !== undefined && !sameModule(current, from)) {
+      throw new SourceEditError(
+        `${file} imports ${name} from '${current}', not from '${from}'; register ${entry} yourself.`,
+      );
+    }
+    if (current === undefined && declared.has(name)) {
+      throw new SourceEditError(`${file} declares ${name} itself; register ${entry} yourself.`);
+    }
+  }
+}
+
+/** Import each of `wanted` the file does not import yet ({@link assertImportable} ran). */
 function addImports(
   code: MagicString,
   source: string,
@@ -176,8 +239,22 @@ function addImports(
   );
   if (lines.length === 0) return;
   const last = declarations.at(-1);
-  if (last) code.appendLeft(last.end, `\n${lines.join('\n')}`);
+  // After the comment trailing the last import on its line, which stays with it.
+  if (last) code.appendLeft(trailEnd(source, last.end), `\n${lines.join('\n')}`);
   else code.prepend(`${lines.join('\n')}\n\n`);
+}
+
+/**
+ * Run `edit` on `source` with LF line breaks and give a file whose line breaks
+ * are all CRLF its CRLF back, so an edit never mixes them. A file that mixes
+ * them already is edited as it is.
+ */
+function keepingLineEnds(source: string, edit: (text: string) => SourceEdit): SourceEdit {
+  if (!source.includes('\r\n') || /(?<!\r)\n/.test(source)) return edit(source);
+  const edited = edit(source.replaceAll('\r\n', '\n'));
+  return edited.changed
+    ? { source: edited.source.replaceAll('\n', '\r\n'), changed: true }
+    : { source, changed: false };
 }
 
 interface ModuleClass {
@@ -476,7 +553,19 @@ export function addToModule(
     module?: string;
   } = {},
 ): SourceEdit {
+  return keepingLineEnds(source, (text) => addToModuleText(file, text, key, entry, options));
+}
+
+function addToModuleText(
+  file: string,
+  source: string,
+  key: 'imports' | 'controllers' | 'providers' | 'exports',
+  entry: string,
+  options: { imports?: readonly NamedImport[]; unless?: RegExp; module?: string },
+): SourceEdit {
   const { program, comments } = parseModule(file, source);
+  // Before anything else: an entry listed under a name bound elsewhere is not this one.
+  assertImportable(file, entry, program, options.imports ?? []);
   const call = moduleDecorator(file, program, options.module, entry);
   const code = new MagicString(source);
   const [argument] = call.arguments;
@@ -529,8 +618,57 @@ export function addToModule(
   return { source: code.toString(), changed: true };
 }
 
+/**
+ * The name the file exports its `@Module()` class under, the class
+ * {@link addToModule} edits without a `module` option: its own name when the
+ * file exports it so, else another name it exports it under. A class the file
+ * does not export by name cannot be imported, so it fails.
+ */
+export function moduleClassExport(file: string, source: string): string {
+  const program = parse(file, source);
+  const call = moduleDecorator(file, program, undefined, 'the binding');
+  const found = moduleClasses(program).find((candidate) => candidate.call === call);
+  const named = found?.exported.filter((name) => name !== 'default') ?? [];
+  const name = found?.name;
+  if (name !== undefined && named.includes(name)) return name;
+  const [first] = named;
+  if (first !== undefined) return first;
+  throw new SourceEditError(
+    `${file} does not export its module class ${name ?? '(anonymous)'} by name; export it ` +
+      `(export class ${name ?? 'BindingsModule'}) or register the binding yourself.`,
+  );
+}
+
+/** The names a module's top-level scope binds: its imports and its class and function declarations. */
+export function importedAndDeclaredNames(file: string, source: string): Set<string> {
+  const program = parse(file, source);
+  const names = new Set<string>();
+  for (const statement of program.body) {
+    const node =
+      (statement.type === 'ExportNamedDeclaration' ||
+        statement.type === 'ExportDefaultDeclaration') &&
+      statement.declaration !== null
+        ? statement.declaration
+        : statement;
+    if (
+      (node.type === 'ClassDeclaration' || node.type === 'FunctionDeclaration') &&
+      node.id !== null
+    ) {
+      names.add(node.id.name);
+    }
+  }
+  for (const declaration of importDeclarations(program)) {
+    for (const specifier of declaration.specifiers) names.add(specifier.local.name);
+  }
+  return names;
+}
+
 /** Add `export { name } from 'from';` to a module (the Worker entry), unless it exports `name`. */
 export function addExport(file: string, source: string, name: string, from: string): SourceEdit {
+  return keepingLineEnds(source, (text) => addExportText(file, text, name, from));
+}
+
+function addExportText(file: string, source: string, name: string, from: string): SourceEdit {
   const program = parse(file, source);
   for (const node of walk(program.body)) {
     if (
@@ -547,7 +685,7 @@ export function addExport(file: string, source: string, name: string, from: stri
       statement.type === 'ImportDeclaration' ||
       (statement.type === 'ExportNamedDeclaration' && statement.source !== null),
   );
-  if (anchor) code.appendLeft(anchor.end, `\n${line}`);
+  if (anchor) code.appendLeft(trailEnd(source, anchor.end), `\n${line}`);
   else code.prepend(`${line}\n`);
   return { source: code.toString(), changed: true };
 }
@@ -613,6 +751,15 @@ export function addDeclaration(
   name: string,
   statement: string,
 ): SourceEdit {
+  return keepingLineEnds(source, (text) => addDeclarationText(file, text, name, statement));
+}
+
+function addDeclarationText(
+  file: string,
+  source: string,
+  name: string,
+  statement: string,
+): SourceEdit {
   const program = parse(file, source);
   const declares = (node: Node | null): boolean =>
     node?.type === 'VariableDeclaration' &&
@@ -633,7 +780,7 @@ export function addDeclaration(
       (node) =>
         node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration',
     ) ?? importDeclarations(program).at(-1);
-  if (anchor) code.appendLeft(anchor.end, `\n${statement}`);
+  if (anchor) code.appendLeft(trailEnd(source, anchor.end), `\n${statement}`);
   else code.prepend(`${statement}\n`);
   return { source: code.toString(), changed: true };
 }

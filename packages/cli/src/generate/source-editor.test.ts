@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SourceEditError,
+  addDeclaration,
   addExport,
   addToModule,
   moduleExport,
@@ -402,5 +403,144 @@ export default createCloudflareWorker(AppModule);
       ),
     ).toEqual({ name: 'AppModule', from: './app.module.js' });
     expect(workerRootImport('worker.ts', 'export default { fetch() {} };\n')).toBeUndefined();
+  });
+});
+
+const WORKER_ENTRY = `import { createCloudflareWorker } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+
+export default createCloudflareWorker(AppModule);
+`;
+
+const BINDINGS = `import { ENV, Global, InjectionToken, Module, defineProvider } from '@velajs/vela';
+
+export const DB = new InjectionToken<D1Database>('DB');
+
+@Global()
+@Module({
+  providers: [defineProvider(DB, { useFactory: (env) => env.DB, inject: [ENV] })],
+  exports: [DB],
+})
+export class BindingsModule {}
+`;
+
+describe('line endings and trailing comments', () => {
+  const crlf = (text: string) => text.replaceAll('\n', '\r\n');
+  const onlyCrlf = (text: string) => !/(?<!\r)\n/.test(text);
+
+  it('keeps a CRLF file CRLF, whatever it adds', () => {
+    const imported = addToModule('app.module.ts', crlf(APP), 'imports', 'NotesModule', {
+      imports: [
+        { name: 'NotesModule', from: './notes/notes.module.js' },
+        { name: 'QueueModule', from: '@velajs/vela/queue' },
+      ],
+    });
+    expect(onlyCrlf(imported.source)).toBe(true);
+    expect(imported.source).toContain(
+      "import { NotesModule } from './notes/notes.module.js';\r\nimport { QueueModule } from '@velajs/vela/queue';\r\n",
+    );
+    expect(imported.source).toContain('  imports: [NotesModule],\r\n');
+
+    // A one-line list that outgrows its line is rewritten one entry per line.
+    const long = crlf(`import { Module } from '@velajs/vela';
+
+@Module({ providers: [FirstVeryLongProviderName, SecondVeryLongProviderName, ThirdProvider] })
+export class AppModule {}
+`);
+    const reflowed = addToModule('app.module.ts', long, 'providers', 'FourthVeryLongProviderName');
+    expect(onlyCrlf(reflowed.source)).toBe(true);
+    expect(reflowed.source).toContain(
+      '@Module({ providers: [\r\n  FirstVeryLongProviderName,\r\n  SecondVeryLongProviderName,\r\n  ThirdProvider,\r\n  FourthVeryLongProviderName,\r\n] })\r\n',
+    );
+
+    const exported = addExport('worker.ts', crlf(WORKER_ENTRY), 'Counter', './counter.js');
+    expect(onlyCrlf(exported.source)).toBe(true);
+    expect(exported.source).toContain(
+      "import { AppModule } from './app.module.js';\r\nexport { Counter } from './counter.js';\r\n",
+    );
+
+    const declared = addDeclaration(
+      'bindings.module.ts',
+      crlf(BINDINGS),
+      'CACHE',
+      "export const CACHE = new InjectionToken<KVNamespace>('CACHE');",
+    );
+    expect(onlyCrlf(declared.source)).toBe(true);
+    expect(declared.source).toContain(
+      "export const DB = new InjectionToken<D1Database>('DB');\r\nexport const CACHE",
+    );
+  });
+
+  it('keeps a line comment trailing the anchor statement on its line', () => {
+    const commented = APP.replace(
+      "import { AppService } from './app.service.js';",
+      "import { AppService } from './app.service.js'; // the domain service",
+    );
+    const imported = addToModule('app.module.ts', commented, 'imports', 'NotesModule', {
+      imports: [{ name: 'NotesModule', from: './notes/notes.module.js' }],
+    });
+    expect(imported.source).toContain(
+      "import { AppService } from './app.service.js'; // the domain service\nimport { NotesModule } from './notes/notes.module.js';\n",
+    );
+
+    const entry = WORKER_ENTRY.replace(
+      "import { AppModule } from './app.module.js';",
+      "import { AppModule } from './app.module.js'; // the root",
+    );
+    expect(addExport('worker.ts', entry, 'Counter', './counter.js').source).toContain(
+      "import { AppModule } from './app.module.js'; // the root\nexport { Counter } from './counter.js';\n",
+    );
+
+    const bindings = BINDINGS.replace(
+      "export const DB = new InjectionToken<D1Database>('DB');",
+      "export const DB = new InjectionToken<D1Database>('DB'); // the main database",
+    );
+    expect(
+      addDeclaration(
+        'bindings.module.ts',
+        bindings,
+        'CACHE',
+        "export const CACHE = new InjectionToken<KVNamespace>('CACHE');",
+      ).source,
+    ).toContain(
+      "export const DB = new InjectionToken<D1Database>('DB'); // the main database\nexport const CACHE = new InjectionToken<KVNamespace>('CACHE');\n",
+    );
+  });
+});
+
+describe('imports of the same name from another source', () => {
+  it('refuses a name the file imports from elsewhere instead of treating it as imported', () => {
+    const legacy = APP.replace(
+      "import { AppService } from './app.service.js';",
+      "import { AppService } from './app.service.js';\nimport { BindingsModule } from './legacy/bindings.module.js';",
+    );
+    expect(() =>
+      addToModule('app.module.ts', legacy, 'imports', 'BindingsModule', {
+        imports: [{ name: 'BindingsModule', from: './bindings.module.js' }],
+      }),
+    ).toThrow(
+      new SourceEditError(
+        "app.module.ts imports BindingsModule from './legacy/bindings.module.js', not from " +
+          "'./bindings.module.js'; register BindingsModule yourself.",
+      ),
+    );
+    // The same file, spelled with or without its extension, is the same import.
+    const same = legacy.replace('./legacy/bindings.module.js', './bindings.module');
+    expect(
+      addToModule('app.module.ts', same, 'imports', 'BindingsModule', {
+        imports: [{ name: 'BindingsModule', from: './bindings.module.js' }],
+      }).source,
+    ).toContain("import { BindingsModule } from './bindings.module';\n");
+  });
+
+  it('refuses a name the file declares itself', () => {
+    const declared = `${APP}\nconst QueueModule = {};\n`;
+    expect(() =>
+      addToModule('app.module.ts', declared, 'imports', 'QueueModule.forRoot()', {
+        imports: [{ name: 'QueueModule', from: '@velajs/vela/queue' }],
+      }),
+    ).toThrow(
+      'app.module.ts declares QueueModule itself; register QueueModule.forRoot() yourself.',
+    );
   });
 });

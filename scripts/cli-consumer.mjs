@@ -224,6 +224,9 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
 /** Grow the scaffold with every generator, then keep it typed, tested, synced and deployable. */
 async function verifyGenerators(project, vela, run) {
   for (const args of [
+    ['g', 'module', 'billing'],
+    ['g', 'controller', 'billing'],
+    ['g', 'service', 'billing'],
     ['generate', 'resource', 'notes'],
     ['g', 'queue', 'emails'],
     ['g', 'cron', 'digest', '--schedule', '0 6 * * *'],
@@ -233,12 +236,17 @@ async function verifyGenerators(project, vela, run) {
   }
   const app = await readFile(join(project, 'src/app.module.ts'), 'utf8');
   for (const registered of [
+    'BillingModule',
     'NotesModule',
     'EmailsProcessor',
     'DigestCron',
     'QueueModule.forRoot({ driver: cloudflareQueues() })',
   ]) {
     assert.ok(app.includes(registered), `AppModule registers ${registered}`);
+  }
+  const billing = await readFile(join(project, 'src/billing/billing.module.ts'), 'utf8');
+  for (const registered of ['BillingController', 'BillingService']) {
+    assert.ok(billing.includes(registered), `BillingModule registers ${registered}`);
   }
   assert.match(await readFile(join(project, 'src/worker.ts'), 'utf8'), /export \{ Counter \}/);
   // The Wrangler file is out of date until cf sync writes the new triggers and bindings.
