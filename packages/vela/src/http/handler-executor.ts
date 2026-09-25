@@ -177,12 +177,15 @@ export class HandlerExecutor {
     // whether or not a parameter reads it: its request schemas and its body.
     const base: ParamExtractionRoute = { method: route.method, contract, source, paths };
     const body = contract?.body;
-    // The reader the parameter decorators install checks request schemas and
-    // bodies. Without it, no parameter reads a body: a JSON body is read here.
+    // The reader `@Body`, `@Query` and `@Param` install checks request schemas
+    // and bodies; a bundler drops it from a Worker that uses none of them.
+    // Without it, no parameter reads a body: a JSON body is read here.
     const schemas = contract?.params || contract?.query || contract?.bodySchema;
     const input = schemas || body ? routeInputReader()?.(base) : undefined;
     if (!input && (schemas || (body && body.kind !== 'json')))
-      throw new Error(`${source}: its declared request needs @Body, @Query or @Param`);
+      throw new Error(
+        `${source}: validating its declared request needs the reader @Body, @Query and @Param install, and none of them is in this bundle; read the declared input with one of them`,
+      );
     // Each parameter's reader is built once for this route; configuration
     // errors (a form schema with non-text fields, …) surface at startup.
     const extractionRoute = input ? { ...base, input } : base;
