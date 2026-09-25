@@ -267,11 +267,16 @@ are removed:
   descriptor; raw JSON Schema is rejected. Declare the success body with the
   route's `response` option instead.
 
-Statuses follow Nest: POST answers 201, `response: null` or `@HttpCode(204)`
-answers 204, and every other method answers 200 — whatever the handler returns.
-A handler returning `null` or `undefined` no longer answers 204; it answers the
-route's status with an empty body. Declare `response: null` (or `@HttpCode(204)`)
-where clients expect 204, and `@HttpCode(200)` on POST routes that must keep 200.
+Statuses follow Nest: a POST route answers 201, a route with `response: null`
+or `@HttpCode(204)` answers 204, and every other route answers 200; OpenAPI and
+generated clients document the same status. A handler returning `null` or
+`undefined` no longer answers 204; it answers the route's status with an empty
+body. Declare `response: null` (or `@HttpCode(204)`) where clients expect 204,
+and `@HttpCode(200)` on POST routes that must keep 200. A handler that returns a
+ready `Response` (`c.json()`, `new Response()`) sends that Response's own
+status, so a POST handler returning `c.json(body)` still answers 200 while
+OpenAPI and generated clients now document 201: declare `@HttpCode(200)` or
+`status: 200` on it so the document matches what it sends.
 
 Without `response` or `format`, a route still sends strings as text and other
 values as JSON. The route parses its result through `response` after
@@ -367,9 +372,9 @@ at startup; declare `status` in the contract, which types its clients.
 
 An `@Override`'d CRUD verb answers the verb's status (200 for restore, upsert,
 import, batch restore and upsert, version rollback) unless it declares its own
-`@HttpCode`, and OpenAPI documents that status. An overridden `create`,
-`batchCreate` or `clone` therefore answers 201 instead of 200; add `@HttpCode(200)`
-to keep 200. OpenAPI documents 201 for the generated `batchCreate` and `clone`,
+`@HttpCode` or returns a ready `Response`, and OpenAPI documents that status. An
+overridden `create`, `batchCreate` or `clone` that returns a value therefore
+answers 201 instead of 200; add `@HttpCode(200)` to keep 200. OpenAPI documents 201 for the generated `batchCreate` and `clone`,
 the status they already answered. The generated `upsert` answers 201 when it
 creates the row and 200 when it updates one; OpenAPI documents only its 200.
 

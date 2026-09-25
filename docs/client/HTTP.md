@@ -107,10 +107,12 @@ a helper that returns one with `RouteMethodDecorator<T>`, or let TypeScript
 infer it. Decorators without those options are ordinary `MethodDecorator`s.
 
 POST answers 201, `response: null` answers 204 with no body, and every other
-method answers 200, whatever the handler returns; `status` or `@HttpCode`
-declares another success status (not both). Each route uses its own options,
-also when one handler serves several routes. Responses, OpenAPI and the
-response cache read the status the same way. A controller that routes a method
+method answers 200; `status` or `@HttpCode` declares another success status
+(not both). Each route uses its own options, also when one handler serves
+several routes. Responses, OpenAPI and the response cache read the status the
+same way, except that a handler returning a ready `Response` (`c.json()`,
+`new Response()`) sends that Response's own status: declare the status it
+sends, such as `@HttpCode(200)` on a POST route, so the document matches. A controller that routes a method
 it inherits unchanged (`Get()(Sub.prototype, 'list', descriptor)`) without
 options of its own serves it with those of the nearest ancestor's route for the
 same verb, and reads the parameters the ancestor declares on the method; an
