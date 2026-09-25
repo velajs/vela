@@ -1072,15 +1072,16 @@ export class RouteManager {
           const handler = this.handlerExecutor.create(route, controller, moduleId, paths);
           // A route declaring a body enforces its own `maxBytes`, or its
           // default capped at a limit the application configures; a JSON
-          // route without its own keeps the application's.
+          // route without its own, such as a contract declaring only a body
+          // schema, keeps the application's. Either is counted after guards.
           const body = route.contract?.body;
-          const bodyLimit =
-            body &&
-            (body.maxBytes === undefined
+          const bodyLimit = body
+            ? body.maxBytes === undefined
               ? this.bodyLimit
               : body.explicitMaxBytes
                 ? body.maxBytes
-                : Math.min(body.maxBytes, this.bodyLimitCap));
+                : Math.min(body.maxBytes, this.bodyLimitCap)
+            : route.contract?.bodySchema && this.bodyLimit;
           for (const { path: fullPath, version } of served) {
             // Register the onion with its method and terminal handler. A
             // path-only app.use() also matches sibling methods/controllers.

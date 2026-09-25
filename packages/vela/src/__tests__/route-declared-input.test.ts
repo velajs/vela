@@ -13,7 +13,9 @@ import {
   Post,
   Query,
   RawBody,
+  UseGuards,
   VelaFactory,
+  type CanActivate,
   type VelaApplication,
 } from '../index';
 import {
@@ -298,6 +300,79 @@ describe('parameter classes on declared groups', () => {
         expect(await created.json()).toEqual({ title: 'Ship' });
         expect((await send(app, 'POST', path, json({}))).status).toBe(400);
       }
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('declared bodies sent without Content-Length', () => {
+  class Deny implements CanActivate {
+    canActivate() {
+      return false;
+    }
+  }
+  const note = defineRoute({ method: 'POST', path: '/notes', body: z.string() });
+  const guarded = defineRoute({ method: 'POST', path: '/notes/guarded', body: z.string() });
+  @Controller('/notes')
+  class Notes {
+    @Post(note)
+    note(@Body() body: ContractBody<typeof note>) {
+      return { bytes: body.length };
+    }
+
+    @Post('/guarded', guarded)
+    @UseGuards(Deny)
+    guarded(@Body() _body: ContractBody<typeof guarded>): never {
+      throw new Error('unreachable');
+    }
+  }
+
+  // A JSON string of `size` bytes streamed in 16 KiB chunks, counting what was pulled.
+  function streamed(size: number) {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = new Uint8Array(Math.min(16 * 1024, size - pulled)).fill(0x61);
+        if (pulled === 0) chunk[0] = 0x22;
+        pulled += chunk.byteLength;
+        if (pulled >= size) chunk[chunk.byteLength - 1] = 0x22;
+        controller.enqueue(chunk);
+        if (pulled >= size) controller.close();
+      },
+    });
+    return { body, pulled: () => pulled };
+  }
+  const chunked = (app: VelaApplication, path: string, body: ReadableStream<Uint8Array>) =>
+    app.fetch(
+      new Request(`https://example.test${path}`, {
+        method: 'POST',
+        body,
+        headers: { 'content-type': 'application/json' },
+        duplex: 'half',
+      } as RequestInit),
+    );
+
+  it('runs guards before pulling a body a contract declares without an encoding', async () => {
+    const app = await start(Notes);
+    try {
+      const sent = streamed(5 * 1024 * 1024);
+      expect((await chunked(app, '/notes/guarded', sent.body)).status).toBe(403);
+      expect(sent.pulled()).toBeLessThan(256 * 1024);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("counts that body at the application's limit as it is read", async () => {
+    const app = await start(Notes);
+    try {
+      const within = await chunked(app, '/notes', streamed(64 * 1024).body);
+      expect(within.status).toBe(201);
+      expect(await within.json()).toEqual({ bytes: 64 * 1024 - 2 });
+      const beyond = streamed(5 * 1024 * 1024);
+      expect((await chunked(app, '/notes', beyond.body)).status).toBe(413);
+      expect(beyond.pulled()).toBeLessThan(2 * 1024 * 1024);
     } finally {
       await app.close();
     }
