@@ -38,6 +38,10 @@
     "./harness": {
       "types": "./dist/harness.d.ts",
       "import": "./dist/harness.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
     }
   },
   "publishConfig": {
@@ -52,13 +56,16 @@
     "format:check": "oxfmt --check .",
     "publint": "publint",
     "attw": "attw --pack . --profile esm-only",
-    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw",
+    "test:workers": "vitest run --config vitest.config.workers.ts"
   },
   "dependencies": {
+    "@standard-schema/spec": "1.1.0",
     "@velajs/errors": "workspace:*"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "@types/node": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",

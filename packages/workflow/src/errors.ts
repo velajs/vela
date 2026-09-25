@@ -35,13 +35,17 @@ export type NativeNonRetryableErrorConstructor = new (message: string, name?: st
 
 /**
  * Reconstruct a portable {@link WorkflowNonRetryableError} as the native
- * Cloudflare one, carrying over its `name`, `message`, `stack`, and `cause`.
+ * Cloudflare one, carrying over `stack` and `cause`. Cloudflare's
+ * serialized error boundary recognizes the native terminal name; a custom
+ * portable name prefixes the message instead of replacing the native name.
  */
 export const toNativeNonRetryableError = (
   error: WorkflowNonRetryableError,
   Native: NativeNonRetryableErrorConstructor,
 ): Error => {
-  const rebuilt = new Native(error.message, error.name);
+  const message =
+    error.name === 'NonRetryableError' ? error.message : `${error.name}: ${error.message}`;
+  const rebuilt = new Native(message, 'NonRetryableError');
 
   if (error.stack !== undefined) {
     rebuilt.stack = error.stack;

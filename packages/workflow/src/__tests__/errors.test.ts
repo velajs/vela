@@ -57,8 +57,8 @@ describe('convertNonRetryableError', () => {
     }
 
     expect(thrown).toBeInstanceOf(NativeNonRetryable);
-    expect((thrown as Error).name).toBe('CustomName');
-    expect((thrown as Error).message).toBe('fatal');
+    expect((thrown as Error).name).toBe('NonRetryableError');
+    expect((thrown as Error).message).toBe('CustomName: fatal');
     expect((thrown as Error).stack).toBe('STACK-MARKER');
   });
 
