@@ -11,7 +11,7 @@ import {
   defineProvider,
   type VelaEnv,
 } from '@velajs/vela';
-import { ApiResponse, OpenApiModule } from '@velajs/vela/openapi';
+import { OpenApiModule } from '@velajs/vela/openapi';
 import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
 import { LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
 import {
@@ -29,7 +29,7 @@ import { StudioModule } from '@velajs/studio';
 import { crudPanel } from '@velajs/studio/crud';
 import { livePanel } from '@velajs/studio/live';
 import { schema as authSchema } from './auth-schema';
-import { todoSchema, todoList } from './contracts';
+import { health, meSchema, todoSchema, todoList } from './contracts';
 
 const todos = sqliteTable('todos', {
   id: text().primaryKey(),
@@ -52,30 +52,21 @@ const sharedBoard: BetterAuthUpgradeTenantResolver = (_session, { room }) =>
 @Crud({ model, live: { room: () => 'default' } })
 class TodosController {}
 
+// Route options: the response schema strips the session user to these fields,
+// documents them and types the generated client.
 @Controller('/me')
 class MeController {
-  @Get()
-  @ApiResponse(200, {
-    description: 'Current user',
-    schema: {
-      type: 'object',
-      required: ['id', 'email', 'name'],
-      properties: { id: { type: 'string' }, email: { type: 'string' }, name: { type: 'string' } },
-    },
-  })
+  @Get({ response: meSchema })
   me(@CurrentUser() user: User) {
-    return { id: user.id, email: user.email, name: user.name };
+    return user;
   }
 }
 
+// A shared `defineRoute` contract: a browser can type a client from it alone.
 @Controller('/healthz')
 class HealthController {
-  @Get()
+  @Get(health)
   @Public(true)
-  @ApiResponse(200, {
-    description: 'Healthy',
-    schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
-  })
   health() {
     return { ok: true };
   }

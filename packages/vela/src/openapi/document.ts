@@ -1,11 +1,16 @@
 import { createRouteComposer } from '../http/route-paths';
-import { endpointResponseSchema } from './endpoint-response';
 import { ParamType } from '../constants';
 import type { Type } from '../container/types';
-import { DEFAULT_SUCCESS_STATUS, resolveSuccessStatus } from '../http/response-mapper';
+import { resolveSuccessStatus } from '../http/response-mapper';
+import type { ResolvedRouteBody, RouteContractMetadata } from '../http/route-contract';
 import { getRouteContributors } from '../http/route-contributor';
 import { getMetadata } from '../metadata';
 import { collectControllers } from '../module/graph';
+import {
+  inheritedParameters,
+  inheritedParamTypes,
+  inheritedRoutes,
+} from '../registry/inherited-metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { joinPaths, toOpenApiPath } from '../registry/paths';
 import type { DynamicModule, ParameterMetadata, RouteDefinition } from '../registry/types';
@@ -19,10 +24,10 @@ import type {
   OpenApiParameter,
   OpenApiPathItem,
   OpenApiRequestBody,
+  OpenApiResponse,
 } from './types';
 import { isOptional, zodToJsonSchema } from './zod-to-json-schema';
-import { isRecord, parseJsonSchema } from './json-schema';
-import { getEndpointDefinition } from './endpoint';
+import { isRecord } from './json-schema';
 import { ValidationPipe } from '../validation/validation.pipe';
 import { isStandardSchema } from '../validation/standard-schema';
 import { isSchemaParser } from '../validation/dto';
@@ -104,38 +109,181 @@ function parameterParser(param: ParameterMetadata, paramtypes?: unknown[]): unkn
     : (param.metatype ?? paramtypes?.[param.index]);
 }
 
+// Request values document a field JSON Schema cannot express (a coerced date,
+// a custom check) as any value, for converters that take this option, so the
+// fields beside it are still listed.
+const REQUEST = { unrepresentable: 'any' };
+
+function describeSchema(
+  parser: unknown,
+  registry: ComponentsRegistry,
+  direction: 'input' | 'output',
+): JsonSchema | undefined {
+  if (isNamedSchema(parser)) return registry.ref(parser, direction);
+  const schema = schemaOf(parser);
+  if (isStandardSchema(schema) || (isRecord(schema) && typeof schema.toJSONSchema === 'function'))
+    return zodToJsonSchema(schema, direction, direction === 'input' ? REQUEST : undefined);
+  return undefined;
+}
+
 function getParamSchema(
   param: ParameterMetadata,
   paramtypes: unknown[] | undefined,
   registry: ComponentsRegistry,
 ): JsonSchema | undefined {
-  const parser = parameterParser(param, paramtypes);
-  if (isNamedSchema(parser)) return registry.ref(parser, 'input');
-  const schema = schemaOf(parser);
-  if (isStandardSchema(schema) || (isRecord(schema) && typeof schema.toJSONSchema === 'function'))
-    return zodToJsonSchema(schema, 'input');
-  return undefined;
+  return describeSchema(parameterParser(param, paramtypes), registry, 'input');
 }
 
-function isParamOptional(param: ParameterMetadata, paramtypes?: unknown[]): boolean {
-  const schema = schemaOf(parameterParser(param, paramtypes));
+// Client generation lists query parameters from an object schema's properties.
+const UNLISTED_QUERY = 'Query parameters require an object schema.';
+
+function isSchemaOptional(parser: unknown): boolean {
+  const schema = schemaOf(parser);
   if (isSchemaParser(schema)) return isOptional(schema);
   return true;
 }
 
+function isParamOptional(param: ParameterMetadata, paramtypes?: unknown[]): boolean {
+  return isSchemaOptional(parameterParser(param, paramtypes));
+}
+
+// `@ApiResponse` documents a schema the application declares with a schema
+// library, converted to JSON Schema; raw JSON Schema objects are rejected.
 function resolveResponseSchema(
   input: unknown,
   registry: ComponentsRegistry,
 ): JsonSchema | undefined {
   if (input === undefined || input === null) return undefined;
+  const schema = describeSchema(input, registry, 'output');
+  if (schema === undefined)
+    throw new Error(
+      '@ApiResponse schema must be a Standard Schema (such as a Zod or Valibot schema) or a defineDto descriptor',
+    );
+  return schema;
+}
 
-  if (isNamedSchema(input)) {
-    return registry.ref(input);
+const NATIVE_FORMATS = new Set(['binary', 'stream', 'response']);
+
+function nativeSchema(format: string): JsonSchema {
+  return format === 'response' ? {} : { type: 'string', format: 'binary' };
+}
+
+// Reason phrases of the success statuses a route can declare.
+const SUCCESS_PHRASES: Record<number, string> = {
+  200: 'OK',
+  201: 'Created',
+  202: 'Accepted',
+  203: 'Non-Authoritative Information',
+  204: 'No Content',
+  205: 'Reset Content',
+  206: 'Partial Content',
+  207: 'Multi-Status',
+  208: 'Already Reported',
+  226: 'IM Used',
+};
+
+/** The response the route itself declares for its success status. */
+function successResponse(
+  contract: RouteContractMetadata | undefined,
+  status: number,
+  registry: ComponentsRegistry,
+): OpenApiResponse {
+  const response: OpenApiResponse = { description: SUCCESS_PHRASES[status] ?? 'Success' };
+  if (!contract || contract.response === null || [204, 205, 304].includes(status)) return response;
+  if (contract.format !== undefined && NATIVE_FORMATS.has(contract.format)) {
+    const format = contract.format as 'binary' | 'stream' | 'response';
+    response['x-vela-response-format'] = format;
+    response.content = {
+      [contract.contentType ?? 'application/octet-stream']: { schema: nativeSchema(format) },
+    };
+    return response;
   }
-  if (isStandardSchema(input) || (isRecord(input) && typeof input.toJSONSchema === 'function')) {
-    return zodToJsonSchema(input);
-  }
-  return parseJsonSchema(input, '@ApiResponse schema');
+  const schema = contract.response && describeSchema(contract.response, registry, 'output');
+  if (contract.format === 'text')
+    response.content = { 'text/plain': { schema: schema ?? { type: 'string' } } };
+  else if (schema) response.content = { 'application/json': { schema } };
+  return response;
+}
+
+function bodyLimits(
+  body: ResolvedRouteBody,
+): NonNullable<OpenApiRequestBody['x-vela-body-limits']> {
+  const { kind: _kind, explicitMaxBytes: _explicit, ...limits } = body;
+  return body.kind === 'multipart'
+    ? limits
+    : body.kind === 'form'
+      ? {
+          maxBytes: limits.maxBytes,
+          maxFields: limits.maxFields,
+          maxFieldBytes: limits.maxFieldBytes,
+        }
+      : { maxBytes: limits.maxBytes };
+}
+
+/** A request body in the encoding the route accepts. */
+function requestBodyFor(
+  schema: JsonSchema,
+  required: boolean,
+  body: ResolvedRouteBody | undefined,
+  registry: ComponentsRegistry,
+): OpenApiRequestBody {
+  if (!body || body.kind === 'json')
+    return {
+      required,
+      content: { 'application/json': { schema } },
+      ...(body?.maxBytes !== undefined
+        ? { 'x-vela-body-limits': { maxBytes: body.maxBytes } }
+        : {}),
+    };
+  const fields = Object.keys(registry.resolve(schema).properties ?? {});
+  return {
+    required,
+    content: {
+      [body.kind === 'multipart' ? 'multipart/form-data' : 'application/x-www-form-urlencoded']: {
+        schema:
+          schema.type === 'object' && !schema.$ref
+            ? { ...schema, additionalProperties: false }
+            : schema,
+        encoding: Object.fromEntries(
+          fields.map((name) => [name, { style: 'form', explode: true }]),
+        ),
+      },
+    },
+    'x-vela-body-limits': bodyLimits(body),
+  };
+}
+
+// Declared types an unvalidated named query parameter reads the first value for.
+const FIRST_VALUE_TYPES = new Set<unknown>([String, Number, Boolean]);
+
+/** A query parameter; an array is sent as repeated keys (`?tag=a&tag=b`). */
+function queryParameter(
+  name: string,
+  schema: JsonSchema,
+  required: boolean,
+  registry: ComponentsRegistry,
+): OpenApiParameter {
+  const resolved = registry.resolve(schema);
+  const array = [resolved, ...(resolved.oneOf ?? []), ...(resolved.anyOf ?? [])].some(
+    (member) => registry.resolve(member).type === 'array',
+  );
+  return {
+    name,
+    in: 'query',
+    required,
+    schema,
+    ...(array ? { style: 'form', explode: true } : {}),
+  };
+}
+
+/** The properties of an object schema, resolving a component reference. */
+function objectProperties(
+  schema: JsonSchema | undefined,
+  registry: ComponentsRegistry,
+): { properties: [string, JsonSchema][]; required: string[] } | undefined {
+  const resolved = schema && registry.resolve(schema);
+  if (resolved?.type !== 'object' || !resolved.properties) return undefined;
+  return { properties: Object.entries(resolved.properties), required: resolved.required ?? [] };
 }
 
 function buildOperation(
@@ -145,16 +293,11 @@ function buildOperation(
   registry: ComponentsRegistry,
 ): OpenApiOperation {
   const handlerName = route.handlerName;
-  const endpoint = getEndpointDefinition(controller, handlerName);
-  const paramMetadata = MetadataRegistry.getParameters(controller).get(handlerName) ?? [];
-  const reflectedParams: unknown = Reflect.getMetadata(
-    'design:paramtypes',
-    controller.prototype,
-    handlerName,
+  const contract = route.contract;
+  const paramMetadata = inheritedParameters(controller, handlerName).toSorted(
+    (a, b) => a.index - b.index,
   );
-  const paramtypes: unknown[] | undefined = Array.isArray(reflectedParams)
-    ? reflectedParams
-    : undefined;
+  const paramtypes = inheritedParamTypes(controller, handlerName);
 
   const parameters: OpenApiParameter[] = [];
   const clientUnsupported: string[] = [];
@@ -162,37 +305,47 @@ function buildOperation(
 
   const declaredPathParams = new Set<string>();
   const pathParamNames = [...pathString.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!);
+  const pathParameter = (name: string, schema: JsonSchema = { type: 'string' }): void => {
+    declaredPathParams.add(name);
+    parameters.push({ name, in: 'path', required: true, schema });
+  };
 
+  // A `defineRoute` contract documents its own groups; parameter decorators
+  // then read from them.
   for (const param of paramMetadata) {
     if (param.type === ParamType.PARAM && param.name) {
-      declaredPathParams.add(param.name);
-      parameters.push({
-        name: param.name,
-        in: 'path',
-        required: true,
-        schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
-      });
+      if (!contract?.params) pathParameter(param.name, getParamSchema(param, paramtypes, registry));
     } else if (param.type === ParamType.QUERY && param.name) {
-      parameters.push({
-        name: param.name,
-        in: 'query',
-        required: !isParamOptional(param, paramtypes),
-        schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
-      });
+      if (contract?.query) continue;
+      // Without a schema, the declared type decides what the parameter reads:
+      // an array with no pipe reads repeated keys, a string, number or boolean
+      // the first value, and any other (an array a pipe such as
+      // `ParseArrayPipe` splits, a union, `unknown`) one value or the
+      // repeated keys.
+      const declared = param.metatype ?? paramtypes?.[param.index];
+      const many: JsonSchema = { type: 'array', items: { type: 'string' } };
+      const wire: JsonSchema =
+        declared === Array && !param.pipes?.length
+          ? many
+          : FIRST_VALUE_TYPES.has(declared)
+            ? { type: 'string' }
+            : { oneOf: [{ type: 'string' }, many] };
+      parameters.push(
+        queryParameter(
+          param.name,
+          getParamSchema(param, paramtypes, registry) ?? wire,
+          !isParamOptional(param, paramtypes),
+          registry,
+        ),
+      );
     } else if (param.type === ParamType.QUERY && !param.name) {
-      const schema = getParamSchema(param, paramtypes, registry);
-      const resolved = schema && registry.resolve(schema);
-      if (resolved?.type === 'object' && resolved.properties) {
-        for (const [name, property] of Object.entries(resolved.properties)) {
-          parameters.push({
-            name,
-            in: 'query',
-            required: resolved.required?.includes(name) ?? false,
-            schema: property,
-          });
-        }
+      if (contract?.query) continue;
+      const object = objectProperties(getParamSchema(param, paramtypes, registry), registry);
+      if (object) {
+        for (const [name, property] of object.properties)
+          parameters.push(queryParameter(name, property, object.required.includes(name), registry));
       } else {
-        clientUnsupported.push('Whole-query parameters require an object DTO schema.');
+        clientUnsupported.push(UNLISTED_QUERY);
       }
     } else if (param.type === ParamType.HEADERS && param.name) {
       parameters.push({
@@ -202,85 +355,47 @@ function buildOperation(
         schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
       });
     } else if (param.type === ParamType.BODY) {
-      const schema = getParamSchema(param, paramtypes, registry) ?? {};
+      if (contract?.bodySchema) continue;
       if (param.name) {
         clientUnsupported.push(
           'Named body parameters require a whole-body DTO for client generation.',
         );
       }
-      requestBody = {
-        required: !isParamOptional(param, paramtypes),
-        content: { 'application/json': { schema } },
-      };
+      requestBody = requestBodyFor(
+        getParamSchema(param, paramtypes, registry) ?? {},
+        !isParamOptional(param, paramtypes),
+        contract?.body,
+        registry,
+      );
     }
+  }
+
+  // A group JSON Schema cannot describe as an object (a Valibot schema, a
+  // union) is documented as the equivalent decorator options document it: the
+  // served path parameters as strings, and the query as unsupported by client
+  // generation.
+  if (contract?.params) {
+    const object = objectProperties(describeSchema(contract.params, registry, 'input'), registry);
+    for (const [name, property] of object?.properties ?? []) pathParameter(name, property);
+  }
+  if (contract?.query) {
+    const object = objectProperties(describeSchema(contract.query, registry, 'input'), registry);
+    if (!object) clientUnsupported.push(UNLISTED_QUERY);
+    else
+      for (const [name, property] of object.properties)
+        parameters.push(queryParameter(name, property, object.required.includes(name), registry));
+  }
+  if (contract?.bodySchema) {
+    requestBody = requestBodyFor(
+      describeSchema(contract.bodySchema, registry, 'input') ?? {},
+      !isSchemaOptional(contract.bodySchema),
+      contract.body,
+      registry,
+    );
   }
 
   for (const name of pathParamNames) {
-    if (!declaredPathParams.has(name)) {
-      parameters.push({ name, in: 'path', required: true, schema: { type: 'string' } });
-    }
-  }
-
-  if (endpoint) {
-    if (paramMetadata.length)
-      throw new Error(
-        '@Endpoint methods receive one schema-parsed input; remove parameter decorators from this method.',
-      );
-    parameters.length = 0;
-    requestBody = undefined;
-    const groups = endpoint.inputSchema.properties ?? {};
-    const requiredGroups = new Set(endpoint.inputSchema.required ?? []);
-    for (const group of Object.keys(groups)) {
-      if (!['param', 'query', 'header', 'json', 'form'].includes(group))
-        throw new Error(`Unsupported endpoint input group: ${group}`);
-    }
-    for (const [group, location] of [
-      ['param', 'path'],
-      ['query', 'query'],
-      ['header', 'header'],
-    ] as const) {
-      const schema = groups[group];
-      if (!schema) continue;
-      if (schema.type !== 'object' || !schema.properties)
-        throw new Error(`Endpoint ${group} must export an object schema with properties.`);
-      for (const [name, property] of Object.entries(schema.properties)) {
-        parameters.push({
-          name,
-          in: location,
-          required:
-            location === 'path' ||
-            (requiredGroups.has(group) && (schema.required?.includes(name) ?? false)),
-          schema: property,
-        });
-      }
-    }
-    for (const name of pathParamNames) {
-      if (!parameters.some((parameter) => parameter.in === 'path' && parameter.name === name))
-        parameters.push({ name, in: 'path', required: true, schema: { type: 'string' } });
-    }
-    if (groups.json)
-      requestBody = {
-        required: requiredGroups.has('json'),
-        content: { 'application/json': { schema: groups.json } },
-        ...(endpoint.body?.maxBytes !== undefined
-          ? { 'x-vela-body-limits': { maxBytes: endpoint.body.maxBytes } }
-          : {}),
-      };
-    if (groups.form && endpoint.body && endpoint.body.contentType !== 'application/json') {
-      const { fields: _fields, contentType, ...limits } = endpoint.body;
-      requestBody = {
-        required: requiredGroups.has('form'),
-        content: {
-          [contentType]: {
-            schema: { ...groups.form, additionalProperties: false },
-            encoding: Object.fromEntries(
-              endpoint.body.fields.map(({ name }) => [name, { style: 'form', explode: true }]),
-            ),
-          },
-        },
-        'x-vela-body-limits': limits,
-      };
-    }
+    if (!declaredPathParams.has(name)) pathParameter(name);
   }
 
   const docMeta = getApiDoc(controller, handlerName);
@@ -289,28 +404,20 @@ function buildOperation(
   const docTags = docMeta?.tags ?? [];
   const mergedTags = [...new Set([...controllerTags, ...handlerTags, ...docTags])];
 
-  const responses: Record<
-    string,
-    { description: string; content?: Record<string, { schema: JsonSchema }> }
-  > = {};
-
-  const apiResponses = getApiResponses(controller, handlerName) ?? [];
-  // Document the status the runtime sends: a declared status (`@Endpoint`,
-  // `@HttpCode`) replaces the default 200; a documented 2xx alone does not,
-  // because the handler still answers 200 without one.
-  responses[String(resolveSuccessStatus(controller, handlerName) ?? DEFAULT_SUCCESS_STATUS)] = {
-    description: 'OK',
-  };
-  for (const entry of apiResponses) {
+  // Document the status and body the runtime sends (see resolveSuccessStatus);
+  // `@ApiResponse` adds other statuses, or describes the success one.
+  const status = resolveSuccessStatus(controller, route);
+  const success = successResponse(contract, status, registry);
+  const responses: Record<string, OpenApiResponse> = { [String(status)]: success };
+  for (const entry of getApiResponses(controller, handlerName) ?? []) {
     const key = String(entry.status);
-    const resolved: { description: string; content?: Record<string, { schema: JsonSchema }> } = {
-      description: entry.description,
-    };
+    if (key === String(status) && success.content) {
+      success.description = entry.description;
+      continue;
+    }
+    const resolved: OpenApiResponse = { description: entry.description };
     const schema = entry.format
-      ? parseJsonSchema(
-          endpointResponseSchema(entry.format).toJSONSchema(),
-          'native response schema',
-        )
+      ? nativeSchema(entry.format)
       : resolveResponseSchema(entry.schema, registry);
     if (schema) {
       resolved.content = {
@@ -319,24 +426,8 @@ function buildOperation(
         },
       };
     }
-    if (entry.format) Object.assign(resolved, { 'x-vela-response-format': entry.format });
+    if (entry.format) resolved['x-vela-response-format'] = entry.format;
     responses[key] = resolved;
-  }
-  if (endpoint) {
-    responses[String(endpoint.status)] = {
-      description: 'Success',
-      ...(endpoint.format === 'binary' ||
-      endpoint.format === 'stream' ||
-      endpoint.format === 'response'
-        ? { 'x-vela-response-format': endpoint.format }
-        : {}),
-      content: {
-        [endpoint.contentType ?? (endpoint.format === 'text' ? 'text/plain' : 'application/json')]:
-          {
-            schema: endpoint.outputSchema,
-          },
-      },
-    };
   }
 
   const operation: OpenApiOperation = { responses };
@@ -373,7 +464,7 @@ export function createOpenApiDocument(
     if (isApiExcluded(controller)) continue;
     const controllerPath = MetadataRegistry.getControllerPath(controller);
     const controllerVersion = MetadataRegistry.getControllerOptions(controller).version;
-    const routes = MetadataRegistry.getRoutes(controller);
+    const routes = inheritedRoutes(controller);
 
     for (const route of routes) {
       const method = HTTP_VERBS.find((verb) => verb === route.method.toLowerCase());

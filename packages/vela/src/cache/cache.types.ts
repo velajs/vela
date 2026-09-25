@@ -55,7 +55,13 @@ export interface CacheResponseOptions extends CacheEntryOptions {
 }
 
 export interface CacheModuleOptions {
-  /** Stable application/deployment namespace; use a different namespace for incompatible schemas. */
+  /**
+   * Stable application/deployment namespace. A `@CacheResponse` hit replays
+   * the stored response without parsing it again, so use a different
+   * namespace when a route's `response` schema is tightened or becomes
+   * incompatible, or entries stored under the earlier schema are served until
+   * they expire.
+   */
   namespace: string;
   /** Runs after guards. Undefined or a failed resolver bypasses caching. */
   scope: (context: ExecutionContext) => Awaitable<CacheScope | undefined>;
@@ -71,9 +77,15 @@ export interface CacheModuleOptions {
   ttl?: number;
   /** Capacity of the default in-memory store. Default 1000; ignored with `store`. */
   max?: number;
-  /** Maximum UTF-8 JSON bytes per value; default 64 KiB, maximum 1 MiB. */
+  /**
+   * Maximum UTF-8 bytes per value's JSON or route response body; default
+   * 64 KiB, maximum 1 MiB.
+   */
   maxBytes?: number;
-  /** Optional additional domain check. Never allow secrets merely because a scope is private. */
+  /**
+   * Optional additional domain check: a value, or the body a route sends,
+   * JSON-decoded. Never allow secrets merely because a scope is private.
+   */
   shouldCache?: (value: unknown) => boolean;
   /**
    * Observability only, called after the application's error reporter (edge

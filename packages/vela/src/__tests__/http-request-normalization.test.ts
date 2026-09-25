@@ -121,7 +121,7 @@ describe('HTTP request normalization', () => {
             });
             expect(request.headers.has('content-length')).toBe(withLength);
             const response = await app.fetch(request);
-            expect(response.status).toBe(200);
+            expect(response.status).toBe(201);
             return response.json();
           }),
         );

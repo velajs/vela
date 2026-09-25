@@ -213,7 +213,7 @@ describe('ValidationPipe integration', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Alice', email: 'alice@example.com' }),
     });
-    expect(validRes.status).toBe(200);
+    expect(validRes.status).toBe(201);
     const validBody = await validRes.json();
     expect(validBody).toEqual({ id: 1, name: 'Alice', email: 'alice@example.com' });
 
@@ -284,7 +284,7 @@ describe('ValidationPipe integration', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Bob' }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ name: 'Bob' });
   });
 });

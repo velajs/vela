@@ -9,7 +9,8 @@ is an opaque object and `context.get(name)` returns `unknown`. Inject `ENV`
 `@velajs/cloudflare` extends with the `Cloudflare.Env` that `wrangler types`
 generates; use a `RequestContextKey` for typed request values. This also applies to raw routes registered directly on
 the returned Hono app. Runtime-registered controllers do not acquire Hono's
-static route inference; generate the HTTP RPC type from their endpoint schemas.
+static route inference; generate the HTTP RPC type from their route schemas, or
+share `defineRoute` contracts with the client.
 
 The request container is held in private storage, independently of Hono's
 application variables. Use `getRequestContainer(context)`,
@@ -60,7 +61,7 @@ class UsersController {
 
 The descriptor exposes `name`, the original `schema`, `parse`, and `toJSONSchema`. Parsing preserves the schema's actual output, including scalar, array, and transformed outputs. `toJSONSchema` delegates to the schema and throws explicitly if that capability is unavailable. A descriptor is not constructible and never promises that an empty class instance contains required fields.
 
-`@Body`, `@Query`, `@Param`, `@Headers` and `@Cookie` accept a schema where they accept a pipe: `@Body(schema)`, `@Query(schema)` for the whole query object, or `@Query('page', schema)`, `@Param('id', schema)` and `@Headers('x-tenant', schema)` for one named value. The schema can be a descriptor, a Standard Schema such as Zod, or a `parse()` parser. The decorator validates the value with `new ValidationPipe(schema)`: invalid input is a 400 carrying the normalized issues, OpenAPI documents the schema, and pipes written after it receive its parsed output. Writing `new ValidationPipe(schema)` yourself is equivalent. `ValidationPipe.parser` exposes that parser to route introspection. A global `ValidationPipe` can also read a schema descriptor from explicit parameter metadata. TypeScript type aliases do not survive reflection, so pass the schema to the decorator for ordinary parameters. For a single checked contract spanning handler inputs, outputs, validation, and generated Hono RPC types, use `defineEndpoint` and `@Endpoint`; a standalone body parser does not check a method's TypeScript annotation against its schema.
+`@Body`, `@Query`, `@Param`, `@Headers` and `@Cookie` accept a schema where they accept a pipe: `@Body(schema)`, `@Query(schema)` for the whole query object, or `@Query('page', schema)`, `@Param('id', schema)` and `@Headers('x-tenant', schema)` for one named value. The schema can be a descriptor, a Standard Schema such as Zod, or a `parse()` parser. The decorator validates the value with `new ValidationPipe(schema)`: invalid input is a 400 carrying the normalized issues, OpenAPI documents the schema, and pipes written after it receive its parsed output. Writing `new ValidationPipe(schema)` yourself is equivalent. `ValidationPipe.parser` exposes that parser to route introspection. A global `ValidationPipe` can also read a schema descriptor from explicit parameter metadata. TypeScript type aliases do not survive reflection, so pass the schema to the decorator for ordinary parameters. `@Body()` with no schema validates a parameter class that carries a static schema — a Standard Schema, a descriptor or a `parse()` parser, as `ValidationPipe` reads it (`class CreateUser { static schema = z.object(…) }`) — or that is itself a Standard Schema, with no global pipe: it validates as the body is read, before any pipe, unless a `ValidationPipe` (or a subclass) applies to the parameter, which then validates it in pipe order, as in Nest. That class is read from `design:paramtypes`, so import it as a value (not `import type`) and annotate the parameter with the class alone (not `CreateUser | undefined`); an erased type reflects as `Object`, and the body is then accepted unvalidated without an error. Prefer `@Body(schema)` or a contract's `body` for security-relevant bodies. A parameter decorator cannot check a method's TypeScript annotation against its schema; a route's `response` option does check the handler's return type, and a `defineRoute` contract types both the handler values (`ContractBody`, `ContractQuery`, `ContractParams`) and a browser client.
 
 Programmatic routes supply the descriptor directly as `ParamMetadata.metatype`. The extractor passes that value through as `unknown`; validation narrows it to a callable parser. Real classes carrying static schema metadata are also readable, but class instances are not treated as schema output.
 
@@ -88,30 +89,31 @@ Exceptions thrown by Standard validators are preserved, even if they contain an
 convention. Map validation failures to client errors only at input boundaries;
 output validation failures indicate a server-side contract failure.
 
-### Endpoint input and output transformations
+### Route response transformations
 
-`defineEndpoint` accepts both synchronous and asynchronous schemas. A handler
-receives the input schema's parsed output and returns the output schema's input;
-the dispatcher awaits the final output transformation after interceptors. This
-supports projecting domain instances with JavaScript `#private` state into plain
-wire data without reflective hydration. Legacy parser endpoints keep their
-existing inferred handler result type.
+A route's `response` schema accepts both synchronous and asynchronous schemas.
+The handler returns the schema's input and the route sends its output, awaiting
+the transformation after interceptors. This supports projecting domain
+instances with JavaScript `#private` state into plain wire data without
+reflective hydration (see `defineSerializer` in
+[response serialization](serialization.md)).
 
 ```ts
-const endpoint = defineEndpoint({
-  input: defineDto(z.object({ json: z.object({
-    amount: z.string().transform(async (value) => Number(value)),
-  }) })),
-  output: defineDto(z.number().transform(async (value) => String(value)), {
-    jsonSchema: { type: 'string' },
-  }),
+const Amount = defineDto(z.number().transform(async (value) => String(value)), {
+  jsonSchema: { type: 'string' },
 });
-const execute = endpoint.bind(({ json }) => json.amount);
-// execute({ json: { amount: '42' } }) resolves to the wire string '42'.
+
+@Controller('/amounts')
+class Amounts {
+  @Post({ response: Amount })
+  create(@Body(z.object({ amount: z.coerce.number() })) body: { amount: number }) {
+    return body.amount; // sent as the wire string, e.g. "42"
+  }
+}
 ```
 
 OpenAPI reads input-direction schemas for wire requests and output-direction
 schemas for responses. Supply `schemaConverter(direction)` or an explicit
 `jsonSchema` for projections the schema library cannot represent. Async schema
 validation failures at input remain 400; exceptions thrown by validators and
-output-contract failures remain server errors.
+response-contract failures remain server errors.

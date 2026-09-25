@@ -1,28 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
 import { Controller, Get, Module, VelaFactory } from '../../index';
-import { Endpoint, defineEndpoint } from '../../openapi/endpoint';
 
-describe('native Workers endpoint bodies', () => {
+describe('native route responses in workerd', () => {
   it('preserves streaming headers, byte chunks and cancellation without draining the producer', async () => {
     const cancel = vi.fn();
     const pull = vi.fn((controller: ReadableStreamDefaultController<Uint8Array>) => {
       controller.enqueue(new TextEncoder().encode('event'));
     });
-    const stream = defineEndpoint({
-      input: z.object({}),
-      format: 'stream',
-      contentType: 'text/event-stream',
-    });
-    const binary = defineEndpoint({
-      input: z.object({}),
-      format: 'binary',
-      contentType: 'application/pdf',
-    });
     @Controller('/native')
     class Routes {
-      @Get('/events')
-      @Endpoint(stream)
+      @Get('/events', { format: 'stream', contentType: 'text/event-stream' })
       events() {
         return new Response(
           new ReadableStream<Uint8Array>({ pull, cancel }, { highWaterMark: 0 }),
@@ -32,13 +19,11 @@ describe('native Workers endpoint bodies', () => {
           },
         );
       }
-      @Get('/download')
-      @Endpoint(binary)
+      @Get('/download', { format: 'binary', contentType: 'application/pdf' })
       download() {
         return new Uint8Array([0, 128, 255]);
       }
-      @Get('/broken')
-      @Endpoint(stream)
+      @Get('/broken', { format: 'stream' })
       broken() {
         return new ReadableStream<Uint8Array>(
           {

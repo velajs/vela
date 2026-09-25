@@ -56,7 +56,7 @@ describe('Worker bindings lab consumer project', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ value: 'hello worker' }),
     });
-    expect(writeKV.status).toBe(200);
+    expect(writeKV.status).toBe(201);
     expect(writeKV.body).toEqual({ key: 'greeting', value: 'hello worker' });
 
     const readKV = await fetchJson(app.fetch, '/lab/kv/greeting', env, ctx);

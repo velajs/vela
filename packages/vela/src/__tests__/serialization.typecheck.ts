@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import * as v from 'valibot';
-import { Serialize, defineSerializer } from '../index';
+import { Get, defineSerializer } from '../index';
 import { defineDto } from '../validation/index';
 
 class Account {
@@ -28,12 +28,11 @@ const transformedInput = defineSerializer({
 export async function verifySerializerTypes(raw: unknown): Promise<void> {
   const wire: { id: number } = await serializer.serialize(new Account('42'));
   const parsed: { id: number } = await serializer.parse(raw);
-  const nested: { id: number } = await serializer.schema.parse(raw);
   const transformed: number = await transformedInput.serialize('21');
   // @ts-expect-error Callers provide schema input, not an already transformed domain value.
   transformedInput.serialize(21);
   void transformed;
-  void [wire, parsed, nested];
+  void [wire, parsed];
 
   // @ts-expect-error A typed call requires the validated domain type, including private state.
   serializer.serialize({ identifier: () => '42' });
@@ -62,19 +61,25 @@ const asyncLegacy = defineSerializer({
 });
 
 class Responses {
-  @Serialize(defineDto(v.object({ id: v.string() })))
+  @Get('/standard', { response: defineDto(v.object({ id: v.string() })) })
   standard() {
     return { id: 'one' };
   }
 
-  @Serialize(serializer)
+  @Get('/projected', { response: serializer })
   projected() {
     return new Account('1');
   }
 
-  @Serialize(asyncLegacy)
+  @Get('/legacy', { response: asyncLegacy })
   legacy() {
     return new Account('1');
+  }
+
+  // @ts-expect-error A serializer response takes the domain value, not its wire shape.
+  @Get('/wire', { response: serializer })
+  wire() {
+    return { id: 1 };
   }
 }
 void Responses;

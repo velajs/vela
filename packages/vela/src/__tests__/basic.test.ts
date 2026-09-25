@@ -113,7 +113,7 @@ describe('Basic app', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Widget' }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: 1, name: 'Widget' });
   });
 
@@ -181,13 +181,16 @@ describe('Basic app', () => {
     expect(data.same).toBe(true);
   });
 
-  it('should return 204 for null/undefined results', async () => {
+  it('sends null/undefined results empty at the route status, and 204 for response: null', async () => {
     @Controller('/empty')
     class EmptyController {
       @Delete('/:id')
       remove(@Param('id') _id: string) {
         return null;
       }
+
+      @Delete('/:id/purge', { response: null })
+      purge(@Param('id') _id: string) {}
     }
 
     @Module({ controllers: [EmptyController] })
@@ -197,7 +200,10 @@ describe('Basic app', () => {
     const hono = app.getHonoApp();
 
     const res = await hono.request('/empty/1', { method: 'DELETE' });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('');
+    const purged = await hono.request('/empty/1/purge', { method: 'DELETE' });
+    expect(purged.status).toBe(204);
   });
 
   it('should return text for string results', async () => {

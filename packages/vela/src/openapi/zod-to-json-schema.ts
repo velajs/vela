@@ -31,12 +31,13 @@ function stripOpenApiIncompatible(schema: JsonSchema): JsonSchema {
 export function zodToJsonSchema(
   schema: unknown,
   direction: 'input' | 'output' = 'output',
+  libraryOptions?: Record<string, unknown>,
 ): JsonSchema {
   if (!schema || (typeof schema !== 'object' && typeof schema !== 'function')) return {};
 
   let standard: unknown;
   try {
-    standard = standardJsonSchema(schema, direction);
+    standard = standardJsonSchema(schema, direction, undefined, libraryOptions);
   } catch {
     return {};
   }

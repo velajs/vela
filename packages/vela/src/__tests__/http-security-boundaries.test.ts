@@ -137,7 +137,7 @@ describe('HTTP security boundaries', () => {
 
     const stream = await hono.request('/uploads/stream', { method: 'POST', body: 'x'.repeat(32) });
     const normal = await hono.request('/uploads/normal', { method: 'POST', body: 'x'.repeat(32) });
-    expect(stream.status).toBe(200);
+    expect(stream.status).toBe(201);
     expect(await stream.json()).toEqual({ size: 32 });
     expect(normal.status).toBe(413);
     expect(streamHits).toBe(1);
@@ -171,7 +171,7 @@ describe('HTTP security boundaries', () => {
     expect(
       (await hono.request(`/query-limit?a=?${'x'.repeat(129)}`, { method: 'POST' })).status,
     ).toBe(400);
-    expect((await hono.request('/query-limit?a=1&b=2', { method: 'POST' })).status).toBe(200);
+    expect((await hono.request('/query-limit?a=1&b=2', { method: 'POST' })).status).toBe(201);
     expect(hits).toBe(1);
   });
 

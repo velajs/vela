@@ -22,8 +22,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   validation, and typed contracts.
 - [Response caching](caching.md): asynchronous stores, trusted partitions, tags,
   expiry, and explicit post-commit invalidation.
-- [Response serialization](serialization.md): async output schemas and explicit
-  projections for domain objects, including private state.
+- [Response serialization](serialization.md): route `response` schemas, async
+  output schemas and explicit projections for domain objects, including private state.
 - [Dependency injection](dependency-injection.md): registration ownership,
   async construction, provider scopes, and diagnostic snapshots.
 - [Queues](queues.md): validated job contracts, owned dispatch, and native
@@ -50,7 +50,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 
 - [Cloudflare security](cloudflare-security.md): platform identity, signed R2
   URLs, and Durable Object WebSockets.
-- [HTTP clients](client/HTTP.md): generated contracts and Hono RPC.
+- [HTTP contracts and clients](client/HTTP.md): route options, shared `defineRoute`
+  contracts, form and multipart bodies, generated clients and Hono RPC.
 - [Outbound HTTP](http-client.md): injectable transports, cancellation, byte limits,
   and schema-validated responses.
 - [Method RPC](../packages/rpc/README.md): shared procedure contracts and typed HTTP/Fetcher calls.

@@ -1,16 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import * as v from 'valibot';
-import {
-  Controller,
-  Get,
-  Module,
-  Serialize,
-  SerializerInterceptor,
-  UseInterceptors,
-  VelaFactory,
-  defineSerializer,
-} from '../index';
+import { Controller, Get, Module, VelaFactory, defineSerializer } from '../index';
+import { createOpenApiDocument } from '../openapi/index';
 
 class Account {
   #id: string;
@@ -57,7 +49,7 @@ describe('explicit domain serialization', () => {
     expect(outputParse).toHaveBeenCalledTimes(1);
     expect(account.matchesPassword('secret')).toBe(true);
     expect(Object.isFrozen(serializer)).toBe(true);
-    expect(Object.isFrozen(serializer.schema)).toBe(true);
+    expect(Object.isFrozen(serializer['~standard'])).toBe(true);
   });
 
   it('rejects foreign values before invoking the typed projection', async () => {
@@ -119,24 +111,27 @@ describe('explicit domain serialization', () => {
     expect(outputTransform).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the same complete projection for @Serialize scalar and array results', async () => {
-    const serializer = defineSerializer({
+  it('serves as a route response: the handler returns the domain value, the route sends the projection', async () => {
+    const wire = v.object({ id: v.string(), createdAt: v.string() });
+    const one = defineSerializer({
       input: z.instanceof(Account),
-      output: v.object({ id: v.string(), createdAt: v.string() }),
+      output: wire,
       project: (account) => account.publicDetails(),
+    });
+    const many = defineSerializer({
+      input: z.array(z.instanceof(Account)),
+      output: v.array(wire),
+      project: (accounts) => accounts.map((account) => account.publicDetails()),
     });
     const shared = new Account('same', 'secret');
     @Controller('/accounts')
-    @UseInterceptors(SerializerInterceptor)
     class Accounts {
-      @Get()
-      @Serialize(serializer)
+      @Get({ response: many })
       list() {
         return [shared, shared];
       }
 
-      @Get('/one')
-      @Serialize(serializer)
+      @Get('/one', { response: one })
       one() {
         return shared;
       }
@@ -155,5 +150,30 @@ describe('explicit domain serialization', () => {
     } finally {
       await app.dispose();
     }
+  });
+
+  it('documents the wire schema of a serializer response', () => {
+    const serializer = defineSerializer({
+      input: z.instanceof(Account),
+      output: z.object({ id: z.string(), createdAt: z.string() }),
+      project: (account) => account.publicDetails(),
+    });
+    @Controller('/documented')
+    class Documented {
+      @Get({ response: serializer })
+      one() {
+        return new Account('a', 'secret');
+      }
+    }
+    @Module({ controllers: [Documented] })
+    class App {}
+    const schema =
+      createOpenApiDocument(App).paths['/documented']!.get!.responses['200']!.content![
+        'application/json'
+      ]!.schema;
+    expect(schema).toMatchObject({
+      type: 'object',
+      properties: { id: { type: 'string' }, createdAt: { type: 'string' } },
+    });
   });
 });

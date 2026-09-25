@@ -1,5 +1,5 @@
-import { endpointContentType } from './endpoint-response';
 import { MetadataRegistry } from '../registry/metadata.registry';
+import { isValidationSchema } from '../validation/parse-schema';
 import { isRecord } from './json-schema';
 import type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions } from './types';
 
@@ -129,24 +129,63 @@ export function getApiTags(target: object, propertyKey?: string | symbol): strin
 }
 
 /**
- * Document a response for a given status code. Stackable: apply multiple
- * times on the same handler to declare different statuses.
+ * Document a response, as Nest's `@ApiResponse`. Stackable: apply it once per
+ * status. The schema is a Standard Schema (or `defineDto` descriptor),
+ * converted to JSON Schema. The route's success body comes from its `response`
+ * option; an `@ApiResponse` for that status only describes it.
  *
  * ```ts
- * @Get('/:id')
- * @ApiResponse(200, { description: 'Found', schema: UserDto })
- * @ApiResponse(404, { description: 'Not found', schema: ErrorDto })
+ * @Get('/:id', { response: User })
+ * @ApiResponse({ status: 404, description: 'Not found', schema: ErrorBody })
  * findOne() { ... }
  * ```
  */
-export function ApiResponse(status: number | string, options: ApiResponseOptions): MethodDecorator {
+export function ApiResponse(options: ApiResponseOptions): MethodDecorator {
+  const entry = parseApiResponse(options);
   return (target: object, propertyKey: string | symbol) => {
     const responses = getApiResponses(target.constructor, propertyKey) ?? [];
     MetadataRegistry.setCustomHandlerMeta(target.constructor, propertyKey, API_RESPONSES_METADATA, [
       ...responses,
-      { status, ...options },
+      entry,
     ]);
   };
+}
+
+function isResponseStatus(value: unknown): value is ApiResponseOptions['status'] {
+  return (
+    (typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599) ||
+    value === 'default' ||
+    (typeof value === 'string' && /^[1-5]XX$/.test(value))
+  );
+}
+
+function parseApiResponse(entry: unknown): ApiResponseEntry {
+  if (!isRecord(entry) || typeof entry.description !== 'string' || !isResponseStatus(entry.status))
+    throw new Error('Invalid OpenAPI response: expected { status, description }');
+  if (entry.contentType !== undefined && typeof entry.contentType !== 'string')
+    throw new Error('Invalid OpenAPI response contentType');
+  if (
+    entry.format !== undefined &&
+    entry.format !== 'binary' &&
+    entry.format !== 'stream' &&
+    entry.format !== 'response'
+  )
+    throw new Error('Invalid OpenAPI response format');
+  if (entry.format !== undefined && entry.schema !== undefined)
+    throw new Error('Native OpenAPI responses cannot declare a JSON schema');
+  if (entry.schema !== undefined && !isValidationSchema(entry.schema))
+    throw new Error(
+      '@ApiResponse schema must be a Standard Schema (such as a Zod or Valibot schema) or a defineDto descriptor',
+    );
+  if (entry.contentType !== undefined && !/^[\w!#$&^.+-]+\/[\w!#$&^.+-]+$/.test(entry.contentType))
+    throw new Error('@ApiResponse contentType must be a media type without parameters');
+  return Object.freeze({
+    status: entry.status,
+    description: entry.description,
+    ...(entry.contentType === undefined ? {} : { contentType: entry.contentType.toLowerCase() }),
+    ...(entry.format === undefined ? {} : { format: entry.format }),
+    ...(entry.schema === undefined ? {} : { schema: entry.schema }),
+  });
 }
 
 export function getApiResponses(
@@ -156,32 +195,5 @@ export function getApiResponses(
   const value = MetadataRegistry.getCustomHandlerMeta(target, propertyKey, API_RESPONSES_METADATA);
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) throw new Error('Invalid OpenAPI responses');
-  return value.map((entry: unknown): ApiResponseEntry => {
-    if (
-      !isRecord(entry) ||
-      typeof entry.description !== 'string' ||
-      (typeof entry.status !== 'string' && typeof entry.status !== 'number')
-    )
-      throw new Error('Invalid OpenAPI response');
-    if (entry.contentType !== undefined && typeof entry.contentType !== 'string')
-      throw new Error('Invalid OpenAPI response contentType');
-    if (
-      entry.format !== undefined &&
-      entry.format !== 'binary' &&
-      entry.format !== 'stream' &&
-      entry.format !== 'response'
-    )
-      throw new Error('Invalid OpenAPI response format');
-    if (entry.format !== undefined && entry.schema !== undefined)
-      throw new Error('Native OpenAPI responses cannot declare a JSON schema');
-    return {
-      ...(entry.contentType === undefined
-        ? {}
-        : { contentType: endpointContentType(entry.contentType) }),
-      ...(entry.format === undefined ? {} : { format: entry.format }),
-      status: entry.status,
-      description: entry.description,
-      ...(entry.schema === undefined ? {} : { schema: entry.schema }),
-    };
-  });
+  return value.map(parseApiResponse);
 }

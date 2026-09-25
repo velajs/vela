@@ -307,10 +307,10 @@ const response = await client.users[':id'].$get({ param: { id: 'u1' } });
 const user = await response.json();
 ```
 
-Generate with the current Vela exporter to include global prefixes, route versions, `@HttpCode`, and query DTO fields. Use the server origin for `hc`; prefixes are already in the generated paths. `@Endpoint(defineEndpoint({ input, output, status }))` shares schemas with runtime validation. Named `defineDto` descriptors passed to parameter decorators such as `@Body(dto)`, to `ValidationPipe`, and to `@ApiResponse` also supply documentation types; erased TypeScript interfaces and handler return types cannot be recovered from decorators. Missing schemas produce `unknown` and stderr warnings. `--strict` fails on these warnings before writing, and `--check` verifies the exact generated file without changing it. `@All` handlers, such as a mounted auth handler, have no OpenAPI operation, so the contract and its check against the app's routes leave them out.
+Generate with the current Vela exporter to include global prefixes, route versions, `@HttpCode`, and query DTO fields. Use the server origin for `hc`; prefixes are already in the generated paths. Route options (`@Post({ response, status })` with `@Body(schema)`) and `defineRoute` contracts share schemas with runtime validation, and generate the same client. Named `defineDto` descriptors passed to parameter decorators such as `@Body(dto)`, to `ValidationPipe`, and to `@ApiResponse` also supply documentation types; erased TypeScript interfaces and handler return types cannot be recovered from decorators. Missing schemas produce `unknown` and stderr warnings. `--strict` fails on these warnings before writing, and `--check` verifies the exact generated file without changing it. `@All` handlers, such as a mounted auth handler, have no OpenAPI operation, so the contract and its check against the app's routes leave them out.
 
-Form endpoints use `input.form` with `body.contentType` set to
-`multipart/form-data` or `application/x-www-form-urlencoded`. The generator emits
+Form routes declare `body: { multipart }` or `body: { form }` with a
+`@Body(schema)` form schema (or `multipart`/`form` on a `defineRoute` contract). The generator emits
 string/file fields and repeated arrays with required/optional properties, retaining
 all response variants. Files become `File | Blob` only for multipart contracts.
 Use `fetch: withFormEncoding(formEncodings, suppliedFetch)` from

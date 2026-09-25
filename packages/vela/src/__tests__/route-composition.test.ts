@@ -46,7 +46,7 @@ describe('setGlobalPrefix({ exclude })', () => {
     expect((await hono.request('/health')).status).toBe(200);
     expect((await hono.request('/api/health')).status).toBe(404);
     expect((await hono.request('/api/cats')).status).toBe(200);
-    expect((await hono.request('/cats', { method: 'POST' })).status).toBe(200);
+    expect((await hono.request('/cats', { method: 'POST' })).status).toBe(201);
     expect((await hono.request('/api/cats', { method: 'POST' })).status).toBe(404);
     expect(app.describeRoutes().map((route) => `${route.method} ${route.path}`)).toEqual([
       'GET /health',

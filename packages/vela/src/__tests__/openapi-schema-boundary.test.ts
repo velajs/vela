@@ -30,21 +30,40 @@ describe('OpenAPI schema reflection boundary', () => {
     expect(schema['x-label']).toEqual({ title: 'ID' });
   });
 
-  it('rejects invalid raw ApiResponse schemas during document generation', () => {
+  it('rejects raw JSON Schema in @ApiResponse when the decorator is applied', () => {
+    expect(() =>
+      ApiResponse({
+        status: 200,
+        description: 'Invalid',
+        // @ts-expect-error @ApiResponse documents a Standard Schema, not raw JSON Schema
+        schema: { type: 'object', properties: { id: { type: 42 } } },
+      }),
+    ).toThrow('Standard Schema');
+  });
+
+  it('rejects a Standard Schema whose JSON Schema export is malformed during document generation', () => {
+    const malformed = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: (value: unknown) => ({ value }),
+        jsonSchema: {
+          input: () => ({ type: 'object' }),
+          output: () => ({ type: 'object', properties: { id: { type: 42 } } }),
+        },
+      },
+    };
     @Controller('/malformed-schema')
     class Example {
       @Get()
-      @ApiResponse(200, {
-        description: 'Invalid',
-        schema: { type: 'object', properties: { id: { type: 42 } } },
-      })
+      @ApiResponse({ status: 200, description: 'Invalid', schema: malformed })
       find() {
         return { id: 'u1' };
       }
     }
     @Module({ controllers: [Example] })
     class App {}
-    expect(() => createOpenApiDocument(App)).toThrow('@ApiResponse schema.properties.id.type');
+    expect(() => createOpenApiDocument(App)).toThrow('properties.id.type');
   });
 
   it('retains explicit missing-schema behavior when export is unavailable', () => {

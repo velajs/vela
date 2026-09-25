@@ -150,7 +150,7 @@ describe('SignedInvocation guard — @SignedInvocation() route', () => {
     const app = await VelaFactory.create(AppModule);
     const token = await tokenFor();
 
-    expect((await send(app, token)).status).toBe(200);
+    expect((await send(app, token)).status).toBe(201);
     expect((await send(app, token)).status).toBe(403); // same nonce → replay rejected
     expect(hits).toEqual(['run']); // handler ran exactly once
     await app.dispose();
@@ -196,7 +196,7 @@ describe('SignedInvocation guard — a @Global() NONCE_STORE', () => {
     const token = await tokenFor();
 
     expect(first.get(NONCE_STORE)).toBeInstanceOf(DurableNonceStore);
-    expect((await send(first, token)).status).toBe(200);
+    expect((await send(first, token)).status).toBe(201);
     // The guard claims the nonce in the module's store, not in a per-application default.
     expect((await send(second, token)).status).toBe(403);
     expect(hits).toEqual(['run']);
@@ -243,7 +243,7 @@ describe('SignedInvocation guard — a @Global() NONCE_STORE', () => {
 
     expect(app.get(NONCE_STORE)).toBe(configured);
     // The guard claims the nonce in the configured store, not in the @Global() module's.
-    expect((await send(app, token)).status).toBe(200);
+    expect((await send(app, token)).status).toBe(201);
     expect(seen).toHaveLength(1);
     expect(hits).toEqual(['run']);
     await app.dispose();

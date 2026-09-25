@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  HttpCode,
   Inject,
   InjectionToken,
   Post,
@@ -240,6 +241,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/sign-upload')
+    @HttpCode(200)
     async signUpload(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<SignUploadRequest>(c);
@@ -273,6 +275,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/multipart/create')
+    @HttpCode(200)
     async multipartCreate(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<MultipartCreateRequest>(c);
@@ -363,6 +366,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/multipart/sign-part')
+    @HttpCode(200)
     async multipartSignPart(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<SignPartRequest>(c);
@@ -409,6 +413,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/multipart/complete')
+    @HttpCode(200)
     async multipartComplete(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<MultipartCompleteRequest>(c);
@@ -474,6 +479,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/multipart/abort')
+    @HttpCode(200)
     async multipartAbort(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<MultipartAbortRequest>(c);
@@ -544,6 +550,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/delete')
+    @HttpCode(200)
     async delete(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<DeleteRequest>(c);
@@ -603,6 +610,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     @Post('/sign-download')
+    @HttpCode(200)
     async signDownload(@Ctx() c: Context): Promise<Response> {
       try {
         const b = await this.body<{ key: string; expiresIn?: number }>(c);

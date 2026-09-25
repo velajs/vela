@@ -46,36 +46,245 @@ type CreatedUser = InferResponseType<typeof client.users.$post, 201>;
 
 ## Describe the server contract
 
-Use a schema-bearing endpoint definition for both runtime validation and generated types. The method receives one parsed object with `param`, `query`, `header`, and either `json` or `form` groups. With Zod 4.4 or later:
+A route declares its contract once, and the same schemas validate requests,
+shape responses, document OpenAPI and type the generated client. Vela offers
+two equivalent styles; they produce the same OpenAPI document and the same
+generated client (see below for schemas JSON Schema cannot describe).
+
+### Route options (the default)
+
+Method decorators take route options after the path (or instead of it), and
+parameter decorators take schemas. With Zod 4.4 or later:
 
 ```ts
-import { Controller, Post } from '@velajs/vela';
-import { Endpoint, defineEndpoint } from '@velajs/vela/openapi';
+import { Body, Controller, Get, Param, Post, Query } from '@velajs/vela';
+import type { SchemaOutput } from '@velajs/vela/validation';
 import { z } from 'zod';
 
-const createUser = defineEndpoint({
-  input: z.object({ json: z.object({ name: z.string() }) }),
-  output: z.object({ id: z.string(), name: z.string() }),
-  status: 201,
-});
+const User = z.object({ id: z.string(), name: z.string() });
+const CreateUser = z.object({ name: z.string().min(1) });
+const ListUsers = z.object({ tag: z.array(z.string()).optional() });
 
 @Controller('/users')
 export class UsersController {
-  @Post()
-  @Endpoint(createUser)
-  create(input: ReturnType<typeof createUser.input.parse>) {
-    return { id: crypto.randomUUID(), name: input.json.name };
+  constructor(private readonly users: UsersService) {}
+
+  @Get({ response: z.array(User) })
+  list(@Query(ListUsers) query: SchemaOutput<typeof ListUsers>) {
+    return this.users.list(query.tag);
+  }
+
+  @Post({ response: User }) // 201
+  create(@Body(CreateUser) body: SchemaOutput<typeof CreateUser>) {
+    return { id: crypto.randomUUID(), name: body.name };
+  }
+
+  @Get('/:id', { response: User })
+  find(@Param('id', z.string().uuid()) id: string) {
+    return this.users.find(id);
   }
 }
 ```
 
-`@Endpoint` constrains the method's argument and return types. The dispatcher parses input after guards and validates the final result after interceptors. Invalid input returns 400; an invalid result returns 500. JSON is the default response format, including strings and `null`. A string output can select `format: 'text'`. The endpoint owns its status and parameter parsing, so it cannot be combined with parameter decorators, `@HttpCode`, or `@Redirect` on the same method.
+The options are `response`, `status`, `format`, `contentType`, `validate` and
+`body`, plus the route `name`. A handler whose return type does not match
+`response` fails to compile. The route parses the final result, after
+interceptors, through `response`: a stripping schema removes undeclared fields,
+and a result the schema rejects answers 500. `@CacheResponse` stores the
+response the route sent and replays it on a hit, without running the handler or
+parsing again ([caching](../caching.md)). With `response`, JSON is the default
+format, including strings and `null`; `format: 'text'` sends a string. Without
+`response` or `format`, the route sends strings as text and other values as
+JSON, like a route without options. A handler may always return a ready
+`Response`. Invalid input returns 400, after guards. `validate: false` keeps the
+schema for documentation and types without parsing the result. `@Redirect` and
+`@Sse` decide how a route responds, so they combine with options that declare
+only the request (`body`, `name`), not with response options.
 
-Ordinary parameter decorators can use named descriptors: `const BodyDto = defineDto(schema, { name: 'CreateUser' })`, then `@Body(BodyDto) body: ReturnType<typeof BodyDto.parse>`. The decorator validates with that schema, and OpenAPI reads the same parser metadata. `@ApiResponse` accepts a descriptor, an exportable schema, or a checked raw JSON Schema; it documents a response without validating the handler's output. Erased TypeScript interfaces cannot supply schemas.
+A decorator with `response` or `format` checks its handler's result, so its
+type is `RouteMethodDecorator<Result>` rather than `MethodDecorator`: annotate
+a helper that returns one with `RouteMethodDecorator<T>`, or let TypeScript
+infer it. Decorators without those options are ordinary `MethodDecorator`s.
 
-The generated `AppType` uses Hono's schema types. `Schemas` exports named DTO/component types. Missing schemas become `unknown` with diagnostics on stderr; `--strict` fails instead. Unsupported path syntax and parameter serialization fail generation. Native response media types retain an unknown JSON boundary. `@Endpoint` supplies runtime validation; documentation-only schemas remain declarations. Imported OpenAPI files are decoded before generation, and malformed nested fields fail with a path diagnostic.
+POST answers 201, `response: null` answers 204 with no body, and every other
+method answers 200, whatever the handler returns; `status` or `@HttpCode`
+declares another success status (not both). Each route uses its own options,
+also when one handler serves several routes. Responses, OpenAPI and the
+response cache read the status the same way. A controller that routes a method
+it inherits unchanged (`Get()(Sub.prototype, 'list', descriptor)`) without
+options of its own serves it with those of the nearest ancestor's route for the
+same verb, and reads the parameters the ancestor declares on the method; an
+override uses only its own.
 
-The generator supports JSON, multipart, and URL-encoded request bodies, JSON/text and native binary/stream responses, component schema references, object properties, arrays, enums, unions/intersections, and nullable JSON values. Form fields have the concrete wire shapes described below. Use separate input/output definitions for `readOnly` or `writeOnly` fields. Cookie parameters, external references and custom parameter serialization require a separately authored contract. Paths with a trailing slash (other than `/`) or reserved `hc` segments such as `index` and `then` are rejected; use `@Get()` for a controller's base route. GET/HEAD request bodies are rejected because `hc` does not send them. Contributed routes need OpenAPI metadata from their contributor; raw Hono mounts are not inferred.
+`@Body()` without a schema validates a parameter class that carries a static
+schema — a Standard Schema, a `defineDto` descriptor or a `parse()` parser, as
+`ValidationPipe` reads it (`class CreateUser { static schema = CreateUserSchema }`)
+— or that is itself a Standard Schema, with no global pipe; a named
+`@Body('user') user: CreateUser` validates that member. It validates as the body
+is read, before any pipe, unless a `ValidationPipe` (or a subclass) applies to
+the parameter: its own, or a global, controller or method pipe. Then the body
+is left to that pipe, which validates it at its place in pipe order, as in Nest,
+after the pipes before it (a trimming pipe, say). Every `ValidationPipe` that
+applies validates, as in Nest: the parameter's own beside a global one validates
+twice, which fails for a schema whose transform does not accept its own output.
+A validation pipe of your own that is not a `ValidationPipe` (one that parses
+`metatype.schema`, say) runs after the class validated the body, on the
+validated value; extend `ValidationPipe` instead, so the body is left to it.
+The class is found through the parameter's reflected type, so import it as a
+value (not with `import type`) and annotate the parameter with the class alone,
+not a union such as `CreateUser | undefined`: otherwise TypeScript emits
+`Object`, and the body reaches the handler unvalidated with no error. An import
+cycle can erase it the same way, and a lint autofix to type-only imports can
+introduce the problem silently. For security-relevant bodies, prefer
+`@Body(schema)` or a contract's `body`, which do not depend on reflection.
+Named descriptors work too: `const BodyDto = defineDto(schema, { name:
+'CreateUser' })`, then `@Body(BodyDto)`; OpenAPI then references a named
+component. Erased TypeScript interfaces cannot supply schemas.
+
+`@Query()` parses repeated keys (`?tag=a&tag=b`) and keys its schema declares as
+arrays in its JSON Schema (in any member of a union schema) to arrays, even when
+a key is sent once; every other key stays a string, so a repeated scalar
+reaches its schema as an array and fails validation. A field JSON Schema cannot
+express, such as `z.coerce.date()` or `z.custom()`, converts as any value and
+leaves the array fields beside it arrays. A schema that cannot describe itself
+as JSON Schema at all (a Valibot schema without a converter, a `parse()`
+parser) receives an array only for a repeated key. The schema is the route's,
+the parameter's own, or its class's static schema (which a global
+`ValidationPipe` validates).
+Without a schema, a named parameter follows its declared type:
+`@Query('sort') sort: string` (or `number`, `boolean`) receives the first
+value, `@Query('tags') tags: string[]` without a pipe always receives an array,
+and any other parameter — typed `unknown` or a union, or an array a pipe such as
+`ParseArrayPipe` splits — receives one value, or an array for a repeated key.
+`string | undefined` and `string | null` are unions too; declare the parameter
+optional (`sort?: string`) to receive the first value. Declare a schema for
+security-relevant query values. OpenAPI documents array query parameters with
+`style: form` and `explode: true`, and the parameters that receive one value or
+repeated keys as `oneOf` a string or a string array, which
+`vela client generate` types `string | Array<string>`.
+
+### Shared `defineRoute` contracts
+
+`defineRoute` from `@velajs/vela/contract` declares a route's method, path and
+schemas in a module a browser can import: the entry imports no server code.
+Every method decorator serves a contract of its own method:
+
+```ts
+// contracts.ts — shared by server and browser
+import { defineRoute } from '@velajs/vela/contract';
+
+export const createUser = defineRoute({
+  method: 'POST',
+  path: '/users',
+  body: CreateUser,
+  response: User,
+});
+export const findUser = defineRoute({
+  method: 'GET',
+  path: '/users/:id',
+  params: z.object({ id: z.string().uuid() }),
+  response: User,
+});
+
+// users.controller.ts
+import { type ContractBody, type ContractParams } from '@velajs/vela/contract';
+
+@Controller('/users')
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
+
+  @Post(createUser)
+  create(@Body() body: ContractBody<typeof createUser>) {
+    return { id: crypto.randomUUID(), name: body.name };
+  }
+
+  @Get('/:id', findUser)
+  find(@Param() params: ContractParams<typeof findUser>) {
+    return this.users.find(params.id);
+  }
+}
+```
+
+A contract takes `params`, `query` and `body` schemas, one of `json`, `form` or
+`multipart` for the body's encoding and limits, and the response options above.
+Declared means enforced: the route validates each group it declares once per
+request, after guards and before the handler, whether or not a parameter reads
+it, and checks a declared body's media type and limits the same way.
+`@Body()`, `@Query()` and `@Param()` (whole or named) read the validated
+values. Pipes still run on them, but a `ValidationPipe` does not validate them
+again: the route is the validator for the groups it declares. The application
+fails to start when a parameter declares its own schema for a declared group or
+is typed with a class whose static schema is not the group's (which would never
+run; type it with `ContractBody`, `ContractQuery` or `ContractParams`, or a
+class carrying the contract's own schema), when a named
+parameter reads a key the group's schema does not return, and when a `params`
+schema leaves out a path parameter the route serves (a controller prefix's
+included). The key checks need a schema that lists its keys as JSON Schema and
+does not pass undeclared keys through: a Zod object does, even with fields
+JSON Schema cannot express such as `z.coerce.date()`. For any other (a Valibot
+schema, a `parse()` parser, a union, a transform that renames keys), a named
+parameter that reads a key the request carries but the validated value lacks
+fails that request with a 500 whose reported error names the key, and so does
+a whole `@Param()` when the validated params lack a path parameter the request
+carries. The
+validation ships with `@Body`, `@Query` and `@Param`, so a Worker bundle that
+uses none of them leaves it out; a route that declares request groups or a
+form body then fails to start with an error saying so, and reading the
+declared input with one of them fixes it. The decorator's method must
+match the contract's, and the application fails to start when the contract's
+`path` is not the path the route serves (global prefix and version included),
+or when the route adds `@HttpCode`: `ContractApp` clients are typed with the
+contract's `status`, so declare it there.
+
+OpenAPI documents a field JSON Schema cannot express, such as
+`z.coerce.date()`, as any value (generated clients send it as a string), and
+lists the fields beside it. A `params` or `query` schema that JSON Schema cannot
+describe as an object (a Valibot schema without a JSON Schema converter, a
+union) is documented as the decorator options document it: the path parameters
+the route serves as strings, and the query as unsupported by
+`vela client generate`, which then fails for that operation as it does for a
+whole `@Query(schema)` with such a schema; exclude the route with
+`@ApiExclude()` or declare an object schema to generate a client.
+
+Without code generation, `ContractApp` types an `hc` client from contracts:
+
+```ts
+import { hc } from '@velajs/client/http';
+import type { ContractApp } from '@velajs/vela/contract';
+import { createUser, findUser } from './contracts';
+
+const client = hc<ContractApp<[typeof createUser, typeof findUser]>>(origin);
+const created = await client.users.$post({ json: { name: 'Ada' } }); // status 201
+const user = await (await client.users[':id'].$get({ param: { id } })).json();
+```
+
+`ContractApp` types wire values as the generator does: path and query values
+are strings (string literal unions stay literal), files are `File | Blob`, JSON
+bodies are the schema's input and responses its JSON-parsed output.
+
+`hc` sends every `form` input as multipart, and a `form:` contract accepts only
+URL-encoded bodies (415 otherwise). `contractFormEncodings(routes)` lists the
+contracts' form encodings for `withFormEncoding`, which encodes those calls:
+
+```ts
+import { hc, withFormEncoding } from '@velajs/client/http';
+import { contractFormEncodings, type ContractApp } from '@velajs/vela/contract';
+
+const client = hc<ContractApp<typeof routes>>(origin, {
+  fetch: withFormEncoding(contractFormEncodings(routes)),
+});
+```
+
+### Generated clients
+
+`@ApiResponse({ status, description, schema })` documents another status, such
+as an error body; the schema is a Standard Schema or `defineDto` descriptor,
+converted to JSON Schema. It documents without validating. For the success
+status it only describes the route's own response.
+
+The generated `AppType` uses Hono's schema types. `Schemas` exports named DTO/component types. Missing schemas become `unknown` with diagnostics on stderr; `--strict` fails instead. Unsupported path syntax and parameter serialization fail generation. Native response media types retain an unknown JSON boundary. Route schemas supply runtime validation; documentation-only schemas remain declarations. Imported OpenAPI files are decoded before generation, and malformed nested fields fail with a path diagnostic.
+
+The generator supports JSON, multipart, and URL-encoded request bodies, JSON/text and native binary/stream responses, component schema references, object properties, arrays, enums, unions/intersections, and nullable JSON values. Form fields have the concrete wire shapes described below. Use separate input/output definitions for `readOnly` or `writeOnly` fields. Cookie parameters, external references and parameter serialization other than repeated query keys require a separately authored contract. Paths with a trailing slash (other than `/`) or reserved `hc` segments such as `index` and `then` are rejected; use `@Get()` for a controller's base route. GET/HEAD request bodies are rejected because `hc` does not send them. Contributed routes need OpenAPI metadata from their contributor; raw Hono mounts are not inferred.
 
 Declare global guard/filter responses explicitly when needed:
 
@@ -92,77 +301,105 @@ HTTP calls through `hc` are ordinary requests. Continue using `LiveClient.mutate
 
 ## Form bodies and uploads
 
-Use `input.form` and an explicit `body.contentType`. The same schema supplies the
-handler's parsed types and OpenAPI's wire types:
+Routes read JSON by default and answer 415 for any other media type. A route
+opts into one form encoding with `body: { multipart: limits }` or
+`body: { form: limits }` (a contract uses `multipart:` or `form:` directly),
+and the body schema supplies the handler's parsed types and OpenAPI's wire
+types:
 
 ```ts
-const upload = defineEndpoint({
-  input: z.object({
-    form: z.object({
-      title: z.string().min(1),
-      tags: z.array(z.string()),
-      revision: z.string().regex(/^\d+$/).transform(Number),
-      file: z.file(),
-      attachments: z.array(z.file()).optional(),
-      note: z.string().optional(),
-    }),
-  }),
-  output: z.object({ name: z.string(), revision: z.number() }),
-  body: {
-    contentType: 'multipart/form-data',
-    maxBytes: 1024 * 1024,
-    maxFields: 20,
-    maxFieldBytes: 16 * 1024,
-    maxFiles: 4,
-    maxFileBytes: 256 * 1024,
-  },
+const Upload = z.object({
+  kind: z.enum(['avatar', 'banner']),
+  ownerId: z.string().uuid(),
+  description: z.string().max(2000).optional(),
+  revision: z.string().regex(/^\d+$/).transform(Number),
+  file: z.file(),
 });
 
 @Controller('/uploads')
 class UploadsController {
-  @Post()
-  @Endpoint(upload)
-  create(input: z.output<typeof upload.input>) {
-    // A native File and a number; validation/transformation ran once.
-    return { name: input.form.file.name, revision: input.form.revision };
+  @Post({
+    response: z.object({ name: z.string(), revision: z.number() }),
+    body: {
+      multipart: {
+        maxFiles: 1,
+        maxFileBytes: 25 * 1024 * 1024,
+        maxFields: 10,
+        maxFieldBytes: 16 * 1024,
+      },
+    },
+  })
+  create(@Body(Upload) form: SchemaOutput<typeof Upload>) {
+    // A native File, an enum, a uuid and a number; validation ran once.
+    return { name: form.file.name, revision: form.revision };
   }
 }
 ```
 
 Form schemas describe flat, named text or binary fields and arrays of those
-fields. Use wire strings plus schema transforms for numbers, booleans, dates,
-or other handler values. `z.file()` exports a binary schema; other schema
-libraries can use `defineDto` with a directional converter describing each file
-as `{ type: 'string', format: 'binary' }` and a parser that validates native
-`File` values. Files are not JSON/base64 strings. Nested objects, mixed text/file
+fields; the application fails to start when a field cannot arrive as text or a
+file. Use wire strings plus schema transforms for numbers, booleans, dates, or
+other handler values. `z.file()` exports a binary schema; other schema libraries
+can use `defineDto` with a directional converter describing each file as
+`{ type: 'string', format: 'binary' }` and a parser that validates native `File`
+values. Files are not JSON/base64 strings. Nested objects, mixed text/file
 unions, and open dictionaries are rejected as ambiguous form contracts.
 
 An array uses repeated exact keys: `tags=one&tags=two`; a single entry still
 becomes an array. Keys such as `tags[]` are literal, with no bracket/dot nesting.
 Missing fields stay absent. Required arrays need at least one entry on the wire;
 an empty client array sends no entries. Make fields optional in the schema, and
-make the `form` group optional to allow an absent body. Duplicate scalar fields,
-unknown names, and the wrong text/file kind return 400. A malformed multipart
+make the body schema optional to allow an absent body. When a whole-body schema
+describes the form's fields (it converts to JSON Schema), duplicate scalar
+fields, unknown names, and the wrong text/file kind return 400. A field JSON
+Schema cannot express, such as `z.coerce.date()` or `z.instanceof(File)`,
+converts as any value: it receives its text or file as sent, for its schema to
+check, and the fields beside it keep these checks. Without one —
+`@Body()` without a schema, only named `@Body('field', schema)` parameters, or
+a schema without a JSON Schema converter — the route accepts any field and a
+repeated name arrives as an array; declare a whole-body schema to enforce the
+fields. A malformed multipart
 body returns 400; the wrong media type returns 415. URL-encoded text follows
-native `URLSearchParams` decoding. Schema errors use the existing endpoint error
-envelope; transforms run once, after guards.
+native `URLSearchParams` decoding. Schema errors use the validation error body;
+transforms run once, after guards.
 
-All forms have finite defaults: 1 MiB of encoded body bytes (including multipart
-overhead), 100 text entries, 64 KiB per text entry including its UTF-8 key, 10
-files, and 1 MiB per file. Repeated entries count individually. Limits must be
-positive safe integers; exceeding one returns 413. The body-byte bound is checked
-before native parsing; part limits are checked before schema validation. These
-limits supplement `security.body.maxBytes` and its route overrides. Configure
-both when accepting larger uploads. Parsing buffers a bounded body and creates
-native files; streaming storage is a separate concern. JSON endpoints retain
-their existing behavior and can add `body: { contentType: 'application/json',
-maxBytes: 4096 }` for a tighter endpoint limit. OpenAPI exports resolved limits
-as `requestBody['x-vela-body-limits']`.
+Limits have finite defaults. URL-encoded forms: 1 MiB of encoded body bytes,
+100 text entries and 64 KiB per text entry including its UTF-8 key. Multipart:
+1 file of at most 1 MiB, 100 text entries of at most 64 KiB, and `maxBytes` —
+the whole encoded body — `maxFiles × maxFileBytes` plus 1 MiB for text fields
+and multipart framing. Repeated entries count individually. Limits must be
+positive safe integers; exceeding one returns 413: every entry is measured
+before any field is interpreted, so too many fields or files answer 413 before
+an unknown field answers 400. A route that declares a body reads it after
+guards and before the handler, whether or not a parameter reads it, so the media
+type and every limit apply to each request; a `defineRoute` contract that
+declares a `body` schema without an encoding reads JSON within the
+application's limit the same way. A body whose `Content-Length`
+exceeds `maxBytes` answers 413 before guards; any other body is read after
+guards, counting the bytes actually received and cancelling at `maxBytes`, also
+when a `security.body.streamingOverrides` entry matches the route (the entry's
+`maxBytes` then applies). The framework never buffers such a body before guards
+or beyond the limit; middleware that reads the body reads it when it runs, within
+the same limit. The route's own `maxBytes` replaces `security.body.maxBytes` for
+that route, so an upload route needs no separate override; a default `maxBytes`
+never exceeds a `security.body.maxBytes` (or `bodyLimit`) the application sets,
+so declare `maxBytes` on a route that must accept more. Parsing buffers a
+bounded body and creates native files; streaming storage is a separate concern.
+A JSON route can bound its body with `body: { json: { maxBytes: 4096 } }`; the
+route then parses it after guards (415 for other media types, 400 when
+malformed), and `@RawBody()` or `c.req` can still read the bytes. The platform
+`Request` that `@Req()` injects cannot: the route has read its stream, and
+reading it again fails the request with a 500, so read a body the route
+declares through `@RawBody()` or `c.req`. OpenAPI exports the limits the route
+declares as `requestBody['x-vela-body-limits']`. The document is built from the
+module, without the application's options, so a default `maxBytes` appears
+without the cap of a smaller `security.body.maxBytes` (or `bodyLimit`) the
+application sets, which the route enforces; declare `maxBytes` on the route for
+the document to state the limit it enforces.
 
-For URL-encoded forms, use `body: { contentType:
-'application/x-www-form-urlencoded' }` with text fields and text arrays. Files
-require multipart. The CLI emits `formEncodings` for form routes, alongside the
-full `AppType` request and response types:
+URL-encoded forms carry text fields and text arrays; files require multipart.
+The CLI emits `formEncodings` for form routes, alongside the full `AppType`
+request and response types:
 
 ```ts
 import { hc, withFormEncoding } from '@velajs/client/http';
@@ -173,8 +410,8 @@ const client = hc<AppType>('https://api.example.com', {
 });
 await client.uploads.$post({
   form: {
-    title: 'Document', tags: ['public'], revision: '2',
-    file: new File(['hello'], 'document.txt', { type: 'text/plain' }),
+    kind: 'avatar', ownerId: userId, revision: '2',
+    file: new File(['hello'], 'avatar.png', { type: 'image/png' }),
   },
 });
 ```
@@ -201,53 +438,58 @@ with fetch. This entrypoint has no Expo dependency.
 ## Binary, streaming and native responses
 
 Use a native response format when the handler returns bytes or owns the Fetch
-response. Omit `output`; these formats check the native object without parsing
-its body:
+response. These formats take no `response` schema; they check the native object
+without parsing its body:
 
 ```ts
-const download = defineEndpoint({
-  input: z.object({ param: z.object({ id: z.string() }) }),
-  format: 'binary',
-  contentType: 'application/pdf',
-});
-const events = defineEndpoint({
-  input: z.object({}),
-  format: 'stream',
-  contentType: 'text/event-stream',
-});
-const proxyResponse = defineEndpoint({
-  input: z.object({}),
-  format: 'response',
-  contentType: 'application/octet-stream',
-});
+@Controller('/files')
+class FilesController {
+  constructor(
+    private readonly files: FileStore,
+    private readonly feed: EventFeed,
+  ) {}
+
+  @Get('/:id', { format: 'binary', contentType: 'application/pdf' })
+  download(@Param('id') id: string) {
+    return this.files.read(id); // Blob, ArrayBuffer or Uint8Array
+  }
+
+  @Get('/events', { format: 'stream', contentType: 'text/event-stream' })
+  events() {
+    return this.feed.stream(); // ReadableStream<Uint8Array>
+  }
+
+  @Get('/proxy', { format: 'response' })
+  proxy() {
+    return fetch('https://upstream.example/report'); // Response
+  }
+}
 ```
 
 `binary` accepts `Blob`, `ArrayBuffer`, `Uint8Array` backed by an `ArrayBuffer`,
-or `Response`. `stream` accepts `ReadableStream<Uint8Array>` or `Response`.
-`response` requires a `Response`. The decorator and `.bind()` enforce these
-return types. Invalid objects, locked streams, and locked or consumed response
-bodies fail before handoff through the existing server-error pipeline. Stream
-producers are responsible for emitting byte chunks; Vela does not inspect or
-validate individual chunks or event records.
+or `Response`. `stream` accepts an unlocked `ReadableStream<Uint8Array>` or
+`Response`. `response` requires a `Response`. The decorator enforces these return
+types; other values fail through the server-error pipeline. Stream producers are
+responsible for emitting byte chunks; Vela does not inspect or validate
+individual chunks or event records.
 
-For a bare body, Vela applies `status` (default 200) and `contentType` (default
+For a bare body, Vela applies the route status and `contentType` (default
 `application/octet-stream`). The media type must be concrete and have no
 parameters. A native `Response` keeps its own status, status text, headers and
 body; metadata does not override it. Set charset, multipart boundary, download
 filename, cache headers and range headers on the returned `Response` when needed.
-Document each possible status with `@ApiResponse`; the endpoint's status describes
-its primary response. For example, `@ApiResponse(206, { description: 'Partial
+Document each other status with `@ApiResponse`; the route's status describes its
+primary response. For example, `@ApiResponse({ status: 206, description: 'Partial
 content', format: 'binary', contentType: 'application/pdf' })` describes an
-additional native response without a JSON schema. Existing JSON error schemas
-can be declared on the same method.
+additional native response without a JSON schema. JSON error schemas can be
+declared on the same method.
 
 The mapper does not read, clone, tee, or buffer streaming bodies. The existing
 request-scope tracker forwards demand and cancellation with bounded prefetch;
 resources remain alive until the body finishes, fails, or cancellation settles.
 A producer error after headers is a rejected body read, not a replacement JSON
 500 response. Input validation and errors before headers retain the normal HTTP
-error handling. JSON/text endpoint validation and form request parsing retain
-their existing behavior.
+error handling.
 
 OpenAPI uses the declared media type and `x-vela-response-format` (`binary`,
 `stream`, or `response`). Binary/stream bodies use a binary string schema; it

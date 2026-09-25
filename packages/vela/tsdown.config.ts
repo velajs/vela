@@ -5,6 +5,7 @@ const entry = [
   'src/module-kit.ts',
   'src/internal.ts',
   'src/cache/index.ts',
+  'src/contract/index.ts',
   'src/dispatch/index.ts',
   'src/event-emitter/index.ts',
   'src/health/index.ts',

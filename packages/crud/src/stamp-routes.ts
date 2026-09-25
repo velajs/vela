@@ -202,29 +202,37 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
       );
     }
 
-    // The generated create answers 201. Declaring it tells the OpenAPI walk
-    // that the runtime never sends the default 200; an @Override'd create
-    // owns its status and declares its own @HttpCode.
-    if (endpoint === 'create' && overrideMethod === undefined) {
-      HttpCode(201)(proto, handlerName, descriptor);
+    // The success status each verb answers: 201 for the verbs that create,
+    // 200 otherwise. A POST that answers 200 declares it, so the route does not
+    // answer POST's default 201; an @Override'd handler answers the status of
+    // the verb it overrides unless it declares its own @HttpCode.
+    const declared = MetadataRegistry.getHandlerHttpMeta(controller, handlerName)?.httpCode;
+    const success = declared ?? (CREATING_VERBS.has(endpoint) ? 201 : 200);
+    if (method === 'post' && success === 200 && declared === undefined) {
+      HttpCode(200)(proto, handlerName, descriptor);
     }
 
     // Canonical response statuses so the OpenAPI walk documents each verb:
-    // success (201 create, 200 otherwise), 404 for id-addressed verbs, and
-    // 400 for body-validated ones.
+    // the success status, 404 for id-addressed verbs, and 400 for
+    // body-validated ones.
     const shape = VERB_SHAPES[endpoint];
-    ApiResponse(endpoint === 'create' ? 201 : 200, {
+    ApiResponse({
+      status: success,
       description: naming?.summary ?? `${endpoint} ${names.singular}`,
     })(proto, handlerName, descriptor);
     if (shape.id) {
-      ApiResponse(404, { description: `${names.singular} not found` })(
+      ApiResponse({ status: 404, description: `${names.singular} not found` })(
         proto,
         handlerName,
         descriptor,
       );
     }
     if (shape.body) {
-      ApiResponse(400, { description: 'Validation failed' })(proto, handlerName, descriptor);
+      ApiResponse({ status: 400, description: 'Validation failed' })(
+        proto,
+        handlerName,
+        descriptor,
+      );
     }
 
     // Per-endpoint guards: the same metadata a hand-written @UseGuards on this
@@ -297,6 +305,9 @@ function defineHandler(
  * handler builder and param stamping both derive from it, so adding an
  * executor family never touches this file.
  */
+/** Verbs whose engine answers 201 Created. */
+const CREATING_VERBS: ReadonlySet<CrudEndpointName> = new Set(['create', 'batchCreate', 'clone']);
+
 const VERB_SHAPES: Record<CrudEndpointName, { id?: boolean; version?: boolean; body?: boolean }> = {
   create: { body: true },
   list: {},
