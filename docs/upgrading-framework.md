@@ -293,10 +293,10 @@ guards each controller that extends it. Class-level `@UseGuards`,
 ancestor run for the subclass, ancestors first. On a method the controller
 inherits unchanged, the ancestors' method metadata, method-level enhancers,
 `@Serialize` and `SkipGuardPhases` apply; an override reads only its own. Opening
-markers are inherited too: `@Public()`, `@TenantIgnored()`, `@CedarPublic()` or
-`@SkipThrottle()` on a base controller now opens its subclasses' routes. Remove a
-declaration from the base class, or override the method, where a subclass must
-not inherit it.
+markers are inherited too: `@Public()`, `@OptionalAuth()`, `@TenantIgnored()`,
+`@CedarPublic()` or `@SkipThrottle()` on a base controller now opens its subclasses'
+routes. Remove a declaration from the base class, or override the method, where a
+subclass must not inherit it.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
 Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule`, `CedarModule` and
