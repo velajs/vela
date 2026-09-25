@@ -9,9 +9,12 @@ interface StoreEntry {
 export interface ThrottlerStorageOptions {
   /**
    * The most counters kept at once, one per key with an open window. Default
-   * 50,000. Expired windows are evicted first; while every tracked window is
-   * still open, a new key is refused (counted over its limit) until one
-   * expires, rather than evicting a live counter and resetting its limit.
+   * 50,000. A key is one route, throttler and client (`ThrottlerGuard` joins
+   * the controller, handler, throttler name and tracker), so size it as
+   * distinct clients per longest `ttl` × routes each calls × throttlers.
+   * Expired windows are evicted first; while every tracked window is still
+   * open, a new key is refused (counted over its limit) until one expires,
+   * rather than evicting a live counter and resetting its limit.
    */
   maxKeys?: number;
 }
@@ -28,7 +31,9 @@ const FULL_SWEEP_INTERVAL_MS = 1_000;
  * (`ttl`) ends, however long, and is then evicted. At most `maxKeys` windows
  * are tracked: when all of them are open, a new key fails closed (refused
  * until a window expires) instead of evicting a counter, so no limit ever
- * resets early. The first refusal logs a warning.
+ * resets early. The first refusal logs a warning. Configure one per
+ * application with `storage: () => new ThrottlerStorage({ maxKeys })`; an
+ * instance in module metadata is shared by every application built from it.
  */
 @Injectable()
 export class ThrottlerStorage implements ThrottlerStore {
@@ -94,7 +99,7 @@ export class ThrottlerStorage implements ThrottlerStore {
       console.warn(
         `[vela] ThrottlerStorage is tracking maxKeys (${this.#maxKeys}) open rate-limit windows; ` +
           'requests with new keys are refused until one expires. Raise maxKeys ' +
-          '(new ThrottlerStorage({ maxKeys })) or use a shared store.',
+          '(storage: () => new ThrottlerStorage({ maxKeys })) or use a shared store.',
       );
     }
     return {
