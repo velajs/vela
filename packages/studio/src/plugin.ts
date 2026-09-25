@@ -10,12 +10,22 @@ import {
   APP_INTERCEPTOR,
   APP_MIDDLEWARE,
   APP_PIPE,
+  ENV,
+  ModuleRef,
+  Reflector,
   type ModuleImport,
   type ProviderDefinition,
   type Token,
   type Type,
 } from '@velajs/vela';
-import { describeToken } from '@velajs/vela/module-kit';
+import { APP_LOGGER } from '@velajs/vela/logging';
+import {
+  Container,
+  DiscoveryService,
+  EntrypointRegistry,
+  ROOT_MODULE,
+  describeToken,
+} from '@velajs/vela/module-kit';
 
 /** One Studio panel: providers registered inside the configured StudioModule. */
 export interface StudioPlugin {
@@ -55,6 +65,21 @@ const COLLECTED = new Set<Token>([
   APP_MIDDLEWARE,
 ]);
 
+// Framework tokens StudioModule injects from the application: provided in its
+// scope, a panel's registration would answer first, so Studio would read the
+// panel's ENV (the admin token among it), log through its logger, or describe
+// another application.
+const INJECTED = new Set<Token>([
+  ENV,
+  APP_LOGGER,
+  ROOT_MODULE,
+  Container,
+  DiscoveryService,
+  EntrypointRegistry,
+  ModuleRef,
+  Reflector,
+]);
+
 /** The token a provider registers under. */
 export function providerToken(provider: Type | ProviderDefinition): Token {
   return typeof provider === 'function' ? provider : provider.provide;
@@ -62,9 +87,12 @@ export function providerToken(provider: Type | ProviderDefinition): Token {
 
 /**
  * The plugins of one StudioModule, each name once. A plugin providing one of
- * StudioModule's own tokens (`reserved`), or a token another plugin provides
- * (two time-travel tiers binding `TIME_TRAVEL_PORT`), fails, since the later
- * registration would silently replace the earlier.
+ * StudioModule's own tokens (`reserved`), a framework token StudioModule
+ * injects from the application (`ENV`, `APP_LOGGER`, `ROOT_MODULE`,
+ * `Container`, `DiscoveryService`, `EntrypointRegistry`, `ModuleRef`,
+ * `Reflector`), or a token another plugin provides (two time-travel tiers
+ * binding `TIME_TRAVEL_PORT`), fails, since the later registration would
+ * silently replace the earlier inside Studio's scope.
  */
 export function collectStudioPlugins(
   plugins: readonly StudioPlugin[] | undefined,
@@ -86,6 +114,12 @@ export function collectStudioPlugins(
         throw new TypeError(
           `Studio plugin '${checked.name}' provides ${describeToken(token)}, which StudioModule ` +
             'provides itself; a panel cannot replace it.',
+        );
+      }
+      if (INJECTED.has(token)) {
+        throw new TypeError(
+          `Studio plugin '${checked.name}' provides ${describeToken(token)}, which StudioModule ` +
+            'injects from the application; a panel cannot replace it.',
         );
       }
       const owner = owners.get(token);
