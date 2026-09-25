@@ -2,4 +2,4 @@
 '@velajs/cli': patch
 ---
 
-`vela client generate` accepts routes marked `@ApiExclude()`: they are left out of the contract instead of failing the check that every runtime route is documented.
+`vela client generate` leaves routes marked `@ApiExclude()` out of the generated contract, as the OpenAPI document does, and still checks that every other runtime route is documented.

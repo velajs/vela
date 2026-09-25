@@ -15,6 +15,6 @@ Every HTTP failure renders through one function, `renderHttpError(error, { catal
 
 **Behavior change:** validation failures from `ValidationPipe` and `@Body(schema)` answer `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`, and `@Endpoint` input failures the same body with the message `'Endpoint input validation failed'`, instead of `{ statusCode, message, errors }`. The thrown `BadRequestException` carries the issues in `getDetails()`.
 
-**Behavior change:** an exception filter's result is sent with the exception's status (`HttpException.getStatus()`, `VelaError.status`, else 500) instead of 200. Return `{ status, body }` (exactly those keys) to set the status explicitly, or a `Response`. A filter that returns `undefined` no longer sends an empty 204: the error falls through to the default renderer. RPC applies the same rules to the status it keeps.
+**Behavior change:** an exception filter's result is sent with `getErrorStatus(error)`, the exception's status (`HttpException.getStatus()` or `VelaError.status`) when it is 400–599, else 500, instead of 200. Return `{ status, body }` (exactly those keys) to set the status explicitly, or a `Response`. A filter that returns `undefined` no longer sends an empty 204: the error falls through to the default renderer. RPC applies the same rules to the status it keeps.
 
 **Behavior change:** `HttpException.getRawResponse()` is removed. Override `toResponse()` to own an exception's response, and call `renderHttpError(error)` to map an error to another transport.
