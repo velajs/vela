@@ -3580,7 +3580,7 @@ declare function isStandardSchema(value: unknown): value is StandardSchemaV1;
 
 declare function validateSchema<Input, Output>(schema: StandardSchemaV1<Input, Output>, value: unknown): Output | Promise<Output>;
 
-declare function standardJsonSchema(schema: unknown, direction?: 'input' | 'output', target?: string): unknown;
+declare function standardJsonSchema(schema: unknown, direction?: 'input' | 'output', target?: string, libraryOptions?: Record<string, unknown>): unknown;
 
 interface SchemaParser<Value> {
   parse(value: unknown): Value;
