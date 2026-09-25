@@ -908,13 +908,14 @@ handles; pass `{ unhandled: 'ignore' }` to resolve with `handled: 0` instead.
 `addBulk` entries are typed one by one and keep the `{ job, data, options }`
 shape of `add()`.
 
-*1.32.0:* `@velajs/mail` reports an unclaimed `@OnInboundEmail` handler failure on the
-`'email'` edge of `ErrorReportContext` (with `kind: 'mail:inbound'`) instead of
-`'queue'`: an `ExceptionHandler` that selects inbound mail failures by
-`edge === 'queue'` matches `'email'` now. Cloudflare Durable Objects, Workflows,
-Email Workers and Tail Workers report on `'durable-object'`, `'workflow'`, `'email'`
-and `'tail'`: an `ExceptionHandler` whose `report()` or `context()` switches
-exhaustively over `ErrorReportContext.edge` must handle these four edges.
+*1.32.0:* `@velajs/mail` reports an `@OnInboundEmail` handler failure, including
+one a scoped filter handles, on the `'email'` edge of `ErrorReportContext` (with
+`kind: 'mail:inbound'`) instead of `'queue'`: an `ExceptionHandler` that selects
+inbound mail failures by `edge === 'queue'` matches `'email'` now. Cloudflare
+Durable Objects, Workflows, Email Workers and Tail Workers report on
+`'durable-object'`, `'workflow'`, `'email'` and `'tail'`: an `ExceptionHandler`
+whose `report()` or `context()` switches exhaustively over
+`ErrorReportContext.edge` must handle these four edges.
 
 Storage aborts and deadlines stop follow-up work without retrying abandoned writes.
 An already-issued native write can still commit. Reconcile uncertain results at

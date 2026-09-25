@@ -193,8 +193,9 @@ owning module with its own request scope. Handlers and class/method guards,
 interceptors, and exception filters resolve in that module. Context exposes the
 owning module ID and current scope. All invocations finish and dispose before
 dispatch returns or rejects, including lazy dependencies and failure paths.
-Application-wide `APP_*` pipeline components are not applied. Unclaimed errors
-are reported with `kind: 'mail:inbound'` on the core `email` edge, then
+Application-wide `APP_*` pipeline components are not applied. Handler errors,
+including those a scoped filter handles, are reported with `kind: 'mail:inbound'`
+on the core `email` edge before the filters run; unclaimed errors are then
 propagated to the host. The result is `{ gated, handled, failed }`.
 
 ### Email Workers messages
