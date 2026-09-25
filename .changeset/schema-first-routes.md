@@ -14,7 +14,7 @@ Routes read JSON by default (415 for other media types). A route opts into a for
 
 `defineSerializer` returns a Standard Schema from the domain input to the wire output, so it serves as a route's `response` and documents its output schema. `standardJsonSchema` and `zodToJsonSchema` take `libraryOptions` for the schema library's converter.
 
-With route contracts, a minimal `VelaFactory.create()` Worker (one controller, bundled by Wrangler with `--minify`) measures 137,382 bytes raw and 46,558 bytes gzipped, against 130,315 and 43,658 for 1.31.0, and a minimal `createCloudflareWorker()` Worker 162,886 bytes raw and 55,328 bytes gzipped, against 155,636 and 52,363, within their unchanged size budgets.
+The minimal `VelaFactory.create()` Worker (one controller, bundled by Wrangler with `--minify`) measures 137,565 bytes raw and 46,635 bytes gzipped in this release, against 130,315 and 43,658 for 1.31.0, mostly route contracts and the application context, within its unchanged size budget.
 
 **Behavior change:** a routed inherited method now receives the parameters its ancestor declares on the method, and serves the ancestor route's options when it declares none, instead of receiving the Hono context and sending its result without them.
 
@@ -32,6 +32,6 @@ With route contracts, a minimal `VelaFactory.create()` Worker (one controller, b
 
 **Behavior change:** a route that serves a `defineRoute` contract fails to start with `@HttpCode`; declare `status` in the contract, which types its `ContractApp` clients.
 
-**Behavior change:** `@ApiResponse(status, options)` becomes Nest's `@ApiResponse({ status, description, schema })`, and `schema` is a Standard Schema or `defineDto` descriptor, converted to JSON Schema; raw JSON Schema objects are rejected when the decorator runs. Declare a route's success body with its `response` option; an `@ApiResponse` for the success status only describes it.
+**Behavior change:** `@ApiResponse(status, options)` becomes Nest's `@ApiResponse({ status, description, schema })`, and `schema` is a Standard Schema or `defineDto` descriptor, converted to JSON Schema; raw JSON Schema objects are rejected when the decorator runs. `ApiResponseOptions` carries the `status` (a number, a range such as `'4XX'`, or `'default'`), and `ApiResponseEntry` is `ApiResponseOptions`. Declare a route's success body with its `response` option; an `@ApiResponse` for the success status only describes it.
 
 **Behavior change:** OpenAPI describes a route's success response with its status's reason phrase (`Created` for 201, `No Content` for 204) instead of `OK` for every status.
