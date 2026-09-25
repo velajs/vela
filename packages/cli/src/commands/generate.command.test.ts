@@ -446,6 +446,145 @@ export default app.worker;
     );
   });
 
+  it('defines the app in a createCloudflareWorker() entry and declares a Workflow from it', async () => {
+    await scaffold('minimal');
+    const result = await generate('g', 'workflow', 'signup');
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain('CREATE src/signup/signup.host.ts');
+    expect(result.output).toContain('UPDATE src/worker.ts');
+    const host = await read('src/signup/signup.host.ts');
+    expect(host).toContain(
+      "import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';",
+    );
+    expect(host).toContain('export interface SignupParams {');
+    expect(host).toContain('@Injectable()\nexport class SignupHost {');
+    expect(host).toContain(
+      '  async run(\n    event: WorkflowEvent<SignupParams>,\n    step: WorkflowStep,\n  ): Promise<',
+    );
+    // A Workflow runs in the Worker's application, so the entry binds its app.
+    expect(await read('src/worker.ts'))
+      .toBe(`import { defineCloudflareApp } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+import { VelaWorkflow } from '@velajs/cloudflare/workflows';
+import { SignupHost } from './signup/signup.host.js';
+
+const app = defineCloudflareApp(AppModule);
+
+// Each run executes SignupHost.run(event, step) in the application app builds
+// for the run's environment, the one the Worker's handlers use.
+export class Signup extends VelaWorkflow(app, SignupHost) {}
+
+export default app.worker;
+`);
+    expect(result.output).toContain(
+      'Next: vela cf sync --write adds the SIGNUP Workflow binding, and your types script types ENV.SIGNUP.',
+    );
+  });
+
+  it('declares a service entrypoint after the app the Worker entry binds', async () => {
+    await scaffold('minimal');
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      `import { defineCloudflareApp } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+
+const app = defineCloudflareApp(AppModule, { globalPrefix: '/api' });
+
+export default app.worker;
+`,
+    );
+    const result = await generate('g', 'entrypoint', 'billing');
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain('CREATE src/billing/billing.host.ts');
+    const host = await read('src/billing/billing.host.ts');
+    expect(host).toContain('@Injectable()\nexport class BillingHost {');
+    expect(host).toContain('ping(message: string)');
+    expect(await read('src/worker.ts'))
+      .toBe(`import { defineCloudflareApp } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+import { VelaEntrypoint } from '@velajs/cloudflare/entrypoints';
+import { BillingHost } from './billing/billing.host.js';
+
+const app = defineCloudflareApp(AppModule, { globalPrefix: '/api' });
+
+// Each call runs in the application app builds for its environment, the one
+// the Worker's handlers use. The host methods rpc names are this entrypoint's
+// RPC methods; the host's guards, pipes, interceptors and filters run around
+// every call.
+export class Billing extends VelaEntrypoint(app, BillingHost, {
+  rpc: ['ping'],
+}) {}
+
+export default app.worker;
+`);
+    expect(result.output).toContain(
+      "Next: bind it from another Worker (or this one) with services: [{ binding: 'BILLING', service: 'demo', entrypoint: 'Billing' }], and call env.BILLING.ping().",
+    );
+  });
+
+  it('writes a Workflow file importing the app a Worker entry imports', async () => {
+    await scaffold('minimal');
+    await writeFile(
+      join(project, 'src/app.ts'),
+      `import { defineCloudflareApp } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+
+export const app = defineCloudflareApp(AppModule);
+`,
+    );
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      `import { app } from './app.js';\n\nexport default app.worker;\n`,
+    );
+    const result = await generate('g', 'workflow', 'report');
+    expect(result.code, result.output).toBe(0);
+    expect(await read('src/report/report.workflow.ts'))
+      .toBe(`import { VelaWorkflow } from '@velajs/cloudflare/workflows';
+import { app } from '../app.js';
+import { ReportHost } from './report.host.js';
+
+// Each run executes ReportHost.run(event, step) in the application app builds
+// for the run's environment, the one the Worker's handlers use.
+export class Report extends VelaWorkflow(app, ReportHost) {}
+`);
+    expect(await read('src/worker.ts')).toBe(`import { app } from './app.js';
+export { Report } from './report/report.workflow.js';
+
+export default app.worker;
+`);
+  });
+
+  it('prints the entrypoint declaration and the app definition with --skip-import', async () => {
+    await scaffold('minimal');
+    const entry = await read('src/worker.ts');
+    const result = await generate('g', 'entrypoint', 'billing', '--skip-import');
+    expect(result.code, result.output).toBe(0);
+    expect(await read('src/worker.ts')).toBe(entry);
+    expect(result.output).toContain(
+      'Define the app in the Worker entry src/worker.ts: const app = defineCloudflareApp(AppModule); export default app.worker;',
+    );
+    expect(result.output).toContain(
+      "Declare it in the Worker entry src/worker.ts, after app: import { VelaEntrypoint } from '@velajs/cloudflare/entrypoints'; import { BillingHost } from './billing/billing.host.js'; export class Billing extends VelaEntrypoint(app, BillingHost, { rpc: ['ping'] }) {}",
+    );
+  });
+
+  it('explains a Worker entry whose app it cannot define', async () => {
+    await scaffold('minimal');
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      `import { createCloudflareWorker } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+
+const worker = createCloudflareWorker(AppModule);
+export default { ...worker, async email() {} };
+`,
+    );
+    const result = await generate('g', 'workflow', 'signup');
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('defineCloudflareApp(AppModule, options)');
+    await expect(read('src/signup/signup.host.ts')).rejects.toThrow();
+  });
+
   it('prints every registration and import of a queue with --skip-import', async () => {
     await scaffold('minimal');
     const before = await read('src/app.module.ts');

@@ -236,6 +236,38 @@ describe('Counter', () => {
 });
 `;
 
+// Runs the generated Workflow through the Workflows engine in workerd, typed
+// through the SIGNUP binding cf sync declares.
+const SIGNUP_SPEC = `import { introspectWorkflowInstance } from 'cloudflare:test';
+import { env } from 'cloudflare:workers';
+import { describe, expect, it } from 'vitest';
+
+describe('Signup', () => {
+  it('runs an instance in the Worker application', async () => {
+    const instance = await introspectWorkflowInstance(env.SIGNUP, 'spec');
+    try {
+      await env.SIGNUP.create({ id: 'spec', params: { id: 'spec' } });
+      await instance.waitForStatus('complete');
+      expect(await instance.getOutput()).toMatchObject({ id: 'spec' });
+    } finally {
+      await instance.dispose();
+    }
+  });
+});
+`;
+
+// Calls the generated service entrypoint over JS-RPC through its ctx.exports loopback.
+const BILLING_SPEC = `import { exports } from 'cloudflare:workers';
+import { describe, expect, it } from 'vitest';
+
+describe('Billing', () => {
+  it('answers RPC calls', async () => {
+    const result = await exports.Billing.ping('hello');
+    expect(result.message).toBe('hello');
+  });
+});
+`;
+
 /** Grow the scaffold with every generator, then keep it typed, tested, synced and deployable. */
 async function verifyGenerators(project, vela, run) {
   for (const args of [
@@ -243,6 +275,8 @@ async function verifyGenerators(project, vela, run) {
     ['g', 'queue', 'emails'],
     ['g', 'cron', 'digest', '--schedule', '0 6 * * *'],
     ['g', 'durable-object', 'counter'],
+    ['g', 'workflow', 'signup'],
+    ['g', 'entrypoint', 'billing'],
   ]) {
     vela(args);
   }
@@ -255,12 +289,20 @@ async function verifyGenerators(project, vela, run) {
   ]) {
     assert.ok(app.includes(registered), `AppModule registers ${registered}`);
   }
-  assert.match(await readFile(join(project, 'src/worker.ts'), 'utf8'), /export \{ Counter \}/);
+  const worker = await readFile(join(project, 'src/worker.ts'), 'utf8');
+  assert.match(worker, /export \{ Counter \}/);
+  // A Workflow and a service entrypoint run in the Worker application: the entry defines its app.
+  assert.match(worker, /const app = defineCloudflareApp\(AppModule\);/);
+  assert.match(worker, /export class Signup extends VelaWorkflow\(app, SignupHost\) \{\}/);
+  assert.match(worker, /export class Billing extends VelaEntrypoint\(app, BillingHost, \{/);
+  assert.match(worker, /export default app\.worker;/);
   assert.match(
     await readFile(join(project, 'src/counter/counter.durable-object.ts'), 'utf8'),
     /export class Counter extends VelaDurableObject\(AppModule, CounterHost, \{\n {2}rpc: \['increment'\],\n\}\) \{\}/,
   );
   await writeFile(join(project, 'test/counter.spec.ts'), COUNTER_SPEC);
+  await writeFile(join(project, 'test/signup.spec.ts'), SIGNUP_SPEC);
+  await writeFile(join(project, 'test/billing.spec.ts'), BILLING_SPEC);
   // The Wrangler file is out of date until cf sync writes the new triggers and bindings.
   assert.throws(() => vela(['cf', 'sync']), /Command failed/);
   vela(['cf', 'sync', '--write']);
@@ -269,16 +311,25 @@ async function verifyGenerators(project, vela, run) {
   const types = await readFile(join(project, 'worker-configuration.d.ts'), 'utf8');
   assert.match(types, /EMAILS: Queue;/);
   assert.match(types, /COUNTER: DurableObjectNamespace/);
+  assert.match(types, /SIGNUP: Workflow/);
   run(['typecheck']);
   run(['test']);
   const entrypoints = JSON.parse(vela(['entrypoint', 'list', '--json']));
   assert.deepEqual(
-    entrypoints.filter((row) => row.kind === 'cf:durable-object'),
+    entrypoints.filter((row) =>
+      ['cf:durable-object', 'cf:workflow', 'cf:entrypoint'].includes(row.kind),
+    ),
     [
       {
         kind: 'cf:durable-object',
         target: 'Counter',
         meta: JSON.stringify({ kind: 'host', host: 'CounterHost', methods: ['increment'] }),
+      },
+      { kind: 'cf:workflow', target: 'Signup', meta: JSON.stringify({ host: 'SignupHost' }) },
+      {
+        kind: 'cf:entrypoint',
+        target: 'Billing',
+        meta: JSON.stringify({ host: 'BillingHost', methods: ['ping'] }),
       },
     ],
   );

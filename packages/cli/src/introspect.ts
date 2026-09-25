@@ -3,7 +3,11 @@ import type { Entrypoint, ModuleDescription, RouteDescription } from '@velajs/ve
 import { SCHEDULE_DISPATCH } from '@velajs/vela/schedule';
 import { describeToken, getEntrypointKinds, scheduledJobComponents } from '@velajs/vela/module-kit';
 import type { LoadedVelaConfig } from './config.js';
-import { classifyWorkerExports, type WorkerExports } from './project/worker-entry.js';
+import {
+  classifyWorkerExports,
+  type UnexportedClass,
+  type WorkerExports,
+} from './project/worker-entry.js';
 
 /** One row of `vela route list`. */
 export interface RouteRow {
@@ -99,35 +103,68 @@ export interface EntrypointRow {
 }
 
 /**
- * The Durable Object classes `@velajs/cloudflare` built that the Worker entry
- * exports (`cf:durable-object` rows by export name: what they serve and their
- * RPC methods), then those its app defines without exporting them.
+ * The Durable Object, Workflow and service entrypoint classes
+ * `@velajs/cloudflare` built that the Worker entry exports, by export name:
+ * `cf:durable-object` rows (what they serve and their RPC methods),
+ * `cf:workflow` rows (their host) and `cf:entrypoint` rows (their host and
+ * RPC methods). Then, under the same kinds, the classes its app defines
+ * without exporting them.
  */
-export function collectDurableObjects(exports: WorkerExports): EntrypointRow[] {
+export function collectWorkerClasses(exports: WorkerExports): EntrypointRow[] {
+  const unexported = (kind: UnexportedClass['kind']) =>
+    exports.unexported
+      .filter((described) => described.kind === kind)
+      .map((described) => ({
+        target: `(not exported) ${described.serves}`,
+        meta:
+          kind === 'durable-object'
+            ? described.serves === 'WebSocket'
+              ? { exported: false, kind: 'websocket', methods: described.methods }
+              : {
+                  exported: false,
+                  kind: 'host',
+                  host: described.serves,
+                  methods: described.methods,
+                }
+            : kind === 'workflow'
+              ? { exported: false, host: described.serves }
+              : { exported: false, host: described.serves, methods: described.methods },
+      }));
+  const rows = (kind: string, entries: readonly { target: string; meta: unknown }[]) =>
+    entries.map(({ target, meta }) => ({ kind, target, meta: JSON.stringify(meta) }));
   return [
-    ...exports.velaDurableObjects.map(({ name, kind, host, methods }) => ({
-      kind: 'cf:durable-object',
-      target: name,
-      meta: JSON.stringify({ kind, ...(host === undefined ? {} : { host }), methods }),
-    })),
-    ...exports.unexportedDurableObjects.map((described) => ({
-      kind: 'cf:durable-object',
-      target: `(not exported) ${described}`,
-      meta: JSON.stringify({ exported: false }),
-    })),
+    ...rows('cf:durable-object', [
+      ...exports.velaDurableObjects.map(({ name, kind, host, methods }) => ({
+        target: name,
+        meta: { kind, ...(host === undefined ? {} : { host }), methods },
+      })),
+      ...unexported('durable-object'),
+    ]),
+    ...rows('cf:workflow', [
+      ...exports.velaWorkflows.map(({ name, host }) => ({ target: name, meta: { host } })),
+      ...unexported('workflow'),
+    ]),
+    ...rows('cf:entrypoint', [
+      ...exports.velaEntrypoints.map(({ name, host, methods }) => ({
+        target: name,
+        meta: { host, methods },
+      })),
+      ...unexported('entrypoint'),
+    ]),
   ];
 }
 
 /**
- * The `cf:durable-object` rows of the Worker entry an app was loaded from
- * (none for a `vela.config`, which names no Worker entry).
+ * The `cf:durable-object`, `cf:workflow` and `cf:entrypoint` rows of the
+ * Worker entry an app was loaded from (none for a `vela.config`, which names
+ * no Worker entry).
  */
-export async function collectWorkerDurableObjects(
+export async function collectWorkerEntrypointClasses(
   loaded: Pick<LoadedVelaConfig, 'main' | 'importModule'>,
 ): Promise<EntrypointRow[]> {
   if (loaded.main === undefined) return [];
   const entry = await loaded.importModule(loaded.main);
-  return collectDurableObjects(await classifyWorkerExports(entry, loaded.importModule));
+  return collectWorkerClasses(await classifyWorkerExports(entry, loaded.importModule));
 }
 
 function safeMeta(meta: unknown): string {

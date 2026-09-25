@@ -56,6 +56,8 @@ import { Injectable, Module } from '@velajs/vela';
 import { WebSocketModule } from '@velajs/vela/websocket';
 import { defineCloudflareApp } from '@velajs/cloudflare';
 import { VelaDurableObject, VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
+import { VelaEntrypoint } from '@velajs/cloudflare/entrypoints';
+import { VelaWorkflow } from '@velajs/cloudflare/workflows';
 
 export class AppModule {}
 Module({ imports: [WebSocketModule.forRoot()] })(AppModule);
@@ -63,12 +65,21 @@ class CounterHost { increment(by) { return by; } alarm() {} }
 Injectable()(CounterHost);
 class AuditHost { record() {} }
 Injectable()(AuditHost);
+class SignupHost { async run() {} }
+Injectable()(SignupHost);
+class ReportHost { async run() {} }
+Injectable()(ReportHost);
+class BillingHost { charge() {} refund() {} }
+Injectable()(BillingHost);
 
 const app = defineCloudflareApp(AppModule);
 export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
 export class Lobby extends VelaWebSocketDurableObject(app) {}
-// Defined from the app, but no export serves it.
-VelaDurableObject(app, AuditHost);
+export class Signup extends VelaWorkflow(app, SignupHost) {}
+export class Billing extends VelaEntrypoint(app, BillingHost, { rpc: ['charge'] }) {}
+// Defined from the app, but no export serves them.
+VelaDurableObject(app, AuditHost, { rpc: ['record'] });
+VelaWorkflow(app, ReportHost);
 export default app.worker;
 `;
 
@@ -175,7 +186,9 @@ describe('loading the Worker entry without a vela.config', () => {
         workflows: ['SignupFlow'],
         entrypoints: ['Admin'],
         velaDurableObjects: [],
-        unexportedDurableObjects: [],
+        velaWorkflows: [],
+        velaEntrypoints: [],
+        unexported: [],
       });
     } finally {
       await loaded.dispose();
@@ -191,8 +204,8 @@ describe('loading the Worker entry without a vela.config', () => {
       const entry = await loaded.importModule(join(project, 'src/app.mjs'));
       expect(await classifyWorkerExports(entry, loaded.importModule)).toEqual({
         durableObjects: ['Counter', 'Lobby'],
-        workflows: [],
-        entrypoints: [],
+        workflows: ['Signup'],
+        entrypoints: ['Billing'],
         velaDurableObjects: [
           { name: 'Counter', kind: 'host', host: 'CounterHost', methods: ['increment'] },
           {
@@ -208,14 +221,19 @@ describe('loading the Worker entry without a vela.config', () => {
             ],
           },
         ],
-        unexportedDurableObjects: ['AuditHost'],
+        velaWorkflows: [{ name: 'Signup', host: 'SignupHost' }],
+        velaEntrypoints: [{ name: 'Billing', host: 'BillingHost', methods: ['charge'] }],
+        unexported: [
+          { kind: 'durable-object', serves: 'AuditHost', methods: ['record'] },
+          { kind: 'workflow', serves: 'ReportHost', methods: [] },
+        ],
       });
     } finally {
       await loaded.dispose();
     }
   });
 
-  it('lists the Durable Object classes of the Worker entry as entrypoints', async () => {
+  it('lists the Durable Object, Workflow and service entrypoint classes of the Worker entry', async () => {
     vi.spyOn(process, 'cwd').mockReturnValue(project);
     const stdout = new PassThrough();
     let output = '';
@@ -250,7 +268,27 @@ describe('loading the Worker entry without a vela.config', () => {
       {
         kind: 'cf:durable-object',
         target: '(not exported) AuditHost',
-        meta: JSON.stringify({ exported: false }),
+        meta: JSON.stringify({
+          exported: false,
+          kind: 'host',
+          host: 'AuditHost',
+          methods: ['record'],
+        }),
+      },
+    ]);
+    expect(
+      rows.filter((row) => row.kind === 'cf:workflow' || row.kind === 'cf:entrypoint'),
+    ).toEqual([
+      { kind: 'cf:workflow', target: 'Signup', meta: JSON.stringify({ host: 'SignupHost' }) },
+      {
+        kind: 'cf:workflow',
+        target: '(not exported) ReportHost',
+        meta: JSON.stringify({ exported: false, host: 'ReportHost' }),
+      },
+      {
+        kind: 'cf:entrypoint',
+        target: 'Billing',
+        meta: JSON.stringify({ host: 'BillingHost', methods: ['charge'] }),
       },
     ]);
   });

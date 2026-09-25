@@ -10,7 +10,7 @@ import {
   collectEntrypoints,
   collectModules,
   collectRoutes,
-  collectWorkerDurableObjects,
+  collectWorkerEntrypointClasses,
   renderModuleTree,
 } from '../introspect.js';
 
@@ -120,7 +120,7 @@ export class EntrypointListCommand extends AppCommand {
   });
 
   protected async run(app: VelaApplication, loaded: LoadedVelaConfig): Promise<number> {
-    const rows = [...collectEntrypoints(app), ...(await collectWorkerDurableObjects(loaded))];
+    const rows = [...collectEntrypoints(app), ...(await collectWorkerEntrypointClasses(loaded))];
     if (this.json) {
       this.print(JSON.stringify(rows, null, 2));
       return 0;
