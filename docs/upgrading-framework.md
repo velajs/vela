@@ -137,7 +137,9 @@ replayed to every request in the same cache scope. Make the cache `scope`
 partition by everything the handler or any interceptor varies the response on,
 or leave such routes uncached. `shouldCache` receives the body the route sends,
 JSON-decoded, instead of the handler's value, so it no longer sees fields the
-`response` schema strips. Route entries carry a new address and format version, so entries an
+`response` schema strips. Only the response to a handler call that succeeded
+is stored: a fallback an interceptor outside the cache sends when the handler
+throws or has not settled is not cached. Route entries carry a new address and format version, so entries an
 earlier release stored with the handler's raw result miss once after the
 upgrade, also while older isolates still write them. When you tighten a
 `response` schema, change the cache `namespace` (or invalidate the affected
@@ -166,7 +168,10 @@ pipe of your own that is not a `ValidationPipe`, such as one parsing
 `metatype.schema`, now runs on the value the class already validated, which
 fails for schemas whose transforms do not accept their own output: make it
 extend `ValidationPipe`, or remove it. A global `ValidationPipe` still validates
-body parameters registered without a route reader.
+body parameters registered without a route reader. The class is read from the
+parameter's reflected type: an `import type` or a union annotation such as
+`Item | undefined` erases it to `Object`, and the body is then accepted
+unvalidated, so import the class as a value and annotate with it alone.
 
 A route validates every request group its `defineRoute` contract declares —
 `params`, `query` and `body`, with the body's encoding and limits — after guards
@@ -180,7 +185,11 @@ schema that lists its keys as JSON Schema without passing undeclared keys
 through, as a Zod object does. For any other, such as a Valibot schema, a
 `parse()` parser, a union or a transform that renames keys, a named parameter
 that reads a key the request carries but the validated value lacks fails that
-request with a 500 whose reported error names the key. The validation ships
+request with a 500 whose reported error names the key, as does a whole
+`@Param()` whose validated params lack a path parameter the request carries.
+OpenAPI documents a `params` or `query` schema JSON Schema cannot describe as an
+object as the decorator options do (path parameters as strings, the query as
+unsupported by `vela client generate`) instead of failing the document. The validation ships
 with `@Body`, `@Query` and `@Param`: a Worker bundle that uses none of them
 leaves it out, and a route declaring request groups or a form body then fails
 to start with an error saying so.

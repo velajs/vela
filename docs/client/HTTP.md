@@ -49,7 +49,7 @@ type CreatedUser = InferResponseType<typeof client.users.$post, 201>;
 A route declares its contract once, and the same schemas validate requests,
 shape responses, document OpenAPI and type the generated client. Vela offers
 two equivalent styles; they produce the same OpenAPI document and the same
-generated client.
+generated client (see below for schemas JSON Schema cannot describe).
 
 ### Route options (the default)
 
@@ -129,6 +129,13 @@ twice, which fails for a schema whose transform does not accept its own output.
 A validation pipe of your own that is not a `ValidationPipe` (one that parses
 `metatype.schema`, say) runs after the class validated the body, on the
 validated value; extend `ValidationPipe` instead, so the body is left to it.
+The class is found through the parameter's reflected type, so import it as a
+value (not with `import type`) and annotate the parameter with the class alone,
+not a union such as `CreateUser | undefined`: otherwise TypeScript emits
+`Object`, and the body reaches the handler unvalidated with no error. An import
+cycle can erase it the same way, and a lint autofix to type-only imports can
+introduce the problem silently. For security-relevant bodies, prefer
+`@Body(schema)` or a contract's `body`, which do not depend on reflection.
 Named descriptors work too: `const BodyDto = defineDto(schema, { name:
 'CreateUser' })`, then `@Body(BodyDto)`; OpenAPI then references a named
 component. Erased TypeScript interfaces cannot supply schemas.
@@ -209,7 +216,9 @@ does not pass undeclared keys through: a Zod object does, even with fields
 JSON Schema cannot express such as `z.coerce.date()`. For any other (a Valibot
 schema, a `parse()` parser, a union, a transform that renames keys), a named
 parameter that reads a key the request carries but the validated value lacks
-fails that request with a 500 whose reported error names the key. The
+fails that request with a 500 whose reported error names the key, and so does
+a whole `@Param()` when the validated params lack a path parameter the request
+carries. The
 validation ships with `@Body`, `@Query` and `@Param`, so a Worker bundle that
 uses none of them leaves it out; a route that declares request groups or a
 form body then fails to start with an error saying so, and reading the
@@ -218,6 +227,16 @@ match the contract's, and the application fails to start when the contract's
 `path` is not the path the route serves (global prefix and version included),
 or when the route adds `@HttpCode`: `ContractApp` clients are typed with the
 contract's `status`, so declare it there.
+
+OpenAPI documents a field JSON Schema cannot express, such as
+`z.coerce.date()`, as any value (generated clients send it as a string), and
+lists the fields beside it. A `params` or `query` schema that JSON Schema cannot
+describe as an object (a Valibot schema without a JSON Schema converter, a
+union) is documented as the decorator options document it: the path parameters
+the route serves as strings, and the query as unsupported by
+`vela client generate`, which then fails for that operation as it does for a
+whole `@Query(schema)` with such a schema; exclude the route with
+`@ApiExclude()` or declare an object schema to generate a client.
 
 Without code generation, `ContractApp` types an `hc` client from contracts:
 

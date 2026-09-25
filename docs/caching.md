@@ -65,7 +65,12 @@ it without running the handler or parsing again; interceptors outside
 `CacheInterceptor` (global ones registered before `CacheModule`'s) receive the
 replayed `Response`, and a value they return instead of a `Response` is
 ignored, so a hit sends exactly what the miss that stored it sent. An
-interceptor outside it that reads the value must accept that `Response`.
+interceptor outside it that reads the value must accept that `Response`. Only
+the response to a handler call that succeeded is stored: when the handler (or
+an interceptor inside `CacheInterceptor`) throws, or has not settled when the
+response is sent, a fallback an interceptor outside it sends instead (an
+error-recovery or timeout default) is not stored, and the next request runs the
+handler again.
 
 **Security:** an entry includes what every interceptor did for the request
 that stored it, including interceptors outside `CacheInterceptor`, which earlier
@@ -151,7 +156,7 @@ and the `response` schema, so fields the schema strips are absent. The same chec
 
 Store or generation-read failure means a miss; a read failure bypasses filling
 for that request. Cache write failure still sends the route's response. Loader
-errors propagate. Each absorbed failure goes to the application's error reporter
+and handler errors propagate and are never stored. Each absorbed failure goes to the application's error reporter
 with edge `'cache'` and the operation (`read`, `write`, `invalidate` or `scope`)
 as its source, so an unreachable store or a missing KV binding is logged, or
 reaches an `ExceptionHandler`, instead of silently disabling the cache. An
