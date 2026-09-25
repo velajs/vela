@@ -76,7 +76,8 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
     const core: Array<Type | ProviderDefinition> = [
       // The application's container, looked up application-wide as app.get()
       // does: Studio and its panels read the framework tokens through it, so a
-      // module a plugin imports never answers for them inside this scope.
+      // module a plugin imports never answers for them ahead of the
+      // application's own registration, as it would inside this scope.
       defineProvider(STUDIO_APPLICATION_CONTAINER, {
         useFactory: applicationContainer,
         inject: [ModuleRef],

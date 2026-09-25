@@ -355,9 +355,30 @@ describe('StudioModule plugins', () => {
     class PrivateEnv {}
     @Module({ providers: [panelEnv()], exports: [ENV] })
     class ExportedEnv {}
+    // A @Global() module that lists ENV among its exports without providing
+    // it, or importing a module that exports it, gives no module an ENV; the
+    // application-wide lookup still falls back to the private registration.
+    @Global()
+    @Module({ exports: [ENV] })
+    class GlobalExportsNothing {}
+    @Global()
+    @Module({ imports: [PrivateEnv], exports: [ENV] })
+    class GlobalOverPrivate {}
 
     const cases: Array<[string, Array<Type | DynamicModule>]> = [
       ['feature', [PrivateEnv, StudioModule.forRoot({ plugins: [] })]],
+      [
+        'plugin-global-over-private',
+        [
+          StudioModule.forRoot({
+            plugins: [defineStudioPlugin({ name: 'n', imports: [GlobalOverPrivate] })],
+          }),
+        ],
+      ],
+      [
+        'global-without-env',
+        [PrivateEnv, GlobalExportsNothing, StudioModule.forRoot({ plugins: [] })],
+      ],
       [
         'plugin-private',
         [
@@ -378,7 +399,8 @@ describe('StudioModule plugins', () => {
     for (const [label, imports] of cases) {
       @Module({ imports })
       class App {}
-      const app = await VelaFactory.create(App);
+      // The loader reports each dangling ENV export; these cases make them on purpose.
+      const app = await VelaFactory.create(App, { diagnostics: 'silent' });
       const config = app.get(STUDIO_RESOLVED_CONFIG);
       expect(config.token, label).toBeUndefined();
       expect(config.enabled, label).toBe(false);
@@ -396,12 +418,28 @@ describe('StudioModule plugins', () => {
       exports: [ENV],
     })
     class GlobalEnv {}
-    @Module({ imports: [GlobalEnv, StudioModule.forRoot({ plugins: [] })] })
-    class App {}
-    const app = await VelaFactory.create(App);
-    expect(app.get(STUDIO_RESOLVED_CONFIG).token).toBe(TOKEN);
-    expect(ok(await rpc(app, 'studio.capabilities')).features.openapi).toBe(true);
-    await app.close();
+    // One re-exporting the ENV a module it imports exports gives it too.
+    @Module({
+      providers: [defineProvider(ENV, { useValue: { VELA_STUDIO_TOKEN: TOKEN } })],
+      exports: [ENV],
+    })
+    class EnvSource {}
+    @Global()
+    @Module({ imports: [EnvSource], exports: [ENV] })
+    class GlobalReexport {}
+
+    for (const [label, shared] of [
+      ['provides', GlobalEnv],
+      ['re-exports', GlobalReexport],
+    ] as const) {
+      @Module({ imports: [shared, StudioModule.forRoot({ plugins: [] })] })
+      class App {}
+      const app = await VelaFactory.create(App);
+      expect(app.get(ENV), label).toEqual({ VELA_STUDIO_TOKEN: TOKEN });
+      expect(app.get(STUDIO_RESOLVED_CONFIG).token, label).toBe(TOKEN);
+      expect(ok(await rpc(app, 'studio.capabilities')).features.openapi, label).toBe(true);
+      await app.close();
+    }
   });
 
   it('fails bootstrap when a @Global() module replaces the application container', async () => {
