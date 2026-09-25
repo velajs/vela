@@ -17,6 +17,7 @@ import { STUDIO_DEFAULT_PATH } from '@velajs/studio-protocol';
 import { STUDIO_ADMIN_META } from '../tokens';
 import { StudioAppHolder } from '../introspect/app-holder';
 import { mountAdminRouter } from './admin-router';
+import { declaringModuleId } from './studio-scope';
 
 /**
  * Marker controller claimed by the contributor. It declares no routes of its
@@ -35,9 +36,11 @@ export const studioRouteContributor: RouteContributor = {
   claimsMetaKey: STUDIO_ADMIN_META,
   buildRoutes(app, ctx) {
     // Capture the live Hono app + global prefix for the introspection ops — the
-    // only public seam to the route table (RouteManager is barrel-internal).
+    // only public seam to the route table (RouteManager is barrel-internal) —
+    // in the holder of the StudioModule declaring the claimed controller.
+    const studio = declaringModuleId(ctx.container, ctx.controller);
     if (ctx.container.has(StudioAppHolder)) {
-      ctx.container.resolve(StudioAppHolder).capture(app, ctx.routePathOptions);
+      ctx.container.resolve(StudioAppHolder, studio).capture(app, ctx.routePathOptions);
     }
     mountAdminRouter(app, ctx);
   },

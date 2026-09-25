@@ -4,8 +4,8 @@
  * override these env values; the merge into {@link ResolvedStudioConfig}
  * lives in the module (env under options).
  */
-import { Inject, Injectable, type DynamicModule, type Type, type VelaEnv } from '@velajs/vela';
-import { readEnv, type Container } from '@velajs/vela/module-kit';
+import { ENV, Inject, Injectable, type DynamicModule, type Type, type VelaEnv } from '@velajs/vela';
+import type { Container } from '@velajs/vela/module-kit';
 import { STUDIO_DEFAULT_PATH } from '@velajs/studio-protocol';
 import type { EditableFlags, ResolvedStudioConfig, StudioModuleOptions } from './studio.types';
 import { STUDIO_APPLICATION_CONTAINER } from './tokens';
@@ -62,17 +62,39 @@ export function readStudioEnv(env: VelaEnv | undefined): StudioEnvConfig {
 }
 
 /**
- * The env slice of one application: its `ENV` as `app.get(ENV)` returns it,
- * never one a plugin import makes visible in StudioModule's scope. ENV is
- * optional: without a seeded environment Studio keeps its option-only,
- * default-closed configuration.
+ * The application's environment: the one a runtime seeds (`VelaFactory`'s
+ * `env`, a runtime adapter), which registers outside every module, else the
+ * one a `@Global()` module exports to every module. An application-wide lookup
+ * that finds neither falls back to any module registering `ENV`, even for
+ * itself or only for its importers; that is no application's environment, so
+ * there is none.
+ */
+function applicationEnv(application: Container): VelaEnv | undefined {
+  const seeded = application
+    .getOwnerModuleIds(ENV)
+    .some((moduleId) => application.getModuleScope(moduleId) === undefined);
+  const shared = application
+    .getModuleDescriptions()
+    .some(
+      ({ moduleId, global }) =>
+        global && application.getModuleScope(moduleId)?.exportedTokens.has(ENV) === true,
+    );
+  return seeded || shared ? application.resolve(ENV) : undefined;
+}
+
+/**
+ * The env slice of one application: its seeded `ENV`, or the one a `@Global()`
+ * module gives every module, as `app.get(ENV)` returns it. Never one a plugin
+ * import makes visible in StudioModule's scope, or one a module keeps to itself
+ * or its importers: without an application environment Studio keeps its
+ * option-only, default-closed configuration.
  */
 @Injectable()
 export class StudioEnvReader {
   readonly config: StudioEnvConfig;
 
   constructor(@Inject(STUDIO_APPLICATION_CONTAINER) application: Container) {
-    this.config = readStudioEnv(readEnv(application));
+    this.config = readStudioEnv(applicationEnv(application));
   }
 }
 

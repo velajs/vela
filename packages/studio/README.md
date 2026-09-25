@@ -51,7 +51,10 @@ or a `VELA_STUDIO_TOKEN` variable or secret in the application's `ENV`. The
 `VELA_STUDIO_TIMETRAVEL_EDITABLE` and `VELA_STUDIO_TRANSFER_EDITABLE` flags open write
 categories the same way; module options win over environment values, and non-string
 values are ignored. On Workers `@velajs/cloudflare` seeds `ENV`, so a Wrangler secret
-takes effect without extra wiring. `readStudioEnv(env)` parses these values and
+takes effect without extra wiring; elsewhere pass `VelaFactory.create(App, { env })`.
+Studio reads the `ENV` the runtime seeds, else the one a `@Global()` module exports
+to every module; an `ENV` a module registers for itself or its importers leaves
+Studio closed. `readStudioEnv(env)` parses these values and
 `resolveStudioConfig(envConfig, options)` merges them under module options.
 
 The protocol exposes the usable operation catalog through `studio.capabilities`.
@@ -84,10 +87,17 @@ plugin providing a token StudioModule provides itself, such as
 `STUDIO_RESOLVED_CONFIG` or `AdminAuditLog`, and for one providing a framework
 token Studio reads from the application (`ENV`, `APP_LOGGER`, `ROOT_MODULE`,
 `Container`, `DiscoveryService` or `EntrypointRegistry`). Studio and its panels
-read those tokens application-wide, as `app.get()` does, so whatever the modules
-a plugin imports export, `@Global()` ones among them, Studio keeps the
-application's registration. A custom panel's provider that injects one of them
-directly resolves it in Studio's scope, where every plugin's imports are visible;
+read those tokens application-wide, as `app.get()` does, so what the modules a
+plugin imports export to their importers never answers for them. An explicit
+application registration, such as a seeded `ENV`, answers first; a `@Global()`
+module exporting `ROOT_MODULE` or `DiscoveryService`, one a plugin imports
+included, overrides that framework default for the whole application, `app.get()`
+and Studio alike. Bootstrap fails when a `@Global()` module exports another
+`Container`, since Studio would read that container's `ENV` and admin token. The
+admin routes read Studio's own tokens, such as `STUDIO_RESOLVED_CONFIG`, in
+StudioModule's scope, so another module's registration of one is never used. A
+custom panel's provider that injects a framework token directly resolves it in
+Studio's scope, where every plugin's imports are visible;
 `moduleRef.get(TOKEN, { strict: false })` reads the application's. An async Studio
 factory with parameters supplies them through `inject`; one without parameters
 may omit it.

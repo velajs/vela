@@ -65,12 +65,13 @@ const COLLECTED = new Set<Token>([
 
 // Framework tokens Studio and its panels read from the application. They
 // resolve them application-wide, as app.get() does (STUDIO_APPLICATION_CONTAINER),
-// so a module a plugin imports never answers for them. A plugin's provider of
-// one would register it in Studio's own scope: it would answer first for the
-// panels' providers there, and where the application registers none (ENV
-// without a seeded environment, APP_LOGGER without LoggingModule) it would be
-// what application-wide lookups, Studio's among them, return. (`ModuleRef`
-// needs no entry: the container answers it itself.)
+// so what a module a plugin imports exports to its importers never answers for
+// them. A plugin's provider of one would register it in Studio's own scope: it
+// would answer first for the panels' providers there, and where the
+// application registers none (APP_LOGGER without LoggingModule, ENV without a
+// seeded environment) it would be what application-wide lookups, Studio's
+// logger among them, return. (`ModuleRef` needs no entry: the container
+// answers it itself.)
 const INJECTED = new Set<Token>([
   ENV,
   APP_LOGGER,
@@ -93,8 +94,9 @@ export function providerToken(provider: Type | ProviderDefinition): Token {
  * provides (two time-travel tiers binding `TIME_TRAVEL_PORT`) fails, since
  * the later registration would silently replace the earlier inside Studio's
  * scope. A plugin's imports are not checked: Studio never resolves those
- * framework tokens in its own scope, so what an import exports cannot replace
- * the application's.
+ * framework tokens in its own scope, so what an import exports to its
+ * importers never answers for them. A `@Global()` module among them exports to
+ * the whole application instead, for `app.get()` and Studio alike.
  */
 export function collectStudioPlugins(
   plugins: readonly StudioPlugin[] | undefined,

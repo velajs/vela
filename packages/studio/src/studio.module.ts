@@ -39,6 +39,28 @@ function resolveSink(container: Container): AdminAuditSink | undefined {
   return container.has(ADMIN_AUDIT_SINK) ? container.resolve(ADMIN_AUDIT_SINK) : undefined;
 }
 
+/**
+ * The application's own container, looked up application-wide as app.get()
+ * does. `Container` is a framework default, which a `@Global()` module
+ * exporting another container overrides application-wide; Studio would then
+ * read that container's ENV (its admin token among it) while app.get(ENV)
+ * returns the application's, so bootstrap fails instead. No provider can
+ * replace `ModuleRef`: each container answers it itself, one reference per
+ * owner, so only the application's container hands out the application-wide
+ * reference this module's own ModuleRef reads.
+ */
+function applicationContainer(ref: ModuleRef): Container {
+  const application = ref.get(Container, { strict: false });
+  if (application.resolve(ModuleRef) !== ref.get(ModuleRef, { strict: false })) {
+    throw new Error(
+      "StudioModule needs the application's own container, but Container resolves to " +
+        'another one: a @Global() module exports it, overriding it application-wide. ' +
+        'Remove that export.',
+    );
+  }
+  return application;
+}
+
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
   StudioModuleOptions,
   'plugins'
@@ -56,7 +78,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
       // does: Studio and its panels read the framework tokens through it, so a
       // module a plugin imports never answers for them inside this scope.
       defineProvider(STUDIO_APPLICATION_CONTAINER, {
-        useFactory: (ref: ModuleRef) => ref.get(Container, { strict: false }),
+        useFactory: applicationContainer,
         inject: [ModuleRef],
       }),
       // Env-derived config slice (reads VELA_STUDIO_* from the optional ENV).
