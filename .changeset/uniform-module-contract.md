@@ -14,7 +14,7 @@ Make `defineModule` the one module engine with a uniform contract. A module decl
 
 **Behavior change:** `@Module` no longer accepts `isGlobal`. A module class is global with `@Global()`, which now applies in either decorator order; one instance is global through `DynamicModule.global` (the `isGlobal` extra). `ModuleMetadata.isGlobal` is renamed `global`. `ConfigModuleOptions` no longer declares `isGlobal`: `ConfigModule.forRoot({ load, isGlobal: true })` still takes it, as the extra it is on every module.
 
-**Behavior change:** `defineModule`'s `DefineModuleSpec`, `ModuleSetupContext`, `ConfigurableModuleAsyncOptions`, `ConfigurableModuleClassType` and `ConfigurableModuleHost` take the structural type argument (`ModuleFactoryOptions<Opts, S>` names the factory result).
+**Behavior change:** the module types take the structural type argument `S`. `defineModule`, `DefineModuleSpec` and `ConfigurableModuleAsyncOptions` take it second, right after `Opts`, so explicit type arguments after it move one place (`defineModule<Opts, never, Extras>` names an extras type, and `ConfigurableModuleAsyncOptions<Opts, never, 'create'>` a factory method); `ModuleSetupContext`, `ConfigurableModuleClassType` and `ConfigurableModuleHost` take it last. `ModuleFactoryOptions<Opts, S>` names the factory result.
 
 **Behavior change:** `ScheduleModule` and `ScheduleNodeModule` share one internal registry module, so importing both keeps a single `ScheduleRegistry`; `ScheduleModule.forRoot({ dispatch })` returns a `ScheduleModule` instance that also registers the registry. `ConfigModule.forRootAsync` takes `load` next to its factory, and `validateSchema` may now come from the factory.
 

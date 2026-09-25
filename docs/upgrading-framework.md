@@ -585,7 +585,9 @@ ThrottlerModule.forRoot({
   `StorageManagerService`, `R2StorageDriver` and `STORAGE_OPTIONS`) and
   `@velajs/vela/storage` are removed. Register a `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })`
   from `@velajs/storage`, with `r2Storage` from `@velajs/cloudflare/storage`, per
-  former disk, and inject its `StorageService` with `@InjectStorage(name)`. The
+  former disk, and inject its `StorageService` with `@InjectStorage(name)`. A disk's
+  `root` becomes the static `prefix`; its `{date}`, `{year}`, `{month}`, `{day}` and
+  `{uuid}` tokens have no replacement, so build such keys in the application. The
   presign-proxy route `GET /storage/:disk` is gone, so URLs it issued stop working:
   serve downloads through `publicBaseUrl`, the authorized
   `http: { download: 'proxy' }` controller, or provider-signed URLs.
