@@ -212,6 +212,23 @@ function trackResponseStream(
   };
 }
 
+// The request with a body that fails with 413 once more than `maxBytes` are
+// read, cancelling the rest. Nothing is buffered.
+function countedBody(request: Request, maxBytes: number): Request {
+  let size = 0;
+  const body = request.body!.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        size += chunk.byteLength;
+        if (size > maxBytes)
+          throw new PayloadTooLargeException('Request body exceeds the route limit');
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Request(request, { body, duplex: 'half' } as RequestInit);
+}
+
 function corsConflict(owner: string): Error {
   return new Error(
     `${owner} already serves CORS for this application. Configure CORS in one place: ` +
@@ -435,8 +452,8 @@ export class RouteManager {
   }
 
   // A streaming override for the path, else the limit the matched controller
-  // route declares (`body` options), else the application's limit.
-  private resolveBodyLimit(c: Context): number | false {
+  // route declares (`body` options, flagged `true`), else the application's.
+  private resolveBodyLimit(c: Context): [maxBytes: number | false, declared?: true] {
     const path = c.req.path;
     const method = c.req.method;
     for (const override of this.bodyLimitOverrides) {
@@ -446,13 +463,13 @@ export class RouteManager {
         (override.path.endsWith('*')
           ? path.startsWith(override.path.slice(0, -1))
           : path === override.path);
-      if (matches) return override.maxBytes;
+      if (matches) return [override.maxBytes];
     }
     for (const route of matchedRoutes(c).slice(c.req.routeIndex + 1)) {
       const owner = findOwner(this.routeOwners, route.handler);
-      if (owner) return owner[2] ?? this.bodyLimit;
+      if (owner) return owner[2] === undefined ? [this.bodyLimit] : [owner[2], true];
     }
-    return this.bodyLimit;
+    return [this.bodyLimit];
   }
 
   registerConsumerMiddleware(definitions: MiddlewareRouteDefinition[]): this {
@@ -897,13 +914,23 @@ export class RouteManager {
         await next();
       };
       try {
-        const maxSize = this.resolveBodyLimit(c);
-        return maxSize === false
-          ? await normalizedNext()
-          : await honoBodyLimit({
-              maxSize,
-              onError: (limited) => this.rejectRequest(limited, new PayloadTooLargeException()),
-            })(c, normalizedNext);
+        const [maxSize, declared] = this.resolveBodyLimit(c);
+        if (maxSize === false) return await normalizedNext();
+        const raw = c.req.raw;
+        // A route's own limit counts a body without Content-Length as it is
+        // read, after guards; Hono would buffer all of it before them.
+        if (
+          declared &&
+          raw.body &&
+          (raw.headers.has('transfer-encoding') || !raw.headers.has('content-length'))
+        ) {
+          c.req.raw = countedBody(raw, maxSize);
+          return await normalizedNext();
+        }
+        return await honoBodyLimit({
+          maxSize,
+          onError: (limited) => this.rejectRequest(limited, new PayloadTooLargeException()),
+        })(c, normalizedNext);
       } finally {
         // A rejected/failed body never reaches next(). Seed its original
         // request before Hono's error reporter runs inside the active lifetime.
