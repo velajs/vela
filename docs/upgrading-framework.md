@@ -19,9 +19,10 @@ their decorators, the request pipeline, HTTP exceptions, `ConfigModule` and
 `MetadataRegistry`, discovery, entrypoint kinds, execution scopes,
 `PipelineRunner`, route contributors and `invokeScheduledJob` from
 `@velajs/vela/module-kit`. Optional features have their own subpaths: `/cache`,
-`/throttler`, `/schedule`, `/events`, `/health`, `/logging`, `/http-client`,
-`/openapi`, `/security`, `/dispatch`, `/validation`, `/queue`, `/live` and
-`/websocket`. Core 1.31.0 removes `/storage`; file storage is `@velajs/storage`.
+`/dispatch`, `/events`, `/health`, `/http-client`, `/i18n`, `/live`, `/logging`,
+`/observability`, `/openapi`, `/queue`, `/schedule`, `/schedule-node`, `/security`,
+`/seeder`, `/streaming`, `/throttler`, `/validation`, `/websocket` and
+`/websocket-node`. Core 1.31.0 removes `/storage`; file storage is `@velajs/storage`.
 `@velajs/vela/internal` keeps only bootstrap plumbing. `@velajs/cloudflare` no
 longer re-exports the WebSocket gateway API; import it from
 `@velajs/vela/websocket`. The `@velajs/vela` changelog lists every moved name
