@@ -21,7 +21,11 @@ retry options. Deadlines include setup, I/O, and response consumption.
 The adapter reuses the HTTP child, global/scoped pipeline, module owner and
 trusted identity. The `authorize` policy runs in the global `authorize` phase,
 after global authentication and tenant guards, so it can read the trusted
-identity. Guards precede handler construction. Consume or cancel the
+identity. Global guards run on every procedure, including the tenant,
+Cedar, authorization and feature-flag guards the integrations install, so
+procedures need a tenant, a Cedar declaration (`@CedarPublic()` or
+`@RequireResource()` on the provider or method) and so on, as routes do.
+Guards precede handler construction. Consume or cancel the
 response body so managed work and resource disposal can complete.
 
 ## GraphQL

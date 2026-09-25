@@ -1,11 +1,14 @@
 # Upgrading framework integrations
 
-This guide covers the DI, execution, schema, transport and database APIs that
-require core 1.25.0. RPC and GraphQL 1.1.0 require this core version, and named
-databases require CRUD 1.25.0 with compatible adapters. Update the core and affected
-integrations together using their published dependency ranges; consult each
-package's changelog for its version. A prepared version in this repository becomes
-installable only after publication to npm.
+This guide collects the behavior changes and migration steps after the 1.24.0
+baseline. The DI, execution, schema, transport and database sections cover the APIs
+that require core 1.25.0: RPC and GraphQL 1.1.0 require this core version, and named
+databases require CRUD 1.25.0 with compatible adapters. The module contract, HTTP
+error and guard, Cloudflare adapter, realtime, feature surface, and CLI and testing
+sections cover core 1.31.0 and the integrations released with it. Update the core
+and affected integrations together using their published dependency ranges; consult
+each package's changelog for its version. A prepared version in this repository
+becomes installable only after publication to npm.
 
 ## Import paths
 
@@ -16,8 +19,10 @@ their decorators, the request pipeline, HTTP exceptions, `ConfigModule` and
 `MetadataRegistry`, discovery, entrypoint kinds, execution scopes,
 `PipelineRunner`, route contributors and `invokeScheduledJob` from
 `@velajs/vela/module-kit`. Optional features have their own subpaths: `/cache`,
-`/throttler`, `/schedule`, `/events`, `/health`, `/logging`, `/http-client`,
-`/openapi`, `/security`, `/dispatch`, `/validation` and `/websocket`.
+`/dispatch`, `/events`, `/health`, `/http-client`, `/i18n`, `/live`, `/logging`,
+`/observability`, `/openapi`, `/queue`, `/schedule`, `/schedule-node`, `/security`,
+`/seeder`, `/streaming`, `/throttler`, `/validation`, `/websocket` and
+`/websocket-node`. Core 1.31.0 removes `/storage`; file storage is `@velajs/storage`.
 `@velajs/vela/internal` keeps only bootstrap plumbing. `@velajs/cloudflare` no
 longer re-exports the WebSocket gateway API; import it from
 `@velajs/vela/websocket`. The `@velajs/vela` changelog lists every moved name
@@ -39,6 +44,126 @@ explicitly instead of choosing the first owner. Container internals use `#privat
 fields; use public provider snapshots for diagnostics.
 
 See [DI ownership](dependency-injection.md) and [module authoring](modules.md).
+
+## Module contract
+
+`defineModule` is the one module engine, and every first-party module follows the
+same contract.
+
+A module's instance key comes from its structural options only: the options that
+shape its graph, such as a storage bucket's `name` or a GraphQL `path`. A module
+without structural options has one instance per class. A second configuration under
+the same key fails bootstrap under every diagnostics policy, instead of becoming
+another instance or being dropped with a warning. Give each additional
+configuration its own `key`:
+
+```ts
+// Before (1.30.0): two instances, keyed by their options.
+@Module({ imports: [HttpModule.forRoot({ baseURL: 'https://billing.example.com' })] })
+class BillingModule {}
+@Module({ imports: [HttpModule.forRoot({ baseURL: 'https://catalog.example.com' })] })
+class CatalogModule {}
+```
+
+```ts
+// After: name each instance.
+@Module({ imports: [HttpModule.forRoot({ key: 'billing', baseURL: 'https://billing.example.com' })] })
+class BillingModule {}
+@Module({ imports: [HttpModule.forRoot({ key: 'catalog', baseURL: 'https://catalog.example.com' })] })
+class CatalogModule {}
+```
+
+The same applies to `ThrottlerModule`, `I18nModule`, `MailModule` (two mailers that
+differ only in `from`, `transport` or `render`) and `CryptoModule`. `CacheModule`
+allows one instance per application, whatever its `key`. `StorageModule`
+keys by bucket `name`, `GraphqlModule` by `path` and `RpcClientModule` by `name`
+and `binding`, so registering one of those again with other options fails too.
+`AuthzModule`, `TenantModule`, `CloudflareAccessModule` and `FeatureFlagsModule`
+key by `guard`, and `CedarModule` by `guard` and `undeclared`: a second
+registration with the same `guard` and other options, such as a feature module's
+own `AuthzModule` with other roles, fails bootstrap unless it has its own `key`.
+For several `AuthzModule`, `TenantModule` or `CedarModule` registrations, keep
+`guard: 'global'` on one and pass `guard: 'none'` on the others; the installed
+guard resolves the registration the route's module sees.
+`CrudModule.forFeature()` registrations that mount one path with different
+definitions fail bootstrap; register one shared `defineCrudFeature(...)` value
+wherever the path is mounted.
+
+`forRootAsync` takes structural options next to its factory, which returns the
+other options. A factory that returns a structural option no longer compiles and
+fails bootstrap, and any other call-site option besides `key`, `lazy`, an extra
+such as `isGlobal` and the factory wiring (`imports`, `inject`, `useFactory`,
+`useClass`, `useExisting`) throws. In 1.30.0 such an option (for example `baseURL`
+in `HttpModule.forRootAsync({ baseURL, useFactory })` or `roles` in
+`AuthzModule.forRootAsync({ roles, useFactory })`) was merged under the factory's
+result as a default; return it from the factory instead. Better
+Auth's factory returns the module options instead of the auth instance, and
+Storage's returns them instead of a bare driver or `{ driver, multipartGrantSecret }`;
+Storage's `prefix`, `readonly` and `hooks` move into the factory result:
+
+```ts
+// Before (1.30.0)
+BetterAuthModule.forRootAsync({
+  inject: [ENV],
+  useFactory: (env) => betterAuth({ secret: env.AUTH_SECRET, database }),
+});
+StorageModule.forRootAsync({
+  name: 'files',
+  prefix: 'uploads/',
+  inject: [ENV],
+  useFactory: (env) => ({ driver: r2Driver({ bucket: env.FILES }), multipartGrantSecret: env.SECRET }),
+});
+```
+
+```ts
+// After: `auth` and `driver` may be functions, built on first use.
+BetterAuthModule.forRootAsync({
+  inject: [ENV],
+  useFactory: (env) => ({ auth: () => betterAuth({ secret: env.AUTH_SECRET, database }) }),
+});
+StorageModule.forRootAsync({
+  name: 'files',
+  inject: [ENV],
+  useFactory: (env) => ({
+    driver: () => r2Driver({ bucket: env.FILES }),
+    prefix: 'uploads/',
+    multipartGrantSecret: env.SECRET,
+  }),
+});
+```
+
+In the core modules, `forRootAsync` takes `ConfigModule`'s `load`, `ErrorsModule`'s
+`catalogs` and `handler`, `LiveModule`'s `presence`, `ScheduleModule`'s `dispatch`,
+`SeederModule`'s `seeders` and `WebSocketModule`'s `sync` next to its factory, and
+`RpcClientModule.forRootAsync` takes `name` and `binding`.
+
+A bare class import configures nothing. Importing a generated module class that
+has no `@Module()` of its own, such as `imports: [CedarModule]`, fails bootstrap;
+import `CedarModule.forRoot(...)`. `@Module` no longer accepts `isGlobal`: decorate
+the class with `@Global()`, or pass the `isGlobal` extra to one `forRoot` call.
+`ModuleMetadata.isGlobal` is renamed `global`. The `isGlobal` extra only makes an
+instance's exports visible everywhere; options that install application-wide guards
+are named `guard` (see [guards](#http-errors-request-parameters-and-guards)).
+
+Renamed and removed APIs, with no aliases:
+
+- `RpcClientModule.register`/`registerAsync` are `forRoot`/`forRootAsync`.
+- `ConfigurableModuleBuilder` generates Nest's `register`/`registerAsync`; call
+  `setClassMethodName('forRoot')` to keep `forRoot`.
+- `defineConfigurableModule` (use `defineModule`), `defineDynamicModule` (return a
+  `DynamicModule` literal), `moduleKey` (use `stableHash` or `referenceKey`),
+  `moduleToken` (use `new InjectionToken`), `provideGlobal` (use the `global:` slot
+  of `setup`, or `{ provide: APP_GUARD, useClass }`) and the plugin API
+  (`definePlugin`, `composePlugins`, `PluginRegistry`; compose modules with
+  `imports`).
+- `mountOpenApi`'s `path` and `uiPath` (use `specPath`, and `swaggerPath`,
+  `scalarPath` or `redocPath`), Storage's `http.defaultPolicy`, and the `userId`
+  identity alias (`Identity.userId`, `ResolvedIdentity.userId`, and the field
+  `identityFromUser` set): read `subject` with `issuer`.
+
+Module authors declare structural options with a second type argument and a
+`structural` list, `defineModule<Opts, 'name' | 'http'>({ structural: ['name', 'http'], defaults: { name: 'default' }, ... })`;
+`setup` and `key` receive only those fields. See [module authoring](modules.md).
 
 ## Invocation and cleanup
 
@@ -98,12 +223,33 @@ Every HTTP failure renders through `renderHttpError`. Clients see these changes:
   and oversized bodies a JSON 413 (`payload_too_large`), instead of Hono's plain text.
   Global exception filters receive these rejections, as in Nest, so a catch-all filter that
   wraps every error also shapes the 404; they are still not reported.
-- A Hono `HTTPException` below 500 answers `{ error: { code, message } }` instead of its
-  plain-text response, unless it was built with its own `res`.
-- An exception filter's plain result is sent with the exception's status
-  (`getErrorStatus`: `HttpException.getStatus()`, `VelaError.status`, else 500)
-  instead of 200. Return `{ status, body }` to choose the status. A filter that
-  returns `undefined` leaves the error to the default renderer instead of sending 204.
+- A Hono `HTTPException` with a 4xx status answers `{ error: { code, message } }`,
+  unless it was built with its own `res`. From middleware or a raw Hono route this
+  replaces its plain-text response; thrown from a controller handler, it now answers
+  its 4xx instead of a redacted 500.
+- A Hono `HTTPException` with another status below 500 and no `res`, such as
+  `new HTTPException(302)` from raw Hono middleware, a raw Hono route or a Vela
+  middleware, is reported and answers a redacted 500 instead of its own response.
+  One built with its own `res` still sends it, but the raw Hono edge now reports it.
+  Redirect with `c.redirect()` or a returned `Response`.
+- An exception filter's plain result is sent with `getErrorStatus(error)`, the
+  exception's status (`HttpException.getStatus()` or `VelaError.status`) when it is
+  400–599, else 500, instead of 200. Return `{ status, body }` to choose the
+  status. A filter that returns `undefined` leaves the error to the default
+  renderer instead of sending 204.
+- An RPC failure caused by an exception-owned 4xx body with `error.code` and
+  `error.message`, such as a `CrudException` envelope, carries that code and
+  message (`{ code: 'NOT_FOUND', message: <its message>, status: 404 }`) instead
+  of the status's code and `'RPC request failed'` (`{ code: 'not_found', … }`).
+  Update RPC clients that match error codes.
+- A GraphQL field error from a branded `VelaError` or a 4xx Hono `HTTPException`
+  answers the status's public code (`FORBIDDEN`, `NOT_FOUND`, …) instead of
+  `INTERNAL_SERVER_ERROR`.
+- The last-resort Hono `onError`, which receives errors thrown by raw Hono
+  middleware and routes, now applies the application's `ExceptionHandler.render`
+  hook. Exception filters run only where the edge has a pipeline: controller
+  handlers, RPC procedures, GraphQL resolvers, Vela middleware, unmatched routes
+  and request limits.
 
 `HttpException.getRawResponse()` is removed. Exceptions own their wire shape
 through `toResponse()`: an object response still renders verbatim, and a custom
@@ -120,6 +266,28 @@ Integrations that map errors to another transport call `renderHttpError(error)`.
 `@Ctx()` (or `@Res()`). Replace `@Req() c: Context` with `@Ctx() c: Context`, or
 with `@Req() request: Request` when the handler only read `c.req.raw`.
 
+`@Sse()` streams what its handler returns: an iterable or async iterable of
+`MessageEvent`, or a `Response`. Another result, such as a JSON object, no longer
+compiles and fails the request with a redacted 500:
+
+```ts
+// Before (1.30.0): @Sse was a GET route, and the handler built the stream.
+@Sse('/events')
+events(@Req() c: Context) {
+  return streamSSE(c, async (stream) => {
+    await stream.writeSSE({ event: 'status', data: JSON.stringify({ ready: true }) });
+  });
+}
+```
+
+```ts
+// After: yield events (or return streamSSE(c, ...) with @Ctx() c).
+@Sse('/events')
+async *events(): AsyncIterable<MessageEvent> {
+  yield { type: 'status', data: { ready: true } };
+}
+```
+
 `ExecutionContext.getHandler()` returns the handler method, as in Nest, and the
 new `getHandlerName()` returns its name. Custom execution contexts implement both
 and record the handler with `MetadataRegistry.addHandlerMethod(handler, type, name)`.
@@ -131,7 +299,8 @@ several controllers route the function with different metadata for the key; list
 the class with it or pass the context there. When one wrapper function replaces
 several methods of a controller with different metadata, the list form throws
 too, so pass the context. Code that used the handler name, such as a throttling
-key, calls `getHandlerName()`.
+key, calls `getHandlerName()`. `Reflector.getAll()` returns one value per target,
+typed `Array<T | undefined>`, instead of a `[handler, class]` tuple.
 
 Declarations on an ancestor class apply to the controllers that extend it, as in
 Nest. Class metadata reads the controller's own, else the nearest ancestor's, in
@@ -141,34 +310,331 @@ guards each controller that extends it. Class-level `@UseGuards`,
 ancestor run for the subclass, ancestors first. On a method the controller
 inherits unchanged, the ancestors' method metadata, method-level enhancers,
 `@Serialize` and `SkipGuardPhases` apply; an override reads only its own. Opening
-markers are inherited too: `@Public()`, `@TenantIgnored()`, `@CedarPublic()` or
-`@SkipThrottle()` on a base controller now opens its subclasses' routes. Remove a
-declaration from the base class, or override the method, where a subclass must
-not inherit it.
+markers are inherited too: `@Public()`, `@OptionalAuth()`, `@TenantIgnored()`,
+`@CedarPublic()` or `@SkipThrottle()` on a base controller now opens its subclasses'
+routes. Remove a declaration from the base class, or override the method, where a
+subclass must not inherit it. Unlike Nest, route decorators (`@Get()`, `@Post()`, …)
+are still read from the controller class itself, so a method a base class routes
+is not mounted on its subclasses: route the inherited method on the subclass, for
+example `Get('list')(Sub.prototype, 'list', descriptor)`.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
 Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule`, `CedarModule` and
 `FeatureFlagsModule` install their guard globally by default; `guard: 'none'`
-opts out. Replace
-Better Auth's `isGlobal` with `guard` and Cedar's `globalGuard: false` with
-`guard: 'none'`. Remove `@UseGuards` for guards the modules now install, or pass
+opts out. Replace Better Auth's `isGlobal` with `guard` (`isGlobal: false`
+becomes `guard: 'none'`) and Cedar's `globalGuard: false` with `guard: 'none'`. On
+every module, `isGlobal` only makes exports global: `FeatureFlagsModule`'s
+`isGlobal: true` no longer registers `FeatureFlagGuard`, which the module
+registers by default. Remove `@UseGuards` for guards the modules now install (a
+redundant `@UseGuards(FeatureFlagGuard)` evaluates the flag twice), or pass
 `guard: 'none'` and keep a fully route-level pipeline. The installed guards
 cover every application route, including modules that do not import
 `TenantModule` or `CedarModule`. Cedar denies routes without
 `@RequireResource()` or `@CedarPublic()`; set `undeclared: 'allow'` to keep
 the previous behavior. Declare the policy of generated CRUD controllers with the
 resource's `decorators` and `endpointDecorators`. Integration packages mark their own
-controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`, which skips only the
-guards integrations install (`static readonly skippable = true`); other global guards
-still run there. An application guard that extends an integration guard inherits
-`skippable`; declare `static override readonly skippable = false` on it to keep it
-running there. Import order no longer decides whether authentication runs before
-throttling. The RPC `authorize` policy runs after global authentication and tenant
-guards, so it can read the trusted identity.
+controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`. It skips the
+global guards in the named phases whose class declares
+`static readonly skippable = true` (`TenantGuard`, `PermissionGuard`, `RolesGuard`
+and `CedarGuard`), whoever registers them: an application's own
+`{ provide: APP_GUARD, useClass: TenantGuard }` is skipped there too, where 1.30.0
+ran every global guard on the Better Auth handler, the storage controllers and the
+GraphQL endpoint. Check tenant membership for storage actions in the storage
+`http.authorize` callback. Other global guards still run there. An application
+guard that extends an integration guard inherits `skippable`; declare
+`static override readonly skippable = false` on it to keep it running there.
+`SkipGuardPhases` applies only to controller routes; see
+[guards on WebSocket, live-query and RPC entrypoints](#guards-on-websocket-live-query-and-rpc-entrypoints)
+for the entrypoints where the installed guards also run.
+
+An application's own global guard runs in the phase its class declares with
+`static readonly phase`, else in `feature`; 1.30.0 ran every global guard in
+registration order. Declare `static readonly phase = 'authenticate'` on a custom
+global authentication guard, such as an `APP_GUARD` JWT guard, and `'tenant'` or
+`'authorize'` on a custom global tenant or authorization guard. Without it, an
+authentication guard runs after the installed `TenantGuard`, `PermissionGuard`,
+`RolesGuard` and `CedarGuard` and after the RPC `authorize` policy, so they run
+without the identity it publishes, and it runs in import order relative to
+`ThrottlerGuard`. With the phase declared, import order no longer decides whether
+authentication runs before throttling, and the RPC `authorize` policy, which runs
+after global authentication and tenant guards, can read the trusted identity.
 
 `ThrottlerGuard` publishes its decisions under the `RATE_LIMIT` request-context
 key instead of the `rateLimit` Hono variable, one per throttler name: read
 `requestContext.get(RATE_LIMIT)?.default` where you read `c.get('rateLimit')`.
+
+With a global prefix, startup fails for a relative `forRoutes()` target that
+reaches prefixed routes while its written path also matches a route registered
+outside the prefix, such as an adapter's absolute `POST /rpc` under
+`forRoutes(':resource')`. Cover that route in the same `forRoutes()` with an
+absolute target (`{ path: '/rpc', absolute: true }`) or its controller, or leave it
+out with an absolute `exclude()`. An absolute target or `exclude()` accounts only for
+the outside routes it matches itself, so `{ path: '/rpc', absolute: true }` does not
+cover an excluded `GET /health`: startup still fails until that route is covered or
+excluded too. `globalPrefixOptions: { exclude }` serves chosen
+controller routes without the prefix, as Nest's `setGlobalPrefix(prefix, { exclude })`
+does.
+
+### Guards on WebSocket, live-query and RPC entrypoints
+
+Global guards also run outside controller routes: on WebSocket gateway messages,
+on the check before each push to a socket (run with the gateway class), on the
+reserved `$live` frames that subscribe to and unsubscribe from live queries and
+send presence heartbeats (run with the framework's `LiveEngine` class) and on RPC
+procedures. `SkipGuardPhases` applies only to controller routes. The guards the
+integrations now install reach these entrypoints too, so with default options an
+upgraded application sees:
+
+- `CedarModule` rejects each gateway message without `@RequireResource()` or
+  `@CedarPublic()` with an `exception` frame (`code: 'internal'`), drops pushes,
+  never answers `$live` frames, and answers an undeclared RPC procedure with a 403
+  failure frame. The Cedar guard 1.30.0 installed let undeclared handlers through.
+- `TenantModule` fails gateway messages, pushes and `$live` frames the same way,
+  because a socket context has no request to select the tenant from, and requires
+  a tenant and an authenticated identity on RPC procedures, as on routes.
+- `CloudflareAccessModule` fails every gateway message, push and `$live` frame,
+  in `mode: 'optional'` too, and requires an Access identity on RPC procedures,
+  as on routes.
+- `AuthzModule` and `FeatureFlagsModule` let undeclared handlers through, but now
+  enforce `@Roles()`, `@RequirePermission()` and `@FeatureFlag()` on gateway
+  handlers and RPC procedures. A socket message has no request context to
+  evaluate a flag for, so a `@FeatureFlag()` on a gateway rejects its messages
+  even when the flag is on.
+
+A guard failure on a `$live` frame or a push reaches only the error reporter,
+which skips 4xx errors by default, so live queries stop updating and presence
+rosters leave the socket out without a visible error. To keep gateways, live
+queries and RPC working:
+
+- Put `@CedarPublic()` or `@RequireResource()`, and `@TenantIgnored()` or
+  `@TenantOptional()`, on gateway classes and RPC providers, or on their handlers
+  and procedures. A marker on the gateway class, not on a handler, also admits the
+  gateway's pushes.
+- No marker reaches `$live` frames, including one on the `@LiveResolver()` class.
+  Admit their tenant with `TenantModule`'s `resolve` option, and set
+  `undeclared: 'allow'` on `CedarModule` or pass it `guard: 'none'`:
+
+```ts
+import { normalizeWebSocketUpgradeIdentity } from '@velajs/vela/websocket';
+import { TenantModule } from '@velajs/tenant/vela';
+
+TenantModule.forRoot({
+  lookup,
+  authorize,
+  // Socket frames and pushes admit the tenant the upgrade verified.
+  resolve: (context) => {
+    if (context.getType() !== 'ws') return undefined;
+    const identity = normalizeWebSocketUpgradeIdentity(context.switchToWs().getClient().data);
+    return identity
+      ? {
+          tenantId: identity.tenantId,
+          principal: { ...identity.principal, expiresAtMs: identity.expiresAtMs },
+          source: 'websocket',
+        }
+      : undefined;
+  },
+});
+```
+
+- `CloudflareAccessModule` has no socket option. With gateways or live queries,
+  pass `guard: 'none'`, authenticate sockets at upgrade with
+  `CloudflareAccessUpgradeAuthenticator`, and apply `CloudflareAccessGuard` to HTTP
+  controllers with `@UseGuards`. Global guards run before route guards, so apply
+  the tenant and authorization guards there too: pass `guard: 'none'` to their
+  modules and use `@UseGuards(CloudflareAccessGuard, TenantGuard, PermissionGuard)`.
+- With `guard: 'none'`, a module installs no global guard, so gateways, live
+  queries and RPC run only the guards you apply to them.
+
+## Cloudflare adapter
+
+The Cloudflare adapter wires the core `WebSocketModule` and `LiveModule` itself, so
+one static module boots in the Worker, in each `VelaWebSocketDurableObject` and on
+a node host:
+
+```ts
+// Before (1.30.0)
+@Module({
+  imports: [
+    CloudflareWebSocketModule.forRoot(),
+    LiveModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({
+        driver: () => durableObjectLive({ namespace: env.ROOMS, gatewayPath: '/rooms/:room/ws' }),
+        log: () => durableObjectCursorLog(),
+      }),
+    }),
+  ],
+  providers: [RoomsGateway, TodoLive],
+})
+class RoomModule {}
+```
+
+```ts
+// After: WebSocketModule from @velajs/vela/websocket, LiveModule from @velajs/vela/live.
+@Module({
+  imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+  providers: [RoomsGateway, TodoLive],
+})
+class RoomModule {}
+```
+
+- `CloudflareWebSocketModule` is removed. Import `WebSocketModule.forRoot()` in the
+  Worker as well: without it, the Worker mounts no upgrade route, and a
+  binding-backed gateway's upgrades answer 404 (the adapter reports each such
+  gateway through the diagnostics policy).
+- `durableObjectLive()` takes the binding name, `durableObjectLive({ binding: 'ROOMS', gatewayPath })`,
+  and is the Worker's default when one gateway names a `binding`; configure it only
+  to choose among several. Drop `durableObjectCursorLog()`: the Durable Object
+  supplies its SQLite cursor log, and `new DoCursorLog(sql, maxRows?)` takes the
+  SQLite handle.
+- A Worker that imports `LiveModule` but declares no binding-backed gateway no
+  longer falls back to `localLive()`: invalidations reject. Declare the gateway, or
+  configure `LiveModule.forRoot({ driver: () => localLive() })`.
+- A missing or mistyped binding fails naming its Wrangler key
+  (`ENV.ROOMS is not set: declare the Durable Object namespace binding 'ROOMS' under durable_objects.bindings …`);
+  an upgrade reports it and answers the redacted JSON 500 instead of plain text.
+
+The `middleware: (env) => handlers` option of `createCloudflareWorker` and
+`createCloudflareApp` is removed. Apply request middleware from a module, where a
+middleware class can inject `ENV`, and add Hono routes in the synchronous
+`configure(app, env)` hook:
+
+```ts
+// Before (1.30.0)
+export default createCloudflareWorker(AppModule, {
+  middleware: (env) => [
+    async (context, next) => {
+      context.header('x-service', env.SERVICE_NAME);
+      await next();
+    },
+  ],
+});
+```
+
+```ts
+// After
+@Injectable()
+class ServiceHeader implements NestMiddleware {
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
+  async use(context: VelaContext, next: () => Promise<void>) {
+    context.header('x-service', this.env.SERVICE_NAME);
+    await next();
+  }
+}
+
+@Module({ providers: [ServiceHeader] })
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(ServiceHeader).forRoutes('*');
+  }
+}
+
+export default createCloudflareWorker(AppModule, {
+  configure(app, env) {
+    app.getHonoApp().get('/version', (c) => c.text(env.SERVICE_VERSION));
+  },
+});
+```
+
+A custom runtime adapter wires its platform the same way, through the global
+`WS_TRANSPORT` (`@velajs/vela/websocket`) and `LIVE_PLATFORM` (`@velajs/vela/live`)
+tokens. See [Cloudflare integration](../packages/cloudflare/README.md).
+
+## Realtime
+
+Each live query, gateway push and presence roster is declared once.
+
+A live query's wire name lives in its shared definition, and clients take a list
+of definitions:
+
+```ts
+// Before (1.30.0)
+export const todoList = defineLiveQuery({ args: TodoListArgs, result: TodoListResult });
+
+@LiveResolver()
+class TodoLive {
+  constructor(private readonly todos: TodoService) {}
+
+  @LiveQuery('todos.list', todoList, { tags: ['todos'] })
+  list(args: { listId: string }) {
+    return this.todos.byList(args.listId);
+  }
+}
+
+const client = createLiveClient({ url, queries: { 'todos.list': todoList } });
+```
+
+```ts
+// After
+export const todoList = defineLiveQuery({
+  name: 'todos.list',
+  args: TodoListArgs,
+  result: TodoListResult,
+});
+
+@LiveResolver()
+class TodoLive {
+  constructor(private readonly todos: TodoService) {}
+
+  @LiveQuery(todoList, { tags: ['todos'] })
+  list(args: { listId: string }) {
+    return this.todos.byList(args.listId);
+  }
+}
+
+const client = createLiveClient({ url, queries: [todoList] });
+```
+
+React and React Native apps export the list, `const queries = [todoList]`, pass
+it to the client and type their hooks with
+`createLiveHooks<InferLiveContract<typeof queries>>()`. `LiveQueryDefinition` and
+`defineLiveQuery` take the name as their first type argument
+(`LiveQueryDefinition<'todos.byId', { id: string }, Todo[]>`), and the
+`LiveQuerySchemas` and `LiveQueryParsers` types become `LiveQueryDefinitions<Contract>`.
+The engine validates every result with the definition's `result` schema, so a
+resolver returns its rows as read.
+
+`broadcastToRoom()` is removed from `@velajs/cloudflare`. Push to a gateway's rooms
+from any provider with `Gateways` from `@velajs/vela/websocket`, which reads the
+Durable Object binding, path and frame limit from the gateway's metadata:
+
+```ts
+// Before (1.30.0)
+await broadcastToRoom(env.ROOMS, '/rooms/:room/ws', room, 'system', { text });
+```
+
+```ts
+// After
+interface ChatEvents {
+  system: { text: string };
+}
+
+@Injectable()
+export class Announcements {
+  constructor(private readonly gateways: Gateways) {}
+
+  announce(room: string, text: string) {
+    return this.gateways.of<ChatEvents>(ChatGateway).to(room).emit('system', { text });
+  }
+}
+```
+
+A gateway's `@WebSocketServer()` reaches only that gateway's sockets, so two
+gateways can share a room id; inject `WS_SERVER` into another provider to address
+every gateway. A `WS_SERVER` test double receives a gateway's pushes only while
+`WebSocketModule.forRoot()` is imported. A custom transport's `WsClient` sets
+`path` to its gateway's route, a custom `RoomRegistry` skips sockets whose `path`
+differs from `cmd.gatewayPath`, and every `redis()` instance is upgraded
+together.
+
+`PresenceService.beat()`, `PresenceService.roster()` and `presenceTag()` take the
+gateway path first, and a presence tag is `$presence:` plus a SHA-256 hex digest.
+`LiveQueryContext.path` is required, so code that builds a context, such as a
+resolver test, sets it; a `@LiveQuery` tags function receives `(args, context)`.
+Replace `@Res()` and `stampCommitHeaders` on a mutation with
+`@LiveInvalidates(tags)`, which invalidates after the handler succeeds and stamps
+the commit headers. See [WebSockets](websockets.md) and
+[live queries](live-queries.md).
 
 ## Queues, events, schedules and storage
 
@@ -211,35 +677,121 @@ and [storage](../packages/storage/README.md).
 
 ## Feature surfaces
 
-Each feature has one module, configured with names instead of live bindings:
+Each feature has one module, configured with binding names instead of live
+bindings, so one static module serves every environment:
+
+```ts
+// Before (1.30.0), in modules built from forRootAsync({ inject: [ENV], useFactory })
+StorageModule.forRoot({ disks: [{ disk: 'uploads', bucket: env.UPLOADS }], defaultDisk: 'uploads' }); // @velajs/cloudflare
+ResponseCacheModule.forRoot({ namespace: 'api-v1', scope, store: new KVCacheStore(env.CACHE) });
+ThrottlerModule.forRoot({
+  limit: 100,
+  ttl: 60_000,
+  storage: cloudflareRateLimitStore(env.API_LIMITER, { limit: 100, periodSeconds: 60 }),
+});
+```
+
+```ts
+// After, declared once at module scope
+StorageModule.forRoot({ name: 'uploads', driver: r2Storage({ binding: 'UPLOADS' }) }); // @velajs/storage
+CacheModule.forRoot({ namespace: 'api-v1', scope, store: kvCache({ binding: 'CACHE' }) });
+ThrottlerModule.forRoot({
+  throttlers: [{ limit: 100, ttl: 60_000 }],
+  storage: rateLimitStore({ binding: 'API_LIMITER' }),
+});
+```
 
 - **Bindings:** module options name a binding, `{ binding: 'CACHE' }`, which is
   read from each application's `ENV` when first used. The Workers factories
   `kv`, `r2`, `d1`, `queue`, `durableObject` and `rateLimit` come from
-  `@velajs/cloudflare`; a missing binding fails naming its Wrangler key.
-- **Storage:** the Cloudflare `StorageModule` and `@velajs/vela/storage` are
-  removed. Register `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })`
+  `@velajs/cloudflare`; a missing binding fails naming its Wrangler key. Other
+  options that need the environment take a function of `ENV`, which each
+  application calls for itself.
+- **Storage:** the Cloudflare `StorageModule` (with `StorageService`,
+  `StorageManagerService`, `R2StorageDriver` and `STORAGE_OPTIONS`) and
+  `@velajs/vela/storage` are removed. Register a `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })`
   from `@velajs/storage`, with `r2Storage` from `@velajs/cloudflare/storage`, per
-  former disk. The presign-proxy route `GET /storage/:disk` is gone.
+  former disk, and inject its `StorageService` with `@InjectStorage(name)`. A disk's
+  `root` becomes the static `prefix`; its `{date}`, `{year}`, `{month}`, `{day}` and
+  `{uuid}` tokens have no replacement, so build such keys in the application. The
+  presign-proxy route `GET /storage/:disk` is gone, so URLs it issued stop working:
+  serve downloads through `publicBaseUrl`, the authorized
+  `http: { download: 'proxy' }` controller, or provider-signed URLs.
+  `STORAGE_SIGNED_URL_PURPOSE` leaves `@velajs/vela/security`; pass your own
+  `purpose` to `signUrl` and `verifySignedUrl`.
 - **Cache:** the synchronous cache is removed and the response cache takes its
   names: `ResponseCacheModule` is `CacheModule`, `ResponseCacheService` is
-  `CacheService`. Replace `@Cacheable()` with `@CacheResponse({ key, ttl })`, and
-  a Workers KV store with `store: kvCache({ binding })`.
-- **CORS:** `CorsModule` is removed. Call `app.enableCors(options)` or pass the
-  `cors` create option (`createCloudflareWorker(AppModule, { cors })` on Workers).
+  `CacheService`, `ResponseCacheInterceptor` is `CacheInterceptor`, and
+  `RESPONSE_CACHE_OPTIONS` is `CACHE_MODULE_OPTIONS`. Replace `@Cacheable()`,
+  `@CacheKey(key)` and `@CacheTTL(seconds)` with `@CacheResponse({ key, ttl })`,
+  manual `CacheService` calls with `cache.scope(scope).get/set/invalidateKey`, and
+  `varyBy` with a private scope chosen from the trusted identity in `scope(context)`.
+  A Workers KV store is `store: kvCache({ binding })`, and generations
+  `invalidation: kvCacheInvalidation({ binding })`. Store failures the cache absorbs
+  are now reported to the application's error reporter (edge `'cache'`).
+- **CORS:** `CorsModule` and `CORS_OPTIONS` are removed, and `CorsOptions` moves to
+  `@velajs/vela`. Call `app.enableCors(options)` or pass the `cors` create option
+  (`createCloudflareWorker(AppModule, { cors })` on Workers). CORS runs ahead of
+  body limits, middleware and guards. A credentialed `'*'` origin or a `maxAge` that is
+  not a non-negative integer throws, and framework CORS cannot be combined with `SecurityModule`'s
+  exact-origin `cors` option (pass `cors: false` there).
 - **Throttling:** `ThrottlerModule.forRoot({ limit, ttl })` becomes
-  `forRoot({ throttlers: [{ limit, ttl }] })`, and `@Throttle({ limit })` becomes
-  `@Throttle({ default: { limit } })`. `cloudflareRateLimitStore(binding, …)` becomes
-  `storage: rateLimitStore({ binding: 'API_LIMITER' })`.
+  `forRoot({ throttlers: [{ limit, ttl }] })`, and `@Throttle({ limit, ttl })`
+  becomes `@Throttle({ default: { limit, ttl } })`. `@SkipThrottle()` skips only the
+  `'default'` throttler; `@SkipThrottle({ name: true })` skips a named one. Custom
+  stores implement `increment(key, ttl, limit, throttlerName)`, and a custom
+  `generateKey` is `(context, tracker, throttlerName)`. Default counter keys gain
+  the throttler name, so counts in a shared store restart. Throttler names are
+  letters, digits, `_` or `-`: a Nest-style name such as `'per.minute'` fails
+  bootstrap. `rateLimitStore()`
+  requires each binding's configured limit and period to equal its throttler's
+  `limit` and `ttl`, which must be 10 or 60 seconds; a throttler it cannot serve
+  fails bootstrap.
 - **Studio:** the per-feature modules (`StudioCrudModule`, `StudioLiveModule`,
   `StudioQueueModule` and the others) become panels in
   `StudioModule.forRoot({ plugins: [crudPanel(), livePanel({ rooms }), …] })`.
-  `managedModels` and `runAsIdentity` move to `crudPanel()`, and
+  `managedModels` and `runAsIdentity` move to `crudPanel()`,
+  `StudioLiveModule.forRoot({ source })` becomes `livePanel({ source })`, and
   `StudioCloudflareTimeTravelModule.forRoot({ namespace })` becomes
-  `cloudflareTimeTravelPanel({ binding })`.
+  `cloudflareTimeTravelPanel({ binding })`. `StudioAppHolder.capture(app, routePathOptions)`
+  takes the application's `RoutePathOptions` (`app.getRoutePathOptions()`) instead
+  of the global prefix string.
 
 See [caching](caching.md), [security](security.md) for CORS and throttling,
 [storage](../packages/storage/README.md) and [Studio](../packages/studio/README.md).
+
+## CLI and testing
+
+`@velajs/cli` needs no `vela.config` in a Workers project: every command reads
+Wrangler's `main`, loads the `createCloudflareWorker(AppModule)` entry and builds
+the application its descriptor describes, with the Wrangler `vars` as `ENV`. A
+`vela.config` still takes precedence; delete it when it only named the Worker's
+root module. Zero-configuration loading needs the `@velajs/cloudflare` release
+that attaches the Worker descriptor. The commands that build the application
+accept `--env`.
+
+- `vela deploy check` no longer requires its flags. Without `--config` it reads
+  the Wrangler file in the working directory, without `--env` it checks the
+  top-level configuration, and without `--entrypoints` it builds the application
+  and computes the snapshot. Keep passing `--entrypoints` to check a saved
+  snapshot without importing application code.
+- While a command loads and runs the application, the application's console
+  output goes to stderr, so stdout carries only the command's output, such as a
+  `--json` document or the MCP stdio channel.
+- `resolveConfig()` falls back to the Wrangler file (`source: 'wrangler'`) instead
+  of failing, and `loadConfig(cwd, config?, options?)` returns
+  `{ config, path, source, importModule, dispose }`.
+- Projects from `vela new` have no `vela.config.ts`, regenerate binding types in
+  their `dev` and `typecheck` scripts, and test the Worker with
+  `createTestingWorker()` from `@velajs/cloudflare/testing`, which needs
+  `@velajs/testing` as a dev dependency.
+
+`createTestingWorker(AppModule, { env, overrides })` builds the module as the
+Worker does inside the Workers Vitest pool, and its `fetch()`, `queue()` and
+`scheduled()` drive the Worker's handlers. The testing builder adds Nest's
+`overrideModule(Module).useModule(Replacement)` and `useMocker(factory)`, and
+`Test.createTestingModule(metadata, options)` accepts every `VelaFactory.create`
+option. See [tooling](tooling.md) and [testing](testing.md).
 
 ## Optional transports and multiple databases
 

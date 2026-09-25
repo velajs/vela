@@ -245,9 +245,10 @@ reported before they are rendered, and redaction holds on every edge:
   with a redacted 500, never sent as a success or redirect.
 - Branded `VelaError`s render their code, message and data unless the code is
   internal; any other error is a redacted 500.
-- A Hono `HTTPException` below 500 renders its message in that body; one built
-  with its own `res`, such as an auth challenge, keeps that response and its
-  headers. From 500 it is redacted like any server fault.
+- A Hono `HTTPException` with a 4xx status renders its message in that body;
+  one built with its own `res`, such as an auth challenge, keeps that response
+  and its headers. From 500 it is redacted like any server fault, and one with
+  a status below 400 and no `res` is reported and answered with a redacted 500.
 - Framework rejections (unmatched routes, oversized bodies, query limits) are
   not reported. As in Nest, global exception filters receive them
   (`NotFoundException`, `PayloadTooLargeException`, `BadRequestException`), and
@@ -365,6 +366,15 @@ installing module, and `isGlobal` changes nothing. A route without `@RequireReso
 `@CedarPublic()` is denied unless `undeclared: 'allow'` is set. A route-level `TenantGuard`
 or `CedarGuard` in a module that cannot see its module denies. Opt a route out of one phase
 with its marker: `@Public(true)`, `@TenantIgnored()` or `@CedarPublic()`.
+
+These guards, like every global guard, also run on WebSocket gateway messages, on the
+check before each push to a socket, on the reserved `$live` frames of live queries and
+presence and on RPC procedures. With default options `TenantGuard`, a deny-by-default
+`CedarGuard` and `CloudflareAccessGuard` reject socket contexts, and a rejected `$live`
+frame or push fails without a client-visible error. Mark gateway classes and RPC
+providers, admit socket tenants with `TenantModule`'s `resolve`, or pass `guard: 'none'`; the
+[upgrade guide](upgrading-framework.md#guards-on-websocket-live-query-and-rpc-entrypoints) lists
+each case.
 
 An integration package's own controller, which applications cannot annotate, declares the
 phases it enforces itself with `SkipGuardPhases([...])` from `@velajs/vela/module-kit`:

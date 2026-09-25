@@ -1,0 +1,5 @@
+---
+'@velajs/crud': minor
+---
+
+`@Crud()` and `CrudModule.forFeature()` resources take `decorators` for the controller class and `endpointDecorators` for each endpoint's handler, so an application declares route metadata on controllers it does not write, such as Cedar policy under the default deny: `defineCrudFeature({ path: '/notes', model, decorators: [RequireResource({ action: 'note:write', resourceType: 'Note' })], endpointDecorators: { list: [CedarPublic()] } })`. They apply as if written above the class or method in order, so endpoint metadata overrides class-level metadata, and an `@Override`'d endpoint keeps them. A method decorator that changes or returns the descriptor wraps the handler the route calls. Class decorators apply after the generated handlers exist, as TypeScript applies them after the methods, so one that decorates or wraps each method reaches every endpoint, and one that writes method metadata overrides an `endpointDecorators` value for that key, exactly as in hand-written TypeScript; a class decorator that returns a replacement class is rejected.

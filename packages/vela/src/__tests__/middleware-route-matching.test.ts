@@ -1266,6 +1266,41 @@ describe('relative targets are checked against the routes registered at startup'
       expect(await request('GET', '/admin/report')).toBe(200);
       expect(seen).toEqual(ran);
     });
+
+    // An absolute target accounts only for the routes it matches itself: one
+    // written for another route outside the prefix leaves this one uncovered.
+    it.each<{ name: string; endpoint: string; configure: (consumer: MiddlewareConsumer) => void }>([
+      {
+        name: 'an absolute forRoutes() target',
+        endpoint: '/platform',
+        configure: forRoutes('admin/*', { path: '/platform', absolute: true }),
+      },
+      {
+        name: 'an absolute forRoutes() target with a parameter',
+        endpoint: '/hooks/:id',
+        configure: forRoutes('admin/*', { path: '/hooks/:id', absolute: true }),
+      },
+      {
+        name: 'an absolute exclude() target',
+        endpoint: '/platform',
+        configure: (consumer) => {
+          consumer
+            .apply(RecordingMiddleware)
+            .exclude({ path: '/platform', absolute: true })
+            .forRoutes('admin/*');
+        },
+      },
+    ])(
+      'rejects it when $name accounts only for another route outside the prefix',
+      async ({ endpoint, configure }) => {
+        await expect(
+          createApp([AdminController, platformEndpoint(endpoint)], configure, options),
+        ).rejects.toThrow(
+          "Middleware route 'admin/*' resolves to '/api/admin/*' under the global prefix " +
+            "'/api', so it does not match GET /admin/report, which is served outside the prefix.",
+        );
+      },
+    );
   });
 
   it('accepts a relative target served under the global prefix', async () => {

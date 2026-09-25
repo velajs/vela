@@ -1112,8 +1112,10 @@ export class RouteManager {
   // because the route may still be added to the Hono app after startup
   // (mountOpenApi(), WebSocket upgrades, raw Hono routes). A target reaches a
   // route through a concrete path, shaped like either of them, that the target
-  // and Hono's TrieRouter both match, with each constrained route parameter
-  // read as a plain ':name' segment so no sample has to satisfy its '{regex}'.
+  // and that route both match in Hono's TrieRouter, with each constrained route
+  // parameter read as a plain ':name' segment so no sample has to satisfy its
+  // '{regex}'. The route itself must match: an absolute target for one route
+  // outside the prefix accounts for no other.
   // These samples only drive this check, never a request's decision.
   private checkMiddlewareTargets(
     registered: ReadonlyArray<{ method: string; path: string; handler: unknown }>,
@@ -1146,7 +1148,7 @@ export class RouteManager {
           [...samplePaths(shape, route.path), ...samplePaths(route.path, shape)].some(
             (sample) =>
               matchTarget(target, segmentsBeneath(sample.split('/'), 1)!) &&
-              router.match(HttpMethod.ALL, sample)[0].some(([other]) => reaches(other)),
+              router.match(HttpMethod.ALL, sample)[0].some(([other]) => other === route),
           ),
       );
     };
