@@ -6,7 +6,8 @@ provides its behavior: the methods you list in `rpc` become the class's JS-RPC
 methods, and `fetch`, `alarm` and the WebSocket hibernation handlers become its
 event handlers. Every call and event runs through the same guard, pipe, interceptor
 and filter pipeline as the rest of the application, in its own execution
-scope.
+scope. The app's [Workflows](workflows.md) and
+[service entrypoints](entrypoints.md) run in the Worker's own application instead.
 
 ## One app definition
 
@@ -128,8 +129,9 @@ export class OrdersService {
   accessors and instance fields (such as `increment = async () => ...`) are
   not on the prototype and are rejected. Hooks (`onModuleInit`, ...,
   `dispose`, `collectEntrypoints`), the event handlers, and `ctx`, `env`,
-  `connect`, `dup`, `id` and `name`, which the class or its stubs own, are
-  rejected too.
+  `connect`, `dup`, `id`, `name` and `then`, which the class or its stubs own,
+  are rejected too. So is a host whose prototype defines `then()`: every
+  instance would be a thenable, and resolving the host would hang.
 - **Handlers.** When the host defines `fetch(request)`, `alarm(info)`,
   `webSocketMessage`, `webSocketClose` or `webSocketError`, the class delegates
   that event to it. A host without `alarm` gets no alarm handler, so
@@ -183,22 +185,23 @@ A guard that returns `false` fails the call with `403 forbidden`.
 A failure is reported first, through the application's `ExceptionHandler`
 (`edge: 'durable-object'`, with the host method as `source`). Then:
 
-- An RPC call rejects with a `DurableObjectError` and nothing else. It is
-  rendered like an HTTP response (`renderHttpError`, server bodies redacted):
-  a 4xx `HttpException` or branded `VelaError` keeps its `status`, `code`,
-  `message` and `details`; anything else becomes
+- An RPC call rejects with an `EntrypointError` (from `@velajs/cloudflare`)
+  and nothing else, as a [service entrypoint](entrypoints.md#rpc-errors) call
+  does. It is rendered like an HTTP response (`renderHttpError`, server bodies
+  redacted): a 4xx `HttpException` or branded `VelaError` keeps its `status`,
+  `code`, `message` and `details`; anything else becomes
   `500 internal "Internal Server Error"`. Its stack names only itself, so no
   frame, cause or property of the original error crosses the RPC boundary.
   workerd rebuilds it for the caller as a plain `Error` with those properties;
-  test it with `isDurableObjectError(error)`. workerd keeps an error's own
+  test it with `isEntrypointError(error)`. workerd keeps an error's own
   properties across RPC only from `compatibility_date` 2026-04-21, or with the
   `enhanced_error_serialization` compatibility flag. On an older date the
-  caller receives an `Error` whose message is `DurableObjectError: <message>`,
-  with no `status`, `code` or `details`, and `isDurableObjectError()` is false;
-  `vela deploy check` warns about it. A host may throw a
-  `DurableObjectError` itself, for example to pass another object's failure
-  on: a client fault (4xx) keeps its code, message and details, and a server
-  fault keeps only its status.
+  caller receives an `Error` whose message is `EntrypointError: <message>`,
+  with no `status`, `code` or `details`, and `isEntrypointError()` is false;
+  `vela deploy check` warns about it. A host may throw an `EntrypointError`
+  itself, for example to pass another object's failure on: a client fault
+  (4xx) keeps its code, message and details, and a server fault keeps only its
+  status.
 - `fetch()` answers with the JSON error body and status, as a controller does.
 - Alarms and WebSocket events rethrow the error to the platform, which logs it
   and retries alarms.
@@ -259,7 +262,10 @@ scope you pass. `init()` is idempotent; `close()` runs the shutdown hooks and
   adapters) that the class then does not share.
 - `vela cf sync --write` binds every exported class and adds it to a migration
   as a SQLite class. A gateway binding no class serves is bound to the one
-  exported `VelaWebSocketDurableObject` class.
+  exported `VelaWebSocketDurableObject` class. A class the app defines but the
+  entry does not export is named with the call that defined it
+  (`VelaDurableObject(app, CounterHost, { rpc: ['increment'] })`): export that
+  class.
 - `vela entrypoint list` lists the exported classes as `cf:durable-object`
   rows, and `vela deploy check` warns about exported classes the selected
   environment does not bind and classes the app defines but does not export.
