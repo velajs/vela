@@ -205,7 +205,7 @@ describe('registration scope snapshots', () => {
         localProviders: new Set([Shared]),
         importedModules: new Set(),
         exportedTokens: new Set(),
-        isGlobal: false,
+        global: false,
         lazy: true,
       });
     }

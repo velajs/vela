@@ -14,7 +14,7 @@ import { OpenApiModule } from '@velajs/vela/openapi';
 export class AppModule {}
 ```
 
-The route serves the application root's document (`ROOT_MODULE`, contributor paths included) under the app's global prefix, built on the first request and kept for that application; there is no `OpenApiController` to write. `path` (default `/openapi.json`) is mounted as given, outside the global prefix; the route runs no guards and leaves itself out of the document. Options: `path`, `info`, `tags`, `servers`, `securitySchemes`, `security`; `forRootAsync` resolves them through DI. `@ApiExclude()` on a controller or handler leaves it out of the document and generated clients while it is still served (`isApiExcluded(target, handler?)` reads it).
+The route serves the document of the controllers the application serves (in the root module's declaration order, contributor paths included; a module a testing module replaced with `overrideModule()` is documented as its replacement) under the app's global prefix, built on the first request and kept for that application; there is no `OpenApiController` to write. `path` (default `/openapi.json`) is mounted as given, outside the global prefix; the route runs no guards and leaves itself out of the document. Options: `path`, `info`, `tags`, `servers`, `securitySchemes`, `security`; `forRootAsync` resolves them through DI. `@ApiExclude()` on a controller or handler leaves it out of the document and generated clients while it is still served (`isApiExcluded(target, handler?)` reads it).
 
 ## Generating the document
 

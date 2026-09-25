@@ -93,7 +93,7 @@ function toModuleNode(
   return {
     moduleId: desc.moduleId,
     imports: desc.imports,
-    isGlobal: desc.isGlobal,
+    global: desc.global,
     lazy: desc.lazy,
     providers: desc.providers,
     exports: desc.exports,

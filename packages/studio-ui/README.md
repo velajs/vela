@@ -1,7 +1,7 @@
 # @velajs/studio-ui
 
 React UI for Vela Studio. Use `@velajs/studio-host` for local Worker development.
-The standalone mount validates the host's protocol-v3 `window.__VELA_STUDIO__` connection.
+The standalone mount validates the host's protocol-v4 `window.__VELA_STUDIO__` connection.
 The custom admin mount and UI router mount are independent.
 
 API Explorer accepts path parameters, query parameters, request bodies and explicit API

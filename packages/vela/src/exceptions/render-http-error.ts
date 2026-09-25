@@ -36,6 +36,14 @@ function isErrorStatus(status: number): boolean {
   return Number.isInteger(status) && status >= 400 && status <= 599;
 }
 
+/**
+ * A client-fault status an error edge answers as such (an integer from 400
+ * to 499). Any other status is a server fault, or renders as one.
+ */
+export function isClientErrorStatus(status: number): boolean {
+  return Number.isInteger(status) && status >= 400 && status < 500;
+}
+
 function declaredStatus(error: unknown): number {
   if (isOwnedHttpError(error)) return error.getStatus();
   if (isVelaError(error)) return error.status;

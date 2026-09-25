@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { Context, Next } from 'hono';
 import {
   Controller,
   Get,
@@ -7,9 +8,13 @@ import {
   InjectionToken,
   Module,
   defineProvider,
+  type MiddlewareConsumer,
+  type NestMiddleware,
+  type NestModule,
   type Token,
 } from '@velajs/vela';
 import { UnresolvedDependencyError } from '@velajs/vela/module-kit';
+import { OpenApiModule } from '@velajs/vela/openapi';
 import { Test } from '../test.js';
 
 const STORE = new InjectionToken<{ read(): string }>('store');
@@ -156,6 +161,122 @@ describe('useMocker()', () => {
     try {
       expect(requested).toEqual([]);
       expect(moduleRef.get(SignupService).signup('c')).toBe('sent to c at 1');
+    } finally {
+      await moduleRef.close();
+    }
+  });
+});
+
+describe('module classes that configure middleware (NestModule)', () => {
+  interface Audit {
+    record(path: string): void;
+  }
+  const AUDIT = new InjectionToken<Audit>('audit');
+
+  @Controller('/audited')
+  class AuditedController {
+    @Get()
+    read() {
+      return { ok: true };
+    }
+  }
+
+  // Its configure() reads a constructor dependency.
+  const auditing = (audit: Audit): NestMiddleware => ({
+    async use(c: Context, next: Next) {
+      audit.record(c.req.path);
+      await next();
+    },
+  });
+
+  it('supplies the constructor dependencies of a module class from useMocker', async () => {
+    @Module({ controllers: [AuditedController] })
+    class AuditedModule implements NestModule {
+      constructor(@Inject(AUDIT) private readonly audit: Audit) {}
+      configure(consumer: MiddlewareConsumer): void {
+        consumer.apply(auditing(this.audit)).forRoutes(AuditedController);
+      }
+    }
+    const recorded: string[] = [];
+    const moduleRef = await Test.createTestingModule({ imports: [AuditedModule] })
+      .useMocker((token) =>
+        token === AUDIT ? { record: (path: string) => recorded.push(path) } : undefined,
+      )
+      .compile();
+    try {
+      (await moduleRef.http.get('/audited').send()).assertOk();
+      expect(recorded).toEqual(['/audited']);
+    } finally {
+      await moduleRef.close();
+    }
+  });
+
+  it('builds a module class with the overridden providers it injects', async () => {
+    @Module({
+      providers: [defineProvider(AUDIT, { useValue: { record: () => {} } })],
+      exports: [AUDIT],
+    })
+    class AuditModule {}
+    @Module({ imports: [AuditModule], controllers: [AuditedController] })
+    class AuditedModule implements NestModule {
+      constructor(@Inject(AUDIT) private readonly audit: Audit) {}
+      configure(consumer: MiddlewareConsumer): void {
+        consumer.apply(auditing(this.audit)).forRoutes(AuditedController);
+      }
+    }
+    const recorded: string[] = [];
+    const moduleRef = await Test.createTestingModule({ imports: [AuditedModule] })
+      .overrideProvider(AUDIT)
+      .useValue({ record: (path: string) => recorded.push(path) })
+      .compile();
+    try {
+      (await moduleRef.http.get('/audited').send()).assertOk();
+      expect(recorded).toEqual(['/audited']);
+    } finally {
+      await moduleRef.close();
+    }
+  });
+});
+
+describe('OpenApiModule after overrideModule()', () => {
+  @Controller('/legacy')
+  class LegacyController {
+    @Get()
+    list() {
+      return [];
+    }
+  }
+  @Module({ controllers: [LegacyController] })
+  class LegacyModule {}
+
+  @Controller('/replacement')
+  class ReplacementController {
+    @Get()
+    list() {
+      return [];
+    }
+  }
+  @Module({ controllers: [ReplacementController] })
+  class ReplacementModule {}
+
+  it("documents the replaced module's routes, as the application serves them", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [LegacyModule, OpenApiModule.forRoot({ path: '/openapi.json' })],
+    })
+      .overrideModule(LegacyModule)
+      .useModule(ReplacementModule)
+      .compile();
+    try {
+      (await moduleRef.http.get('/legacy').send()).assertStatus(404);
+      (await moduleRef.http.get('/replacement').send()).assertOk();
+      const response = await moduleRef.http.get('/openapi.json').send();
+      response.assertOk();
+      const document: unknown = await response.json();
+      const paths: unknown =
+        typeof document === 'object' && document !== null ? Reflect.get(document, 'paths') : {};
+      expect(Object.keys(typeof paths === 'object' && paths !== null ? paths : {})).toEqual([
+        '/replacement',
+      ]);
     } finally {
       await moduleRef.close();
     }

@@ -35,7 +35,7 @@ describe('@Optional() dependencies follow module visibility', () => {
         localProviders: new Set<Token>(moduleId === 'owner' ? [HIDDEN] : [Consumer]),
         importedModules: new Set(moduleId === 'consumer' ? ['owner'] : []),
         exportedTokens: new Set(),
-        isGlobal: false,
+        global: false,
       });
     }
     return { container, Consumer };

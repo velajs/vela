@@ -170,16 +170,16 @@ describe('AdminClient', () => {
 
   it('health() reports enabled + protocolVersion', async () => {
     const fetchImpl = (async () =>
-      new Response(JSON.stringify({ enabled: true, protocolVersion: 3 }), {
+      new Response(JSON.stringify({ enabled: true, protocolVersion: 4 }), {
         status: 200,
       })) as typeof fetch;
     const client = new AdminClient({ baseUrl: 'http://host', fetchImpl });
-    await expect(client.health()).resolves.toEqual({ enabled: true, protocolVersion: 3 });
+    await expect(client.health()).resolves.toEqual({ enabled: true, protocolVersion: 4 });
   });
 
-  it('health() rejects an application on the protocol before the scope rename', async () => {
+  it('health() rejects an application on the protocol before the global rename', async () => {
     const fetchImpl = (async () =>
-      new Response(JSON.stringify({ enabled: true, protocolVersion: 2 }), {
+      new Response(JSON.stringify({ enabled: true, protocolVersion: 3 }), {
         status: 200,
       })) as typeof fetch;
     const client = new AdminClient({ baseUrl: 'http://host', fetchImpl });

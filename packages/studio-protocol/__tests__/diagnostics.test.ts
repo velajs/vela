@@ -21,7 +21,7 @@ describe('additive diagnostic wire fields', () => {
       imports: [],
       exports: [],
       providers: [],
-      isGlobal: false,
+      global: false,
       lazy: false,
     };
     expect(parseStudioResponse('app.modules', [node])).toEqual([node]);
@@ -65,7 +65,7 @@ describe('additive diagnostic wire fields', () => {
       imports: [],
       exports: [],
       providers: ['A'],
-      isGlobal: false,
+      global: false,
       lazy: false,
       providerScopes: [{ token: 'A', scope }],
     });
@@ -86,7 +86,7 @@ describe('additive diagnostic wire fields', () => {
           imports: [],
           exports: [],
           providers: [],
-          isGlobal: false,
+          global: false,
           lazy: true,
           providerScopes: [{ token: 'A', scope: 'global' }],
         },

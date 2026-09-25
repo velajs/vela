@@ -453,12 +453,18 @@ export function createOpenApiDocument(
   rootModule: Type | DynamicModule,
   options: CreateOpenApiDocumentOptions = {},
 ): OpenApiDocument {
+  return openApiDocumentFor(collectControllers(rootModule), options);
+}
+
+/** The document of `controllers`, in that order (`OpenApiModule` passes the running application's). */
+export function openApiDocumentFor(
+  controllers: readonly Type[],
+  options: CreateOpenApiDocumentOptions = {},
+): OpenApiDocument {
   const paths: Record<string, OpenApiPathItem> = {};
   const globalPrefix = options.globalPrefix ?? '';
   const registry = new ComponentsRegistry();
   const composeRoutePaths = createRouteComposer(options);
-
-  const controllers = collectControllers(rootModule);
 
   for (const controller of controllers) {
     if (isApiExcluded(controller)) continue;

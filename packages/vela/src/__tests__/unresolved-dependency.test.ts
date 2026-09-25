@@ -42,7 +42,7 @@ function scope(moduleId: string, overrides: Partial<ModuleScope> = {}): ModuleSc
     localProviders: new Set(),
     importedModules: new Set(),
     exportedTokens: new Set(),
-    isGlobal: false,
+    global: false,
     ...overrides,
   };
 }

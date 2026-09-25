@@ -75,7 +75,7 @@ export function renderModuleTree(modules: ModuleDescription[]): string[] {
   const render = (id: string, depth: number, trail: Set<string>): void => {
     const mod = byId.get(id);
     const flags = mod
-      ? [mod.isGlobal ? 'global' : null, mod.lazy ? 'lazy' : null].filter(Boolean)
+      ? [mod.global ? 'global' : null, mod.lazy ? 'lazy' : null].filter(Boolean)
       : [];
     const suffix = flags.length > 0 ? ` (${flags.join(', ')})` : '';
     const providers = mod

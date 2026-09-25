@@ -7,6 +7,7 @@ import type { Type } from './container/types';
 import { defineProvider } from './container/types';
 import { APP_EXCEPTION_HANDLER } from './pipeline/tokens';
 import type { ExceptionHandler } from './exceptions/exception-handler';
+import { isClientErrorStatus } from './exceptions/render-http-error';
 import { resolveErrorReporter } from './exceptions/reporter';
 import { buildMiddlewareExecutionContext } from './http/execution-context';
 import { sendHttpError } from './http/error-response';
@@ -48,9 +49,10 @@ export class VelaApplication extends VelaApplicationContext {
       const reporter = resolveErrorReporter(findRequestContainer(c) ?? this.getContainer());
       // A Hono HTTPException with a 4xx status (an auth challenge, say) is a
       // deliberate client response, not a server fault. Everything else is
-      // reported, as on the handler edge, including one with any other status
-      // below 500, such as 302, which renders as a 500 without its own `res`.
-      if (!(err instanceof HTTPException) || err.status < 400 || err.status >= 500) {
+      // reported, as on the handler edge, including one with a status the
+      // edge cannot answer (302, 404.5, NaN, 700), which renders as a 500
+      // unless it carries its own `res`.
+      if (!(err instanceof HTTPException) || !isClientErrorStatus(err.status)) {
         reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
       }
       // The raw edge only sees unplanned throws, so exception-owned 5xx bodies

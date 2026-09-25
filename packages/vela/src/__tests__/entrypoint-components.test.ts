@@ -34,7 +34,7 @@ describe('public owned component resolution', () => {
         localProviders: new Set([Guard]),
         importedModules: new Set(),
         exportedTokens: new Set(),
-        isGlobal: false,
+        global: false,
       });
       root.register(
         defineProvider(Guard, {

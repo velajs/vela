@@ -170,23 +170,24 @@ export class TestingModuleBuilder {
     // critically REQUEST_CONTEXT token/request-child behavior). ENV and
     // runtime adapters bind through the same path as VelaFactory.create.
     const { adapters = [], ...options } = this.#options;
+    const overrides = this.#overrides;
+    const mocker = this.#mocker;
     const prepared = await bootstrap(TestRootModule, applyRuntimeAdapters(options, adapters), {
       moduleOverrides: this.#moduleOverrides,
+      // On the registered graph, before any module class is built, so a
+      // NestModule's constructor and configure() see the replacements.
+      prepareGraph(container) {
+        // Force-apply overrides into every module bucket that already holds
+        // the token (plus root). Without this, controller constructor-injection
+        // (which passes requestingModuleId to findRegistration) finds the
+        // module's own registration first and never consults the root
+        // override. An ENV override lands at root, where the global ENV is read.
+        for (const override of overrides) container.replaceProvider(override.provider);
+        // After the overrides, so only what nothing provides is mocked.
+        if (mocker) container.supplyMissingDependencies(mocker);
+      },
     });
     const { container } = prepared;
-
-    // Force-apply overrides into every module bucket that already holds the
-    // token (plus root). Without this, controller constructor-injection (which
-    // passes requestingModuleId to findRegistration) finds the module's own
-    // registration first and never consults the root override. The default
-    // 'all-existing' buckets replace every non-root bucket holding the token
-    // and re-register at root — the supported form of the old private loop.
-    // An ENV override lands at root, where the global ENV is read.
-    for (const override of this.#overrides) {
-      container.replaceProvider(override.provider);
-    }
-    // After the overrides, so only what nothing provides is mocked.
-    if (this.#mocker) container.supplyMissingDependencies(this.#mocker);
 
     const app = await finalizeApplication(prepared, adapters);
 

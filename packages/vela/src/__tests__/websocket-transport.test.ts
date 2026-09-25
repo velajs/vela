@@ -322,10 +322,13 @@ describe('WebSocketModule forwarding upgrade routes', () => {
 
     @WebSocketGateway({ path: '/ws', binding: 'ROOMS', authenticator: StaticAuthenticator })
     class Gateway {}
-    @Module({
-      imports: [WebSocketModule.forRoot(), WebSocketModule.forRoot({ key: 'second' })],
-      providers: [Gateway],
-    })
+    // The gateway's module sees one server; each instance's dispatcher
+    // discovers the gateway application-wide.
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [Gateway] })
+    class GatewayModule {}
+    @Module({ imports: [WebSocketModule.forRoot({ key: 'second' })] })
+    class OtherModule {}
+    @Module({ imports: [GatewayModule, OtherModule] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule, {

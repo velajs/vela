@@ -79,9 +79,14 @@ same Studio; `timeTravelPanel({ imports: [SourceModule] })` reaches a model sour
 another module exports. Each port is bound by one panel: `timeTravelPanel()` and
 `cloudflareTimeTravelPanel()` both bind `TIME_TRAVEL_PORT`, so `forRoot` fails
 when a Studio lists both, as it does for any token two plugins provide
-(application-wide enhancers such as `APP_INTERCEPTOR` excepted) and for a
+(application-wide enhancers such as `APP_INTERCEPTOR` excepted), for a
 plugin providing a token StudioModule provides itself, such as
-`STUDIO_RESOLVED_CONFIG` or `AdminAuditLog`. An async Studio factory with parameters supplies them
+`STUDIO_RESOLVED_CONFIG` or `AdminAuditLog`, and for one providing a framework
+token StudioModule injects from the application (`ENV`, `APP_LOGGER`,
+`ROOT_MODULE`, `Container`, `DiscoveryService` or `EntrypointRegistry`), or
+importing a module that exports one (directly or by re-exporting a module it
+imports), which would otherwise answer first inside Studio's scope. A
+`forwardRef` import is checked when the application loads it. An async Studio factory with parameters supplies them
 through `inject`; one without parameters may omit it.
 
 ## Diagnostic snapshots

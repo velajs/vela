@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   Controller,
   Get,
+  Global,
   Head,
   Injectable,
   InjectionToken,
@@ -10,7 +11,7 @@ import {
   Post,
   VelaFactory,
 } from '../index.js';
-import { describeToken } from '../module-kit.js';
+import { describeToken, type ModuleDescription } from '../module-kit.js';
 import { ROOT_MODULE_ID } from '../internal.js';
 
 describe('describeRoutes / getGlobalPrefix', () => {
@@ -135,6 +136,32 @@ describe('Container.getModuleDescriptions', () => {
     expect(root.imports).toEqual([]);
     expect(root.providers).toContain('Container');
     await app.dispose();
+  });
+
+  it('names global modules `global`, as ModuleMetadata and DynamicModule do', async () => {
+    const TOKEN = new InjectionToken<string>('introspect:global');
+
+    @Global()
+    @Module({ providers: [defineProvider(TOKEN, { useValue: 'x' })], exports: [TOKEN] })
+    class GlobalMod {}
+
+    @Module({})
+    class LocalMod {}
+
+    @Module({ imports: [GlobalMod, LocalMod] })
+    class App {}
+
+    const app = await VelaFactory.create(App);
+    try {
+      const modules = app.getContainer().getModuleDescriptions();
+      const byId = new Map(modules.map((m) => [m.moduleId, m]));
+      const global: ModuleDescription | undefined = byId.get('GlobalMod#default');
+      expect(global?.global).toBe(true);
+      expect(byId.get('LocalMod#default')?.global).toBe(false);
+      expect(modules.every((m) => !Object.hasOwn(m, 'isGlobal'))).toBe(true);
+    } finally {
+      await app.dispose();
+    }
   });
 });
 

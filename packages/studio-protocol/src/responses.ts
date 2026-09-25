@@ -107,7 +107,7 @@ export const STUDIO_RESPONSE_PARSERS: {
     z.object({
       moduleId: z.string(),
       imports: strings,
-      isGlobal: z.boolean(),
+      global: z.boolean(),
       lazy: z.boolean(),
       providers: strings,
       exports: strings,

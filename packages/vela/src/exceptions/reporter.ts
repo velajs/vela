@@ -7,6 +7,7 @@ import { APP_EXCEPTION_HANDLER, ERROR_CATALOG } from '../pipeline/tokens';
 import { APP_LOGGER } from '../logging/logging.tokens';
 import { logDeliveryForScope } from '../logging/scoped-logger';
 import { matchesAny, type ErrorReportContext, type ExceptionHandler } from './exception-handler';
+import { isClientErrorStatus } from './render-http-error';
 
 /**
  * The resolved reporting facade every transport edge (HTTP, WS, live, queue,
@@ -71,7 +72,9 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
       }
       if (diagnostics !== 'silent') {
         const status = clientFaultStatus(error);
-        if (status !== undefined && status >= 400 && status < 500) return; // client fault — not server-error log noise
+        // A client fault is not server-error log noise; a status the edge
+        // cannot answer (404.5, NaN) renders as a 500 and is logged.
+        if (status !== undefined && isClientErrorStatus(status)) return;
         if (structured) {
           try {
             logger?.withFields(merged).error(error);

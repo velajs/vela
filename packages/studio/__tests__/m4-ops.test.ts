@@ -121,7 +121,7 @@ describe('app.modules', () => {
     for (const m of modules) {
       expect(typeof m.moduleId).toBe('string');
       expect(Array.isArray(m.imports)).toBe(true);
-      expect(typeof m.isGlobal).toBe('boolean');
+      expect(typeof m.global).toBe('boolean');
       expect(typeof m.lazy).toBe('boolean');
     }
 

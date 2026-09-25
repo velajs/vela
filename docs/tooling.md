@@ -151,6 +151,21 @@ vela deploy check
   `wrangler <resource> create --binding --update-config` (queues:
   `wrangler queues create`, then the producer and consumer are written to the
   Wrangler file), runs the project's `types` script and registers the binding.
+  A d1/kv/r2 `BINDING` becomes a constant in `bindings.module.ts`, so a
+  JavaScript reserved word, or a name that file declares (a class, function,
+  variable or enum) or imports (`ENV`, `Global`, `InjectionToken`, `Module`,
+  `defineProvider`, its module class), is refused before anything is created;
+  the `InjectionToken` an earlier `vela add` declared for that binding is
+  reused. An existing `bindings.module.ts` keeps its class name, which the
+  root module imports; a root module that already lists it, imported through a
+  path alias or a barrel, is left as it is. A queue's producer and consumer
+  are planned before `wrangler queues create`. Wrangler and the CLI edit
+  `wrangler.json` and `wrangler.jsonc` only: with a `wrangler.toml`, the
+  resource is created and registered, but its binding (a queue's producer and
+  consumer) is printed under `Manual steps required` and the command exits 2.
+  Exit code 0 means everything was applied, apart from the registration
+  `--skip-import` prints, and 1 that the command failed. Source edits keep a
+  CRLF file CRLF and a comment trailing a line on that line.
   `--config` is passed on to Wrangler; with a Wrangler file other than the
   default one, the `types` script (which reads the default file) is left for
   you to run against it. Every module edit is computed on the current sources
@@ -167,7 +182,10 @@ vela deploy check
   binding, never with a host Durable Object, and a Durable Object class the app
   defines but the entry does not export is reported. It exits 1 on differences, and
   `--write` edits JSON/JSONC through `jsonc-parser`, one element at a time
-  (a cron trigger is appended or removed on its own), keeping comments. An
+  (a cron trigger is appended or removed on its own), keeping comments. A cron
+  trigger no `@Cron` job declares is reported as not declared by any job and
+  kept, since a Worker entry with its own `scheduled` handler may serve it;
+  `--prune` removes such triggers. An
   added element follows its array's or object's layout: on the line of the
   last one when that one shares a line (a one-line Wrangler file stays on one
   line), else on its own line after the comma and comment trailing the last
@@ -178,9 +196,12 @@ vela deploy check
   one. See [deployment](deployment.md).
 
 `scripts/cli-consumer.mjs` verifies the packed CLI end to end: it scaffolds
-both templates, installs them from the release archives, runs every generator,
-`cf sync --write`, the type check, the workerd specs, `deploy check`, the Vite
-build and the dev server. The templates pin the workspace versions
+both templates, installs them from the release archives, runs every
+`vela generate` schematic (`module`, `controller`, `service`, `resource`,
+`queue`, `cron`, `durable-object`), `cf sync --write`, the type check, the
+workerd specs, `deploy check`, the Vite build and the dev server. `vela add`
+creates Cloudflare resources through Wrangler, so it is covered by the CLI's
+own tests against a stubbed Wrangler instead. The templates pin the workspace versions
 (`scripts/starter-pins.mjs`), which `pnpm check:workspace` enforces and
 `pnpm version-packages` updates.
 
@@ -200,7 +221,9 @@ command also runs cross-package conformance and native Workers tests.
 the bundled agent skill against the built packages (after `pnpm build`). Each
 block compiles as its own module, retried as class members or a function body
 when it is a fragment; names a fragment leaves undeclared are tolerated, while
-missing packages, subpaths or exports and mismatched signatures fail. Mark a
+missing `@velajs/*` packages, subpaths or exports and mismatched signatures
+fail. An import of a relative file, or of a third-party package the workspace
+does not install, is tolerated, since examples import the reader's own code. Mark a
 block that shows invalid code on purpose with ```` ```ts nocheck ````.
 
 ## API documentation
@@ -252,9 +275,10 @@ An application serves its OpenAPI 3.1 document by importing `OpenApiModule` from
 export class AppModule {}
 ```
 
-The document covers the application root (`ROOT_MODULE`), including routes that
-route contributors such as `@Crud()` document, under the application's global
-prefix. It does not read the application's `globalPrefixOptions` or `versioning`:
+The document covers the controllers the application serves, in the order the
+root module declares them, including routes that route contributors such as
+`@Crud()` document, under the application's global prefix; a module a testing
+module replaced with `overrideModule()` is documented as its replacement. It does not read the application's `globalPrefixOptions` or `versioning`:
 when the application excludes routes from the prefix or sets `versioning.prefix`,
 pass the same `globalPrefixOptions` and `versioning` to `OpenApiModule.forRoot()`
 so the document's paths match the served routes. The document is built on the

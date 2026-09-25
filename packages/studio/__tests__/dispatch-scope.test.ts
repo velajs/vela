@@ -21,7 +21,7 @@ function registry(container: Container): StudioDispatchRegistry {
       ),
       importedModules: new Set(),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
   }
   const result = new StudioDispatchRegistry(
