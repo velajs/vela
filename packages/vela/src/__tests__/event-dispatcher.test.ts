@@ -10,7 +10,6 @@ import { createExecutionScope } from '../entrypoint/execution-scope';
 import {
   EventEmitterModule,
   EventEmitter,
-  EventEmitterSubscriber,
   EventDispatcher,
   defineEvent,
   defineEventVocabulary,
@@ -21,7 +20,7 @@ import { SchemaValidationError } from '../validation/standard-schema';
 beforeEach(() => {
   MetadataRegistry.setModuleOptions(EventEmitterModule, {
     lazy: true,
-    providers: [EventEmitter, EventEmitterSubscriber, EventDispatcher],
+    providers: [EventEmitter, EventDispatcher],
     exports: [EventEmitter, EventDispatcher],
   });
 });
@@ -194,8 +193,8 @@ describe('scoped event dispatch', () => {
   });
 });
 
-describe('legacy decorated event scopes', () => {
-  it('resolves an effectively request-scoped string listener for every emission', async () => {
+describe('decorated event scopes', () => {
+  it('resolves an effectively request-scoped listener for every emission', async () => {
     let nextId = 0;
     const disposed: number[] = [];
     const seen: number[] = [];
@@ -212,7 +211,7 @@ describe('legacy decorated event scopes', () => {
       constructor(@Inject(Dependency) dependency: Dependency) {
         this.#dependency = dependency;
       }
-      @OnEvent('legacy')
+      @OnEvent(events.tick)
       async onEvent() {
         await Promise.resolve();
         seen.push(this.#dependency.id);
@@ -221,13 +220,12 @@ describe('legacy decorated event scopes', () => {
     @Module({ imports: [EventEmitterModule], providers: [Listener, Dependency] })
     class App {}
     const app = await VelaFactory.create(App);
-    const emitter = app.get(EventEmitter);
+    const emitter = app.get(EventDispatcher);
     expect(nextId).toBe(0);
-    await Promise.all([emitter.emit('legacy'), emitter.emit('legacy')]);
+    await Promise.all([emitter.emit(events.tick, 1), emitter.emit(events.tick, 1)]);
     expect(seen.toSorted()).toEqual([1, 2]);
     expect(disposed.toSorted()).toEqual([1, 2]);
     await app.dispose();
-    expect(emitter.listenerCount('legacy')).toBe(0);
   });
 
   it('resolves the same listener token in each owning module', async () => {
@@ -238,10 +236,6 @@ describe('legacy decorated event scopes', () => {
       readonly #label: string;
       constructor(@Inject(label) value: string) {
         this.#label = value;
-      }
-      @OnEvent('legacy')
-      onEvent() {
-        seen.push(this.#label);
       }
       @OnEvent(events.tick)
       onScoped() {
@@ -258,9 +252,6 @@ describe('legacy decorated event scopes', () => {
     @Module({ imports: [EventEmitterModule, feature('a'), feature('b')] })
     class App {}
     const app = await VelaFactory.create(App);
-    await app.get(EventEmitter).emit('legacy');
-    expect(seen.toSorted()).toEqual(['a', 'b']);
-    seen.length = 0;
     await app.get(EventDispatcher).emit(events.tick, 1);
     expect(seen.toSorted()).toEqual(['a', 'b']);
     await app.dispose();

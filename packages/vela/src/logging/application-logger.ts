@@ -105,7 +105,7 @@ export class StructuredLogger implements LoggerService {
   }
 }
 
-/** One application's logging state. Independent of legacy Logger's static configuration. */
+/** One application's logging state. Independent of standalone Logger's static configuration. */
 export class ApplicationLogger {
   readonly #serializer: LogSerializer;
   readonly #sinks: ReadonlySet<LogSink>;

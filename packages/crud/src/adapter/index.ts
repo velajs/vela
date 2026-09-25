@@ -10,7 +10,6 @@ export {
   CAPABILITY_MEMBERS,
   type AdapterCapability,
   type AdapterScope,
-  type CascadeDriver,
   type CrudAdapter,
   type NestedWriteDriver,
   type NestedWriteInspection,

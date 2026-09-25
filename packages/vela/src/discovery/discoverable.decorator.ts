@@ -16,7 +16,7 @@ export interface CreateDiscoverableDecoratorOptions {
    * Append to a class-level list instead of overwriting a single slot —
    * for stackable method decorators (`@Cron`-style: each application pushes
    * `{ methodName, ...value }` onto the class's list, which
-   * `DiscoveryService.methodsWithMeta` flattens back to per-method entries).
+   * `DiscoveryService.registeredMethodsWithMeta` flattens back to per-method entries).
    */
   append?: boolean;
 }
@@ -32,7 +32,7 @@ export interface CreateDiscoverableDecoratorOptions {
  * class EmailConsumer { ... } // a class decorator implies @Injectable()
  *
  * // At bootstrap, anywhere:
- * discovery.providersWithMeta(QueueConsumer)  // typed { meta: QueueConsumerMeta }
+ * discovery.registrationsWithMeta(QueueConsumer)  // typed { meta: QueueConsumerMeta }
  * ```
  *
  * Unlike `Reflector.createDecorator`, the key is required and caller-chosen:

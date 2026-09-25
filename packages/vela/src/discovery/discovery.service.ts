@@ -7,7 +7,8 @@ import type { Constructor } from '../registry/types';
 import type { DiscoverableDecorator } from './discoverable.decorator';
 
 /** A container-registered class provider surfaced by discovery. */
-export interface DiscoveredClass<T = unknown> {
+export interface DiscoveredRegistration<T = unknown> {
+  readonly moduleId: string;
   token: Token;
   metatype: Type<T>;
   /** Module buckets holding this token (registration order; first = primary). */
@@ -21,19 +22,8 @@ export interface DiscoveredClass<T = unknown> {
   instance: T | undefined;
 }
 
-/** One class-token registration, with the exact module used for resolution. */
-export interface DiscoveredRegistration<T = unknown> extends DiscoveredClass<T> {
-  readonly moduleId: string;
-}
-
 export interface DiscoveredRegisteredMethodMeta<M = unknown> {
   class: DiscoveredRegistration;
-  methodName: string | symbol;
-  meta: M;
-}
-
-export interface DiscoveredMethodMeta<M = unknown> {
-  class: DiscoveredClass;
   methodName: string | symbol;
   meta: M;
 }
@@ -99,7 +89,7 @@ function resolveKey(key: string | DiscoverableDecorator<unknown>): string {
  * class MyRegistry implements OnApplicationBootstrap {
  *   constructor(private readonly discovery: DiscoveryService) {}
  *   onApplicationBootstrap() {
- *     for (const { instance, meta } of this.discovery.providersWithMeta<MyMeta>(MY_KEY)) {
+ *     for (const { instance, meta } of this.discovery.registrationsWithMeta<MyMeta>(MY_KEY)) {
  *       this.register(instance, meta);
  *     }
  *   }
@@ -111,7 +101,7 @@ function resolveKey(key: string | DiscoverableDecorator<unknown>): string {
  * dispatchers. Use `DiscoveryFilter.moduleId` for the rare narrowing case.
  *
  * The resolve-failure policy honors the container's diagnostics mode exactly
- * like the legacy loops: `throw` rethrows, `log` warns and skips, `silent`
+ * `throw` rethrows, `log` warns and skips, `silent`
  * skips — so a broken provider never silently changes discovery semantics.
  */
 @Injectable()
@@ -120,17 +110,6 @@ export class DiscoveryService {
 
   constructor(@Inject(Container) container: Container) {
     this.#container = container;
-  }
-
-  /** Every class-token provider registered in the container. */
-  getProviders(filter?: DiscoveryFilter): DiscoveredClass[] {
-    const out: DiscoveredClass[] = [];
-    for (const token of this.#container.getTokens()) {
-      if (typeof token !== 'function') continue;
-      const entry = this.buildEntry(token as Type, filter, 'provider discovery');
-      if (entry) out.push(entry);
-    }
-    return out;
   }
 
   /** Every owning registration of each class token, in registration order. */
@@ -158,44 +137,6 @@ export class DiscoveryService {
     return out;
   }
 
-  /**
-   * Providers whose class carries class-level metadata under `key` — both
-   * class decorators (single value) and method decorators that append
-   * class-level lists (`@Cron`, `@OnEvent`, `@SubscribeMessage`).
-   */
-  providersWithMeta<M>(
-    key: string | DiscoverableDecorator<M>,
-    filter?: DiscoveryFilter,
-  ): Array<DiscoveredClass & { meta: M }> {
-    const metaKey = resolveKey(key as string | DiscoverableDecorator<unknown>);
-    const out: Array<DiscoveredClass & { meta: M }> = [];
-    for (const target of this.candidatesWithClassMeta(metaKey)) {
-      const entry = this.buildEntry(target as Type, filter, `discovery of '${metaKey}'`);
-      if (!entry) continue;
-      const meta = MetadataRegistry.getCustomClassMeta(target, metaKey) as M;
-      out.push({ ...entry, meta });
-    }
-    return out;
-  }
-
-  /**
-   * Handler methods carrying metadata under `key`. Merges the two storage
-   * conventions:
-   *  - class-level appended lists whose items carry `methodName`
-   *    (`@Cron`/`@OnEvent`-style method decorators), and
-   *  - true handler-level metadata (`@SetMetadata`/`createDiscoverableDecorator`
-   *    applied to a method).
-   */
-  methodsWithMeta<M>(
-    key: string | DiscoverableDecorator<M>,
-    filter?: DiscoveryFilter,
-  ): DiscoveredMethodMeta<M>[] {
-    return this.findMethods(key, (target, label) => {
-      const entry = this.buildEntry(target, filter, label);
-      return entry ? [entry] : [];
-    });
-  }
-
   registeredMethodsWithMeta<M>(
     key: string | DiscoverableDecorator<M>,
     filter?: DiscoveryFilter,
@@ -203,7 +144,7 @@ export class DiscoveryService {
     return this.findMethods(key, (target, label) => this.buildEntries(target, filter, label));
   }
 
-  private findMethods<M, T extends DiscoveredClass>(
+  private findMethods<M, T extends DiscoveredRegistration>(
     key: string | DiscoverableDecorator<M>,
     entries: (target: Type, label: string) => T[],
   ): Array<{ class: T; methodName: string | symbol; meta: M }> {
@@ -231,26 +172,11 @@ export class DiscoveryService {
     return out;
   }
 
-  /**
-   * Index-first candidate walk with a legacy full-scan fallback: when the
-   * reverse index knows nothing about a key, an older copy of the registry
-   * module may have taken the writes (mixed dist/src or package versions in
-   * one process) — fall back to scanning container tokens the way the
-   * pre-DiscoveryService loops did.
-   */
+  /** Read the current registry's metadata index, restricted to this application. */
   private candidatesWithClassMeta(metaKey: string): object[] {
-    const indexed = MetadataRegistry.getClassesWithClassMeta(metaKey);
-    if (indexed.size > 0) {
-      return [...indexed].filter((t) => this.#container.has(t as Token));
-    }
-    const out: object[] = [];
-    for (const token of this.#container.getTokens()) {
-      if (typeof token !== 'function') continue;
-      if (MetadataRegistry.getCustomClassMeta(token, metaKey) !== undefined) {
-        out.push(token);
-      }
-    }
-    return out;
+    return [...MetadataRegistry.getClassesWithClassMeta(metaKey)].filter((target) =>
+      this.#container.has(target as Token),
+    );
   }
 
   private matchingOwners(moduleIds: string[], filter?: DiscoveryFilter): string[] {
@@ -271,17 +197,6 @@ export class DiscoveryService {
       if (entry) out.push(entry);
     }
     return out;
-  }
-
-  private buildEntry(
-    metatype: Type,
-    filter: DiscoveryFilter | undefined,
-    label: string,
-  ): DiscoveredClass | undefined {
-    const moduleIds = this.#container.getOwnerModuleIds(metatype);
-    const moduleId = this.matchingOwners(moduleIds, filter)[0];
-    if (moduleId === undefined) return undefined;
-    return this.buildRegistration(metatype, moduleId, moduleIds, filter, label);
   }
 
   private buildRegistration(

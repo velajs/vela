@@ -186,11 +186,11 @@ fresh versions; eviction causes misses, never a return to an earlier generation.
 Share its instance only among caches intended to invalidate one another. It does
 not coordinate different processes or isolates.
 
-`TieredCacheStore` preserves expiry when promoting entries. Sources need the
-optional `CacheEntryReader.getEntry`; destinations need
+`TieredCacheStore` preserves expiry when promoting entries. Every tier must implement
+`CacheEntryReader.getEntry` and
 `CacheEntryWriter.setEntry` to accept an absolute deadline. The built-in memory,
-tiered and KV stores implement these capabilities. Values from legacy stores
-with unknown expiry remain readable but are not backfilled. Writes/deletes/clears
+tiered and KV stores implement these capabilities. A tier missing either
+method is rejected at construction. Entries with unknown expiry are not backfilled. Writes/deletes/clears
 attempt every tier and reject on failure. Mutations and backfills through a single
 tiered instance are ordered; bypassing it with direct tier writes is outside that
 fence. No tier can extend the response envelope's logical deadline.
@@ -234,8 +234,8 @@ CacheModule.forRoot({
 
 `KVCacheStore`, `KVCacheInvalidationStore`, `kvCache` and `kvCacheInvalidation`
 come from `@velajs/cloudflare`. The value adapter records logical expiry in metadata, so KV's minimum 60-second
-physical retention does not extend a shorter cache TTL. Legacy KV values without
-expiry metadata stay readable but are not promoted. Use a **separate dedicated
+physical retention does not extend a shorter cache TTL. KV values without valid
+expiry metadata are cache misses. Non-expiring writes carry an explicit null deadline. Use a **separate dedicated
 namespace** for generations, without expiration or lifecycle deletion. Never
 clear/recreate generation markers while corresponding values or fills survive.
 

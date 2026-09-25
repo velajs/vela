@@ -154,23 +154,25 @@ describe('container construction ownership', () => {
     expect(disposed).toBe(1);
   });
 
-  it('rejects new resolution during teardown but remains reusable afterwards', async () => {
+  it('rejects new resolution during and after teardown', async () => {
     const barrier = gate();
-    const token = new InjectionToken<{ dispose(): Promise<void> }>('reusable');
+    const token = new InjectionToken<{ dispose(): Promise<void> }>('disposed');
     const root = new Container().register(
       defineProvider(token, {
         inject: [],
         useFactory: () => ({ dispose: () => barrier.promise }),
       }),
     );
-    const first = root.resolve(token);
+    root.resolve(token);
     const closing = root.dispose();
     expect(() => root.resolve(token)).toThrow(/dispos/i);
     expect(() => root.createChild().resolve(token)).toThrow(/dispos/i);
     await expect(root.resolveAsync(token)).rejects.toThrow(/dispos/i);
     barrier.release();
     await closing;
-    expect(root.resolve(token)).not.toBe(first);
+    expect(() => root.resolve(token)).toThrow(/disposed/);
+    expect(() => root.createChild()).toThrow(/disposed/);
+    await expect(root.resolveAsync(token)).rejects.toThrow(/disposed/);
     await root.dispose();
   });
 

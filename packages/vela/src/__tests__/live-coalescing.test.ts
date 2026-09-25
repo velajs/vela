@@ -70,6 +70,11 @@ class CoalescingClient implements WsClient {
 
   send(): void {}
 
+  trySendRaw(payload: string): 'accepted' {
+    this.sendRaw(payload);
+    return 'accepted';
+  }
+
   sendRaw(payload: string): void {
     this.frames.push(JSON.parse(payload) as RawFrame);
   }

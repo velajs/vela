@@ -132,14 +132,7 @@ export interface RouteManagerOptions {
    * first middleware. Off by default — the explicit child container is unchanged.
    */
   ambientContainer?: boolean;
-  /**
-   * Maximum request-body size in bytes. Applied before application middleware,
-   * scoped middleware, guards, pipes, and signed-body hashing. Defaults to
-   * {@link DEFAULT_BODY_LIMIT_BYTES}. Set `false` only when an outer trusted
-   * proxy enforces an equivalent limit.
-   */
-  bodyLimit?: number | false;
-  /** Unified request parsing limits. Prefer this over the legacy `bodyLimit`. */
+  /** Request body and query parsing limits. */
   security?: VelaSecurityOptions;
   /**
    * Enable CORS, as Nest's `NestFactory.create(root, { cors })`: `true` for
@@ -346,13 +339,10 @@ export class RouteManager {
     if (options.cors !== undefined && options.cors !== false) {
       this.enableCors(options.cors === true ? {} : options.cors);
     }
-    if (options.bodyLimit !== undefined && options.security?.body?.maxBytes !== undefined) {
-      throw new Error('Configure either bodyLimit or security.body.maxBytes, not both');
-    }
-    const configuredBodyLimit = options.security?.body?.maxBytes ?? options.bodyLimit;
+    const configuredBodyLimit = options.security?.body?.maxBytes;
     this.bodyLimit = configuredBodyLimit ?? DEFAULT_BODY_LIMIT_BYTES;
     this.bodyLimitCap = configuredBodyLimit || Infinity;
-    validatePositiveLimit('bodyLimit', this.bodyLimit);
+    validatePositiveLimit('security.body.maxBytes', this.bodyLimit);
     this.bodyLimitOverrides = (options.security?.body?.streamingOverrides ?? []).map(
       (override) => ({
         ...override,
@@ -1125,7 +1115,7 @@ export class RouteManager {
     const contributors = getRouteContributors();
     const resolveGlobalGuards = () =>
       orderGuardsByPhase(instantiateMany<CanActivate>(this.globalGuards, this.container));
-    for (const { controller, metadata, routes } of this.controllers) {
+    for (const { controller, metadata } of this.controllers) {
       for (const contributor of contributors) {
         const meta = getMetadata(contributor.claimsMetaKey, controller);
         if (meta === undefined) continue;
@@ -1143,20 +1133,6 @@ export class RouteManager {
           container: this.container,
           joinPaths,
         });
-      }
-
-      // DX warning for stale setups: @Crud() metadata but nothing produced a
-      // route — native @velajs/crud (>=1.18) stamps real routes at decoration
-      // time, and legacy bridges register a claiming contributor.
-      if (
-        getMetadata('vela:crud', controller) !== undefined &&
-        routes.length === 0 &&
-        !contributors.some((c) => c.claimsMetaKey === 'vela:crud')
-      ) {
-        console.warn(
-          `[vela] ${controller.name} carries @Crud() metadata but produced no routes — ` +
-            "install and import '@velajs/crud' (>=1.18), or remove the decorator.",
-        );
       }
     }
 
@@ -1350,16 +1326,13 @@ export class RouteManager {
 
   // A path target under the global prefix unless it is absolute, covering the
   // paths beneath it for forRoutes(). `'*'`, `'/*'` and `'{*splat}'` match
-  // every path, never under the prefix. Nest 11 reads a trailing `(.*)` as
-  // `{*path}`, so in forRoutes() it also covers its parent path, and a lone
-  // `(.*)` matches every path; exclude() keeps the strict reading.
+  // every path, never under the prefix.
   private resolveTarget(
     { path, method = HttpMethod.ALL, absolute }: RouteInfo,
     forRoutes: boolean,
   ): PathTarget {
-    const legacy = forRoutes && path.endsWith('(.*)');
     let target = parseTarget(path);
-    if (!target.parts.length && (legacy || target.tail === '*')) return { method };
+    if (!target.parts.length && target.tail === '*') return { method };
     const prefix = trimTrailingSlashes(this.globalPrefix);
     if (prefix && !absolute) {
       const written = `/${path.replace(/^\//, '')}`;
@@ -1380,7 +1353,7 @@ export class RouteManager {
     return {
       method,
       target:
-        forRoutes && (!tail || legacy)
+        forRoutes && !tail
           ? { parts: parts.at(-1) === '' ? parts.slice(0, -1) : parts, tail: '*' }
           : target,
     };

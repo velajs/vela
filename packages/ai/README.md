@@ -60,8 +60,7 @@ export function supportModels(provider: AiProvider) {
 | `model(input?)` | Calls `provider(id)` | Passed through | Uses `defaultModel` |
 | `embeddingModel(input?)` | Calls `provider.embeddingModel(id)` | Passed through | Uses `defaultEmbeddingModel` |
 
-The embedding resolver falls back to `provider.textEmbeddingModel(id)` for older
-provider implementations. Missing defaults, providers, or embedding support throw
+Missing defaults, providers, or embedding support throw
 directed errors. Strings always go through the supplied provider; this avoids
 implicitly selecting the AI SDK gateway. To use the gateway's string resolution,
 pass strings directly to the SDK instead.
@@ -214,10 +213,9 @@ Core exports: `createAi`; types `Ai`, `AiProvider`, `CreateAiOptions`, `ModelInp
 `EmbeddingModelInput`; SDK exports `generateText`, `streamText`, `embed`, `tool`,
 `jsonSchema`, `LanguageModel`, `EmbeddingModel`, `Tool`.
 
-RAG exports: `defineRag`, `memoryVectors`, `fixedWindowChunks`, `contentHash`,
+RAG exports: `defineRag`, `memoryVectors`, `fixedWindowChunks`,
 `mapWithConcurrency`, `DEFAULT_SYNC_CONCURRENCY`, and the types in
-[`src/rag/index.ts`](https://github.com/velajs/vela/blob/main/packages/ai/src/rag/index.ts). `contentHash` remains a non-cryptographic
-FNV helper for compatibility; it is **not** the internal sync fingerprint.
+[`src/rag/index.ts`](https://github.com/velajs/vela/blob/main/packages/ai/src/rag/index.ts).
 
 The standalone source was versioned 0.1.0; npm had no published `@velajs/ai` at
 migration. The monorepo starts its 1.x line and owns Changesets, catalog, lockfile,
@@ -225,7 +223,7 @@ and release checks. Intentional changes:
 
 1. Remove `AiBinding`, `CreateAiOptions.binding`, and `Ai.run`; call native bindings
    directly, preserving provider-specific input and output types.
-2. Prefer modern `provider.embeddingModel`, retaining `textEmbeddingModel` support.
+2. Use `provider.embeddingModel`; older provider method names are unsupported.
 3. Re-sync legacy data into the new partition encoding. Old vectors are not read
    automatically. Preserve the old store until re-indexing is verified, then clean
    its legacy partitions through the adapter's own administration API.

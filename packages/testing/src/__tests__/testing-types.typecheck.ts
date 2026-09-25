@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { InjectionToken, defineProvider, forwardRef, type Token } from '@velajs/vela';
 import type { StandardSchemaV1 } from '@velajs/vela/validation';
 import { Test } from '../test.js';
@@ -90,14 +91,9 @@ async function responseContracts(response: TestResponse): Promise<void> {
   // @ts-expect-error A result type requires a parser as runtime evidence.
   await response.json<Date>();
 
-  const count: number = await response.json({
-    parse(value: unknown) {
-      if (typeof value !== 'number') throw new TypeError('Expected number');
-      return value;
-    },
-  });
+  const count: number = await response.json(z.number());
   // @ts-expect-error The supplied parser produces a number, not a Date.
-  const parsedDate: Date = await response.json({ parse: (_: unknown) => 1 });
+  const parsedDate: Date = await response.json(z.number());
   void [unknownBody, rawDate, count, parsedDate];
 }
 
@@ -131,8 +127,9 @@ async function standardResponseContracts(
   const transformed: number = await response.json(schema);
   // @ts-expect-error A transformed response is the schema output, not its wire input.
   const wire: string = await response.json(schema);
-  const asyncLegacy: number = await response.json({ parse: () => 0, parseAsync: async () => 42 });
-  const explicitLegacy: number = await response.json<number>({ parse: () => 42 });
-  void [transformed, wire, asyncLegacy, explicitLegacy];
+  const asyncParsed: number = await response.json(z.number().transform(async () => 42));
+  // @ts-expect-error Parser-only schemas are unsupported.
+  response.json({ parse: () => 42 });
+  void [transformed, wire, asyncParsed];
 }
 void standardResponseContracts;

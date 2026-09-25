@@ -264,7 +264,7 @@ optional `subject`, `messageId`, `inReplyTo`, `references`, a `headers` record,
 `authentication: { dkim, spf, dmarc }`, `authenticationSource` (`adapter`,
 `authserv-id`, or `none`), optional `envelope: { from, to }`, `raw(): Uint8Array`,
 and `rawText(): string`. The parser snapshots input bytes and the validated
-envelope. The legacy second-argument `{ from, to }` envelope form remains accepted.
+envelope. Pass transport envelope addresses through `options.envelope`.
 
 ## Testing and platform status
 

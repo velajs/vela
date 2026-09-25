@@ -157,13 +157,13 @@ export interface CrudHooks<T = unknown, Write = Partial<T>, Shaped = Partial<T>>
   // -------------------------------------------------------------------------
   /**
    * Before a point READ. Receives the lookup value (path param). Observe-only.
-   * Parity: the old bridge's `beforeRead(ctx, lookupValue)` (hono-crud's Read
-   * endpoint had no `before` hook).
+   * Runs in the read scope before lookup; throwing stops database access.
    */
   beforeRead?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
   /**
-   * After a point READ resolves. Receives the row; may return a replacement.
-   * Parity: hono-crud `ReadHooks.after(data)` / old bridge `afterRead`.
+   * After an authorized point READ resolves. Receives a detached row and may
+   * return a replacement; output still passes policies and response shaping.
+   * Missing/denied rows skip this hook. ETags describe the stored row.
    */
   afterRead?: Mutator<T>;
   /**

@@ -32,8 +32,7 @@ const PARAM_EXTRACTORS = new Map<ParamType, ParamExtractor>([
 // Pulls handler arguments from the request, then applies shared pipes (global
 // + controller + method) and per-param pipes. A route-built reader receives
 // every pipe that applies, and names the pipes that do not run on its value.
-// Empty paramMetadata returns `[c]` to match the old direct-Hono-handler
-// shape — a back-compat behavior the framework's tests rely on.
+// Handlers receive only explicitly declared arguments (use @Ctx() for Hono).
 export class ArgumentResolver {
   constructor(private readonly ipExtractor: (c: Context) => string | null) {}
 
@@ -48,7 +47,7 @@ export class ArgumentResolver {
     extractors: ReadonlyArray<ParamReader | undefined> = [],
   ): Promise<unknown[]> {
     if (paramMetadata.length === 0) {
-      return [c];
+      return [];
     }
 
     const maxIndex = paramMetadata.at(-1)!.index;

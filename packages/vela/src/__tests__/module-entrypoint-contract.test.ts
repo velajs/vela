@@ -96,7 +96,13 @@ describe('entrypoint metadata evidence', () => {
     const registry = await EntrypointRegistry.build(discovery, [
       {
         collectEntrypoints: () => [
-          { kind: 'queue', token: 'processor', instance: undefined, meta: { queueName: 'jobs' } },
+          {
+            kind: 'queue',
+            token: 'processor',
+            moduleId: 'test',
+            instance: undefined,
+            meta: { queueName: 'jobs' },
+          },
         ],
       },
     ]);
@@ -112,7 +118,13 @@ describe('entrypoint metadata evidence', () => {
     const registry = await EntrypointRegistry.build(new DiscoveryService(new Container()), [
       {
         collectEntrypoints: () => [
-          { kind: 'queue', token: 'processor', instance: undefined, meta: { queueName: 42 } },
+          {
+            kind: 'queue',
+            token: 'processor',
+            moduleId: 'test',
+            instance: undefined,
+            meta: { queueName: 42 },
+          },
         ],
       },
     ]);

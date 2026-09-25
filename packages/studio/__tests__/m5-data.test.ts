@@ -3,12 +3,7 @@ import { matchesPredicate } from '@velajs/crud/query';
 import { bindAdapter } from '@velajs/crud/adapter';
 import { describe, expect, it, vi } from 'vitest';
 import { Injectable, defineProvider, Controller, Module, VelaFactory } from '@velajs/vela';
-import {
-  Container,
-  DiscoveryService,
-  METADATA_KEYS,
-  defineMetadata,
-} from '@velajs/vela/module-kit';
+import { Container, DiscoveryService } from '@velajs/vela/module-kit';
 import {
   CRUD_DATABASES,
   CRUD_DEFAULT_ADAPTER,
@@ -16,7 +11,6 @@ import {
   createCrudDatabaseRegistry,
   defineCrudDatabase,
 } from '@velajs/crud';
-import type { CrudConfig } from '@velajs/crud';
 import type { Model, RelationConfig } from '@velajs/crud/model';
 import type {
   AdapterCapability,
@@ -54,16 +48,7 @@ const BASE = '/_vela/admin';
 type Row = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
-// Normalized crud models, hand-authored to mirror `defineModels` output.
-//
-// The crud model authoring surface (`defineModels`/`@Crud`) needs `zod`, which
-// resolves only inside `@velajs/crud`'s own peer scope (adding it to this
-// package is out of the allowed manifest change). So the fixture stamps the
-// SAME `METADATA_KEYS.CRUD` metadata `@Crud` stamps, over hand-built normalized
-// `Model`s + a real `CrudAdapter` — exercising the actual `CrudStudioModelSource`
-// discovery + adapter mapping. Schemas are minimal Zod-shaped stand-ins that
-// carry exactly the `def.type` structure the column derivation introspects.
-// ---------------------------------------------------------------------------
+// Normalized models with real schemas, registered through the public Crud decorator.
 
 interface FieldSpec {
   type: string;
@@ -72,18 +57,17 @@ interface FieldSpec {
 }
 
 /** A Zod-v4-shaped field node (`def.type` + wrapper `innerType`). */
-function zField(spec: FieldSpec): unknown {
-  let node: { def: { type: string; innerType?: unknown } } = { def: { type: spec.type } };
-  if (spec.nullable) node = { def: { type: 'nullable', innerType: node } };
-  if (spec.optional) node = { def: { type: 'optional', innerType: node } };
+function zField(spec: FieldSpec): z.ZodType {
+  let node: z.ZodType = spec.type === 'number' ? z.number() : z.string();
+  if (spec.nullable) node = node.nullable();
+  if (spec.optional) node = node.optional();
   return node;
 }
 
-/** A Zod-object-shaped schema stand-in (only `.shape` is read by the source). */
 function zSchema(shape: Record<string, FieldSpec>): Model['schema'] {
-  const built: Record<string, unknown> = {};
-  for (const [name, spec] of Object.entries(shape)) built[name] = zField(spec);
-  return { shape: built } as unknown as Model['schema'];
+  return z.object(
+    Object.fromEntries(Object.entries(shape).map(([name, spec]) => [name, zField(spec)])),
+  );
 }
 
 const userModel: Model = {
@@ -111,7 +95,7 @@ const userModel: Model = {
   audit: false,
   relations: {
     // defineModels rewrites the target to the sibling tableName; the child's
-    // soft-delete column is applied by the fixture adapter's cascade counter.
+    // Related posts use this soft-delete column.
     posts: {
       type: 'hasMany',
       target: 'posts',
@@ -328,31 +312,6 @@ function memoryAdapter(model: Model, db: MemoryDb, caps: AdapterCapability[]): C
     };
   }
 
-  if (capabilities.has('cascade')) {
-    const countRelated = async (relation: string, parentKey: unknown): Promise<number> => {
-      const rel = model.relations?.[relation];
-      if (rel === undefined) return 0;
-      const childStore = db.table(rel.target ?? '');
-      let n = 0;
-      for (const row of childStore.values()) {
-        if (String(row[rel.foreignKey]) !== String(parentKey)) continue;
-        // The fixture's soft-deletable child (posts) tombstones via `deletedAt`.
-        if (row.deletedAt != null) continue;
-        n++;
-      }
-      return n;
-    };
-    adapter.cascade = {
-      countRelated,
-      async deleteRelated(relation, parentKey) {
-        return countRelated(relation, parentKey);
-      },
-      async nullifyRelated(relation, parentKey) {
-        return countRelated(relation, parentKey);
-      },
-    };
-  }
-
   return adapter;
 }
 
@@ -408,99 +367,23 @@ async function makeCrudApp(
     },
   ]);
 
-  // users: aggregate (facets) + cascade (preview). posts: soft-delete + search.
-  const usersAdapter = memoryAdapter(userModel, db, ['aggregate', 'cascade']);
+  // users: aggregate (facets). posts: soft-delete + search.
+  const usersAdapter = memoryAdapter(userModel, db, ['aggregate']);
   const postsAdapter = memoryAdapter(postModel, db, ['softDelete', 'nativeSearch']);
 
   @Controller('/users')
   class UsersController {}
-  defineMetadata(
-    METADATA_KEYS.CRUD,
-    { model: userModel, adapter: usersAdapter } satisfies CrudConfig,
-    UsersController,
-  );
+  Crud({ ...{ model: userModel, adapter: usersAdapter }, only: [] })(UsersController);
 
   @Controller('/posts')
   class PostsController {}
-  defineMetadata(
-    METADATA_KEYS.CRUD,
-    { model: postModel, adapter: postsAdapter, searchFields: ['title'] } satisfies CrudConfig,
+  Crud({ ...{ model: postModel, adapter: postsAdapter, searchFields: ['title'] }, only: [] })(
     PostsController,
   );
 
   @Module({
     imports: [StudioModule.forRoot({ token: TOKEN, ...studio, plugins: [crud] })],
     controllers: [UsersController, PostsController],
-  })
-  class AppModule {}
-  return VelaFactory.create(AppModule);
-}
-
-// A parent→child pair whose relation carries an explicit `cascade.onDelete`,
-// used to prove cascadePreview surfaces the authored action (not just noAction).
-const orgModel: Model = {
-  name: 'org',
-  namePlural: 'orgs',
-  tableName: 'orgs',
-  schema: zSchema({ id: { type: 'string' }, name: { type: 'string' } }),
-  primaryKeys: ['id'],
-  id: 'uuid',
-  timestamps: { createdAt: false, updatedAt: false },
-  versioning: false,
-  audit: false,
-  relations: {
-    seats: {
-      type: 'hasMany',
-      target: 'seats',
-      foreignKey: 'orgId',
-      cascade: { onDelete: 'cascade' },
-    } satisfies RelationConfig,
-  },
-};
-
-const seatModel: Model = {
-  name: 'seat',
-  namePlural: 'seats',
-  tableName: 'seats',
-  schema: zSchema({ id: { type: 'string' }, orgId: { type: 'string' } }),
-  primaryKeys: ['id'],
-  id: 'uuid',
-  timestamps: { createdAt: false, updatedAt: false },
-  versioning: false,
-  audit: false,
-};
-
-/** Build an app whose org→seats relation authors `cascade.onDelete: 'cascade'`. */
-async function makeCascadeApp(): Promise<App> {
-  const db = new MemoryDb();
-  db.seed('orgs', [{ id: 'o1', name: 'Acme' }]);
-  db.seed('seats', [
-    { id: 's1', orgId: 'o1' },
-    { id: 's2', orgId: 'o1' },
-  ]);
-
-  const orgsAdapter = memoryAdapter(orgModel, db, ['cascade']);
-  const seatsAdapter = memoryAdapter(seatModel, db, []);
-
-  @Controller('/orgs')
-  class OrgsController {}
-  defineMetadata(
-    METADATA_KEYS.CRUD,
-    { model: orgModel, adapter: orgsAdapter } satisfies CrudConfig,
-    OrgsController,
-  );
-
-  @Controller('/seats')
-  class SeatsController {}
-  defineMetadata(
-    METADATA_KEYS.CRUD,
-    { model: seatModel, adapter: seatsAdapter } satisfies CrudConfig,
-    SeatsController,
-  );
-
-  @Module({
-    imports: [StudioModule.forRoot({ token: TOKEN, plugins: [crudPanel()] })],
-    controllers: [OrgsController, SeatsController],
   })
   class AppModule {}
   return VelaFactory.create(AppModule);
@@ -549,10 +432,7 @@ describe('data.listModels', () => {
     const byName = new Map(models.map((m) => [m.name, m]));
     expect([...byName.keys()].toSorted()).toEqual(['post', 'user']);
     expect(byName.get('user')?.table).toBe('users');
-    expect([...(byName.get('user')?.capabilities ?? [])].toSorted()).toEqual([
-      'aggregate',
-      'cascade',
-    ]);
+    expect([...(byName.get('user')?.capabilities ?? [])].toSorted()).toEqual(['aggregate']);
     expect([...(byName.get('post')?.capabilities ?? [])].toSorted()).toEqual([
       'nativeSearch',
       'softDelete',
@@ -601,7 +481,7 @@ describe('data.describeModel', () => {
       bulkWrites: false,
       facets: true,
       search: false,
-      cascade: true,
+      cascade: false,
     });
   });
 
@@ -745,30 +625,14 @@ describe('data.facets', () => {
 });
 
 describe('data.cascadePreview', () => {
-  it('reports the relation impact for the FK pair', async () => {
-    const app = await makeCrudApp();
-    // Deleting u1 cascades to its LIVE posts (p1, p2; p4 is tombstoned).
-    const preview = ok(await rpc(app, 'data.cascadePreview', { model: 'user', ids: ['u1'] }));
-    expect(preview.relations).toEqual([
-      { relation: 'posts', target: 'posts', action: 'noAction', affected: 2 },
-    ]);
-  });
-
-  it('surfaces an explicit cascade.onDelete action authored on the relation', async () => {
-    const app = await makeCascadeApp();
-    const preview = ok(await rpc(app, 'data.cascadePreview', { model: 'org', ids: ['o1'] }));
-    expect(preview.relations).toEqual([
-      { relation: 'seats', target: 'seats', action: 'cascade', affected: 2 },
-    ]);
-  });
-
-  it('omits a relation whose target model is excluded (no aggregate-count leak)', async () => {
-    // With `post` excluded, user's only hasMany relation targets a hidden model:
-    // it must be absent from the preview so its row count never leaks.
-    const app = await makeCrudApp({ managedModels: { exclude: ['post'] } });
-    const preview = ok(await rpc(app, 'data.cascadePreview', { model: 'user', ids: ['u1'] }));
-    expect(preview.relations.some((r) => r.relation === 'posts')).toBe(false);
-    expect(preview.relations).toEqual([]);
+  it('requires a source with actual database cascade metadata', async () => {
+    const result = await rpc(await makeCrudApp(), 'data.cascadePreview', {
+      model: 'user',
+      ids: ['u1'],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected error');
+    expect(result.error.code).toBe('FEATURE_UNCONFIGURED');
   });
 });
 
@@ -839,7 +703,7 @@ describe('database-qualified Studio resources', () => {
         resources: {
           user: {
             model: userModel,
-            adapter: memoryAdapter(userModel, alpha, ['transactions', 'cascade']),
+            adapter: memoryAdapter(userModel, alpha, ['transactions']),
           },
           post: { model: postModel, adapter: memoryAdapter(postModel, alpha, ['transactions']) },
         },
@@ -849,7 +713,7 @@ describe('database-qualified Studio resources', () => {
         resources: {
           user: {
             model: userModel,
-            adapter: memoryAdapter(userModel, beta, ['transactions', 'cascade']),
+            adapter: memoryAdapter(userModel, beta, ['transactions']),
           },
           post: { model: postModel, adapter: memoryAdapter(postModel, beta, ['transactions']) },
         },
@@ -871,7 +735,7 @@ describe('database-qualified Studio resources', () => {
             constructed();
           }
         }
-        defineMetadata(METADATA_KEYS.CRUD, { model, database } satisfies CrudConfig, Resource);
+        Crud({ ...{ model, database }, only: [] })(Resource);
         container.register(Resource, `${database}-${model.name}`);
       }
     if (options.exclude) {
@@ -920,13 +784,7 @@ describe('database-qualified Studio resources', () => {
     expect(constructed).not.toHaveBeenCalled();
   });
 
-  it('limits generated foreign keys and cascade visibility to the same database', async () => {
-    const { source, alpha, beta } = fixture({ exclude: ['alpha::post'] });
-    alpha.seed('users', [{ id: 'alpha-parent', email: 'a' }]);
-    beta.seed('users', [{ id: 'beta-parent', email: 'b' }]);
-    expect(
-      (await source.cascadePreview({ model: 'alpha::user', ids: ['alpha-parent'] })).relations,
-    ).toEqual([]);
+  it('limits generated foreign keys to the same database', async () => {
     const unrestricted = fixture();
     unrestricted.alpha.seed('users', [{ id: 'alpha-parent', email: 'a' }]);
     unrestricted.beta.seed('users', [{ id: 'beta-parent', email: 'b' }]);
@@ -946,11 +804,7 @@ describe('database-qualified Studio resources', () => {
     for (const owner of ['one', 'two']) {
       @Injectable()
       class Resource {}
-      defineMetadata(
-        METADATA_KEYS.CRUD,
-        { model: userModel, adapter } satisfies CrudConfig,
-        Resource,
-      );
+      Crud({ ...{ model: userModel, adapter }, only: [] })(Resource);
       container.register(Resource, owner);
     }
     expect(() =>
@@ -960,11 +814,7 @@ describe('database-qualified Studio resources', () => {
     missing.register(defineProvider(CRUD_DEFAULT_ADAPTER, { useValue: adapter }));
     @Injectable()
     class Resource {}
-    defineMetadata(
-      METADATA_KEYS.CRUD,
-      { model: userModel, database: 'missing' } satisfies CrudConfig,
-      Resource,
-    );
+    Crud({ ...{ model: userModel, database: 'missing' }, only: [] })(Resource);
     missing.register(Resource);
     expect(() =>
       new CrudStudioModelSource(new DiscoveryService(missing), missing).listModels(),
@@ -1003,7 +853,7 @@ describe('database-qualified Studio resources', () => {
     );
     @Injectable()
     class Resource {}
-    defineMetadata(METADATA_KEYS.CRUD, { model: userModel } satisfies CrudConfig, Resource);
+    Crud({ ...{ model: userModel }, only: [] })(Resource);
     container.register(Resource);
     expect(
       new CrudStudioModelSource(new DiscoveryService(container), container)

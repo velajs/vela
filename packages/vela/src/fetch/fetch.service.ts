@@ -151,7 +151,7 @@ export class HttpService {
       throw new TypeError('signal must be an AbortSignal');
     }
     if (schema !== undefined && !isValidationSchema(schema)) {
-      throw new TypeError('schema must be a parser, Standard Schema, or schema descriptor');
+      throw new TypeError('schema must be a Standard Schema or DTO descriptor');
     }
 
     const url = this.buildUrl(config.url, config.params);

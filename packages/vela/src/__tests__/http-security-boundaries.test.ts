@@ -88,7 +88,7 @@ describe('HTTP security boundaries', () => {
     @Module({ controllers: [SignedLimitController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule, { bodyLimit: 8 });
+    const app = await VelaFactory.create(AppModule, { security: { body: { maxBytes: 8 } } });
     const res = await app.getHonoApp().request('/signed-limit', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -100,7 +100,9 @@ describe('HTTP security boundaries', () => {
   it('rejects invalid body-limit configuration at bootstrap', async () => {
     @Module({})
     class AppModule {}
-    await expect(VelaFactory.create(AppModule, { bodyLimit: 0 })).rejects.toThrow(/bodyLimit/);
+    await expect(
+      VelaFactory.create(AppModule, { security: { body: { maxBytes: 0 } } }),
+    ).rejects.toThrow(/security.body.maxBytes/);
   });
 
   it('supports a narrow streaming route override without weakening other routes', async () => {
@@ -173,17 +175,5 @@ describe('HTTP security boundaries', () => {
     ).toBe(400);
     expect((await hono.request('/query-limit?a=1&b=2', { method: 'POST' })).status).toBe(201);
     expect(hits).toBe(1);
-  });
-
-  it('rejects ambiguous legacy and unified body-limit configuration', async () => {
-    @Module({})
-    class AppModule {}
-
-    await expect(
-      VelaFactory.create(AppModule, {
-        bodyLimit: 8,
-        security: { body: { maxBytes: 16 } },
-      }),
-    ).rejects.toThrow(/either bodyLimit or security\.body\.maxBytes/);
   });
 });

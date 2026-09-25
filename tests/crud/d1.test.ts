@@ -163,3 +163,64 @@ describe('actual workerd D1', () => {
     list.mockRestore();
   });
 });
+
+for (const policy of ['read', 'readPushdown'] as const) {
+  for (const verb of ['update', 'delete'] as const) {
+    it(`rejects D1 ${verb} with ${policy} before changing storage`, async () => {
+      const id = `${policy}-${verb}`;
+      await database
+        .prepare('INSERT INTO items (id, rank, tenantId) VALUES (?, 1, ?)')
+        .bind(id, 'a')
+        .run();
+      const guarded = defineResource('guarded', {
+        model: defineModel({
+          name: 'item',
+          tableName: 'items',
+          schema,
+          timestamps: false,
+          policies:
+            policy === 'read'
+              ? { read: () => false }
+              : {
+                  readPushdown: () => [{ field: 'rank', operator: 'eq', value: 99 }],
+                },
+        }),
+        adapter,
+      });
+      await expect(guarded.execute(verb, { id, body: { rank: 2 } })).rejects.toMatchObject({
+        code: 'TRANSACTION_UNSUPPORTED',
+      });
+      expect(
+        await database.prepare('SELECT rank, deletedAt FROM items WHERE id = ?').bind(id).first(),
+      ).toEqual({ rank: 1, deletedAt: null });
+    });
+  }
+}
+
+it('rejects native D1 upserts with read pushdown before inserts or conflict updates', async () => {
+  const guarded = defineResource('guarded', {
+    model: defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema,
+      id: 'client',
+      timestamps: false,
+      policies: { readPushdown: () => [{ field: 'rank', operator: 'eq', value: 99 }] },
+    }),
+    adapter: drizzleAdapter({ driver: 'd1', db, table, atomicUpsert: true }),
+    upsert: { keys: ['id'] },
+  });
+  await database
+    .prepare('INSERT INTO items (id, rank, tenantId) VALUES (?, 1, ?)')
+    .bind('upsert-hidden', 'a')
+    .run();
+  for (const id of ['upsert-hidden', 'upsert-new']) {
+    await expect(
+      guarded.execute('upsert', { body: { id, rank: 2, tenantId: 'a' } }),
+    ).rejects.toMatchObject({ code: 'TRANSACTION_UNSUPPORTED' });
+  }
+  expect(
+    await database.prepare("SELECT rank FROM items WHERE id = 'upsert-hidden'").first(),
+  ).toEqual({ rank: 1 });
+  expect(await database.prepare("SELECT id FROM items WHERE id = 'upsert-new'").first()).toBeNull();
+});

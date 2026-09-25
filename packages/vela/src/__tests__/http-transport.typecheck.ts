@@ -32,9 +32,11 @@ export async function checkHttpResponseInference(http: HttpService): Promise<voi
     url: '/items',
     schema: descriptor,
   });
-  const parser: HttpResponse<number> = await http.get('/items', { schema: { parse: () => 42 } });
+  const parser: HttpResponse<number> = await http.get('/items', {
+    schema: z.unknown().transform(() => 42),
+  });
   const asyncParser: HttpResponse<number> = await http.get('/items', {
-    schema: { parse: async () => 42 },
+    schema: z.unknown().transform(async () => 42),
   });
   const options = {
     schema: transformed,

@@ -160,7 +160,7 @@ export function createExecutionScope(
   return { container: child, lifetime, finish: (waitFor) => lifetime.finish(waitFor) };
 }
 
-/** @internal Guard framework resolution without changing reusable Container semantics. */
+/** @internal Reject resolution after an invocation has closed. */
 export function assertExecutionScopeActive(container: Container): void {
   if (lifetimes.get(container)?.active === false) throw new Error('Execution lifetime is closed.');
 }
@@ -171,20 +171,14 @@ export function getExecutionLifetime(container: Container): ExecutionLifetime | 
   return lifetime?.active ? lifetime : undefined;
 }
 
-/** Finalize a managed child, or dispose an unmanaged legacy child. */
+/** Finalize a child created by createExecutionScope. */
 export function finishExecutionScope(
   container: Container,
   waitFor?: Promise<unknown>,
 ): Promise<void> {
   const lifetime = lifetimes.get(container);
-  if (lifetime) return lifetime.finish(waitFor);
-  return (async () => {
-    try {
-      await waitFor;
-    } finally {
-      await container.dispose();
-    }
-  })();
+  if (!lifetime) return Promise.reject(new Error('Container has no managed execution scope.'));
+  return lifetime.finish(waitFor);
 }
 
 /**

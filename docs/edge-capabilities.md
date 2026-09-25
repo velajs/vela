@@ -75,7 +75,7 @@ field mechanics remain an implementation detail of the CRUD engine.
   before masking. It cannot overwrite persisted fields or change row count.
 - `afterCommit(event)` runs only after the adapter's scope succeeds. Delivery
   errors go to `onAfterCommitError` and never turn an already committed write
-  into a reported rollback. Legacy transactional hooks retain their behavior.
+  into a reported rollback. Transactional hooks run inside their transaction.
   Bulk adapters returning only counts emit `updateMany` events. This hook is
   best-effort delivery, not a durable outbox.
 - Native scoped upserts must advertise `scopedUpsert`. Conflict updates preserve

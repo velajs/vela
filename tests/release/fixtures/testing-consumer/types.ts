@@ -29,12 +29,15 @@ async function consumer(module: TestingModule) {
     .get('/')
     .send();
   const unknown: unknown = await response.json();
-  const validated: number = await response.json({
-    parse: (value) => {
-      if (typeof value !== 'number') throw new TypeError('Expected number');
-      return value;
+  const numberSchema: StandardSchemaV1<unknown, number> = {
+    '~standard': {
+      version: 1,
+      vendor: 'consumer-test',
+      validate: (value) =>
+        typeof value === 'number' ? { value } : { issues: [{ message: 'Expected number' }] },
     },
-  });
+  };
+  const validated: number = await response.json(numberSchema);
   // @ts-expect-error Unvalidated response data cannot invent a result type.
   await response.json<Date>();
   void [result, unknown, validated];

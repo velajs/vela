@@ -497,7 +497,15 @@ describe('parameters on schemas that cannot list their keys', () => {
     const parsed = defineRoute({
       method: 'GET',
       path: '/orgs/:org/parsed/:id',
-      params: { parse: (value: unknown) => ({ id: String(Reflect.get(Object(value), 'id')) }) },
+      params: {
+        '~standard': {
+          version: 1 as const,
+          vendor: 'test',
+          validate: (value: unknown) => ({
+            value: { id: String(Reflect.get(Object(value), 'id')) },
+          }),
+        },
+      },
       response: z.object({ org: z.string(), id: z.string() }),
     });
     calls = 0;
@@ -539,7 +547,15 @@ describe('parameters on schemas that cannot list their keys', () => {
     const parsed = defineRoute({
       method: 'GET',
       path: '/teams/:org/parsed/:id',
-      params: { parse: (value: unknown) => ({ id: String(Reflect.get(Object(value), 'id')) }) },
+      params: {
+        '~standard': {
+          version: 1 as const,
+          vendor: 'test',
+          validate: (value: unknown) => ({
+            value: { id: String(Reflect.get(Object(value), 'id')) },
+          }),
+        },
+      },
       response: z.object({ org: z.string(), id: z.string() }),
     });
     const kept = defineRoute({
@@ -681,4 +697,24 @@ describe('parameters on schemas that cannot list their keys', () => {
       await app.close();
     }
   });
+});
+
+it('does not inject context into a handler without parameter decorators', async () => {
+  @Controller('/explicit')
+  class ExplicitController {
+    @Get()
+    read(...args: unknown[]) {
+      return { count: args.length };
+    }
+  }
+  @Module({ controllers: [ExplicitController] })
+  class ExplicitModule {}
+  const app = await VelaFactory.create(ExplicitModule);
+  try {
+    expect(await (await app.fetch(new Request('https://example.test/explicit'))).json()).toEqual({
+      count: 0,
+    });
+  } finally {
+    await app.dispose();
+  }
 });

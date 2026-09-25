@@ -16,7 +16,7 @@ export const CRUD_DATABASES = new InjectionToken<CrudDatabaseRegistry | undefine
 );
 
 /** The app-wide default adapter, provided by `CrudModule.forRoot`. */
-export const CRUD_DEFAULT_ADAPTER = new InjectionToken<Pick<CrudAdapter, 'runtime'>>(
+export const CRUD_DEFAULT_ADAPTER = new InjectionToken<Pick<CrudAdapter, 'runtime'> | undefined>(
   'crud:default-adapter',
 );
 

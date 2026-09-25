@@ -82,10 +82,10 @@ describe('request-scoped providers on the root container', () => {
 
     const app = await VelaFactory.create(AppModule, { diagnostics: 'silent' });
     const discovery = app.get(DiscoveryService);
-    expect(discovery.providersWithMeta(Flagged)[0]?.instance).toBeUndefined();
+    expect(discovery.registrationsWithMeta(Flagged)[0]?.instance).toBeUndefined();
 
     await runInEntrypointScope(app.getContainer(), (scope) => {
-      const [hit] = discovery.providersWithMeta(Flagged, { requestScope: scope });
+      const [hit] = discovery.registrationsWithMeta(Flagged, { requestScope: scope });
       expect(hit?.instance).toBeInstanceOf(PerRequest);
       expect(hit?.instance).toBe(scope.resolve(PerRequest));
     });

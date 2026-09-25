@@ -36,9 +36,7 @@ export async function parseIdentifier(
       throw new InputValidationException(
         'Invalid identifier',
         error.issues.map((issue) => ({
-          path: (issue.path ?? [])
-            .map((part) => (typeof part === 'object' ? String(part.key) : String(part)))
-            .join('.'),
+          path: (issue.path ?? []).map(String).join('.'),
           message: issue.message,
           code: 'validation',
         })),

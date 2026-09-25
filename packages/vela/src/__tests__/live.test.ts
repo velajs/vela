@@ -87,6 +87,11 @@ class FakeClient implements WsClient {
   closed?: { code?: number; reason?: string };
   constructor(public readonly id = 'c1') {}
   send(): void {}
+  trySendRaw(payload: string): 'accepted' {
+    this.sendRaw(payload);
+    return 'accepted';
+  }
+
   sendRaw(payload: string): void {
     if (this.failNextSend) {
       this.failNextSend = false;

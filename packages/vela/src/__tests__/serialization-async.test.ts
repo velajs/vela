@@ -18,13 +18,14 @@ async function start(controller: new () => object): Promise<VelaApplication> {
 }
 
 describe('asynchronous response schemas', () => {
-  it('awaits a parse() parser once per response and preserves array order', async () => {
+  it('awaits an async schema once per response and preserves array order', async () => {
     const rows = z.array(z.object({ id: z.number() }));
-    const parse = vi.fn(async (value: unknown) => rows.parse(value));
+    const parse = vi.fn(async (value: z.output<typeof rows>) => value);
+    const response = rows.transform(parse);
 
-    @Controller('/legacy')
-    class Legacy {
-      @Get({ response: { parse } })
+    @Controller('/async')
+    class AsyncRows {
+      @Get({ response })
       list() {
         return [
           { id: 2, secret: 'hidden' },
@@ -32,17 +33,14 @@ describe('asynchronous response schemas', () => {
         ];
       }
 
-      @Get('/empty', { response: { parse } })
+      @Get('/empty', { response })
       empty() {
         return [];
       }
     }
-    const app = await start(Legacy);
-    expect(await (await app.getHonoApp().request('/legacy')).json()).toEqual([
-      { id: 2 },
-      { id: 1 },
-    ]);
-    expect(await (await app.getHonoApp().request('/legacy/empty')).json()).toEqual([]);
+    const app = await start(AsyncRows);
+    expect(await (await app.getHonoApp().request('/async')).json()).toEqual([{ id: 2 }, { id: 1 }]);
+    expect(await (await app.getHonoApp().request('/async/empty')).json()).toEqual([]);
     expect(parse).toHaveBeenCalledTimes(2);
   });
 

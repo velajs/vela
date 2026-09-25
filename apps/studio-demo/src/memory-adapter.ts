@@ -4,7 +4,7 @@
  * The demo authors a compact in-memory adapter over a shared
  * multi-table `MemoryDb`. It implements the full read/write contract the Studio
  * data browser + time-travel exercise, and advertises the optional capabilities
- * (`aggregate`/`nativeSearch`/`cascade`) each model opts into so Studio's honest
+ * (`aggregate`/`nativeSearch`) each model opts into so Studio's honest
  * capability degradation is demonstrated end-to-end.
  */
 import type {
@@ -242,30 +242,6 @@ export function memoryAdapter(
       const page = spec.options.page ?? 1;
       const per = spec.options.per_page ?? 20;
       return rows.slice((page - 1) * per, page * per).map((record) => ({ record, score: 1 }));
-    };
-  }
-
-  if (capabilities.has('cascade')) {
-    const countRelated = async (relation: string, parentKey: unknown): Promise<number> => {
-      const rel = model.relations?.[relation];
-      if (rel === undefined) return 0;
-      const childStore = db.table(rel.target ?? '');
-      let n = 0;
-      for (const row of childStore.values()) {
-        if (String(row[rel.foreignKey]) !== String(parentKey)) continue;
-        if (row.deletedAt != null) continue; // skip tombstoned children
-        n++;
-      }
-      return n;
-    };
-    adapter.cascade = {
-      countRelated,
-      async deleteRelated(relation, parentKey) {
-        return countRelated(relation, parentKey);
-      },
-      async nullifyRelated(relation, parentKey) {
-        return countRelated(relation, parentKey);
-      },
     };
   }
 

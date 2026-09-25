@@ -3,7 +3,7 @@ import type { WebSocketModuleOptions } from './websocket.module';
 import type { RoomRegistry, SyncDriver } from './ws-sync';
 import type { WebSocketTransport, WsServer } from './websocket.types';
 
-// Free-form metadata keys — same string-token convention as ON_EVENT_METADATA / CRON_METADATA.
+// Free-form metadata keys — same string-token convention as CRON_METADATA.
 export const WS_GATEWAY_METADATA = 'vela:ws-gateway';
 export const WS_SUBSCRIBE_METADATA = 'vela:ws-subscribe';
 export const WS_RESERVED_METADATA = 'vela:ws-reserved';

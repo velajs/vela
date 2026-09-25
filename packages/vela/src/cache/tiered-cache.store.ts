@@ -2,18 +2,25 @@ import type { CacheEntry, CacheEntryReader, CacheEntryWriter, CacheStore } from 
 
 /**
  * Ordered value tiers. Only entries with known absolute expiry are backfilled;
- * remaining lifetime is preserved. Legacy stores without getEntry still serve
- * reads but are never promoted. Writes/deletes/clears attempt every tier and
+ * remaining lifetime is preserved. Every tier supplies getEntry and setEntry.
+ * Writes/deletes/clears attempt every tier and
  * reject on failure. Mutations through this instance fence in-flight backfills.
  * Direct writes to underlying tiers and distributed replication are outside that fence.
  */
 export class TieredCacheStore implements CacheStore, CacheEntryReader, CacheEntryWriter {
-  private readonly tiers: CacheStore[];
+  private readonly tiers: Array<CacheStore & CacheEntryReader & CacheEntryWriter>;
   private revision = 0;
   private pending: Promise<void> = Promise.resolve();
 
-  constructor(tiers: CacheStore[]) {
+  constructor(tiers: Array<CacheStore & CacheEntryReader & CacheEntryWriter>) {
     if (tiers.length === 0) throw new Error('TieredCacheStore requires at least one tier.');
+    if (
+      tiers.some(
+        (tier) => typeof tier.getEntry !== 'function' || typeof tier.setEntry !== 'function',
+      )
+    ) {
+      throw new TypeError('Every cache tier must implement getEntry and setEntry.');
+    }
     this.tiers = [...tiers];
   }
 
@@ -26,7 +33,7 @@ export class TieredCacheStore implements CacheStore, CacheEntryReader, CacheEntr
     await this.pending;
     for (let i = 0; i < this.tiers.length; i++) {
       const tier = this.tiers[i]!;
-      const entry = hasEntries(tier) ? await tier.getEntry(key) : { value: await tier.get(key) };
+      const entry = await tier.getEntry(key);
       if (revision !== this.revision) return undefined;
       if (!entry || entry.value === undefined) continue;
       if (
@@ -42,8 +49,7 @@ export class TieredCacheStore implements CacheStore, CacheEntryReader, CacheEntr
             const remaining = (expiresAt - Date.now()) / 1000;
             if (remaining <= 0 || revision !== this.revision) return;
             const destination = this.tiers[j]!;
-            if (hasEntryWriter(destination))
-              await destination.setEntry(key, { value: entry.value, expiresAt });
+            await destination.setEntry(key, { value: entry.value, expiresAt });
           }
         });
       }
@@ -61,7 +67,7 @@ export class TieredCacheStore implements CacheStore, CacheEntryReader, CacheEntr
     return this.mutate((tier) => tier.set(key, value, ttl));
   }
   setEntry(key: string, entry: CacheEntry): Promise<void> {
-    return this.mutate((tier) => (hasEntryWriter(tier) ? tier.setEntry(key, entry) : undefined));
+    return this.mutate((tier) => tier.setEntry(key, entry));
   }
   del(key: string): Promise<void> {
     return this.mutate((tier) => tier.del(key));
@@ -69,7 +75,9 @@ export class TieredCacheStore implements CacheStore, CacheEntryReader, CacheEntr
   clear(): Promise<void> {
     return this.mutate((tier) => tier.clear());
   }
-  private mutate(operation: (tier: CacheStore) => unknown): Promise<void> {
+  private mutate(
+    operation: (tier: CacheStore & CacheEntryReader & CacheEntryWriter) => unknown,
+  ): Promise<void> {
     this.revision++;
     return this.enqueue(async () => {
       const results = await Promise.allSettled(this.tiers.map(async (tier) => operation(tier)));
@@ -81,12 +89,4 @@ export class TieredCacheStore implements CacheStore, CacheEntryReader, CacheEntr
     this.pending = task.catch(() => {});
     return task;
   }
-}
-
-function hasEntries(store: CacheStore): store is CacheStore & CacheEntryReader {
-  return 'getEntry' in store && typeof store.getEntry === 'function';
-}
-
-function hasEntryWriter(store: CacheStore): store is CacheStore & CacheEntryWriter {
-  return 'setEntry' in store && typeof store.setEntry === 'function';
 }

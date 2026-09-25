@@ -20,7 +20,7 @@ export interface BindingGateway {
  */
 export function bindingGateways(discovery: DiscoveryService): BindingGateway[] {
   const gateways = new Map<string, BindingGateway>();
-  for (const { metatype, meta } of discovery.providersWithMeta<WebSocketGatewayOptions>(
+  for (const { metatype, meta } of discovery.registrationsWithMeta<WebSocketGatewayOptions>(
     WS_GATEWAY_METADATA,
     { metadataOnly: true },
   )) {

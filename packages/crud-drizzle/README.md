@@ -28,12 +28,13 @@ forbids that option and never calls Drizzle's unsupported callback transaction.
 D1 supports scoped create, read, list, update, and delete. Updates and deletes
 use one `RETURNING` statement, including soft deletes and tenant predicates.
 Aggregate/search/export read paths also use request scopes. Updates/deletes
-with row-dependent write policies, hooks, versioning, audit snapshots, ETags,
-or cascades require callback transactions and fail with
+with row read/write policies (including `readPushdown`), hooks, versioning, or
+audit snapshots require callback transactions and fail with
 `TRANSACTION_UNSUPPORTED` before writing. Create after-hooks, nested writes,
 and synthesized batch/upsert/restore/clone workflows likewise reject when
 they require rollback. An operation-level policy still authorizes ordinary
-D1 writes. Audit capture following a successful create remains a separate
+D1 writes. ETag resources require `transactions` and `rowLocks` and reject D1
+at definition time. Audit capture following a successful create remains a separate
 post-write action, as on the SQL adapters.
 
 D1 has atomic SQL batches; those do not provide a transaction that can pause
@@ -110,3 +111,10 @@ and migrated `UNIQUE(tableName, recordId, version)`; audit tables require a
 `tenantNamespace` column without inferred attribution of legacy rows. See
 [transactional history](../../docs/transactional-history.md) for migrations and
 `drizzleTransactionStore` for trusted native store operations.
+
+ETag updates hold a database write lock from the If-Match check through commit.
+PostgreSQL/MySQL use `SELECT FOR UPDATE`; asynchronous SQLite relies on its
+transaction write isolation. Custom adapters must advertise `rowLocks` only when
+`readOne(..., { forUpdate: true }, scope)` protects the row until commit/rollback.
+Use database foreign-key actions for hard-delete cascades and restrictions.
+CRUD relation metadata does not configure database constraints.

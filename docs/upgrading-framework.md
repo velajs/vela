@@ -1,5 +1,26 @@
 # Upgrading framework integrations
 
+## Removing obsolete contracts
+
+This release removes compatibility paths. Update extensions and applications together:
+
+- Declare `@Ctx()` on controller parameters that receive Hono context. Undecorated handlers receive no implicit argument.
+- Configure `Logger` instances directly, or use `LoggingModule` for application-wide settings. Static logger configuration and `ComponentManager.runInterceptorChain` are removed; integrations use `PipelineRunner.chainInterceptors`.
+- ETag resources require transactional row locking. Use `transactionalMemoryAdapter` instead of plain memory. D1 ETags fail at definition time; D1 updates/deletes with read policies reject before writing.
+- Replace relation cascade configuration with database foreign keys or transactional hooks. The CRUD cascade driver and Studio's metadata-based cascade preview are removed.
+- Bulk mutation filters reject unknown fields/operators and list-only parameters. Explicitly allowlist includes for list endpoints.
+- Use Standard Schema validators (including Zod/Valibot) or `defineDto` descriptors; parser-only schemas and explicit DTO output type arguments are removed. Await `dto.parseAsync` when a definite output value is required.
+- Use registration-aware discovery and schedule entrypoints. Every contributed entrypoint requires its exact `moduleId`.
+- Treat container disposal as final and finalize only managed execution scopes.
+- Use event definitions with `@OnEvent` and `EventDispatcher`. String subscriptions use the standalone `EventEmitter.on` callback API. `emit` always settles all matching listeners; `emitWithOptions` is removed.
+- Queue driver `bind` returns its cleanup function. Inline enqueue after disposal rejects.
+- Implement `WsClient.trySendRaw`; tiered caches require both `getEntry` and `setEntry`. KV entries lacking expiry metadata are misses.
+- Configure request caps with `security.body.maxBytes`. Replace middleware `(.*)` targets with `{*name}` (including the parent) or `*name` (descendants only).
+- Use `AggregateSpec.aggregations`, `provider.embeddingModel`, and `parseInboundEmail(raw, { envelope })`. The duplicated aggregate head, old embedding method, mail envelope overload, and AI `contentHash` export are removed.
+- Storage compression requires valid format metadata and a metadata-capable driver. Encryption always rejects invalid ciphertext.
+- Register Studio resources with `@Crud`; metadata-only resource declarations are ignored. Import `STUDIO_DEFAULT_PATH` from `@velajs/studio-protocol`. `CRUD_DEFAULT_ADAPTER` is undefined when only named databases are configured.
+
+
 This guide collects the behavior changes and migration steps after the 1.24.0
 baseline. The DI, execution, schema, transport and database sections cover the APIs
 that require core 1.25.0: RPC and GraphQL 1.1.0 require this core version, and named
@@ -56,7 +77,7 @@ registration and import it where needed.
 
 Custom discovery and transport integrations should preserve each entrypoint's
 `moduleId` and use `resolveEntrypoint` or owner-aware asynchronous resolution.
-Ownerless entries remain supported only when their registration is unambiguous.
+Ownerless entries are rejected, even when their registration is unambiguous.
 Mounting the same controller class through ambiguous module instances now fails
 explicitly instead of choosing the first owner. Container internals use `#private`
 fields; use public provider snapshots for diagnostics.
@@ -202,8 +223,7 @@ Custom adapters should use `runInEntrypointScope` or explicitly finish their
 managed scope on success and failure. Register work that needs scoped providers
 through `ExecutionLifetime.waitUntil` or `defer`; arbitrary detached promises are
 not tracked. Streaming adapters must retain the scope until the stream settles.
-Do not reuse a closed invocation even though a bare Container remains reusable
-after awaited disposal for 1.x compatibility.
+Do not reuse a closed invocation or a disposed container.
 
 HTTP middleware, guards and handlers share the normalized request identity. Use
 framework request-context accessors instead of caching an earlier raw request for
@@ -253,7 +273,7 @@ are removed:
   limits. A route's own `maxBytes` replaces the application body limit for
   that route, so upload routes no longer need a `streamingOverrides` entry;
   remove such entries, which still take precedence. A default `maxBytes` never
-  exceeds a `security.body.maxBytes` (or `bodyLimit`) the application sets:
+  exceeds a `security.body.maxBytes` the application sets:
   declare `maxBytes` on an upload route that must accept more. A route that
   declares a body reads it after guards and before the handler, even when no
   parameter reads it, so a `body: { json }` route answers 415 for other media
@@ -318,7 +338,7 @@ cannot express such as `z.coerce.date()`. A key the schema declares as a scalar
 arrives as an array when it is repeated, so `@Query(schema)` and
 `@Query(name, schema)` answer 400 for `?page=1&page=2` where the first value used
 to pass: declare the field as an array, or send the key once. A
-schema without a JSON Schema converter (a Valibot schema, a `parse()` parser)
+schema without a JSON Schema converter (a Valibot schema)
 receives an array only for a repeated key. A named
 parameter without a schema follows its declared type: `string`, `number` and
 `boolean` parameters still receive the first value, an array parameter without
@@ -331,7 +351,7 @@ the parameters that receive one value or repeated keys as such, and
 or `ParseArrayPipe`, for values that may be one or many.
 
 `@Body()` with no schema validates a parameter class carrying a static schema
-(a Standard Schema, a `defineDto` descriptor or a `parse()` parser, as
+(a Standard Schema, a `defineDto` descriptor, as
 `ValidationPipe` reads it) even without a global pipe, so bodies such a class
 rejects now answer 400; a named `@Body('item') item: Item` validates the `item` member. It
 validates as the body is read, before any pipe, unless a `ValidationPipe` (or a
@@ -359,8 +379,7 @@ such a parameter with `ContractBody`, `ContractQuery` or `ContractParams`. A
 contract that declares a `body` schema without an encoding reads JSON within the
 application's limit, counted after guards. The key checks need a
 schema that lists its keys as JSON Schema without passing undeclared keys
-through, as a Zod object does. For any other, such as a Valibot schema, a
-`parse()` parser, a union or a transform that renames keys, a named parameter
+through, as a Zod object does. For any other, such as a Valibot schema, a union or a transform that renames keys, a named parameter
 that reads a key the request carries but the validated value lacks fails that
 request with a 500 whose reported error names the key, as does a whole
 `@Param()` whose validated params lack a path parameter the request carries.

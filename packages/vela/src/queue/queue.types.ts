@@ -67,9 +67,8 @@ export interface QueueDriver {
    * jobs one at a time.
    */
   enqueueBatch?(requests: readonly QueueEnqueueRequest[]): Promise<void>;
-  bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
-  /** Release an application's binding at disposal. Optional for legacy drivers. */
-  unbind?(): void;
+  /** Bind delivery and return the cleanup called when the application is disposed. */
+  bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): () => void;
 }
 
 /** A platform route a driver contributes, for example a native queue consumer. */

@@ -128,12 +128,14 @@ class RpcClientDeclaration {
   collectEntrypoints(): Entrypoint[] {
     const { name, binding } = this.options;
     const token = rpcClientToken(name);
-    if (this.container.getOwnerModuleIds(token).length !== 1)
+    const owners = this.container.getOwnerModuleIds(token);
+    if (owners.length !== 1)
       throw new Error(`Duplicate RPC client registration '${name}'. Reuse the same module import.`);
     return [
       {
         kind: 'rpc:client',
         token,
+        moduleId: owners[0]!,
         instance: undefined,
         meta: { name, ...(binding ? { binding } : {}) },
       },

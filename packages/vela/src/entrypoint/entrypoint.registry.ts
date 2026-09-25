@@ -110,6 +110,9 @@ export class EntrypointRegistry {
   }
 
   private add(ep: Entrypoint): void {
+    if (typeof ep.moduleId !== 'string' || ep.moduleId.length === 0) {
+      throw new TypeError(`Entrypoint '${ep.kind}' requires an explicit moduleId.`);
+    }
     const list = this.#byKind.get(ep.kind);
     if (list) list.push(ep);
     else this.#byKind.set(ep.kind, [ep]);

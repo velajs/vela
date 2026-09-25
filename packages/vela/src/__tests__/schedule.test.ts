@@ -59,9 +59,9 @@ describe('ScheduleModule', () => {
       const app = await VelaFactory.create(AppModule);
       const registry = app.get(ScheduleRegistry);
 
-      const cronJobs = registry.getCronJobs();
+      const cronJobs = registry.getCronEntrypoints();
       expect(cronJobs).toHaveLength(1);
-      expect(cronJobs[0].expression).toBe('0 * * * *');
+      expect(cronJobs[0].meta.expression).toBe('0 * * * *');
       expect(cronJobs[0].methodName).toBe('runHourly');
     });
 
@@ -81,9 +81,9 @@ describe('ScheduleModule', () => {
       const app = await VelaFactory.create(AppModule);
       const registry = app.get(ScheduleRegistry);
 
-      const intervalJobs = registry.getIntervalJobs();
+      const intervalJobs = registry.getIntervalEntrypoints();
       expect(intervalJobs).toHaveLength(1);
-      expect(intervalJobs[0].ms).toBe(5000);
+      expect(intervalJobs[0].meta.ms).toBe(5000);
       expect(intervalJobs[0].methodName).toBe('runEvery5s');
     });
 
@@ -109,8 +109,8 @@ describe('ScheduleModule', () => {
       const app = await VelaFactory.create(AppModule);
       const registry = app.get(ScheduleRegistry);
 
-      expect(registry.getCronJobs()).toHaveLength(2);
-      expect(registry.getIntervalJobs()).toHaveLength(1);
+      expect(registry.getCronEntrypoints()).toHaveLength(2);
+      expect(registry.getIntervalEntrypoints()).toHaveLength(1);
     });
 
     it('should not include the executor on the core module', async () => {

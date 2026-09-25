@@ -110,6 +110,7 @@ describe('bounded diagnostic snapshots', () => {
         return [
           {
             kind: 'diagnostic-fixture',
+            moduleId: 'diagnostic-fixture',
             token: DiagnosticEntrypoints,
             instance: this,
             meta: metadata,

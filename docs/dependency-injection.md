@@ -320,11 +320,10 @@ dependencies still completing after a sibling fails. Concurrent disposal calls s
 New resolutions during teardown fail; factories must settle for disposal to complete. Framework
 invocation scopes should drain managed work and finish streaming before disposing the child.
 
-For 1.x compatibility, the container can be reused after `await dispose()`: registrations remain, cached
-constructed values and request seeds are cleared, and new resolution constructs a fresh graph.
-`dispose()` does not permanently close an invocation; adapters must enforce that lifetime themselves.
-Root disposal is not a substitute for finishing/disposal of every active request child. `clear()` is a
-registration reset rather than resource teardown; dispose resources before clearing a container.
+`dispose()` permanently closes the container to resolution and child creation.
+Repeated disposal calls share completion. Root disposal does not replace finishing
+each active invocation. `clear()` resets registrations; it does not reopen a
+container or replace resource teardown.
 
 Container caches and ownership state use JavaScript `#private` fields. Use the public diagnostic and
 resolution methods instead of inspecting mutable internals. Constructor-injected classes can also use

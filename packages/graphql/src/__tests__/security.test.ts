@@ -130,7 +130,10 @@ describe('GraphQL trusted HTTP authority', () => {
           }),
         ],
       })(App);
-      const app = await VelaFactory.create(App, { diagnostics: 'silent', bodyLimit: 512 });
+      const app = await VelaFactory.create(App, {
+        diagnostics: 'silent',
+        security: { body: { maxBytes: 512 } },
+      });
       const observations: {
         sameRequest: boolean;
         sameIdentity: boolean;

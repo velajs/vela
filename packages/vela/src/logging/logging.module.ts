@@ -21,5 +21,5 @@ const { ConfigurableModuleClass } = defineModule<ApplicationLoggerOptions>({
   }),
 });
 
-/** Import once per application. Optional; legacy Logger/Writer calls keep their existing behavior. */
+/** Import once per application. Optional; standalone Logger/Writer calls keep their existing behavior. */
 export class LoggingModule extends ConfigurableModuleClass {}

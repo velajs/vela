@@ -30,7 +30,6 @@ import { isOptional, zodToJsonSchema } from './zod-to-json-schema';
 import { isRecord } from './json-schema';
 import { ValidationPipe } from '../validation/validation.pipe';
 import { isStandardSchema } from '../validation/standard-schema';
-import { isSchemaParser } from '../validation/dto';
 
 /**
  * Tracks named schema descriptors referenced during document generation and registers
@@ -139,7 +138,7 @@ const UNLISTED_QUERY = 'Query parameters require an object schema.';
 
 function isSchemaOptional(parser: unknown): boolean {
   const schema = schemaOf(parser);
-  if (isSchemaParser(schema)) return isOptional(schema);
+  if (isStandardSchema(schema)) return isOptional(schema);
   return true;
 }
 

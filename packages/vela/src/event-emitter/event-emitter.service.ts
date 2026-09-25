@@ -1,5 +1,5 @@
 import { Injectable } from '../container/index';
-import type { EventEmitOptions, EventHandler } from './event-emitter.types';
+import type { EventHandler } from './event-emitter.types';
 
 function isWildcard(pattern: string): boolean {
   return pattern.includes('*');
@@ -51,49 +51,20 @@ export class EventEmitter {
     return this;
   }
 
-  /** Legacy delivery: concurrent exact handlers, then each matching wildcard group. */
+  /** Attempt every listener in the initial snapshot and await every result. */
   async emit(event: string, ...args: unknown[]): Promise<void> {
-    return this.emitWithOptions(event, { settlement: 'legacy' }, ...args);
-  }
-
-  /** Complete delivery attempts the initial listener snapshot and awaits every result. */
-  async emitWithOptions(
-    event: string,
-    options: EventEmitOptions,
-    ...args: unknown[]
-  ): Promise<void> {
-    if (
-      options.settlement !== undefined &&
-      options.settlement !== 'legacy' &&
-      options.settlement !== 'complete'
-    ) {
-      throw new TypeError('Unknown event settlement policy');
-    }
-    if (options.settlement === 'complete') {
-      const dispatches: Array<() => Promise<void>> = [];
-      const exact = this.#exact.get(event);
-      if (exact) dispatches.push(...this.#snapshot(event, exact, args));
-      for (const [pattern, bucket] of this.#wildcard) {
-        if (bucket.regex?.test(event)) dispatches.push(...this.#snapshot(pattern, bucket, args));
-      }
-      const results = await Promise.allSettled(dispatches.map((dispatch) => dispatch()));
-      const errors = results.flatMap((result) =>
-        result.status === 'rejected' ? [result.reason] : [],
-      );
-      if (errors.length === 1) throw errors[0];
-      if (errors.length > 1) throw new AggregateError(errors, `Event '${event}' listeners failed`);
-      return;
-    }
+    const dispatches: Array<() => Promise<void>> = [];
     const exact = this.#exact.get(event);
-    if (exact) await Promise.all(this.#snapshot(event, exact, args).map((dispatch) => dispatch()));
-    // Snapshot buckets: re-registering the current wildcard during a callback
-    // must not append that bucket to this dispatch indefinitely.
-    // oxlint-disable-next-line unicorn/no-useless-spread -- snapshot prevents re-registration loops
-    for (const [pattern, bucket] of [...this.#wildcard]) {
-      if (!bucket.regex?.test(event)) continue;
-      // oxlint-disable-next-line no-await-in-loop -- preserve legacy group ordering
-      await Promise.all(this.#snapshot(pattern, bucket, args).map((dispatch) => dispatch()));
+    if (exact) dispatches.push(...this.#snapshot(event, exact, args));
+    for (const [pattern, bucket] of this.#wildcard) {
+      if (bucket.regex?.test(event)) dispatches.push(...this.#snapshot(pattern, bucket, args));
     }
+    const results = await Promise.allSettled(dispatches.map((dispatch) => dispatch()));
+    const errors = results.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, `Event '${event}' listeners failed`);
   }
 
   removeAllListeners(event?: string): this {

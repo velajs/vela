@@ -56,26 +56,34 @@ export async function responseSent(c: Context, response: Response): Promise<void
   await senders.get(c)?.(response);
 }
 
-// Parse a result through a response schema: a Standard Schema, a `parse()`
-// parser, or a descriptor wrapping either. `parseAsync` comes first, so a
-// Zod transform runs once instead of after a synchronous probe. A rejection is
-// the handler's bug, answered as an internal error; the issues travel on the
-// reported cause.
-async function parseResult(schema: ValidationSchema, value: unknown): Promise<unknown> {
-  if ('parseAsync' in schema && typeof schema.parseAsync === 'function')
-    return schema.parseAsync(value);
-  if ('~standard' in schema) {
-    const result = await schema['~standard'].validate(value);
-    if (result.issues) throw new Error('Response schema rejected the result', { cause: result });
-    return result.value;
-  }
-  if ('parse' in schema && typeof schema.parse === 'function') return schema.parse(value);
-  if ('schema' in schema) return parseResult(schema.schema, value);
-  throw new TypeError('Response schema has no parse() or Standard Schema validator');
-}
-
 function hasBody(status: StatusCode): status is ContentfulStatusCode {
   return status !== 101 && status !== 204 && status !== 205 && status !== 304;
+}
+
+// Keep response execution independent of optional input-validation modules.
+// Exceptions here are always internal response-contract failures, so no input
+// issue normalization is needed. Zod's async entry avoids probing transforms twice.
+async function parseResult(schema: ValidationSchema, value: unknown): Promise<unknown> {
+  const validator = '~standard' in schema ? schema : schema.schema;
+  const standard = validator['~standard'];
+  if (
+    standard?.version !== 1 ||
+    typeof standard.vendor !== 'string' ||
+    typeof standard.validate !== 'function'
+  )
+    throw new TypeError('Response schema requires a Standard Schema validator.');
+  if (
+    standard.vendor === 'zod' &&
+    'parseAsync' in validator &&
+    typeof validator.parseAsync === 'function'
+  )
+    return validator.parseAsync(value);
+  const result = await standard.validate(value);
+  if (!result || typeof result !== 'object') throw new TypeError('Invalid Standard Schema result');
+  if (result.issues !== undefined)
+    throw new Error('Response schema rejected the result', { cause: result });
+  if (!('value' in result)) throw new TypeError('Standard Schema result has no value');
+  return result.value;
 }
 
 async function parseChecked(schema: ValidationSchema, value: unknown, source: string) {

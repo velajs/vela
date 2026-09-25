@@ -256,7 +256,7 @@ describe('HTTP request normalization', () => {
         ],
       })
       class App {}
-      const app = await VelaFactory.create(App, { bodyLimit: 8 });
+      const app = await VelaFactory.create(App, { security: { body: { maxBytes: 8 } } });
       const native = nativeContext();
       const headers = new Headers({ 'x-request-id': 'early-rejection' });
       if (mode === 'lengthened') headers.set('content-length', '9');

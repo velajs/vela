@@ -485,29 +485,31 @@ describe('@Body() with a schema-carrying parameter class', () => {
     }
   });
 
-  it('validates a static defineDto descriptor or parse() parser without a global pipe', async () => {
+  it('validates a static defineDto descriptor or Standard Schema without a global pipe', async () => {
     // Static schemas ValidationPipe also reads from a parameter class.
-    class Legacy {
-      static schema = defineDto(z.object({ name: z.string() }).strict(), { name: 'Legacy' });
+    class NamedDto {
+      static schema = defineDto(z.object({ name: z.string() }).strict(), { name: 'NamedDto' });
       declare name: string;
     }
     class Parsed {
       static schema = {
-        parse(value: unknown) {
-          const name = Reflect.get(Object(value), 'name');
-          if (typeof name !== 'string')
-            throw Object.assign(new Error('Invalid'), {
-              issues: [{ message: 'name is required', path: ['name'] }],
-            });
-          return { name };
+        '~standard': {
+          version: 1 as const,
+          vendor: 'test',
+          validate(value: unknown) {
+            const name = Reflect.get(Object(value), 'name');
+            return typeof name === 'string'
+              ? { value: { name } }
+              : { issues: [{ message: 'name is required', path: ['name'] }] };
+          },
         },
       };
       declare name: string;
     }
-    @Controller('/legacy')
-    class LegacyController {
+    @Controller('/named')
+    class NamedDtoController {
       @Post()
-      legacy(@Body() body: Legacy) {
+      legacy(@Body() body: NamedDto) {
         return body;
       }
 
@@ -516,12 +518,12 @@ describe('@Body() with a schema-carrying parameter class', () => {
         return body;
       }
     }
-    @Module({ controllers: [LegacyController] })
+    @Module({ controllers: [NamedDtoController] })
     class App {}
     const app = await VelaFactory.create(App);
     const send = (path: string, body: unknown) =>
       app.fetch(
-        new Request(`https://example.test/legacy${path}`, {
+        new Request(`https://example.test/named${path}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),

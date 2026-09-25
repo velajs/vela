@@ -82,7 +82,7 @@ describe('module registration ownership', () => {
     const app = await VelaFactory.create(Root);
     const hit = app
       .get(DiscoveryService)
-      .getProviders({ moduleId: 'Two#default' })
+      .getRegistrations({ moduleId: 'Two#default' })
       .find((entry) => entry.token === Shared);
     expect(hit?.instance).toMatchObject({ label: 'two' });
     await app.close();
@@ -165,7 +165,9 @@ describe('module registration ownership', () => {
       const hits = discovery.registeredMethodsWithMeta(decorator, { metadataOnly: true });
       expect(hits.map((hit) => hit.class.moduleId)).toEqual(['one', 'two']);
       expect(hits.every((hit) => hit.class.instance === undefined)).toBe(true);
-      expect(discovery.methodsWithMeta(decorator, { metadataOnly: true })).toHaveLength(1);
+      expect(discovery.registeredMethodsWithMeta(decorator, { metadataOnly: true })).toHaveLength(
+        2,
+      );
     }
     expect(constructed).toBe(0);
   });
@@ -266,14 +268,15 @@ describe('module registration ownership', () => {
     await Promise.all(apps.map((app) => app.close()));
   });
 
-  it('retains ownerless computed contributions for 1.x compatibility', async () => {
-    const registry = await EntrypointRegistry.build(new DiscoveryService(new Container()), [
-      {
-        collectEntrypoints: () => [
-          { kind: 'legacy', token: 'legacy', instance: undefined, meta: {} },
-        ],
-      },
-    ]);
-    expect(registry.ofKind('legacy')[0]!.moduleId).toBeUndefined();
+  it('rejects ownerless computed contributions', async () => {
+    await expect(
+      EntrypointRegistry.build(new DiscoveryService(new Container()), [
+        {
+          collectEntrypoints: () => [
+            { kind: 'legacy', token: 'legacy', instance: undefined, meta: {} },
+          ],
+        },
+      ]),
+    ).rejects.toThrow('requires an explicit moduleId');
   });
 });

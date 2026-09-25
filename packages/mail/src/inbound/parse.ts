@@ -224,21 +224,6 @@ function authservId(value: string): string | undefined {
   return /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(id) ? id : undefined;
 }
 
-function normalizeOptions(
-  optionsOrEnvelope: ParseInboundEmailOptions | { from: string; to: string } | undefined,
-): ParseInboundEmailOptions {
-  if (optionsOrEnvelope === undefined) return {};
-  if (
-    Object.hasOwn(optionsOrEnvelope, 'from') &&
-    Object.hasOwn(optionsOrEnvelope, 'to') &&
-    !Object.hasOwn(optionsOrEnvelope, 'envelope')
-  ) {
-    const legacy = optionsOrEnvelope as { from: string; to: string };
-    return { envelope: { from: legacy.from, to: legacy.to } };
-  }
-  return optionsOrEnvelope as ParseInboundEmailOptions;
-}
-
 function splitAddresses(value: string): string[] {
   return value
     .split(',')
@@ -256,9 +241,8 @@ function splitAddresses(value: string): string[] {
  */
 export function parseInboundEmail(
   raw: Uint8Array | ArrayBuffer | string,
-  optionsOrEnvelope?: ParseInboundEmailOptions | { from: string; to: string },
+  options: ParseInboundEmailOptions = {},
 ): InboundEmail {
-  const options = normalizeOptions(optionsOrEnvelope);
   const limits = resolveInboundLimits(options.limits);
   const bytes = toBytes(raw);
   if (bytes.byteLength > limits.maxMessageBytes) {

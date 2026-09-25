@@ -14,8 +14,6 @@ export interface AiProvider {
   (modelId: string): LanguageModel;
   /** Resolve an embedding model by id. Absent on providers that do not embed. */
   embeddingModel?: (modelId: string) => EmbeddingModel;
-  /** Compatibility with providers exposing the earlier embedding factory name. */
-  textEmbeddingModel?: (modelId: string) => EmbeddingModel;
 }
 
 /**

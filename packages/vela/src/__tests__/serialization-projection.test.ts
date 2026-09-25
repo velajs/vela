@@ -35,8 +35,8 @@ describe('explicit domain serialization', () => {
       z.object({ id: z.string(), createdAt: z.iso.datetime() }).parse(value),
     );
     const serializer = defineSerializer({
-      input: { parse: domainParse },
-      output: { parse: outputParse },
+      input: z.unknown().transform(domainParse),
+      output: z.object({ id: z.string(), createdAt: z.string() }).transform(outputParse),
       project,
     });
     const account = new Account('a1', 'secret');

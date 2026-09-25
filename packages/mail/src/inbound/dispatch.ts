@@ -146,14 +146,7 @@ export async function dispatchInboundEmail(
     }
     const token = ep.token;
     const registrations = container.getOwnerModuleIds(token);
-    // Current discovery already emits one entry per owner. Expand only legacy
-    // ownerless entries; expanding every entry repeats keyed registrations.
-    const owners =
-      ep.moduleId === undefined
-        ? registrations
-        : registrations.includes(ep.moduleId)
-          ? [ep.moduleId]
-          : [];
+    const owners = registrations.includes(ep.moduleId) ? [ep.moduleId] : [];
     if (owners.length === 0) {
       throw new MailError(
         'inbound_rejected',

@@ -25,8 +25,8 @@ export interface EntrypointKind {
 export interface Entrypoint<M = unknown> {
   kind: string;
   token: Token;
-  /** Owning registration. Optional only for legacy computed contributors. */
-  moduleId?: string;
+  /** The module that owns this exact registration. */
+  moduleId: string;
   /** The resolved provider backing the entrypoint (undefined if request-scoped). */
   instance: unknown;
   /** Present for method-level kinds. */

@@ -115,3 +115,14 @@ describe('middleware', () => {
     expect(n).toBe(3);
   });
 });
+
+it('rejects untagged compressed objects and invalid ciphertext', async () => {
+  const mem = memoryDriver();
+  await mem.upload('plain', 'unencrypted data longer than a frame header');
+  const zipped = compose(mem, compression());
+  await expect(zipped.download('plain')).rejects.toThrow('vela-zip');
+  await expect(zipped.head('plain')).rejects.toThrow('vela-zip');
+  const key = crypto.getRandomValues(new Uint8Array(32));
+  const encrypted = compose(mem, encryption({ key }));
+  await expect(encrypted.download('plain')).rejects.toThrow('decryption failed');
+});

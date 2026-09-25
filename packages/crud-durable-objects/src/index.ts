@@ -21,5 +21,14 @@ export function durableObjectSqliteAdapter(
   }).runtime;
   const transaction: typeof base.transaction = (work) =>
     storage.transaction(() => base.requestScope(work));
-  return bindAdapter({ ...base, requestScope: transaction, transaction });
+  return bindAdapter({
+    ...base,
+    capabilities: new Set([...base.capabilities, 'rowLocks']),
+    requestScope: transaction,
+    transaction,
+    // Both scope entrypoints hold the native storage transaction. SQLite has
+    // no SELECT FOR UPDATE; the base adapter still validates scope ownership.
+    readOne: (lookup, options, scope) =>
+      base.readOne(lookup, { ...options, forUpdate: false }, scope),
+  });
 }

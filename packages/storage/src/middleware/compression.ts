@@ -25,11 +25,17 @@ function stripVela(meta: Record<string, string> | undefined): Record<string, str
   return Object.keys(out).length ? out : undefined;
 }
 
+function compressionFormat(file: StoredFile): CompressionFormat {
+  const format = file.metadata?.['vela-zip'];
+  if (format !== 'gzip' && format !== 'deflate' && format !== 'deflate-raw')
+    throw new StorageError('Parse', 'Compressed object requires valid vela-zip metadata');
+  return format;
+}
+
 /**
  * Transparent gzip/deflate via Web Streams `CompressionStream` — fully
  * streaming, opaque mode (v1). The stored object is compressed and tagged
- * `vela-zip`; reads detect the tag and decompress, so pre-existing (untagged)
- * objects pass through unharmed. Range reads / presigned URLs are disabled
+ * `vela-zip`; reads require a valid format tag and decompress. Range reads / presigned URLs are disabled
  * (the byte stream is not seekable and a direct URL would serve gzip).
  */
 export function compression(opts: CompressionOptions = {}): RawPreservingMiddleware {
@@ -41,18 +47,19 @@ export function compression(opts: CompressionOptions = {}): RawPreservingMiddlew
   }
 
   return (inner) => {
-    if (!available) return inner; // passthrough mode
+    if (!available) return inner; // explicitly disabled on unsupported runtimes
+    if (!inner.supportsMetadata)
+      throw new StorageError('Unsupported', 'compression requires metadata support');
 
     const decompressDownload = async (k: string, _o?: DownloadOptions): Promise<StoredFile> => {
       const file = await inner.download(k);
-      const zip = file.metadata?.['vela-zip'] as CompressionFormat | undefined;
-      if (!zip) return file; // untagged / legacy object
+      const zip = compressionFormat(file);
       const plain = file
         .stream()
         .pipeThrough(
           new DecompressionStream(zip) as unknown as ReadableWritablePair<Uint8Array, Uint8Array>,
         );
-      const size = file.metadata?.['vela-size'] ? Number(file.metadata['vela-size']) : file.size;
+      const size = file.metadata?.['vela-size'] ? Number(file.metadata?.['vela-size']) : file.size;
       return createStoredFile(
         {
           key: k,
@@ -98,14 +105,16 @@ export function compression(opts: CompressionOptions = {}): RawPreservingMiddlew
         download: decompressDownload,
         async head(k, o?: OperationOptions) {
           const file = await inner.head(k, o);
-          if (!file.metadata?.['vela-zip']) return file;
-          const size = file.metadata['vela-size'] ? Number(file.metadata['vela-size']) : file.size;
+          compressionFormat(file);
+          const size = file.metadata?.['vela-size']
+            ? Number(file.metadata?.['vela-size'])
+            : file.size;
           return createStoredFile(
             {
               key: k,
               name: file.name,
               size,
-              type: file.metadata['vela-ct'] ?? file.type,
+              type: file.metadata?.['vela-ct'] ?? file.type,
               lastModified: file.lastModified,
               etag: file.etag,
               metadata: stripVela(file.metadata),

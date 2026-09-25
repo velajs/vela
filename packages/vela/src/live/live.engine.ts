@@ -326,11 +326,19 @@ export class LiveEngine
   }
 
   /** The `'live'` entrypoint — how transports (node registrar, CF DO bootstrap) find the engine. */
-  collectEntrypoints(): Entrypoint<LiveEntrypointMeta>[] {
+  collectEntrypoints(discovery: DiscoveryService): Entrypoint<LiveEntrypointMeta>[] {
+    const owner = discovery
+      .getRegistrations({ metadataOnly: true })
+      .find(
+        (entry) =>
+          entry.token === LiveEngine && this.container.resolve(LiveEngine, entry.moduleId) === this,
+      );
+    if (!owner) throw new Error('Live engine has no module owner.');
     return [
       {
         kind: 'live',
         token: LiveEngine,
+        moduleId: owner.moduleId,
         instance: this,
         meta: { engine: this },
       },

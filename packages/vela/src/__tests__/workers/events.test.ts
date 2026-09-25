@@ -62,10 +62,7 @@ describe('Workers event delivery', () => {
     emitter.on('**', () => {
       wildcard++;
     });
-    await Promise.allSettled([
-      emitter.emitWithOptions('test', { settlement: 'complete' }),
-      emitter.emitWithOptions('test', { settlement: 'complete' }),
-    ]);
+    await Promise.allSettled([emitter.emit('test'), emitter.emit('test')]);
     expect(calls).toBe(1);
     expect(wildcard).toBe(2);
   });

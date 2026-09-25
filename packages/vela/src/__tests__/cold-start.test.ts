@@ -1,10 +1,12 @@
+import { z } from 'zod';
 import { defineProvider } from '../container/types';
 import { describe, expect, it } from 'vitest';
 import { Controller, Get, Inject, Injectable, Module, VelaFactory } from '../index.js';
 import {
   EventEmitter,
   EventEmitterModule,
-  EventEmitterSubscriber,
+  EventDispatcher,
+  defineEvent,
   OnEvent,
 } from '../event-emitter/index.js';
 import { ScheduleModule, ScheduleRegistry } from '../schedule/index.js';
@@ -17,6 +19,9 @@ import type {
 import { SeederModule, SeederRegistry, Seeder, runSeeders } from '../seeder/index.js';
 import { I18nModule, MessageLoaderService } from '../i18n/index.js';
 import { defineModule } from '../module/define-module.js';
+
+const orderPlacedEvent = defineEvent('order.placed', z.object({ order: z.number() }));
+const userCreatedEvent = defineEvent('user.created', z.object({ id: z.number() }));
 
 describe('lazy cold-start init — deferral', () => {
   it('does not construct providers of a lazy module at create()', async () => {
@@ -363,7 +368,7 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
     const app = await VelaFactory.create(AppModule);
     const container = app.getContainer();
 
-    expect(container.isInstantiated(EventEmitterSubscriber)).toBe(false);
+    expect(container.isInstantiated(EventDispatcher)).toBe(false);
     expect(container.isInstantiated(EventEmitter)).toBe(false);
     expect(container.isInstantiated(ScheduleRegistry)).toBe(false);
     expect(container.isInstantiated(SeederRegistry)).toBe(false);
@@ -378,7 +383,7 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
 
     @Injectable()
     class Listener {
-      @OnEvent('user.created')
+      @OnEvent(userCreatedEvent)
       onUserCreated(payload: unknown) {
         received.push(payload);
       }
@@ -388,7 +393,7 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    app.get(EventEmitter).emit('user.created', { id: 1 });
+    await app.get(EventDispatcher).emit(userCreatedEvent, { id: 1 });
     expect(received).toEqual([{ id: 1 }]);
   });
 
@@ -397,7 +402,7 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
 
     @Injectable()
     class Listener {
-      @OnEvent('order.placed')
+      @OnEvent(orderPlacedEvent)
       onOrder(payload: unknown) {
         received.push(payload);
       }
@@ -405,9 +410,9 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
 
     @Injectable()
     class OrderService {
-      constructor(readonly emitter: EventEmitter) {}
+      constructor(readonly emitter: EventDispatcher) {}
       place() {
-        this.emitter.emit('order.placed', { order: 42 });
+        return this.emitter.emit(orderPlacedEvent, { order: 42 });
       }
     }
 
@@ -415,7 +420,7 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    app.get(OrderService).place();
+    await app.get(OrderService).place();
     expect(received).toEqual([{ order: 42 }]);
   });
 
@@ -443,7 +448,7 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
     expect(app.getContainer().isInstantiated(ScheduleRegistry)).toBe(false);
 
     const registry = app.get(ScheduleRegistry);
-    expect(registry.getCronJobs()).toHaveLength(1);
+    expect(registry.getCronEntrypoints()).toHaveLength(1);
   });
 
   it('runSeeders() works against a lazy SeederModule', async () => {
@@ -551,9 +556,17 @@ describe('lazy cold-start init — entrypoints', () => {
       constructor() {
         events.push('construct');
       }
-      collectEntrypoints() {
+      collectEntrypoints(discovery: DiscoveryService) {
         return [
-          { kind: 'cs:tick', token: TickDispatcher, instance: this, meta: { computed: true } },
+          {
+            kind: 'cs:tick',
+            token: TickDispatcher,
+            moduleId: discovery
+              .getRegistrations({ metadataOnly: true })
+              .find((entry) => entry.token === TickDispatcher)!.moduleId,
+            instance: this,
+            meta: { computed: true },
+          },
         ];
       }
     }

@@ -52,6 +52,11 @@ class Client implements WsClient {
   send(event: string, data?: unknown, id?: string) {
     this.frames.push({ event, data, id });
   }
+  trySendRaw(payload: string): 'accepted' {
+    this.sendRaw(payload);
+    return 'accepted';
+  }
+
   sendRaw(payload: string) {
     this.frames.push(JSON.parse(payload));
   }

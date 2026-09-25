@@ -119,7 +119,7 @@ same verb, and reads the parameters the ancestor declares on the method; an
 override uses only its own.
 
 `@Body()` without a schema validates a parameter class that carries a static
-schema — a Standard Schema, a `defineDto` descriptor or a `parse()` parser, as
+schema — a Standard Schema, a `defineDto` descriptor, as
 `ValidationPipe` reads it (`class CreateUser { static schema = CreateUserSchema }`)
 — or that is itself a Standard Schema, with no global pipe; a named
 `@Body('user') user: CreateUser` validates that member. It validates as the body
@@ -224,7 +224,7 @@ schema leaves out a path parameter the route serves (a controller prefix's
 included). The key checks need a schema that lists its keys as JSON Schema and
 does not pass undeclared keys through: a Zod object does, even with fields
 JSON Schema cannot express such as `z.coerce.date()`. For any other (a Valibot
-schema, a `parse()` parser, a union, a transform that renames keys), a named
+schema, a union, a transform that renames keys), a named
 parameter that reads a key the request carries but the validated value lacks
 fails that request with a 500 whose reported error names the key, and so does
 a whole `@Param()` when the validated params lack a path parameter the request
@@ -384,7 +384,7 @@ when a `security.body.streamingOverrides` entry matches the route (the entry's
 or beyond the limit; middleware that reads the body reads it when it runs, within
 the same limit. The route's own `maxBytes` replaces `security.body.maxBytes` for
 that route, so an upload route needs no separate override; a default `maxBytes`
-never exceeds a `security.body.maxBytes` (or `bodyLimit`) the application sets,
+never exceeds a `security.body.maxBytes` the application sets,
 so declare `maxBytes` on a route that must accept more. Parsing buffers a
 bounded body and creates native files; streaming storage is a separate concern.
 A JSON route can bound its body with `body: { json: { maxBytes: 4096 } }`; the
@@ -395,7 +395,7 @@ reading it again fails the request with a 500, so read a body the route
 declares through `@RawBody()` or `c.req`. OpenAPI exports the limits the route
 declares as `requestBody['x-vela-body-limits']`. The document is built from the
 module, without the application's options, so a default `maxBytes` appears
-without the cap of a smaller `security.body.maxBytes` (or `bodyLimit`) the
+without the cap of a smaller `security.body.maxBytes` the
 application sets, which the route enforces; declare `maxBytes` on the route for
 the document to state the limit it enforces.
 

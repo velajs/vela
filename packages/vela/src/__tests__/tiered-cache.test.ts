@@ -4,6 +4,13 @@ import { MemoryCacheStore, TieredCacheStore, type CacheStore } from '../cache/in
 // Minimal async store to exercise the promise path (mimics a KV-backed tier).
 class AsyncMapStore implements CacheStore {
   private readonly map = new Map<string, unknown>();
+  async getEntry(key: string) {
+    const value = this.map.get(key);
+    return value === undefined ? undefined : { value };
+  }
+  async setEntry(key: string, entry: import('../cache').CacheEntry): Promise<void> {
+    this.map.set(key, entry.value);
+  }
   async get(key: string): Promise<unknown> {
     return this.map.get(key);
   }
@@ -19,6 +26,12 @@ class AsyncMapStore implements CacheStore {
 }
 
 describe('TieredCacheStore', () => {
+  it('rejects stores without expiry-aware read and write methods', () => {
+    const unsupported: CacheStore = { get: () => undefined, set() {}, del() {}, clear() {} };
+    // @ts-expect-error Basic stores do not satisfy the tier contract.
+    expect(() => new TieredCacheStore([unsupported])).toThrow('getEntry');
+  });
+
   it('read-through: an L2 hit with known expiry backfills the faster L1', async () => {
     const l1 = new MemoryCacheStore();
     const l2 = new MemoryCacheStore();
@@ -109,6 +122,8 @@ describe('tiered expiry and mutation races', () => {
         return value;
       },
       set: async () => {},
+      setEntry: async (key: string, entry: import('../cache').CacheEntry) =>
+        l2.setEntry(key, entry),
       del: async (key: string) => l2.del(key),
       clear: async () => l2.clear(),
     };
@@ -135,6 +150,7 @@ describe('tiered expiry and mutation races', () => {
     });
     const slowL1 = {
       get: async (key: string) => l1.get(key),
+      getEntry: async (key: string) => l1.getEntry(key),
       set: async (key: string, value: unknown, ttl?: number) => l1.set(key, value, ttl),
       setEntry: async (key: string, entry: import('../cache').CacheEntry) => {
         started();
@@ -161,6 +177,7 @@ describe('tiered expiry and mutation races', () => {
     l2.set('key', 1, 0.1);
     const slowL1 = {
       get: (key: string) => l1.get(key),
+      getEntry: (key: string) => l1.getEntry(key),
       set: (key: string, value: unknown, ttl?: number) => l1.set(key, value, ttl),
       async setEntry(key: string, entry: import('../cache').CacheEntry) {
         vi.advanceTimersByTime(101);

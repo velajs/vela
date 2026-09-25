@@ -184,7 +184,7 @@ once per application and inject `APP_LOGGER` (`ApplicationLogger`).
 `withFields` snapshots extra context and `extend` changes the category.
 `subscribe(LogSink)` receives immutable, bounded, redacted JSON-safe `LogRecord`
 values and returns an unsubscribe function. No console patching is involved.
-Legacy `Logger` and text `Writer` settings remain independent.
+Standalone `Logger` and text `Writer` settings remain independent.
 
 Use `loggerForScope(actualChildContainer, category, fields)` for automatic
 `invocationId`, HTTP `requestId`, and async delivery tracking through the existing

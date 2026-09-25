@@ -25,7 +25,7 @@ describe('core type surface', () => {
   it('AiProvider is a callable factory with an optional embedding factory', () => {
     expectTypeOf<AiProvider>().toBeCallableWith('model-id');
     expectTypeOf<ReturnType<AiProvider>>().toEqualTypeOf<LanguageModel>();
-    expectTypeOf<AiProvider['textEmbeddingModel']>().toEqualTypeOf<
+    expectTypeOf<AiProvider['embeddingModel']>().toEqualTypeOf<
       ((modelId: string) => EmbeddingModel) | undefined
     >();
   });

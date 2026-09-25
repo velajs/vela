@@ -66,6 +66,29 @@ never contain framework-generated HTML. Escape `text` before rendering any
 transaction for atomic adapters; fallback adapters mutate only a fixed,
 policy-checked row set.
 
+## Read and mutation contracts
+
+Relations are included only when named in `allowedIncludes`; omitted or empty
+allowlists deny every include on both read and list. `beforeRead` runs before
+lookup, and `afterRead` receives an authorized detached row before response shaping.
+Read hooks cannot mutate stored rows; ETags remain based on the stored representation.
+
+`bulkPatch` accepts only allowlisted filter fields and operators. Invalid filters,
+non-string values, and list options such as `search`, `page`, or `include` return
+400 before any write. An omitted or empty filter intentionally selects all rows
+subject to tenant, policy, size and confirmation checks.
+
+`etag: true` requires adapters declaring both `transactions` and `rowLocks`.
+Updates lock before checking `If-Match` and keep the lock through commit. Plain
+memory and D1 adapters reject this configuration; use transactional memory,
+PostgreSQL, asynchronous SQLite, or the Durable Object SQLite adapter.
+
+Relation `cascade`, `CascadeConfig`, and the adapter `CascadeDriver` are removed.
+Configure hard-delete `CASCADE`, `RESTRICT`, and `SET NULL` in database foreign keys.
+Implement soft-delete propagation as explicit transactional hooks with child
+policy and tenant checks. Studio's CRUD source cannot preview database cascades;
+a custom database-aware source may provide `cascadePreview`.
+
 ## License
 
 MIT

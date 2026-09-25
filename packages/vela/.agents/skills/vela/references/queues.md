@@ -105,7 +105,7 @@ Platform drivers implement the `QueueDriver` interface (`enqueue`, optional `enq
 `defineQueueJob(name, schema)` connects `QueueClient.add(definition, wireInput)`
 with `@Process(definition)` and `QueueJobOutput<typeof definition>`. The producer
 validates a snapshot and sends the original wire input; the consumer parses it
-into handler data. Async transforms execute once at each boundary. Legacy
+into handler data. Async transforms execute once at each boundary. Raw
 string job names remain supported. Native retry and DLQ configuration belongs to
 Cloudflare; settlement observation (`observeMessage`) records the first
 successful ack/retry and does not prove that a DLQ received a delivery.

@@ -61,8 +61,7 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
     },
 
     async enqueue(job: QueueJob, addOptions?: AddJobOptions): Promise<void> {
-      // Preserve the legacy post-disposal no-op without retaining jobs or apps.
-      if (closed) return;
+      if (closed) throw new Error('inline() queue driver is closed.');
       if (addOptions?.delayMs !== undefined && !warnedDelay) {
         warnedDelay = true;
         console.warn(
@@ -76,7 +75,7 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
       deliverDetached(job);
     },
 
-    bind(fn: QueueDispatchFn, hooks?: QueueDriverBindHooks): void {
+    bind(fn: QueueDispatchFn, hooks?: QueueDriverBindHooks): () => void {
       if (dispatch || closed) {
         throw new Error(
           'inline() driver already belongs to an application. Use driver: () => inline() for isolated reuse.',
@@ -87,13 +86,12 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
       if (mode === 'immediate' && buffer.length > 0) {
         for (const job of buffer.splice(0)) deliverDetached(job);
       }
-    },
-
-    unbind(): void {
-      closed = true;
-      dispatch = undefined;
-      onError = undefined;
-      buffer.length = 0;
+      return () => {
+        closed = true;
+        dispatch = undefined;
+        onError = undefined;
+        buffer.length = 0;
+      };
     },
 
     async flush(): Promise<number> {

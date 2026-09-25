@@ -310,7 +310,7 @@ describe('inline driver', () => {
     await app.dispose();
   });
 
-  it('does not crash on add() after dispose', async () => {
+  it('rejects enqueue after disposal', async () => {
     @Module({ imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'late' })] })
     class App {}
 
@@ -318,7 +318,7 @@ describe('inline driver', () => {
     const late = app.get<QueueClient>(queueToken('late'));
     await app.dispose();
 
-    await expect(late.add('after-dispose', {})).resolves.toMatchObject({ name: 'after-dispose' });
+    await expect(late.add('after-dispose', {})).rejects.toThrow('queue driver is closed');
     await settle();
   });
 });
@@ -417,6 +417,9 @@ describe('transport initialization', () => {
       enqueue: async () => {},
       bind: () => {
         bound = true;
+        return () => {
+          bound = false;
+        };
       },
     };
 
@@ -464,6 +467,9 @@ describe('transport initialization', () => {
       enqueue: async () => {},
       bind: () => {
         bound = true;
+        return () => {
+          bound = false;
+        };
       },
     };
 
@@ -683,6 +689,9 @@ describe('error reporter edge (report-then-rethrow)', () => {
       async enqueue() {},
       bind(_dispatch, hooks) {
         onError = hooks?.onError;
+        return () => {
+          onError = undefined;
+        };
       },
     };
 

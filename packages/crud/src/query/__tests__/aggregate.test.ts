@@ -46,7 +46,6 @@ describe('getAggregateAlias', () => {
 describe('buildAggregateSpec', () => {
   it('defaults to COUNT(*) when nothing is requested', () => {
     expect(build({})).toEqual({
-      operation: 'count',
       aggregations: [{ operation: 'count', field: '*' }],
       filters: [],
     });
@@ -64,9 +63,6 @@ describe('buildAggregateSpec', () => {
       { operation: 'sum', field: 'amount' },
       { operation: 'avg', field: 'age' },
     ]);
-    // Legacy single-op head tracks the first aggregation.
-    expect(spec.operation).toBe('count');
-    expect(spec.field).toBeUndefined();
   });
 
   it('accepts the same operation on multiple fields (repeated param)', () => {
@@ -179,7 +175,6 @@ describe('buildAggregateSpec', () => {
 
 describe('computeAggregateFallback', () => {
   const spec = (over: Partial<AggregateSpec>): AggregateSpec => ({
-    operation: 'count',
     aggregations: [{ operation: 'count', field: '*' }],
     filters: [],
     ...over,

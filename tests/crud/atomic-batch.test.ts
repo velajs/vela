@@ -442,6 +442,29 @@ for (const database of databases)
       ).rejects.toThrow('does not support');
       expect(await db.select().from(items)).toEqual([]);
     });
+    it.each(['read', 'readPushdown'] as const)(
+      'rejects atomic auditing with %s policies',
+      async (policy) => {
+        expect(() =>
+          defineResource('items', {
+            model: {
+              ...model,
+              policies:
+                policy === 'read'
+                  ? { read: () => false }
+                  : {
+                      readPushdown: () => [{ field: 'value', operator: 'eq', value: 99 }],
+                    },
+            },
+            adapter,
+            auditStore: logs,
+            auditPersistence: { mode: 'atomic', snapshots: 'none' },
+          }),
+        ).toThrow('row policies');
+        expect(await db.select().from(items)).toEqual([]);
+        expect(await logs.query()).toEqual([]);
+      },
+    );
     it('supports named database registrations and reports post-commit event failures without rollback', async () => {
       const registry = new CrudDatabaseRegistry([
         defineCrudDatabase('main', {

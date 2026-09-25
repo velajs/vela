@@ -25,6 +25,9 @@ function context(data: Record<string, unknown>, container?: Container): Executio
     }
     send() {}
     sendRaw() {}
+    trySendRaw(): 'accepted' {
+      return 'accepted';
+    }
     join() {}
     leave() {}
     commit() {}

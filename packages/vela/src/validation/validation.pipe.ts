@@ -2,6 +2,7 @@ import { Injectable, Optional } from '../container/decorators';
 import { BadRequestException } from '../errors/http-exception';
 import type { ArgumentMetadata, PipeTransform } from '../pipeline/types';
 import {
+  isValidationSchema,
   parseSchema,
   parseSchemaAsync,
   resolveValidationSchema,
@@ -17,7 +18,10 @@ export type { ValidationSchema } from './parse-schema';
 @Injectable()
 export class ValidationPipe implements PipeTransform {
   /** Explicit schema metadata shared with OpenAPI and programmatic route builders. */
-  constructor(@Optional() readonly parser?: ValidationSchema) {}
+  constructor(@Optional() readonly parser?: ValidationSchema) {
+    if (parser !== undefined && !isValidationSchema(parser))
+      throw new TypeError('ValidationPipe requires a Standard Schema validator or DTO descriptor.');
+  }
 
   async transformAsync(value: unknown, metadata: ArgumentMetadata): Promise<unknown> {
     const schema = this.#schema(metadata);

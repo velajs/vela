@@ -44,9 +44,8 @@ type FieldKeys<TSchemas extends RelationSchemaMap, K extends keyof TSchemas> = E
 >;
 
 /**
- * Passthrough members shared by both internal arms (`cascade` stays
- * `string`-typed — it carries no cross-model column names), plus the
- * schema/table overrides and the escape-hatch discriminant.
+ * Passthrough members shared by both internal arms, plus schema/table
+ * overrides and the escape-hatch discriminant.
  */
 type InternalRelationBase = Omit<
   RelationConfig,

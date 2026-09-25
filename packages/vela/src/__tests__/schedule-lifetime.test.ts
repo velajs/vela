@@ -139,7 +139,7 @@ describe('Node scheduled invocation ownership', () => {
     expect(seen).toEqual([1, 2]);
   });
 
-  it('retains singleton identity and the legacy instance introspection view', async () => {
+  it('retains singleton identity while exposing metadata-only entrypoints', async () => {
     const instances: object[] = [];
     @Injectable()
     class Job {
@@ -152,7 +152,7 @@ describe('Node scheduled invocation ownership', () => {
     const app = await create(Root);
     await vi.advanceTimersByTimeAsync(250);
     expect(instances).toEqual([app.get(Job), app.get(Job)]);
-    expect(app.get(ScheduleRegistry).getIntervalJobs()[0]?.instance).toBe(app.get(Job));
+    expect(app.get(ScheduleRegistry).getIntervalEntrypoints()[0]?.instance).toBeUndefined();
   });
 
   it('keeps the same job class independent in two keyed module registrations', async () => {

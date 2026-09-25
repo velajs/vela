@@ -84,7 +84,7 @@ function routePattern(next: () => number): string {
 
 // A target in the middleware grammar: up to three literal or ':param'
 // segments, then a trailing wildcard, a trailing slash or nothing.
-const TAILS = ['', '', '', '/', '*', '*rest', '{*rest}', '(.*)'] as const;
+const TAILS = ['', '', '', '/', '*', '*rest', '{*rest}', '{*rest}'] as const;
 function targetPattern(next: () => number): string {
   const segments = Array.from({ length: next() % 4 }, (_, index) =>
     next() % 3 === 0 ? `:p${index}` : pick(next, LITERALS),
@@ -96,9 +96,8 @@ function targetPattern(next: () => number): string {
 }
 
 // '*', '/*' and '{*name}' alone match every path, never under the prefix,
-// and so does '(.*)' in forRoutes(), which Nest 11 reads as '{*path}'.
 const EVERY_PATH = /^\/?(?:\*|\{\*\w+\})$/;
-const EVERY_PATH_FOR_ROUTES = /^\/?(?:\*|\{\*\w+\}|\(\.\*\))$/;
+const EVERY_PATH_FOR_ROUTES = EVERY_PATH;
 
 // A request path shaped like `pattern` half the time, random otherwise.
 function requestPath(next: () => number, pattern: string, prefix: string): string {
@@ -120,22 +119,19 @@ function requestPath(next: () => number, pattern: string, prefix: string): strin
 // own pattern, with the global prefix joined as routes join it. A trailing
 // '*' or '{*name}' covers the parent path and every path beneath it, a
 // trailing '*name' one or more characters beneath it, and a forRoutes()
-// target also covers the paths beneath it. A trailing '(.*)' is '{*name}' in
-// forRoutes(), as Nest 11 reads it, and '*name' in exclude(). Hono's
+// target also covers the paths beneath it. Hono's
 // RegExpRouter stops a trailing '*' at a decoded line terminator, while its
 // TrieRouter does not, so the paths beneath are also written ':rest{[\s\S]+}'.
 function referencePatterns(target: string, prefix: string, descendants: boolean): string[] {
   const written = `${prefix.replace(/\/$/, '')}/${target.replace(/^\//, '')}`;
   const tail = /\/(?:\*|\{\*rest\})$/.test(written)
     ? '*'
-    : /\/(?:\*rest|\(\.\*\))$/.test(written)
-      ? descendants && written.endsWith('(.*)')
-        ? '*'
-        : '+'
+    : /\/(?:\*rest)$/.test(written)
+      ? '+'
       : descendants
         ? '*'
         : '';
-  const parent = tail ? written.replace(/\/(?:\*|\{\*rest\}|\*rest|\(\.\*\))?$/, '') : written;
+  const parent = tail ? written.replace(/\/(?:\*|\{\*rest\}|\*rest)?$/, '') : written;
   const beneath = `${parent}/:rest{[\\s\\S]+}`;
   if (tail === '+') return [beneath];
   if (tail === '*') return [`${parent}/*`, beneath];
@@ -509,7 +505,7 @@ describe('matching time is linear in the path length', () => {
         consumer
           .apply(FlagMiddleware)
           .exclude('files/:a/:b/:c/:d/x', 'files/:a/raw/*path', { path: 'files', absolute: true })
-          .forRoutes('files', ':a/:b/:c/:d/x', 'files/*path', 'files/{*rest}', '(.*)');
+          .forRoutes('files', ':a/:b/:c/:d/x', 'files/*path', 'files/{*rest}');
       },
       '',
     );

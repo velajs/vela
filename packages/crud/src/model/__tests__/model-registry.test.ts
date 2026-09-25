@@ -332,7 +332,7 @@ describe('defineModels', () => {
     expect(db.bare.namePlural).toBe('bares');
   });
 
-  it('preserves loader-facing relation fields (type/foreignKey/localKey/cascade) untouched', () => {
+  it('preserves loader-facing relation fields (type/foreignKey/localKey) untouched', () => {
     const db = defineModels({
       users: {
         name: 'user',
@@ -345,7 +345,6 @@ describe('defineModels', () => {
             target: 'posts',
             foreignKey: 'authorId',
             localKey: 'id',
-            cascade: { onDelete: 'cascade' },
           },
         },
       },
@@ -356,7 +355,6 @@ describe('defineModels', () => {
     expect(posts.type).toBe('hasMany');
     expect(posts.foreignKey).toBe('authorId');
     expect(posts.localKey).toBe('id');
-    expect(posts.cascade).toEqual({ onDelete: 'cascade' });
   });
 
   it('wired models remain plain Model objects (wide-assignable, enumerable relations)', () => {

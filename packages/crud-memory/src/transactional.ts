@@ -71,12 +71,12 @@ export function transactionalMemoryAdapter(
   const runtime: RuntimeAdapter = {
     ...adapter,
     transactionOwner: config.store,
-    capabilities: new Set([...adapter.capabilities, 'transactions']),
+    capabilities: new Set([...adapter.capabilities, 'transactions', 'rowLocks']),
     requestScope: (fn) => config.store.transaction(fn),
     transaction: (fn) => config.store.transaction(fn),
     create: (row, scope) => scoped(scope).create(structuredClone(row), scope),
     readOne: async (key, opts, scope) =>
-      structuredClone(await scoped(scope).readOne(key, opts, scope)),
+      structuredClone(await scoped(scope).readOne(key, { ...opts, forUpdate: false }, scope)),
     update: (key, row, scope) => scoped(scope).update(key, structuredClone(row), scope),
     delete: (key, opts, scope) => scoped(scope).delete(key, opts, scope),
     list: async (query, scope) => structuredClone(await scoped(scope).list(query, scope)),
@@ -88,11 +88,6 @@ export function transactionalMemoryAdapter(
         scoped(scope).nested!.createNested(row, name, items, scope),
       applyNested: (row, name, ops, scope) =>
         scoped(scope).nested!.applyNested(row, name, ops, scope),
-    },
-    cascade: {
-      countRelated: (name, key, scope) => scoped(scope).cascade!.countRelated(name, key, scope),
-      deleteRelated: (name, key, scope) => scoped(scope).cascade!.deleteRelated(name, key, scope),
-      nullifyRelated: (name, key, scope) => scoped(scope).cascade!.nullifyRelated(name, key, scope),
     },
     relations: {
       load: (rows, name, loadScope, scope) =>

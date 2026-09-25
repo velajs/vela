@@ -120,8 +120,8 @@ audit entry. Audit failure rolls back the write. Store and adapter must own the
 same native handle, including when registered in a named database.
 
 Configuration rejects database-generated IDs (generate IDs before preparing the
-batch), versioning, ETags, mutation hooks, JavaScript row write policies, nested
-writes, and cascades. These need a different interactive or database-native
+batch), versioning, ETags, mutation hooks, row read/write policies (including `readPushdown`), and nested
+writes. These need a different interactive or database-native
 workflow. Other mutation verbs and joining an existing `CrudTransactionScope`
 reject before writes. Input-only create policies and structured SQL authorization
 remain supported. There is no fallback to post-commit audit persistence.

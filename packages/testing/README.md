@@ -273,8 +273,7 @@ const native = createTestHttpClient({
 `forHost` preserves the base URL scheme while replacing its host and Host header.
 Relative paths resolve against `baseUrl` using standard URL rules.
 
-`response.json(schema)` accepts Standard Schema v1, `defineDto` descriptors, and
-legacy parsers (including `parseAsync`). It awaits validation and infers the
+`response.json(schema)` accepts Standard Schema v1 and `defineDto` descriptors. It awaits validation and infers the
 transformed output. The cached value remains the raw JSON: a later `json()` call
 still returns `unknown`, and each requested schema runs against that original
 value. Validator exceptions propagate; invalid payloads fail the test.

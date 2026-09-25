@@ -43,3 +43,9 @@ function types(dispatcher: EventDispatcher, scope: ScopedEventDispatcher) {
   scope.defer(events.tick, '1');
 }
 void types;
+
+function rejectStringSubscriptions(): void {
+  // @ts-expect-error Decorated subscriptions require validated event definitions.
+  OnEvent('obsolete');
+}
+void rejectStringSubscriptions;

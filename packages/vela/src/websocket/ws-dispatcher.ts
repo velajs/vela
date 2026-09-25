@@ -242,7 +242,7 @@ export class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, Contr
     meta: WebSocketGatewayOptions;
     moduleIds: string[];
   }> {
-    return this.#discovery.providersWithMeta<WebSocketGatewayOptions>(WS_GATEWAY_METADATA, {
+    return this.#discovery.registrationsWithMeta<WebSocketGatewayOptions>(WS_GATEWAY_METADATA, {
       metadataOnly: true,
     });
   }

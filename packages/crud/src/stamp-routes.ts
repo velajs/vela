@@ -21,12 +21,7 @@ import {
   getRequestContainer,
   METADATA_KEYS,
 } from '@velajs/vela/module-kit';
-import {
-  defineDto,
-  isStandardSchema,
-  type DtoDefinition,
-  type StandardDtoDefinition,
-} from '@velajs/vela/validation';
+import { defineDto, isStandardSchema, type DtoDefinition } from '@velajs/vela/validation';
 import type { RuntimeAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import { compileResource, type CrudResource, type RuntimeResourceConfig } from './kernel/resource';
@@ -370,8 +365,8 @@ function stampParams(
   controller: Ctor,
   handlerName: string | symbol,
   endpoint: CrudEndpointName,
-  createDto: DtoDefinition<unknown> | StandardDtoDefinition<unknown, unknown>,
-  updateDto: DtoDefinition<unknown> | StandardDtoDefinition<unknown, unknown>,
+  createDto: DtoDefinition,
+  updateDto: DtoDefinition,
 ): void {
   const add = (param: { index: number; type: string; name?: string; metatype?: unknown }): void =>
     MetadataRegistry.addParameter(controller, handlerName, param);

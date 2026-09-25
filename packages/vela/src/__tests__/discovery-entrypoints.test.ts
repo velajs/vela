@@ -51,7 +51,7 @@ describe('DiscoveryService', () => {
     const app = await VelaFactory.create(AppModule);
     const discovery = app.get(DiscoveryService);
 
-    const found = discovery.providersWithMeta<RobotMeta>(Robot);
+    const found = discovery.registrationsWithMeta<RobotMeta>(Robot);
     const models = found.map((f) => f.meta.model).sort();
     expect(models).toEqual(['C3', 'R2']);
     expect(found.every((f) => f.instance !== undefined)).toBe(true);
@@ -79,7 +79,7 @@ describe('DiscoveryService', () => {
     const app = await VelaFactory.create(AppModule);
     const discovery = app.get(DiscoveryService);
 
-    const methods = discovery.methodsWithMeta<JobMeta & { methodName: string }>(Job);
+    const methods = discovery.registeredMethodsWithMeta<JobMeta & { methodName: string }>(Job);
     expect(methods.map((m) => String(m.methodName)).sort()).toEqual(['nightly', 'tick']);
     expect(methods.every((m) => m.class.instance instanceof Worker)).toBe(true);
   });
@@ -99,7 +99,7 @@ describe('DiscoveryService', () => {
     const app = await VelaFactory.create(AppModule);
     const discovery = app.get(DiscoveryService);
 
-    const methods = discovery.methodsWithMeta<string>('vela-test:tagged');
+    const methods = discovery.registeredMethodsWithMeta<string>('vela-test:tagged');
     expect(methods).toHaveLength(1);
     expect(methods[0].methodName).toBe('one');
     expect(methods[0].meta).toBe('a');
@@ -118,13 +118,13 @@ describe('DiscoveryService', () => {
     const app = await VelaFactory.create(AppModule);
     const discovery = app.get(DiscoveryService);
 
-    const found = discovery.providersWithMeta<boolean>(Flagged);
+    const found = discovery.registrationsWithMeta<boolean>(Flagged);
     expect(found).toHaveLength(1);
     expect(found[0].scope).toBe(Scope.REQUEST);
     expect(found[0].instance).toBeUndefined();
 
     await runInEntrypointScope(app.getContainer(), (scope) => {
-      const forced = discovery.providersWithMeta<boolean>(Flagged, { requestScope: scope });
+      const forced = discovery.registrationsWithMeta<boolean>(Flagged, { requestScope: scope });
       expect(forced[0].instance).toBeInstanceOf(PerRequest);
       expect(forced[0].instance).toBe(scope.resolve(PerRequest));
     });
@@ -156,7 +156,7 @@ describe('DiscoveryService', () => {
     // Bust the memoized singleton so discovery re-resolves.
     const discovery = new DiscoveryService(app.getContainer());
 
-    expect(() => discovery.providersWithMeta(Broken)).toThrow(/boom/);
+    expect(() => discovery.registrationsWithMeta(Broken)).toThrow(/boom/);
     void MISSING;
   });
 });
@@ -220,8 +220,18 @@ describe('EntrypointRegistry', () => {
 
     @Injectable()
     class Computer implements ContributesEntrypoints {
-      collectEntrypoints(): Entrypoint[] {
-        return [{ kind: 'marked', token: Computer, instance: this, meta: { computed: true } }];
+      collectEntrypoints(discovery: DiscoveryService): Entrypoint[] {
+        return [
+          {
+            kind: 'marked',
+            token: Computer,
+            moduleId: discovery
+              .getRegistrations({ metadataOnly: true })
+              .find((entry) => entry.token === Computer)!.moduleId,
+            instance: this,
+            meta: { computed: true },
+          },
+        ];
       }
     }
 

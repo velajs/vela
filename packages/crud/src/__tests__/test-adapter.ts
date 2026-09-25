@@ -1,5 +1,5 @@
 import { bindAdapter } from '../adapter/contract';
-import type { AdapterScope, CrudAdapter } from '../adapter/contract';
+import type { AdapterCapability, AdapterScope, CrudAdapter } from '../adapter/contract';
 import type { ListQuery, Lookup, Page } from '../adapter/query-types';
 
 type Row = Record<string, unknown>;
@@ -10,7 +10,7 @@ type Row = Record<string, unknown>;
  * depends on core — so integration suites carry this mini adapter instead.
  */
 export function testAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAdapter<Row> {
-  const scope: AdapterScope = { tx: { test: true } };
+  const transaction = serializedTransaction(store);
   const visible = (row: Row, withDeleted: boolean) =>
     withDeleted || softDeleteField === undefined || row[softDeleteField] == null;
 
@@ -26,13 +26,15 @@ export function testAdapter(store: Map<string, Row>, softDeleteField?: string): 
   };
 
   return bindAdapter({
-    capabilities: new Set(softDeleteField !== undefined ? (['softDelete'] as const) : []),
+    capabilities: new Set<AdapterCapability>([
+      'transactions',
+      'rowLocks',
+      ...(softDeleteField !== undefined ? ['softDelete' as const] : []),
+    ]),
     async requestScope(fn) {
       return fn({ tx: undefined });
     },
-    async transaction(fn) {
-      return fn(scope);
-    },
+    transaction,
     async create(input) {
       const row = { ...input } as Row;
       store.set(String(row.id), row);
@@ -89,4 +91,25 @@ export function testAdapter(store: Map<string, Row>, softDeleteField?: string): 
       };
     },
   });
+}
+
+/** Serialize test writes and restore the state if the callback fails. */
+export function serializedTransaction(store: Map<string, Row>) {
+  let tail = Promise.resolve();
+  return async <T>(work: (scope: AdapterScope) => Promise<T>): Promise<T> => {
+    const previous = tail;
+    const gate = Promise.withResolvers<void>();
+    tail = gate.promise;
+    await previous;
+    const snapshot = structuredClone(store);
+    try {
+      return await work({ tx: { test: true } });
+    } catch (error) {
+      store.clear();
+      for (const [key, row] of snapshot) store.set(key, row);
+      throw error;
+    } finally {
+      gate.resolve();
+    }
+  };
 }

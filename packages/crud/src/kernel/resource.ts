@@ -147,9 +147,15 @@ export interface CrudResource {
 
 /** Derives the capability demands a resource config places on its adapter. */
 export function deriveCapabilityRequirements(
-  config: Pick<RuntimeResourceConfig, 'model' | 'pagination'>,
+  config: Pick<RuntimeResourceConfig, 'model' | 'pagination' | 'etag'>,
 ): CapabilityRequirement[] {
   const requirements: CapabilityRequirement[] = [];
+  if (config.etag) {
+    requirements.push(
+      { capability: 'transactions', reason: 'etag' },
+      { capability: 'rowLocks', reason: 'etag' },
+    );
+  }
   if (config.pagination?.cursor?.enabled) {
     requirements.push({ capability: 'cursor', reason: 'pagination.cursor.enabled' });
   }

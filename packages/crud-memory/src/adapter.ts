@@ -2,7 +2,6 @@ import { bindAdapter } from '@velajs/crud/adapter';
 import type {
   AdapterCapability,
   AdapterScope,
-  CascadeDriver,
   CrudAdapter,
   DeleteOptions,
   ListQuery,
@@ -16,7 +15,7 @@ import type {
   RelationLoader,
   TransactionContext,
 } from '@velajs/crud/adapter';
-import { ConflictException } from '@velajs/crud';
+import { ConflictException, CrudException } from '@velajs/crud';
 import {
   buildKeysetPage,
   compareKeysetRows,
@@ -41,7 +40,7 @@ export const MEMORY_NOOP_TX = Object.freeze({
 
 const NOOP_SCOPE: AdapterScope = Object.freeze({ tx: MEMORY_NOOP_TX });
 
-/** A relation the adapter can traverse (nested writes, cascade, includes). */
+/** A relation the adapter can traverse (nested writes, includes). */
 export interface MemoryRelation {
   type: 'hasOne' | 'hasMany' | 'belongsTo';
   /** Target table name in the shared memory storage. */
@@ -78,7 +77,6 @@ const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
   'restore',
   'cursor',
   'nestedWrites',
-  'cascade',
   'uniqueConstraints',
 ] as const);
 
@@ -249,37 +247,6 @@ export function memoryAdapter(
     },
   };
 
-  const cascade: CascadeDriver = {
-    async countRelated(relation, parentKey, _scope) {
-      const rel = requireRelation(config, relation);
-      return relatedRows(rel, parentKey, storageTable(rel.table)).length;
-    },
-    async deleteRelated(relation, parentKey, _scope) {
-      const rel = requireRelation(config, relation);
-      const store = storageTable(rel.table);
-      let count = 0;
-      for (const [id, row] of store) {
-        if (row[rel.foreignKey] === parentKey) {
-          store.delete(id);
-          count++;
-        }
-      }
-      return count;
-    },
-    async nullifyRelated(relation, parentKey, _scope) {
-      const rel = requireRelation(config, relation);
-      const store = storageTable(rel.table);
-      let count = 0;
-      for (const [id, row] of store) {
-        if (row[rel.foreignKey] === parentKey) {
-          store.set(id, { ...row, [rel.foreignKey]: null });
-          count++;
-        }
-      }
-      return count;
-    },
-  };
-
   const relations: RelationLoader<Row> = {
     async load(rows, relation, loadScope: RelationLoadScope, _scope) {
       const rel = requireRelation(config, relation);
@@ -380,6 +347,12 @@ export function memoryAdapter(
     },
 
     async readOne(lookup, opts: ReadOptions, _scope) {
+      if (opts.forUpdate)
+        throw new CrudException(
+          'Use transactionalMemoryAdapter for row locking',
+          400,
+          'TRANSACTION_UNSUPPORTED',
+        );
       return findOne(lookup, opts.withDeleted ?? false);
     },
 
@@ -462,7 +435,6 @@ export function memoryAdapter(
     },
 
     nested,
-    cascade,
     relations,
   });
 }

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { describe, it, expect, vi } from 'vitest';
 import { defineDto, type StandardSchemaV1 } from '@velajs/vela/validation';
 import { TestResponse } from '../http/test-response.js';
@@ -103,15 +104,10 @@ describe('TestResponse JSON assertions', () => {
 
   it('validates each requested parser against the cached raw value', async () => {
     const wrapped = jsonResponse('42');
-    const parser = {
-      parse(value: unknown): number {
-        if (typeof value !== 'string') throw new TypeError('Expected string');
-        return Number(value);
-      },
-    };
+    const parser = z.string('Expected string').transform(Number);
     expect(await wrapped.json(parser)).toBe(42);
     expect(await wrapped.json()).toBe('42');
-    await expect(jsonResponse(false).json(parser)).rejects.toThrow('Expected string');
+    await expect(jsonResponse(false).json(parser)).rejects.toThrow('Validation failed');
   });
 
   it('rejects JSON assertions whose runtime shape is incompatible', async () => {
@@ -165,17 +161,9 @@ it('validates transformed async Standard Schema responses once per requested par
   await expect(jsonResponse(false).json(schema)).rejects.toThrow('Validation failed');
 });
 
-it('uses asynchronous legacy parsers without speculative sync parsing', async () => {
-  const parser = {
-    parse() {
-      throw new Error('sync parse must not run');
-    },
-    async parseAsync(value: unknown): Promise<number> {
-      if (typeof value !== 'string') throw new TypeError('Expected string');
-      return Number(value);
-    },
-  };
-  expect(await jsonResponse('12').json(parser)).toBe(12);
+it('rejects parser-only validators and propagates validator exceptions', async () => {
+  // @ts-expect-error Obsolete validator shape from JavaScript callers.
+  await expect(jsonResponse('12').json({ parse: () => 12 })).rejects.toThrow('Standard Schema');
   const failure = new Error('validator unavailable');
   const schema: StandardSchemaV1 = {
     '~standard': {

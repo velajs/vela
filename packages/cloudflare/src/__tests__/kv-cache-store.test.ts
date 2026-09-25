@@ -105,10 +105,10 @@ describe('KV cache expiry and invalidation', () => {
     await expect(kv.set('invalid', 1, NaN)).rejects.toThrow('TTL');
   });
 
-  it('retains unknown expiry for legacy values and publishes fresh persistent generations', async () => {
+  it('rejects values without expiry metadata and publishes fresh persistent generations', async () => {
     const { service, store, ttls } = fakeKVService();
     store.set('legacy', JSON.stringify({ count: 1 }));
-    expect(await new KVCacheStore(service).getEntry('legacy')).toEqual({ value: { count: 1 } });
+    expect(await new KVCacheStore(service).getEntry('legacy')).toBeUndefined();
     const versions = new KVCacheInvalidationStore(service);
     expect(await versions.getVersion('scope')).toBe('initial');
     await versions.invalidate('scope');

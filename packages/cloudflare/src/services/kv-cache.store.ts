@@ -16,8 +16,8 @@ const namespaceOf = (source: KVNamespaceSource): (() => KVNamespace) =>
 
 /**
  * Native KV JSON value store. Metadata retains logical expiry even when KV's
- * physical retention rounds up to its 60-second minimum. Legacy values without
- * metadata remain readable, but cannot safely backfill another tier.
+ * physical retention rounds up to its 60-second minimum. Values without
+ * Vela expiry metadata are cache misses.
  */
 export class KVCacheStore implements CacheStore, CacheEntryReader, CacheEntryWriter {
   readonly #namespace: () => KVNamespace;
@@ -38,18 +38,19 @@ export class KVCacheStore implements CacheStore, CacheEntryReader, CacheEntryWri
     if (value === null) return undefined;
     if (typeof metadata === 'object' && metadata !== null && 'velaCacheExpiresAt' in metadata) {
       const expiresAt = metadata.velaCacheExpiresAt;
+      if (expiresAt === null) return { value };
       if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || expiresAt <= Date.now())
         return undefined;
       return { value, expiresAt };
     }
-    return { value };
+    return undefined;
   }
 
   async set(key: string, value: unknown, ttl?: number): Promise<void> {
     if (ttl !== undefined && (!Number.isFinite(ttl) || ttl < 0))
       throw new TypeError('Cache TTL must be finite and nonnegative.');
     if (ttl !== undefined) return this.setEntry(key, { value, expiresAt: Date.now() + ttl * 1000 });
-    await this.ns.put(key, JSON.stringify(value));
+    await this.ns.put(key, JSON.stringify(value), { metadata: { velaCacheExpiresAt: null } });
   }
 
   async setEntry(key: string, entry: CacheEntry): Promise<void> {

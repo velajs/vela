@@ -1,4 +1,3 @@
-import { missingDefaultAdapter } from './missing-adapter';
 import type { InjectionToken } from '@velajs/vela';
 import type { Container } from '@velajs/vela/module-kit';
 import {
@@ -65,7 +64,7 @@ function defaults(
   versioningStore?: VersioningStore,
   auditStore?: AuditStore,
 ): Resolved {
-  if (!adapter || adapter === missingDefaultAdapter.runtime)
+  if (!adapter)
     throw new ConfigurationException(
       'No adapter — pass adapter on the resource or import CrudModule.forRoot({ adapter })',
     );

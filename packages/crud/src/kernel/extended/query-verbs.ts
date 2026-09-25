@@ -255,10 +255,7 @@ async function executeAggregate(resource: AnyResource, req: EngineRequest): Prom
   // filters, which only match rows), so reject the request loudly.
   const excluded = resource.model.serializationProfile?.exclude;
   if (excluded && excluded.length > 0) {
-    const referenced = [
-      ...(spec.groupBy ?? []),
-      ...(spec.aggregations ?? []).map((agg) => agg.field),
-    ];
+    const referenced = [...(spec.groupBy ?? []), ...spec.aggregations.map((agg) => agg.field)];
     const blocked = referenced.find((field) => excluded.includes(field));
     if (blocked !== undefined) {
       throw new AggregationException(
