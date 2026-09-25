@@ -59,11 +59,17 @@ explicitly. Namespace, visibility, partition, origin, path, canonical query, and
 optional decorator `key` are hashed with unambiguous boundaries. A custom key
 cannot replace the route or partition. Programmatic values have a separate key
 space; their tags and whole-scope invalidation still reach routes in that scope.
-A route entry holds the value the route sent, already parsed by its `response`
-schema, and a hit is sent without parsing it again. Change `namespace` (or
-invalidate the affected scopes) when deploying a tightened or incompatible
-response schema or cache policy; otherwise entries stored under the earlier
-schema are served until they expire.
+A route entry holds the response the route sent: its status, media type and
+body, after every interceptor and the route's `response` schema. A hit replays
+it without running the handler or parsing again; interceptors outside
+`CacheInterceptor` (global ones registered before `CacheModule`'s) receive the
+replayed `Response`, and a value they return instead of a `Response` is
+ignored, so a hit sends exactly what the miss that stored it sent. Entries carry
+a format version: an entry in another format, such as the handler's raw result
+earlier releases stored, is a miss. Change `namespace` (or invalidate the
+affected scopes) when deploying a tightened or incompatible response schema or
+cache policy; otherwise entries stored under the earlier schema are served until
+they expire.
 
 `ttl` is seconds, default 30; zero bypasses caching. Labels/partitions are nonempty
 strings of at most 2048 UTF-8 bytes; at most 32 tags are allowed per entry. Invalid
@@ -107,24 +113,28 @@ Applications needing retries should enqueue their own durable post-commit work.
 
 ## Replay and failure boundaries
 
-Only bounded JSON values are stored: by default at most 64 KiB (configurable
-`maxBytes`, hard maximum 1 MiB), 32 levels and 10,000 visited values. Cached hits
-are independent JSON snapshots. Streams, `Response` objects, class instances,
-accessors, cycles, nonfinite numbers and function-bearing objects are bypassed.
-Cookie-setting output, `Cache-Control: private/no-store`, declared redirects and
-non-200 responses are bypassed. This includes response-header decorators.
-The cache stores handler values, not response headers; routes must not depend on
-per-request header side effects in a skipped handler. Middleware wrapping the
+Only bounded bodies are stored: a route's JSON or text response of at most
+64 KiB by default (configurable `maxBytes`, hard maximum 1 MiB), whose JSON
+value has at most 32 levels and 10,000 visited values; programmatic values have
+the same bounds. Cached hits are independent snapshots. A handler (or an
+interceptor) returning a `Response`, streams, events, native bodies, class
+instances, accessors, cycles, nonfinite numbers and function-bearing objects are
+bypassed. Cookie-setting output, `Cache-Control: private/no-store`, declared
+redirects and non-200 responses are bypassed. This includes response-header
+decorators. A hit replays the status, `Content-Type` and body; the route's
+`@Header` decorators apply again, but headers the skipped handler set per
+request do not, so routes must not depend on them. Middleware wrapping the
 pipeline still runs and must keep cookie/session work outside cacheable handlers.
 
 Never cache passwords, credentials, session secrets or other private
 authentication material, even in a private partition. Common secret field names
 are rejected defensively; no generic cache can recognize every application
-secret. Use `shouldCache(value)` for an additional domain allowlist, or omit
-`@CacheResponse` entirely from sensitive routes. The same checks run on reads.
+secret. Use `shouldCache(value)` for an additional domain allowlist (a route
+entry passes the body it sends, JSON-decoded), or omit `@CacheResponse`
+entirely from sensitive routes. The same checks run on reads.
 
 Store or generation-read failure means a miss; a read failure bypasses filling
-for that request. Cache write failure returns the original handler result. Loader
+for that request. Cache write failure still sends the route's response. Loader
 errors propagate. Each absorbed failure goes to the application's error reporter
 with edge `'cache'` and the operation (`read`, `write`, `invalidate` or `scope`)
 as its source, so an unreachable store or a missing KV binding is logged, or

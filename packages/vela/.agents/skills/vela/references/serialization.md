@@ -3,7 +3,7 @@
 A route's `response` schema shapes what it sends: `@Get({ response: PublicUser })`
 parses the handler's final result (after interceptors) through the schema, so a
 stripping object schema removes fields such as a stored password, and
-`@CacheResponse` stores the parsed value, never the stripped fields, and sends a hit without parsing again, so change the cache `namespace` after tightening `response`. The whole
+`@CacheResponse` stores the response the route sent, never the stripped fields, and replays it on a hit without parsing again, so change the cache `namespace` after tightening `response`. The whole
 result is parsed: use `z.array(item)` for arrays and a schema for envelopes.
 Standard Schema, `parse`/`parseAsync` parsers and `defineDto` descriptors work;
 async refinements and transforms run once (`parseAsync` first). A result the

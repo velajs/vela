@@ -160,7 +160,7 @@ A handler function reads the metadata of the method it is: the method a decorato
 | `ParseBoolPipe` | `()` | only `'true'`/`'false'` |
 | `ParseUUIDPipe` | `({ version?: '3'\|'4'\|'5' })` | UUID validation |
 | `ParseEnumPipe` | `(enumType)` | value must be in the enum |
-| `ParseArrayPipe` | `({ separator?, optional? })` | split + trim (default sep `,`) |
+| `ParseArrayPipe` | `({ separator?, optional? })` | split + trim (default sep `,`); a repeated query key already arrives as an array |
 | `DefaultValuePipe` | `(defaultValue)` | fill `undefined`/`null` |
 | `RequiredPipe` | `()` | throw on `undefined`/`null`/`''` |
 | `ValidationPipe` | `(schema?)` | Standard Schema, parser, or `defineDto` descriptor; issues become 400 |

@@ -39,18 +39,21 @@ the same rule with `readJsonBody(c)`.
 A route opts into a form body per route, with bounded parsing after guards:
 `@Post({ body: { multipart: limits } })` or `body: { form: limits }` (a
 `defineRoute` contract takes `multipart:` or `form:`). Such a route accepts only
-that media type. Limits are `maxBytes`, `maxFields`, `maxFieldBytes` and, for
+that media type, and reads its body after guards and before the handler whether
+or not a parameter reads it. Limits are `maxBytes`, `maxFields`, `maxFieldBytes` and, for
 multipart, `maxFiles` and `maxFileBytes`. URL-encoded defaults are 1 MiB
 encoded bytes, 100 text entries and 64 KiB per text entry (including its UTF-8
 name); multipart defaults to one file of 1 MiB, the same text limits, and a
 body of `maxFiles × maxFileBytes` plus 1 MiB. Repeated entries count
-individually. The route's `maxBytes` replaces the application's body limit for
-that route (a `streamingOverrides` entry still takes precedence), so the
-framework boundary and the route agree. A body whose `Content-Length` exceeds
-the route's limit answers 413 before guards; any other body is counted as it is
-read, after guards, and cancelled at the limit, so nothing is buffered before
-guards whichever code reads it. Every part is measured before schema
-validation. Size/count violations return 413 and a wrong media type returns 415.
+individually. The route's own `maxBytes` replaces the application's body limit
+for that route (a matching `streamingOverrides` entry still takes precedence),
+so the framework boundary and the route agree; a default `maxBytes` never
+exceeds a body limit the application configures. A body whose `Content-Length`
+exceeds the limit answers 413 before guards; any other body is counted as it is
+read, after guards, and cancelled at the limit, also under a matching
+`streamingOverrides` entry, so the framework buffers nothing before guards.
+Middleware that reads such a body reads it when it runs, within the same limit.
+Every part is measured before schema validation. Size/count violations return 413 and a wrong media type returns 415.
 When a whole-body schema describes the form's fields (it converts to JSON
 Schema), unknown fields, duplicate scalar fields, and wrong text/file kinds
 return 400. Without one — `@Body()` without a schema, only named
@@ -66,7 +69,8 @@ HTTP requests run in this order:
 
 1. framework body/query limits and route middleware;
 2. global guards by phase, then controller and method guards;
-3. parameter extraction and pipes;
+3. the request values the route declares (schemas and body), then parameter
+   extraction and pipes;
 4. interceptors;
 5. the controller handler.
 

@@ -90,13 +90,16 @@ The options are `response`, `status`, `format`, `contentType`, `validate` and
 `body`, plus the route `name`. A handler whose return type does not match
 `response` fails to compile. The route parses the final result, after
 interceptors, through `response`: a stripping schema removes undeclared fields,
-and a result the schema rejects answers 500; `@CacheResponse` stores the
-parsed value and sends a hit without parsing it again. With `response`, JSON is the default format, including strings
-and `null`; `format: 'text'` sends a string. Without `response` or `format`, the
-route sends strings as text and other values as JSON, like a route without
-options. A handler may always return a ready `Response`. Invalid input returns
-400, after guards. `validate: false` keeps the schema for documentation and
-types without parsing the result.
+and a result the schema rejects answers 500. `@CacheResponse` stores the
+response the route sent and replays it on a hit, without running the handler or
+parsing again ([caching](../caching.md)). With `response`, JSON is the default
+format, including strings and `null`; `format: 'text'` sends a string. Without
+`response` or `format`, the route sends strings as text and other values as
+JSON, like a route without options. A handler may always return a ready
+`Response`. Invalid input returns 400, after guards. `validate: false` keeps the
+schema for documentation and types without parsing the result. `@Redirect` and
+`@Sse` decide how a route responds, so they combine with options that declare
+only the request (`body`, `name`), not with response options.
 
 A decorator with `response` or `format` checks its handler's result, so its
 type is `RouteMethodDecorator<Result>` rather than `MethodDecorator`: annotate
@@ -110,34 +113,42 @@ also when one handler serves several routes. Responses, OpenAPI and the
 response cache read the status the same way. A controller that routes a method
 it inherits unchanged (`Get()(Sub.prototype, 'list', descriptor)`) without
 options of its own serves it with those of the nearest ancestor's route for the
-same verb; an override uses only its own.
+same verb, and reads the parameters the ancestor declares on the method; an
+override uses only its own.
 
 `@Body()` without a schema validates a parameter class that carries a static
 Standard Schema (`class CreateUser { static schema = CreateUserSchema }`, or a
 class that is itself a Standard Schema), with no global pipe; a named
-`@Body('user') user: CreateUser` validates that member. It validates once, in
-pipe order: a `ValidationPipe` validates it where it sits (the parameter's own,
-or one among the global, controller and method pipes), after the pipes before
-it (a trimming pipe, say); without one, the route validates it right after the
-global, controller and method pipes, before the parameter's own. Named descriptors work too: `const BodyDto = defineDto(schema, { name:
+`@Body('user') user: CreateUser` validates that member. It validates as the body
+is read, before any pipe, unless a `ValidationPipe` (or a subclass) applies to
+the parameter: its own, or a global, controller or method pipe. Then the body
+is left to that pipe, which validates it at its place in pipe order, as in Nest,
+after the pipes before it (a trimming pipe, say). Every `ValidationPipe` that
+applies validates, as in Nest: the parameter's own beside a global one validates
+twice, which fails for a schema whose transform does not accept its own output.
+A validation pipe of your own that is not a `ValidationPipe` (one that parses
+`metatype.schema`, say) runs after the class validated the body, on the
+validated value; extend `ValidationPipe` instead, so the body is left to it.
+Named descriptors work too: `const BodyDto = defineDto(schema, { name:
 'CreateUser' })`, then `@Body(BodyDto)`; OpenAPI then references a named
 component. Erased TypeScript interfaces cannot supply schemas.
 
 `@Query()` parses repeated keys (`?tag=a&tag=b`) and keys its schema declares as
-arrays to arrays, even when a key is sent once; every other key stays a string,
-so a repeated scalar reaches its schema as an array and fails validation. The
-schema is the route's, the parameter's own, or its class's static schema (which
-a global `ValidationPipe` validates). Without a schema, a named parameter
-follows its declared type: `@Query('sort') sort: string` (or `number`,
-`boolean`) receives the first value, `@Query('tags') tags: string[]` without a
-pipe always receives an array, and a parameter typed `unknown` or a union
-receives an array for a repeated key. `string | undefined` and `string | null`
-are unions too; declare the parameter optional (`sort?: string`) to receive the
-first value. Declare a schema for security-relevant query values. OpenAPI
-documents array query parameters with `style: form` and `explode: true`, and an
-`unknown` or union parameter without a schema as one value or repeated keys
-(`oneOf` a string or a string array), which `vela client generate` types
-`string | Array<string>`.
+arrays (in any member of a union schema) to arrays, even when a key is sent
+once; every other key stays a string, so a repeated scalar reaches its schema
+as an array and fails validation. The schema is the route's, the parameter's
+own, or its class's static schema (which a global `ValidationPipe` validates).
+Without a schema, a named parameter follows its declared type:
+`@Query('sort') sort: string` (or `number`, `boolean`) receives the first
+value, `@Query('tags') tags: string[]` without a pipe always receives an array,
+and any other parameter — typed `unknown` or a union, or an array a pipe such as
+`ParseArrayPipe` splits — receives one value, or an array for a repeated key.
+`string | undefined` and `string | null` are unions too; declare the parameter
+optional (`sort?: string`) to receive the first value. Declare a schema for
+security-relevant query values. OpenAPI documents array query parameters with
+`style: form` and `explode: true`, and the parameters that receive one value or
+repeated keys as `oneOf` a string or a string array, which
+`vela client generate` types `string | Array<string>`.
 
 ### Shared `defineRoute` contracts
 
@@ -183,15 +194,22 @@ export class UsersController {
 
 A contract takes `params`, `query` and `body` schemas, one of `json`, `form` or
 `multipart` for the body's encoding and limits, and the response options above.
-The route validates each group once per request, before any pipe; `@Body()`,
-`@Query()` and `@Param()` (whole or named) read the validated values, which
-pipes receive marked `ArgumentMetadata.validated`. A `ValidationPipe` built
-without a schema leaves them as is, whatever the pipes before it returned, also
-for a parameter class carrying a static schema. The decorator's method
-must match the contract's, and the application fails to start when the
-contract's `path` is not the path the route serves (global prefix and version
-included), or when the route adds `@HttpCode`: `ContractApp` clients are typed
-with the contract's `status`, so declare it there.
+Declared means enforced: the route validates each group it declares once per
+request, after guards and before the handler, whether or not a parameter reads
+it, and checks a declared body's media type and limits the same way.
+`@Body()`, `@Query()` and `@Param()` (whole or named) read the validated
+values. Pipes still run on them, but a `ValidationPipe` does not validate them
+again: the route is the validator for the groups it declares, also for a
+parameter class carrying a static schema. The application fails to start when
+a parameter declares its own schema for a declared group, when a named
+parameter reads a key the group's schema does not declare, and when a `params`
+schema leaves out a path parameter the route serves (a controller prefix's
+included); a schema that cannot describe its keys as JSON Schema, or that
+passes undeclared keys through, is not checked. The decorator's method must
+match the contract's, and the application fails to start when the contract's
+`path` is not the path the route serves (global prefix and version included),
+or when the route adds `@HttpCode`: `ContractApp` clients are typed with the
+contract's `status`, so declare it there.
 
 Without code generation, `ContractApp` types an `hc` client from contracts:
 
@@ -314,15 +332,23 @@ the whole encoded body — `maxFiles × maxFileBytes` plus 1 MiB for text fields
 and multipart framing. Repeated entries count individually. Limits must be
 positive safe integers; exceeding one returns 413: every entry is measured
 before any field is interpreted, so too many fields or files answer 413 before
-an unknown field answers 400. A body whose `Content-Length` exceeds `maxBytes`
-answers 413 before guards; any other body is read after guards, counting the
-bytes actually received and cancelling at `maxBytes`. Nothing is buffered before
-guards or beyond the limit, whichever code reads the body. The route's `maxBytes` replaces `security.body.maxBytes` for that route,
-so an upload route needs no separate override; `security.body.streamingOverrides`
-still take precedence. Parsing buffers a bounded body and creates native files;
-streaming storage is a separate concern. A JSON route can bound its body with
-`body: { json: { maxBytes: 4096 } }`. OpenAPI exports resolved limits as
-`requestBody['x-vela-body-limits']`.
+an unknown field answers 400. A route that declares a body reads it after
+guards and before the handler, whether or not a parameter reads it, so the media
+type and every limit apply to each request. A body whose `Content-Length`
+exceeds `maxBytes` answers 413 before guards; any other body is read after
+guards, counting the bytes actually received and cancelling at `maxBytes`, also
+when a `security.body.streamingOverrides` entry matches the route (the entry's
+`maxBytes` then applies). The framework never buffers such a body before guards
+or beyond the limit; middleware that reads the body reads it when it runs, within
+the same limit. The route's own `maxBytes` replaces `security.body.maxBytes` for
+that route, so an upload route needs no separate override; a default `maxBytes`
+never exceeds a `security.body.maxBytes` (or `bodyLimit`) the application sets,
+so declare `maxBytes` on a route that must accept more. Parsing buffers a
+bounded body and creates native files; streaming storage is a separate concern.
+A JSON route can bound its body with `body: { json: { maxBytes: 4096 } }`; the
+route then parses it after guards (415 for other media types, 400 when
+malformed), and `@RawBody()` or `c.req` can still read the bytes. OpenAPI
+exports resolved limits as `requestBody['x-vela-body-limits']`.
 
 URL-encoded forms carry text fields and text arrays; files require multipart.
 The CLI emits `formEncodings` for form routes, alongside the full `AppType`

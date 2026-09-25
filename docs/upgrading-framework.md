@@ -96,8 +96,14 @@ are removed:
   `body: { multipart: limits }`, `application/x-www-form-urlencoded` with
   `body: { form: limits }` and `application/json` with `body: { json: { maxBytes } }`.
   Multipart now defaults to one file and a body of `maxFiles × maxFileBytes` plus
-  1 MiB, and a route's `maxBytes` replaces the application body limit for that
-  route, so upload routes no longer need a `streamingOverrides` entry.
+  1 MiB, and a route's own `maxBytes` replaces the application body limit for
+  that route, so upload routes no longer need a `streamingOverrides` entry;
+  remove such entries, which still take precedence. A default `maxBytes` never
+  exceeds a `security.body.maxBytes` (or `bodyLimit`) the application sets:
+  declare `maxBytes` on an upload route that must accept more. A route that
+  declares a body reads it after guards and before the handler, even when no
+  parameter reads it, so a `body: { json }` route answers 415 for other media
+  types and 400 for malformed JSON also when only `@RawBody()` reads it.
 - Replace `format: 'binary' | 'stream' | 'response'` endpoint definitions with
   the same `format` and `contentType` route options.
 - Replace `@Serialize(dto)` and `SerializerInterceptor` with
@@ -118,36 +124,50 @@ where clients expect 204, and `@HttpCode(200)` on POST routes that must keep 200
 
 Without `response` or `format`, a route still sends strings as text and other
 values as JSON. The route parses its result through `response` after
-interceptors, and `@CacheResponse` stores that parsed value, so a cache store
-never holds fields the schema strips. Route entries move to a new store address,
-so entries an earlier release stored with the handler's raw result miss once
-after the upgrade, also while older isolates still write them. A hit is sent
-without parsing again: when you tighten a `response` schema, change the cache
-`namespace` (or invalidate the affected scopes) for it to apply to entries
-stored before their TTL expires.
+interceptors. `@CacheResponse` stores the response the route sent — its status,
+media type and body, after every interceptor and the schema — so a cache store
+never holds fields the schema strips, and a hit replays that response without
+running the handler or parsing again. Interceptors outside `CacheInterceptor`
+receive the replayed `Response` on a hit, and a value they return instead is
+ignored. Route entries carry a new address and format version, so entries an
+earlier release stored with the handler's raw result miss once after the
+upgrade, also while older isolates still write them. When you tighten a
+`response` schema, change the cache `namespace` (or invalidate the affected
+scopes) for it to apply to entries stored before their TTL expires.
 
 `@Query()` without a schema returns repeated keys (`?tag=a&tag=b`) as arrays
 instead of the first value, and keys a query schema declares as arrays arrive as
 arrays even when sent once; a repeated scalar fails its schema. A named
 parameter without a schema follows its declared type: `string`, `number` and
 `boolean` parameters still receive the first value, an array parameter without
-a pipe always receives an array, and an `unknown` or union parameter receives
-an array for a repeated key. `string | undefined` and `string | null` are
-unions: declare such a parameter optional (`role?: string`) to keep the first
-value. OpenAPI documents an `unknown` or union parameter as one value or
-repeated keys, and `vela client generate` types it `string | Array<string>`.
-Declare a schema, or `ParseArrayPipe`, for values that may be one or many.
+a pipe always receives an array, and an `unknown` or union parameter, or an
+array a pipe such as `ParseArrayPipe` splits, receives an array for a repeated
+key. `string | undefined` and `string | null` are unions: declare such a
+parameter optional (`role?: string`) to keep the first value. OpenAPI documents
+the parameters that receive one value or repeated keys as such, and
+`vela client generate` types them `string | Array<string>`. Declare a schema,
+or `ParseArrayPipe`, for values that may be one or many.
 
 `@Body()` with no schema validates a parameter class carrying a static Standard
 Schema even without a global pipe, so bodies such a class rejects now answer
-400; a named `@Body('item') item: Item` validates the `item` member. The value
-is validated once, in pipe order: by a `ValidationPipe` where one sits, after
-the pipes before it, or, without one, right after the global, controller and
-method pipes. A `defineRoute` group is validated before any pipe and reaches
-pipes marked `ArgumentMetadata.validated`; a `ValidationPipe` built without a
-schema leaves it as is, whatever the pipes before it returned. A global
-`ValidationPipe` still validates body parameters registered without a route
-reader.
+400; a named `@Body('item') item: Item` validates the `item` member. It
+validates as the body is read, before any pipe, unless a `ValidationPipe` (or a
+subclass) applies to the parameter; then that pipe validates it in pipe order,
+as in Nest, and every `ValidationPipe` that applies validates. A validation
+pipe of your own that is not a `ValidationPipe`, such as one parsing
+`metatype.schema`, now runs on the value the class already validated, which
+fails for schemas whose transforms do not accept their own output: make it
+extend `ValidationPipe`, or remove it. A global `ValidationPipe` still validates
+body parameters registered without a route reader.
+
+A route validates every request group its `defineRoute` contract declares —
+`params`, `query` and `body`, with the body's encoding and limits — after guards
+and before the handler, whether or not a parameter reads it, as `@Endpoint` did.
+`@Body()`, `@Query()` and `@Param()` read the validated values, and a
+`ValidationPipe` does not validate them again. The application fails to start
+when a `params` schema leaves out a path parameter the route serves, when a
+named parameter reads a key its group's schema does not declare, and when a
+parameter declares its own schema for a declared group.
 
 Method decorators with `response` or `format` are `RouteMethodDecorator<Result>`
 values that check the handler's result; they are no longer assignable to
