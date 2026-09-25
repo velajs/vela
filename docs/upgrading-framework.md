@@ -327,9 +327,19 @@ and `CedarGuard`), whoever registers them: an application's own
 `{ provide: APP_GUARD, useClass: TenantGuard }` is skipped there too. Other global
 guards still run there. An application guard that extends an integration guard
 inherits `skippable`; declare `static override readonly skippable = false` on it to
-keep it running there. Import order no longer decides whether authentication runs
-before throttling. The RPC `authorize` policy runs after global authentication and
-tenant guards, so it can read the trusted identity.
+keep it running there.
+
+An application's own global guard runs in the phase its class declares with
+`static readonly phase`, else in `feature`; 1.30.0 ran every global guard in
+registration order. Declare `static readonly phase = 'authenticate'` on a custom
+global authentication guard, such as an `APP_GUARD` JWT guard, and `'tenant'` or
+`'authorize'` on a custom global tenant or authorization guard. Without it, an
+authentication guard runs after the installed `TenantGuard`, `PermissionGuard`,
+`RolesGuard` and `CedarGuard` and after the RPC `authorize` policy, so they run
+without the identity it publishes, and it runs in import order relative to
+`ThrottlerGuard`. With the phase declared, import order no longer decides whether
+authentication runs before throttling, and the RPC `authorize` policy, which runs
+after global authentication and tenant guards, can read the trusted identity.
 
 `ThrottlerGuard` publishes its decisions under the `RATE_LIMIT` request-context
 key instead of the `rateLimit` Hono variable, one per throttler name: read
