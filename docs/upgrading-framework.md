@@ -7,18 +7,23 @@ databases require CRUD 1.25.0 with compatible adapters. The module contract, HTT
 error and guard, Cloudflare adapter, realtime, feature surface, and CLI and testing
 sections cover core 1.31.0 and the integrations released with it. The schema-first
 routes section and the paragraphs marked *1.32.0* cover core 1.32.0 and the
-integrations released with it (Cloudflare, CLI, CRUD, mail and Studio). Update the core
-and affected integrations together; consult each package's changelog for its version.
-Published dependency ranges alone do not keep them in step: the 1.31.0 integrations
-declare `^1.31.0` peer ranges, which accept core 1.32.0 without a warning. Install
-core 1.32.0 with `@velajs/cli` 1.32.0, `@velajs/cloudflare` 1.32.0, `@velajs/crud`
-1.32.0, `@velajs/mail` 1.32.0, `@velajs/storage` 1.31.1, `@velajs/testing` 1.31.1 and
-`@velajs/studio` 1.32.0 (with `@velajs/studio-host` 1.24.0 and `@velajs/studio-ui`
-1.25.0): `@velajs/crud` 1.31.0 calls the removed `@ApiResponse(status, options)` form
-and fails at import, Studio and CLI 1.31.0 read the removed
-`ModuleDescription.isGlobal`, and the storage controller's POST routes in
-`@velajs/storage` 1.31.0 answer 201. A prepared version in this repository becomes
-installable only after publication to npm.
+integrations released with it (Cloudflare, CLI, CRUD, mail, storage, testing and
+Studio). Update the core and affected integrations together; consult each package's
+changelog for its version. Published dependency ranges alone do not keep them in
+step: the 1.31.0 integrations declare `^1.31.0` peer ranges, which accept core 1.32.0
+without a warning. Install core 1.32.0 with `@velajs/cli` 1.32.0, `@velajs/cloudflare`
+1.32.0, `@velajs/crud` 1.32.0, `@velajs/mail` 1.32.0, `@velajs/storage` 1.31.1,
+`@velajs/testing` 1.32.0 and `@velajs/studio` 1.32.0 (with `@velajs/studio-host`
+1.24.0 and `@velajs/studio-ui` 1.25.0): `@velajs/crud` 1.31.0 calls the removed
+`@ApiResponse(status, options)` form and fails at import, Studio and CLI 1.31.0 read
+the removed `ModuleDescription.isGlobal`, and OpenAPI and `vela client generate`
+document the POST routes of `@velajs/storage` 1.31.0 as 201 while they answer 200.
+In the other direction, the integrations released with core 1.32.0, storage 1.31.1
+included, declare `^1.32.0` core peer ranges, and `@velajs/testing` 1.32.0 would
+silently not apply `overrideProvider()` or `useMocker` on core 1.31. Studio's
+optional Cloudflare and CRUD peer ranges also become `^1.32.0`, and Cloudflare's
+optional storage and testing peer ranges `^1.31.1` and `^1.32.0`. A prepared
+version in this repository becomes installable only after publication to npm.
 
 ## Import paths
 
@@ -1065,8 +1070,9 @@ option. See [tooling](tooling.md) and [testing](testing.md).
   `DurableObject` subclass, and `vela cf sync` binds a gateway binding that no
   class serves only to a `VelaWebSocketDurableObject` class.
 - A module class that implements `NestModule` is built, and its `configure()`
-  called, after the whole graph is registered and, in `@velajs/testing`, after
-  provider overrides and `useMocker` apply.
+  called, after the whole graph is registered and, in `@velajs/testing` 1.32.0,
+  after provider overrides and `useMocker` apply. That testing release requires
+  core 1.32.0: on core 1.31 its overrides and `useMocker` would not apply.
 
 ## Optional transports and multiple databases
 
