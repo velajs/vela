@@ -211,8 +211,15 @@ Every HTTP failure renders through `renderHttpError`. Clients see these changes:
   and oversized bodies a JSON 413 (`payload_too_large`), instead of Hono's plain text.
   Global exception filters receive these rejections, as in Nest, so a catch-all filter that
   wraps every error also shapes the 404; they are still not reported.
-- A Hono `HTTPException` below 500 answers `{ error: { code, message } }` instead of its
-  plain-text response, unless it was built with its own `res`.
+- A Hono `HTTPException` with a 4xx status answers `{ error: { code, message } }`,
+  unless it was built with its own `res`. From middleware or a raw Hono route this
+  replaces its plain-text response; thrown from a controller handler, it now answers
+  its 4xx instead of a redacted 500.
+- A Hono `HTTPException` with another status below 500 and no `res`, such as
+  `new HTTPException(302)` from raw Hono middleware, a raw Hono route or a Vela
+  middleware, is reported and answers a redacted 500 instead of its own response.
+  One built with its own `res` still sends it, but the raw Hono edge now reports it.
+  Redirect with `c.redirect()` or a returned `Response`.
 - An exception filter's plain result is sent with `getErrorStatus(error)`, the
   exception's status (`HttpException.getStatus()` or `VelaError.status`) when it is
   400–599, else 500, instead of 200. Return `{ status, body }` to choose the
