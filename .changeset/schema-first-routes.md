@@ -14,6 +14,8 @@ Routes read JSON by default (415 for other media types). A route opts into a for
 
 `defineSerializer` returns a Standard Schema from the domain input to the wire output, so it serves as a route's `response` and documents its output schema. `standardJsonSchema` and `zodToJsonSchema` take `libraryOptions` for the schema library's converter.
 
+The root entry exports the route option types for wrappers (`HttpMethodDecorator`, `RouteResponseOptions`, `RouteBodyOptions`, `RouteJsonBody`, `RouteFormBody`, `RouteMultipartBody`, `RouteHandlerResult` and `RouteSchemaResult`), and `@velajs/vela/contract` exports the contract types (`RouteContract`, `RouteContractMethod`, `ContractInput`, `ContractOutput`, `ContractEndpoint`, `ContractSchema`, `ContractStatus` and `ContractFormEncoding`).
+
 The minimal `VelaFactory.create()` Worker (one controller, bundled by Wrangler with `--minify`) measures 137,565 bytes raw and 46,635 bytes gzipped in this release, against 130,315 and 43,658 for 1.31.0, mostly route contracts and the application context, within its unchanged size budget.
 
 **Behavior change:** a routed inherited method now receives the parameters its ancestor declares on the method, and serves the ancestor route's options when it declares none, instead of receiving the Hono context and sending its result without them.
