@@ -136,6 +136,12 @@ export interface HostInvocation<T> {
   readonly seed?: (scope: Container) => void;
   /** How a successful result is sent, such as a streamed response body. */
   readonly transmit?: (value: T) => Transmission<T> | undefined;
+  /**
+   * Whether `error` is the platform steering the invocation rather than a
+   * failure of it, such as the Workflows engine pausing a run: it is rethrown
+   * as it is, never reported or handed to an exception filter.
+   */
+  readonly passthrough?: (error: unknown) => boolean;
 }
 
 /** What a {@link HostInvoker} runs its invocations against. */
@@ -293,6 +299,7 @@ export class HostInvoker {
       });
       return settlement.success(value);
     } catch (error) {
+      if (invocation.passthrough?.(error) === true) throw error;
       reporter.report(error, report);
       return settlement.failure(error, { filters, context, reporter, report });
     }

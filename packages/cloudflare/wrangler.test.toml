@@ -62,6 +62,12 @@ name = "vela-signups"
 binding = "SIGNUP_WORKFLOW"
 class_name = "SignupWorkflow"
 
+# A Vela Workflow that sleeps between steps, so an instance can be paused mid-run.
+[[workflows]]
+name = "vela-naps"
+binding = "NAP_WORKFLOW"
+class_name = "NapWorkflow"
+
 # A Vela service entrypoint, bound to this Worker with the props its calls carry.
 [[services]]
 binding = "BILLING"

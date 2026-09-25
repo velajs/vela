@@ -11,6 +11,7 @@ import { ENTRYPOINT_PROPS, VelaEntrypoint } from '../../entrypoints';
 import { VelaWorkflow, type WorkflowParams } from '../../workflows';
 import {
   APP_EXCEPTION_HANDLER,
+  Catch,
   Controller,
   Get,
   Inject,
@@ -21,9 +22,11 @@ import {
   Param,
   Post,
   Scope,
+  UseFilters,
   UseGuards,
   defineProvider,
   type CanActivate,
+  type ExceptionFilter,
   type VelaEnv,
 } from '@velajs/vela';
 import type { RuntimeAdapter } from '@velajs/vela/module-kit';
@@ -381,6 +384,33 @@ export class SignupHost {
   }
 }
 
+/** Settles a run with 'swallowed', whatever it failed with. */
+@Catch()
+class SwallowEverything implements ExceptionFilter {
+  catch(): string {
+    return 'swallowed';
+  }
+}
+
+/**
+ * The NapWorkflow body: a real sleep between two steps, so an instance can be
+ * paused in the middle; its catch-all filter must not turn the pause into a
+ * completed run.
+ */
+@UseFilters(SwallowEverything)
+@Injectable()
+export class NapHost {
+  async run(
+    _event: WorkflowEvent<{ label: string }>,
+    step: WorkflowStep,
+  ): Promise<{ first: string; second: string }> {
+    const first = await step.do('first', async () => 'a');
+    await step.sleep('nap', '2 seconds');
+    const second = await step.do('second', async () => 'b');
+    return { first, second };
+  }
+}
+
 /** Creates SignupWorkflow instances through a typed Workflow binding reference. */
 const signups = workflow<WorkflowParams<SignupHost>>({ binding: 'SIGNUP_WORKFLOW' });
 
@@ -479,6 +509,8 @@ class TestModule {}
 const app = defineCloudflareApp(TestModule, { adapters: [reportingAdapter] });
 
 export class SignupWorkflow extends VelaWorkflow(app, SignupHost) {}
+
+export class NapWorkflow extends VelaWorkflow(app, NapHost) {}
 
 export class Billing extends VelaEntrypoint(app, BillingHost, {
   rpc: ['charge', 'leak', 'denied', 'reported'],

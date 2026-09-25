@@ -12,6 +12,7 @@ interface WorkflowInstanceIntrospector {
       disableRetryDelays(steps?: { name: string }[]): Promise<void>;
     }) => Promise<void>,
   ): Promise<WorkflowInstanceIntrospector>;
+  waitForStepResult(step: { name: string; index?: number }): Promise<unknown>;
   waitForStatus(status: InstanceStatus['status']): Promise<void>;
   getOutput(): Promise<unknown>;
   getError(): Promise<{ name: string; message: string }>;
@@ -40,6 +41,24 @@ async function introspected(
   } finally {
     await instance.dispose();
   }
+}
+
+/** The status `instance` settles in once the engine handled a pause request. */
+async function statusAfterPause(instance: WorkflowInstance): Promise<InstanceStatus> {
+  const unsettled = new Set<InstanceStatus['status']>([
+    'queued',
+    'running',
+    'waiting',
+    'waitingForPause',
+  ]);
+  for (let attempt = 0; attempt < 250; attempt += 1) {
+    // eslint-disable-next-line no-await-in-loop -- Polls one instance.
+    const status = await instance.status();
+    if (!unsettled.has(status.status)) return status;
+    // eslint-disable-next-line no-await-in-loop -- Polls one instance.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error('The instance did not settle after the pause request.');
 }
 
 async function ledger(): Promise<{ users: string[]; charges: string[] }> {
@@ -117,4 +136,25 @@ describe('VelaWorkflow under workerd', () => {
     // Reported first, through the Worker application's ExceptionHandler.
     expect(await env.BILLING.reported()).toContain('signup refused: secret policy detail');
   });
+
+  it('lets the engine pause a run: its catch-all filter and the reporter never see the pause', async () => {
+    // No disabled sleeps: the instance is paused during its real sleep.
+    const instance = await pool.introspectWorkflowInstance(env.NAP_WORKFLOW, 'nap');
+    try {
+      const nap = await env.NAP_WORKFLOW.create({ id: 'nap', params: { label: 'mid-run' } });
+      await instance.waitForStepResult({ name: 'first' });
+      await nap.pause();
+      // The pause reached the engine: had the filter caught it, the run would
+      // be complete with 'swallowed' and could never resume.
+      expect(await statusAfterPause(nap)).toMatchObject({ status: 'paused' });
+      await nap.resume();
+      await instance.waitForStatus('complete');
+      // The run resumed where it paused and finished its steps.
+      expect(await instance.getOutput()).toEqual({ first: 'a', second: 'b' });
+    } finally {
+      await instance.dispose();
+    }
+    const reported = await env.BILLING.reported();
+    expect(reported.filter((message) => message.startsWith('Aborting engine'))).toEqual([]);
+  }, 30_000);
 });

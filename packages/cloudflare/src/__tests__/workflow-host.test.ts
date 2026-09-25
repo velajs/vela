@@ -51,8 +51,13 @@ const reporting: RuntimeAdapter = {
   },
 };
 
-/** The Workflows engine's step, as far as these runs use it: `do` runs the callback once. */
-function engineStep(): WorkflowStep & { readonly done: string[] } {
+/**
+ * The Workflows engine's step, as far as these runs use it: `do` runs the
+ * callback once, and `sleep` returns at once unless the run passes its own.
+ */
+function engineStep(
+  sleep: WorkflowStep['sleep'] = async () => {},
+): WorkflowStep & { readonly done: string[] } {
   const done: string[] = [];
   return {
     done,
@@ -64,7 +69,7 @@ function engineStep(): WorkflowStep & { readonly done: string[] } {
         { step: { name, count: 1 }, attempt: 1, config: {} },
       ]);
     },
-    sleep: async () => {},
+    sleep,
     sleepUntil: async () => {},
     async waitForEvent() {
       throw new Error('no events in this test');
@@ -321,6 +326,58 @@ describe('VelaWorkflow', () => {
         context: { edge: 'workflow', source: 'RecoveringHost.run', kind: 'cf:workflow' },
       },
     ]);
+  });
+
+  it('passes the engine aborts that pause or end a run through, unreported and unfiltered', async () => {
+    const caught: unknown[] = [];
+    @Catch()
+    class CatchEverything implements ExceptionFilter {
+      catch(error: unknown): string {
+        caught.push(error);
+        return 'swallowed';
+      }
+    }
+    @UseFilters(CatchEverything)
+    @Injectable()
+    class NapHost {
+      async run(_event: WorkflowEvent<{ nap: string }>, step: WorkflowStep): Promise<string> {
+        await step.sleep('nap', '1 hour');
+        return 'rested';
+      }
+    }
+    @Module({})
+    class AppModule {}
+    const app = defineCloudflareApp(AppModule, { adapters: [reporting] });
+    class Nap extends VelaWorkflow(app, NapHost) {}
+    const env = {};
+    const event: WorkflowEvent<{ nap: string }> = {
+      payload: { nap: 'short' },
+      timestamp: new Date(0),
+      instanceId: 'nap',
+      workflowName: 'naps',
+    };
+    /** A step whose sleep rejects with `error`, as the engine's does when it pauses the instance. */
+    const interrupted = (error: unknown): WorkflowStep =>
+      engineStep(async () => {
+        throw error;
+      });
+
+    // The engine pauses, restarts or terminates an instance by throwing into
+    // its run: the same error must reach it, or the run would complete.
+    for (const reason of ['User called pause', 'User called restart', 'User called terminate']) {
+      const abort = new Error(`Aborting engine: ${reason}`);
+      // eslint-disable-next-line no-await-in-loop -- One run at a time.
+      const error = await rejection(new Nap(platformContext(), env).run(event, interrupted(abort)));
+      expect(error).toBe(abort);
+    }
+    expect(caught).toEqual([]);
+    expect(await reportsOf(app, env)).toEqual([]);
+
+    // A failure of the run itself is still reported and handed to the filter.
+    const outage = new Error('clock unavailable');
+    expect(await new Nap(platformContext(), env).run(event, interrupted(outage))).toBe('swallowed');
+    expect(caught).toEqual([outage]);
+    expect((await reportsOf(app, env)).map(({ error }) => error)).toEqual([outage]);
   });
 
   it('describes its classes for tools and validates its host when defined', () => {

@@ -66,6 +66,18 @@ export type VelaWorkflowClass<Host extends WorkflowHost> = new (
 const workflowSettlement = platformSettlement(false);
 
 /**
+ * Whether `error` is the Workflows engine interrupting a run: when an instance
+ * is paused, restarted or terminated, `step.do`, `step.sleep` and a retry wait
+ * reject with an `Error('Aborting engine: ...')`, and the engine recognizes
+ * the rejection of `run()` by that message. It must reach the engine as it is.
+ */
+function isEngineAbort(error: unknown): boolean {
+  const message: unknown =
+    typeof error === 'object' && error !== null ? Reflect.get(error, 'message') : undefined;
+  return typeof message === 'string' && message.startsWith('Aborting engine:');
+}
+
+/**
  * A Workflow class (a `WorkflowEntrypoint`) whose `run(event, step)` is the
  * `run` method of `host`, an `@Injectable()` class, resolved in the Worker's
  * application for the run's environment: the same application the app's
@@ -100,6 +112,9 @@ const workflowSettlement = platformSettlement(false);
  * - A failure is reported (`edge: 'workflow'`) and rethrown as it is, so the
  *   engine applies its own semantics, including `NonRetryableError`. A scoped
  *   exception filter that catches it settles the run with what it returns.
+ * - The engine's own interruptions (an `Error('Aborting engine: ...')` that a
+ *   step rejects with when the instance is paused, restarted or terminated)
+ *   are not failures: they pass through unreported, and no filter sees them.
  * - `host` must declare `run` on its prototype; a host whose prototype
  *   defines `then()` is rejected, since an instance would be a thenable.
  */
@@ -151,6 +166,7 @@ export function VelaWorkflow<Host extends WorkflowHost>(
         args: [event, step],
         payload: event,
         settlement: workflowSettlement,
+        passthrough: isEngineAbort,
       });
     }
   }

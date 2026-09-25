@@ -133,6 +133,13 @@ thrown by a step callback that exhausted its retries fails it. A scoped
 exception filter that catches the error settles the run with what the filter
 returns instead.
 
+The engine also throws into a run to interrupt it: when an instance is paused,
+restarted or terminated, `step.do`, `step.sleep` and a retry wait reject with
+an `Error` whose message starts with `Aborting engine:`. That is not a failure
+of the run, so it passes through as it is: it is not reported and no exception
+filter sees it, and the engine pauses, restarts or ends the instance. An
+interceptor that catches errors must rethrow it too.
+
 Errors raised inside a `step.do` callback are the engine's to retry; the
 application sees only what escapes `run`.
 
