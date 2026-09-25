@@ -1,5 +1,5 @@
 import { HttpService } from '@velajs/vela/http-client';
-import { defineEndpoint, type EndpointResponseFormat } from '@velajs/vela/openapi';
+import { Get, type RouteResponseFormat } from '@velajs/vela';
 import { createHttpClientTelemetryObserver, noopTelemetry } from '@velajs/vela/observability';
 import { hc, readHttpResponse, type HttpResponse } from '@velajs/client/http';
 import type { AppType } from './generated-streams';
@@ -15,8 +15,20 @@ void decoded.then((response) => {
   const wrong: string = response.data.value;
   return [value, wrong];
 });
-const format: EndpointResponseFormat = 'stream';
-defineEndpoint({ input: z.object({}), format }).bind(() => new ReadableStream<Uint8Array>());
+const format: RouteResponseFormat = 'stream';
+class Streams {
+  @Get('/stream', { format: 'stream' })
+  stream() {
+    return new ReadableStream<Uint8Array>();
+  }
+
+  // @ts-expect-error A stream route returns a ReadableStream or a Response.
+  @Get('/wrong', { format: 'stream' })
+  wrong() {
+    return 'text';
+  }
+}
+void [format, Streams];
 const client = hc<AppType>('https://fixture.test');
 const response: Promise<HttpResponse<206>> = readHttpResponse(
   client.transfers.bytes.$get(),

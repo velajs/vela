@@ -1,36 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import {
-  VelaFactory,
-  Controller,
-  Get,
-  Post,
-  Body,
-  Module,
-  Injectable,
-  UseInterceptors,
-  Serialize,
-  SerializerInterceptor,
-} from '../index.js';
-import { defineDto, ValidationPipe } from '../validation/index.js';
+import { VelaFactory, Controller, Get, Post, Body, Module, Injectable } from '../index.js';
+import { defineDto, ValidationPipe, type SchemaOutput } from '../validation/index.js';
 
 // =============================================================================
-// Serialization: @Serialize + SerializerInterceptor
+// Response serialization: a route's `response` schema shapes what it sends
 // =============================================================================
 
-describe('Serialization', () => {
-  it('should strip fields from response via @Serialize', async () => {
-    const UserSchema = z.object({
-      id: z.number(),
-      name: z.string(),
-      password: z.string(),
-    });
+const UserSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  password: z.string(),
+});
+const UserResponseDto = defineDto(UserSchema.omit({ password: true }), {
+  name: 'UserResponseDto',
+});
 
-    const UserResponseDto = defineDto(UserSchema.omit({ password: true }), {
-      name: 'UserResponseDto',
-    });
-    type UserResponseDto = ReturnType<typeof UserResponseDto.parse>;
-
+describe('Response serialization', () => {
+  it('strips fields the response schema does not declare', async () => {
     @Injectable()
     class UserService {
       findOne() {
@@ -39,12 +26,10 @@ describe('Serialization', () => {
     }
 
     @Controller('/users')
-    @UseInterceptors(SerializerInterceptor)
     class UserController {
       constructor(private userService: UserService) {}
 
-      @Get('/me')
-      @Serialize(UserResponseDto)
+      @Get('/me', { response: UserResponseDto })
       me() {
         return this.userService.findOne();
       }
@@ -57,31 +42,17 @@ describe('Serialization', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    const res = await hono.request('/users/me');
+    const res = await app.getHonoApp().request('/users/me');
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ id: 1, name: 'Alice' });
     expect(body).not.toHaveProperty('password');
   });
 
-  it('should handle array responses', async () => {
-    const UserSchema = z.object({
-      id: z.number(),
-      name: z.string(),
-      password: z.string(),
-    });
-    const UserResponseDto = defineDto(UserSchema.omit({ password: true }), {
-      name: 'UserResponseDto',
-    });
-    type UserResponseDto = ReturnType<typeof UserResponseDto.parse>;
-
+  it('serializes every element of an array response', async () => {
     @Controller('/users')
-    @UseInterceptors(SerializerInterceptor)
     class UserController {
-      @Get()
-      @Serialize(UserResponseDto)
+      @Get({ response: z.array(UserResponseDto.schema) })
       findAll() {
         return [
           { id: 1, name: 'Alice', password: 'secret1' },
@@ -94,22 +65,16 @@ describe('Serialization', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    const res = await hono.request('/users');
+    const res = await app.getHonoApp().request('/users');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any[];
-    expect(body).toEqual([
+    expect(await res.json()).toEqual([
       { id: 1, name: 'Alice' },
       { id: 2, name: 'Bob' },
     ]);
-    expect(body[0]).not.toHaveProperty('password');
-    expect(body[1]).not.toHaveProperty('password');
   });
 
-  it('should pass through response when no @Serialize is set', async () => {
+  it('passes a result through when the route declares no response', async () => {
     @Controller('/items')
-    @UseInterceptors(SerializerInterceptor)
     class ItemController {
       @Get()
       findAll() {
@@ -121,47 +86,38 @@ describe('Serialization', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const hono = app.getHonoApp();
-
-    const res = await hono.request('/items');
+    const res = await app.getHonoApp().request('/items');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any[];
-    expect(body).toEqual([{ id: 1, name: 'Widget', secret: 'data' }]);
+    expect(await res.json()).toEqual([{ id: 1, name: 'Widget', secret: 'data' }]);
   });
 
-  it('should combine input validation and output serialization', async () => {
-    const CreateUserSchema = z.object({
-      name: z.string(),
-      email: z.string().email(),
-      password: z.string().min(6),
+  it('combines input validation and output serialization', async () => {
+    const CreateUserDto = defineDto(
+      z.object({
+        name: z.string(),
+        email: z.string().email(),
+        password: z.string().min(6),
+      }),
+      { name: 'CreateUserDto' },
+    );
+    const UserView = defineDto(z.object({ id: z.number(), name: z.string(), email: z.string() }), {
+      name: 'UserView',
     });
-    const CreateUserDto = defineDto(CreateUserSchema, { name: 'CreateUserDto' });
-    type CreateUserDto = ReturnType<typeof CreateUserDto.parse>;
-
-    const UserResponseSchema = z.object({
-      id: z.number(),
-      name: z.string(),
-      email: z.string(),
-    });
-    const UserResponseDto = defineDto(UserResponseSchema, { name: 'UserResponseDto' });
-    type UserResponseDto = ReturnType<typeof UserResponseDto.parse>;
 
     @Injectable()
     class UserService {
-      create(data: { name: string; email: string; password: string }) {
+      create(data: SchemaOutput<typeof CreateUserDto>) {
         return { id: 1, ...data };
       }
     }
 
     @Controller('/users')
-    @UseInterceptors(SerializerInterceptor)
     class UserController {
       constructor(private userService: UserService) {}
 
-      @Post()
-      @Serialize(UserResponseDto)
-      create(@Body(new ValidationPipe(CreateUserDto)) dto: CreateUserDto) {
-        return this.userService.create(dto as any);
+      @Post({ response: UserView })
+      create(@Body(CreateUserDto) dto: SchemaOutput<typeof CreateUserDto>) {
+        return this.userService.create(dto);
       }
     }
 
@@ -175,7 +131,6 @@ describe('Serialization', () => {
     app.useGlobalPipes(new ValidationPipe());
     const hono = app.getHonoApp();
 
-    // Valid: input validated, output serialized (password stripped)
     const validRes = await hono.request('/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -185,12 +140,11 @@ describe('Serialization', () => {
         password: 'secure123',
       }),
     });
-    expect(validRes.status).toBe(200);
+    expect(validRes.status).toBe(201);
     const body = await validRes.json();
     expect(body).toEqual({ id: 1, name: 'Alice', email: 'alice@example.com' });
     expect(body).not.toHaveProperty('password');
 
-    // Invalid: validation rejects bad input
     const invalidRes = await hono.request('/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

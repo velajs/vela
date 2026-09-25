@@ -74,6 +74,10 @@
       "types": "./dist/cache/index.d.ts",
       "import": "./dist/cache/index.js"
     },
+    "./contract": {
+      "types": "./dist/contract/index.d.ts",
+      "import": "./dist/contract/index.js"
+    },
     "./dispatch": {
       "types": "./dist/dispatch/index.d.ts",
       "import": "./dist/dispatch/index.js"

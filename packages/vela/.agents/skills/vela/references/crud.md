@@ -56,6 +56,8 @@ export class UsersController {
 }
 ```
 
+An `@Override` handler answers its verb's status (201 create/batchCreate/clone, 200 otherwise, POST restore/upsert included) unless it declares `@HttpCode`.
+
 Route names are `<name>.<verb>` (`users.list`, `users.read`, ...) — they appear in
 `vela route list`, generate URLs via `UrlGeneratorService.urlFor`, and derive stable
 OpenAPI operationIds (`listUsers`, `getUser`).

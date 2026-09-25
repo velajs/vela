@@ -152,7 +152,7 @@ describe('@RawBody()', () => {
       method: 'POST',
       body: payload,
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ byteLength: 11, isUint8Array: true });
   });
 
@@ -176,7 +176,7 @@ describe('@RawBody()', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ event: 'payment.succeeded' }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ received: 'payment.succeeded' });
   });
 
@@ -194,7 +194,7 @@ describe('@RawBody()', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/raw-empty', { method: 'POST' });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ byteLength: 0 });
   });
 });

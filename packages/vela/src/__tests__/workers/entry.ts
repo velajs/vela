@@ -88,7 +88,7 @@ class TraceInterceptor implements NestInterceptor {
 @ApiTags('health')
 class HealthController {
   @Get()
-  @ApiResponse(200, { description: 'Service is up' })
+  @ApiResponse({ status: 200, description: 'Service is up' })
   handle() {
     return { status: 'ok' };
   }

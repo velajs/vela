@@ -100,6 +100,9 @@ export class BillingModule {}
     expect(controller).toContain("@Controller('/notes')");
     expect(controller).toContain('create(@Body() body: unknown): Note {');
     expect(controller).toContain('return this.#service.create(parseCreateNote(body));');
+    // POST answers 201; `response: null` answers 204.
+    expect(controller).toContain("@Delete('/:id', { response: null })");
+    expect(controller).not.toContain('HttpCode');
     expect(await read('src/app.module.ts')).toContain('imports: [NotesModule],');
 
     await rm(project, { recursive: true, force: true });
@@ -107,9 +110,13 @@ export class BillingModule {}
     expect((await generate('g', 'resource', 'categories')).code).toBe(0);
     const schemas = await read('src/categories/category.schemas.ts');
     expect(schemas).toContain("import { z } from 'zod';");
-    expect(await read('src/categories/categories.controller.ts')).toContain(
-      'create(@Body(CreateCategory) body: CreateCategory): Category {',
-    );
+    const categories = await read('src/categories/categories.controller.ts');
+    expect(categories).toContain('create(@Body(CreateCategory) body: CreateCategory): Category {');
+    // Route options shape and document each result.
+    expect(categories).toContain('@Get({ response: z.array(Category) })');
+    expect(categories).toContain("@Get('/:id', { response: Category })");
+    expect(categories).toContain('@Post({ response: Category })');
+    expect(categories).toContain("@Delete('/:id', { response: null })");
     expect(await read('src/app.module.ts')).toContain(
       '    TodosModule,\n    CategoriesModule,\n  ],',
     );

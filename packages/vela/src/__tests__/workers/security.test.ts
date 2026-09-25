@@ -33,7 +33,7 @@ describe('security on native Workers', () => {
             }),
           )
         ).status,
-      ).toBe(200);
+      ).toBe(201);
       expect(
         (
           await app.fetch(

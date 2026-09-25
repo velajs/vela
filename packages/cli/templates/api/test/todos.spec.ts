@@ -28,7 +28,7 @@ describe('todos API', () => {
     const worker = await createTestingWorker(AppModule, { env });
     try {
       const created = await worker.fetch('/todos', json({ title: 'Write tests' }));
-      expect(created.ok).toBe(true);
+      expect(created.status).toBe(201);
       const todo = await created.json<Todo>();
       expect(todo).toMatchObject({ title: 'Write tests', completed: false });
 

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Controller, Get, Module, VelaFactory } from '@velajs/vela';
-import { ApiResponse, Endpoint, createOpenApiDocument, defineEndpoint } from '@velajs/vela/openapi';
+import { ApiResponse, createOpenApiDocument } from '@velajs/vela/openapi';
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { generateClientContract } from './client-contract';
@@ -68,35 +68,20 @@ describe('native response client contracts', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('compiles and runs generated native calls through the actual endpoint pipeline', async () => {
-    const input = z.object({});
-    const binary = defineEndpoint({ input, format: 'binary', contentType: 'application/pdf' });
-    const stream = defineEndpoint({ input, format: 'stream', contentType: 'text/event-stream' });
-    const raw = defineEndpoint({
-      input,
-      format: 'response',
-      contentType: 'application/json',
-      status: 202,
-    });
+  it('compiles and runs generated native calls through the actual route pipeline', async () => {
     const cancel = vi.fn();
     @Controller('/files')
     class Files {
-      @Get('/download')
-      @Endpoint(binary)
+      @Get('/download', { format: 'binary', contentType: 'application/pdf' })
       download() {
         return new Blob(['pdf']);
       }
-      @Get('/events')
-      @ApiResponse(503, {
+      @Get('/events', { format: 'stream', contentType: 'text/event-stream' })
+      @ApiResponse({
+        status: 503,
         description: 'Unavailable',
-        schema: {
-          type: 'object',
-          properties: { message: { type: 'string' } },
-          required: ['message'],
-          additionalProperties: false,
-        },
+        schema: z.object({ message: z.string() }),
       })
-      @Endpoint(stream)
       events() {
         return new ReadableStream<Uint8Array>(
           {
@@ -108,8 +93,7 @@ describe('native response client contracts', () => {
           { highWaterMark: 0 },
         );
       }
-      @Get('/raw')
-      @Endpoint(raw)
+      @Get('/raw', { format: 'response', contentType: 'application/json', status: 202 })
       raw() {
         return Response.json(
           { value: 'unchecked' },

@@ -29,7 +29,7 @@ describe('SecurityModule', () => {
         method: 'POST',
         headers: { cookie: 'session=test' },
       });
-      expect(accepted.status).toBe(200);
+      expect(accepted.status).toBe(201);
       expect(accepted.headers.get('x-content-type-options')).toBe('nosniff');
       for (const origin of ['', 'null', 'garbage', 'https://evil.example']) {
         const response = await hono.request('https://api.example/compat', {
@@ -119,8 +119,8 @@ describe('SecurityModule', () => {
 
     expect(missing.status).toBe(403);
     expect(evil.status).toBe(403);
-    expect(sameOrigin.status).toBe(200);
-    expect(allowedCrossOrigin.status).toBe(200);
+    expect(sameOrigin.status).toBe(201);
+    expect(allowedCrossOrigin.status).toBe(201);
     expect(allowedCrossOrigin.headers.get('access-control-allow-origin')).toBe(
       'https://app.example',
     );

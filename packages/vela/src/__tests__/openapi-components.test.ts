@@ -38,7 +38,7 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
     @Controller('/users')
     class UsersController {
       @Get('/:id')
-      @ApiResponse(200, { description: 'OK', schema: UserDto })
+      @ApiResponse({ status: 200, description: 'OK', schema: UserDto })
       findOne() {
         return {};
       }
@@ -66,7 +66,7 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
       }
 
       @Get('/:id')
-      @ApiResponse(200, { description: 'OK', schema: UserDto })
+      @ApiResponse({ status: 200, description: 'OK', schema: UserDto })
       findOne() {
         return {};
       }
@@ -98,7 +98,7 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
     @Controller('/users')
     class UsersController {
       @Post()
-      @ApiResponse(201, { description: 'Created', schema: UserDto })
+      @ApiResponse({ status: 201, description: 'Created', schema: UserDto })
       create(
         @Body(new ValidationPipe(CreateUserDto)) _dto: ReturnType<typeof CreateUserDto.parse>,
       ) {
@@ -122,7 +122,7 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
     @Controller('/a')
     class AController {
       @Get()
-      @ApiResponse(200, { description: 'a', schema: A })
+      @ApiResponse({ status: 200, description: 'a', schema: A })
       get() {
         return {};
       }
@@ -131,7 +131,7 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
     @Controller('/b')
     class BController {
       @Get()
-      @ApiResponse(200, { description: 'b', schema: B })
+      @ApiResponse({ status: 200, description: 'b', schema: B })
       get() {
         return {};
       }
@@ -155,7 +155,8 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
     @Controller('/items')
     class ItemsController {
       @Post()
-      @ApiResponse(201, {
+      @ApiResponse({
+        status: 201,
         description: 'Created',
         schema: z.object({ id: z.string() }),
       })
@@ -175,14 +176,11 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
     expect(doc.components?.schemas).toBeUndefined();
   });
 
-  it('raw JSON Schema object is inlined, not componentized', () => {
+  it('a route response DTO produces a $ref like a documented one', () => {
+    const TextDto = defineDto(z.string(), { name: 'TextDto' });
     @Controller('/text')
     class TextController {
-      @Get()
-      @ApiResponse(200, {
-        description: 'OK',
-        schema: { type: 'string' } as const,
-      })
+      @Get({ response: TextDto })
       handle() {
         return '';
       }
@@ -193,7 +191,7 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
 
     const doc = createOpenApiDocument(AppModule);
     const schema = doc.paths['/text']!.get!.responses['200']!.content!['application/json']!.schema;
-    expect(schema).toEqual({ type: 'string' });
-    expect(doc.components?.schemas).toBeUndefined();
+    expect(schema).toEqual({ $ref: '#/components/schemas/TextDto' });
+    expect(doc.components?.schemas?.TextDto).toEqual({ type: 'string' });
   });
 });

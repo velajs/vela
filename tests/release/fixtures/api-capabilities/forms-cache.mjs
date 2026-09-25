@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import {
+  Body,
   Controller,
   Get,
   Injectable,
   Module,
+  Param,
   Post,
   UnauthorizedException,
   UseGuards,
@@ -17,7 +19,7 @@ import {
   MemoryCacheInvalidationStore,
   MemoryCacheStore,
 } from '@velajs/vela/cache';
-import { Endpoint, createOpenApiDocument, defineEndpoint } from '@velajs/vela/openapi';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
 import { getTrustedRequestIdentity, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { generateClientContract } from '@velajs/cli/client';
 import { hc, withFormEncoding } from '@velajs/client/http';
@@ -54,58 +56,40 @@ export async function verifyFormsAndCache() {
     visibility: 'private',
     partition: JSON.stringify(['fixture', subject]),
   });
-  const upload = defineEndpoint({
-    body: {
-      contentType: 'multipart/form-data',
-      maxBytes: 8192,
-      maxFields: 8,
-      maxFiles: 3,
-      maxFileBytes: 512,
-    },
-    input: z.object({
-      param: z.object({ id: z.string() }),
-      form: z.object({
-        label: z.string().transform((value) => value.trim()),
-        labels: z.array(z.string()),
-        file: z.file(),
-        extra: z.array(z.file()).optional(),
-      }),
-    }),
-    output: z.object({
-      id: z.string(),
-      label: z.string(),
-      labels: z.array(z.string()),
-      size: z.number(),
-      names: z.array(z.string()),
-    }),
-    status: 201,
+  const UploadForm = z.object({
+    label: z.string().transform((value) => value.trim()),
+    labels: z.array(z.string()),
+    file: z.file(),
+    extra: z.array(z.file()).optional(),
   });
-  const submit = defineEndpoint({
-    body: { contentType: 'application/x-www-form-urlencoded', maxBytes: 1024 },
-    input: z.object({
-      form: z.object({
-        label: z.string(),
-        labels: z.array(z.string()),
-        count: z.string().transform(Number),
-      }),
-    }),
-    output: z.object({ label: z.string(), labels: z.array(z.string()), count: z.number() }),
+  const Uploaded = z.object({
+    id: z.string(),
+    label: z.string(),
+    labels: z.array(z.string()),
+    size: z.number(),
+    names: z.array(z.string()),
   });
+  const SubmitForm = z.object({
+    label: z.string(),
+    labels: z.array(z.string()),
+    count: z.string().transform(Number),
+  });
+  const Submitted = z.object({ label: z.string(), labels: z.array(z.string()), count: z.number() });
   class Records {
     summary() {
       return { count: ++summaryCalls };
     }
-    upload(input) {
+    upload(id, form) {
       return {
-        id: input.param.id,
-        label: input.form.label,
-        labels: input.form.labels,
-        size: input.form.file.size,
-        names: [input.form.file, ...(input.form.extra ?? [])].map((file) => file.name),
+        id,
+        label: form.label,
+        labels: form.labels,
+        size: form.file.size,
+        names: [form.file, ...(form.extra ?? [])].map((file) => file.name),
       };
     }
-    submit(input) {
-      return input.form;
+    submit(form) {
+      return form;
     }
   }
   Controller('/records')(Records);
@@ -114,19 +98,26 @@ export async function verifyFormsAndCache() {
     const descriptor = Object.getOwnPropertyDescriptor(Records.prototype, name);
     for (const decorator of decorators) decorator(Records.prototype, name, descriptor);
   };
+  const parameter = (name, index, decorator) => decorator(Records.prototype, name, index);
   decorate(
     'summary',
-    Get('/summary'),
+    Get('/summary', { response: z.object({ count: z.number() }) }),
     CacheResponse({ tags: ['records'] }),
-    Endpoint(
-      defineEndpoint({
-        input: z.object({}),
-        output: z.object({ count: z.number() }),
-      }),
-    ),
   );
-  decorate('upload', Post('/:id/attachments'), Endpoint(upload));
-  decorate('submit', Post('/submit'), Endpoint(submit));
+  parameter('upload', 0, Param('id'));
+  parameter('upload', 1, Body(UploadForm));
+  decorate(
+    'upload',
+    Post('/:id/attachments', {
+      response: Uploaded,
+      body: { multipart: { maxBytes: 8192, maxFields: 8, maxFiles: 3, maxFileBytes: 512 } },
+    }),
+  );
+  parameter('submit', 0, Body(SubmitForm));
+  decorate(
+    'submit',
+    Post('/submit', { response: Submitted, status: 200, body: { form: { maxBytes: 1024 } } }),
+  );
   class Application {}
   Module({
     imports: [

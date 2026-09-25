@@ -56,7 +56,7 @@ Three ways to register globals:
     TraceMiddleware,
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_PIPE, useClass: ValidationPipe },
-    { provide: APP_INTERCEPTOR, useClass: SerializerInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: TimingInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_MIDDLEWARE, useExisting: TraceMiddleware },
   ],
@@ -66,7 +66,7 @@ class AppModule {}
 // 2. App methods (chainable) — instances only
 app.useGlobalGuards(new RolesGuard(app.get(Reflector)))
    .useGlobalPipes(new ValidationPipe())
-   .useGlobalInterceptors(new SerializerInterceptor())
+   .useGlobalInterceptors(new TimingInterceptor())
    .useGlobalFilters(new AllExceptionsFilter());
 
 // 3. From a defineModule setup via the `global:` slot, or a provider
@@ -160,7 +160,7 @@ A handler function reads the metadata of the method it is: the method a decorato
 | `ParseBoolPipe` | `()` | only `'true'`/`'false'` |
 | `ParseUUIDPipe` | `({ version?: '3'\|'4'\|'5' })` | UUID validation |
 | `ParseEnumPipe` | `(enumType)` | value must be in the enum |
-| `ParseArrayPipe` | `({ separator?, optional? })` | split + trim (default sep `,`) |
+| `ParseArrayPipe` | `({ separator?, optional? })` | split + trim (default sep `,`); a repeated query key already arrives as an array |
 | `DefaultValuePipe` | `(defaultValue)` | fill `undefined`/`null` |
 | `RequiredPipe` | `()` | throw on `undefined`/`null`/`''` |
 | `ValidationPipe` | `(schema?)` | Standard Schema, parser, or `defineDto` descriptor; issues become 400 |

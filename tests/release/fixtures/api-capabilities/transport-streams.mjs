@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { Controller, Get, Module, VelaFactory } from '@velajs/vela';
-import { Endpoint, createOpenApiDocument, defineEndpoint } from '@velajs/vela/openapi';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
 import { HttpService, HttpResponseSizeException } from '@velajs/vela/http-client';
 import {
   createHttpClientTelemetryObserver,
@@ -53,23 +53,13 @@ export async function verifyTransportAndStreams() {
     }
   }
   Controller('/transfers')(Transfers);
-  for (const [method, definition] of Object.entries({
-    bytes: defineEndpoint({
-      input: z.object({}),
-      format: 'binary',
-      status: 206,
-      contentType: 'application/octet-stream',
-    }),
-    stream: defineEndpoint({
-      input: z.object({}),
-      format: 'stream',
-      contentType: 'application/octet-stream',
-    }),
-    value: defineEndpoint({ input: z.object({}), output: z.object({ value: z.string() }) }),
+  for (const [method, options] of Object.entries({
+    bytes: { format: 'binary', status: 206, contentType: 'application/octet-stream' },
+    stream: { format: 'stream', contentType: 'application/octet-stream' },
+    value: { response: z.object({ value: z.string() }) },
   })) {
     const descriptor = Object.getOwnPropertyDescriptor(Transfers.prototype, method);
-    Get(`/${method}`)(Transfers.prototype, method, descriptor);
-    Endpoint(definition)(Transfers.prototype, method, descriptor);
+    Get(`/${method}`, options)(Transfers.prototype, method, descriptor);
   }
   class Application {}
   Module({ controllers: [Transfers] })(Application);
