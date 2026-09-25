@@ -1,5 +1,57 @@
 # @velajs/studio
 
+## 1.31.0
+
+### Minor Changes
+
+- 646f1d1: Studio panels join through one plugin contract: `StudioModule.forRoot({ plugins: [queuesPanel(), livePanel(), ...] })`. A plugin (`StudioPlugin`: `name`, `providers`, `imports`; built with `defineStudioPlugin`) registers its op classes and ports in StudioModule's own scope, so they reach Studio's signers, buffers and resolved configuration without re-importing the configured module. Each panel factory lives in its subpath, keeping optional peers optional: `crudPanel()` (`./crud`), `timeTravelPanel()` (`./timetravel`), `cloudflareTimeTravelPanel()` (`./cloudflare`), `authPanel()` (`./auth`), `flagsPanel()` (`./flags`), `queuesPanel()` (`./queue`), `schedulePanel()` (`./schedule`), `livePanel()` (`./live`) and `logsPanel()` (`./logging`). `plugins` is structural, so `forRootAsync({ plugins, useFactory })` takes it next to the factory; a plugin name registered twice fails at `forRoot`, and so do two plugins providing the same token (such as `timeTravelPanel()` and `cloudflareTimeTravelPanel()`, which both bind `TIME_TRAVEL_PORT`), naming both, and a plugin providing a token StudioModule provides itself (`STUDIO_RESOLVED_CONFIG`, `AdminAuditLog`, the signers, the op classes, …), naming the plugin; application-wide enhancers (`APP_GUARD`, `APP_INTERCEPTOR`, ...) may repeat. `livePanel({ rooms: ['default'] })` reads the named rooms through `LiveModule`'s `LiveInspector`, so a Cloudflare application no longer builds a Studio source from `ENV` and Durable Object stubs; it fails at bootstrap without `LiveModule`, and `livePanel({ source })` takes a custom source instead (passing both is rejected). Options that depend on the runtime environment take a function of the application's `ENV`, called once per application: `livePanel({ source: (env) => … })`, `timeTravelPanel({ store: (env) => …, changeSource: (env) => … })`. `cloudflareTimeTravelPanel({ binding: 'ROOM' })` names its Durable Object binding and resolves it from `ENV` when a time-travel call first needs it, failing with the binding and `durable_objects.bindings` when it is missing. `logsPanel()` captures the application's `APP_LOGGER` and fails bootstrap naming `LoggingModule` when there is none. StudioModule stays one instance per application whatever its panels: a second configuration with other plugins fails bootstrap instead of mounting a second admin surface. The wire protocol is unchanged, so the protocol version stays the same; the admin surface stays closed without a token.
+  
+  **Behavior change:** the per-feature modules are removed: `StudioCrudModule`, `StudioTimeTravelModule` (with `STUDIO_TIMETRAVEL_MODULE_OPTIONS` and `StudioTimeTravelModuleOptions`), `StudioCloudflareTimeTravelModule` (with `STUDIO_CLOUDFLARE_TIMETRAVEL_MODULE_OPTIONS` and its options type), `StudioAuthModule`, `StudioFlagsModule`, `StudioQueueModule`, `StudioScheduleModule`, `StudioLiveModule` and `StudioLoggingModule`, with their options types and the `STUDIO_*_MODULE_ID` constants. Replace each `StudioXModule.forRoot(options)` import with its panel in `StudioModule.forRoot({ plugins })`; the time-travel, Cloudflare and logging panels no longer need `imports: [studio, …]`. `StudioLiveModule.forRoot({ source })` becomes `livePanel({ source })` (or `livePanel({ rooms })`, which reads the rooms through `LiveInspector` without a custom source), `StudioLiveModule.forRootAsync({ inject: [ENV], useFactory: (env) => ({ source }) })` becomes `livePanel({ source: (env) => source })`, and `StudioCloudflareTimeTravelModule.forRoot({ namespace: env.ROOM })` becomes `cloudflareTimeTravelPanel({ binding: 'ROOM' })`.
+  
+  **Behavior change:** the data browser's settings move from `StudioModule` to its panel: `StudioModule.forRoot({ managedModels, runAsIdentity })` becomes `crudPanel({ managedModels, runAsIdentity })`, and `ResolvedStudioConfig` no longer carries them. StudioModule options that still hold either key, such as a `forRootAsync` factory result the compiler does not check or options passed from JavaScript, fail bootstrap (and `resolveStudioConfig`) with an error pointing to `crudPanel()`, instead of being ignored with every model browsable. A custom model-source panel provides `STUDIO_DATA_OPTIONS` (`StudioDataOptions`) for the same settings.
+- 3fc6f2b: Studio's OpenAPI view builds its document with the application's route-path options (`app.getRoutePathOptions()`), so its paths match the served routes, including routes a global prefix's `exclude` serves unprefixed, `VERSION_NEUTRAL` routes and a custom versioning `prefix`.
+  
+  **Behavior change:** `StudioAppHolder.capture(app, routePathOptions)` takes the application's `RoutePathOptions` instead of the global prefix string, and the new `routePathOptions` getter returns them; `globalPrefix` still returns the prefix.
+
+### Patch Changes
+
+- 3fc6f2b: Studio names the source of a reported error with `ExecutionContext.getHandlerName()`, because `getHandler()` returns the handler method from @velajs/vela 1.31.0.
+- Updated dependencies [5f19b37]
+- Updated dependencies [0b8c649]
+- Updated dependencies [b227d22]
+- Updated dependencies [3fc6f2b]
+- Updated dependencies [1011653]
+- Updated dependencies [2c92243]
+- Updated dependencies [088f4d4]
+- Updated dependencies [e2587de]
+- Updated dependencies [37dd27d]
+- Updated dependencies [f267c2f]
+- Updated dependencies [dfe925c]
+- Updated dependencies [b227d22]
+- Updated dependencies [fd11d20]
+- Updated dependencies [748e4f8]
+- Updated dependencies [096e259]
+- Updated dependencies [fd11d20]
+- Updated dependencies [3418c55]
+- Updated dependencies [b227d22]
+- Updated dependencies [fd11d20]
+- Updated dependencies [d51dbb3]
+- Updated dependencies [f267c2f]
+- Updated dependencies [4a06057]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1bfc1c1]
+- Updated dependencies [f267c2f]
+- Updated dependencies [f267c2f]
+- Updated dependencies [1ef55ac]
+- Updated dependencies [f267c2f]
+- Updated dependencies [b227d22]
+- Updated dependencies [2c92243]
+  - @velajs/cloudflare@1.31.0
+  - @velajs/vela@1.31.0
+  - @velajs/better-auth@1.31.0
+  - @velajs/crud@1.31.0
+  - @velajs/feature-flags@1.31.0
+
 ## 1.30.0
 
 ### Minor Changes
