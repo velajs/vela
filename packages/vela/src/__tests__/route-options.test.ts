@@ -259,9 +259,15 @@ describe('route response schemas', () => {
     }
   });
 
-  it('accepts parse() parsers and defineDto descriptors as response schemas', async () => {
+  it('accepts Standard Schema validators and defineDto descriptors as response schemas', async () => {
     const dto = defineDto(Todo, { name: 'Todo' });
-    const parser = { parse: (value: unknown) => ({ echoed: String(Object(value).raw) }) };
+    const parser = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: (value: unknown) => ({ value: { echoed: String(Object(value).raw) } }),
+      },
+    };
     @Controller('/schemas')
     class Schemas {
       @Get('/dto', { response: dto })

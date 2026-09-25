@@ -54,9 +54,9 @@ export async function verifySerializerTypes(raw: unknown): Promise<void> {
   });
 }
 
-const asyncLegacy = defineSerializer({
-  input: { parse: async (_value: unknown) => new Account('1') },
-  output: { parse: async (_value: unknown) => ({ id: 1 }) },
+const asyncSerializer = defineSerializer({
+  input: z.unknown().transform(async () => new Account('1')),
+  output: z.object({ id: z.string() }).transform(async () => ({ id: 1 })),
   project: (account) => ({ id: account.identifier() }),
 });
 
@@ -71,8 +71,8 @@ class Responses {
     return new Account('1');
   }
 
-  @Get('/legacy', { response: asyncLegacy })
-  legacy() {
+  @Get('/async', { response: asyncSerializer })
+  asyncResponse() {
     return new Account('1');
   }
 

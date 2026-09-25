@@ -1,11 +1,17 @@
+import { z } from 'zod';
 import { describe, it, expect } from 'vitest';
 import { VelaFactory, Controller, Get, Module, Injectable } from '../index.js';
 import {
   EventEmitterModule,
   EventEmitter,
-  EventEmitterSubscriber,
+  EventDispatcher,
+  defineEvent,
   OnEvent,
 } from '../event-emitter/index.js';
+
+const orderShippedEvent = defineEvent('order.shipped', z.undefined());
+const orderCreatedEvent = defineEvent('order.created', z.undefined());
+const userCreatedEvent = defineEvent('user.created', z.string());
 
 describe('EventEmitter', () => {
   describe('standalone EventEmitter', () => {
@@ -108,7 +114,7 @@ describe('EventEmitter', () => {
 
       @Injectable()
       class UserListener {
-        @OnEvent('user.created')
+        @OnEvent(userCreatedEvent)
         onUserCreated(name: string) {
           received.push(name);
         }
@@ -121,9 +127,9 @@ describe('EventEmitter', () => {
       class AppModule {}
 
       const app = await VelaFactory.create(AppModule);
-      const emitter = app.get(EventEmitter);
+      const emitter = app.get(EventDispatcher);
 
-      await emitter.emit('user.created', 'Alice');
+      await emitter.emit(userCreatedEvent, 'Alice');
       expect(received).toEqual(['Alice']);
     });
 
@@ -132,12 +138,12 @@ describe('EventEmitter', () => {
 
       @Injectable()
       class MultiListener {
-        @OnEvent('order.created')
+        @OnEvent(orderCreatedEvent)
         onOrderCreated() {
           received.push('order.created');
         }
 
-        @OnEvent('order.shipped')
+        @OnEvent(orderShippedEvent)
         onOrderShipped() {
           received.push('order.shipped');
         }
@@ -150,10 +156,10 @@ describe('EventEmitter', () => {
       class AppModule {}
 
       const app = await VelaFactory.create(AppModule);
-      const emitter = app.get(EventEmitter);
+      const emitter = app.get(EventDispatcher);
 
-      await emitter.emit('order.created');
-      await emitter.emit('order.shipped');
+      await emitter.emit(orderCreatedEvent, undefined);
+      await emitter.emit(orderShippedEvent, undefined);
       expect(received).toEqual(['order.created', 'order.shipped']);
     });
 
@@ -237,7 +243,7 @@ describe('event delivery lifetime', () => {
 });
 
 describe('event settlement policy', () => {
-  it('preserves legacy rejection and skips later wildcard groups', async () => {
+  it('attempts wildcard listeners even when an exact listener fails', async () => {
     const emitter = new EventEmitter();
     let wildcard = false;
     emitter.on('test', () => {
@@ -247,7 +253,7 @@ describe('event settlement policy', () => {
       wildcard = true;
     });
     await expect(emitter.emit('test')).rejects.toThrow('exact');
-    expect(wildcard).toBe(false);
+    expect(wildcard).toBe(true);
   });
 
   it('complete delivery attempts all groups and waits for slow failures', async () => {
@@ -270,7 +276,7 @@ describe('event settlement policy', () => {
     emitter.on('**', () => {
       received = true;
     });
-    const dispatch = emitter.emitWithOptions('test', { settlement: 'complete' });
+    const dispatch = emitter.emit('test');
     const result = dispatch.catch((error: unknown) => {
       settled = true;
       return error;
@@ -292,7 +298,7 @@ describe('event settlement policy', () => {
       });
       throw reason;
     });
-    await expect(emitter.emitWithOptions('test', { settlement: 'complete' })).rejects.toBe(reason);
+    await expect(emitter.emit('test')).rejects.toBe(reason);
     expect(lateCalls).toBe(0);
   });
 });

@@ -56,9 +56,8 @@ ambient reads does not remove that module's runtime ALS requirement.
 
 `createExecutionScope(root, { signal })` returns `{ container, lifetime, finish }`.
 Resolve a declared entrypoint with `resolveEntrypoint(container, entrypoint)`;
-it uses `entrypoint.moduleId` and asynchronous DI. Legacy entries that omit the
-owner are accepted only when the registered token has a unique owner. Unknown
-owners and ambiguous omissions fail before dispatch.
+it requires `entrypoint.moduleId` and uses asynchronous DI. Missing or unknown
+owners fail before dispatch.
 
 Custom adapters can construct pipeline contexts inside that child using
 `buildEntrypointExecutionContext(kind, token, method, payload, moduleId, container)`.
@@ -86,6 +85,5 @@ platform's background-work mechanism when it outlives response handling.
 
 `getExecutionLifetime(container)` returns undefined for unmanaged or closed
 children. `finishExecutionScope(container, bodyDone)` lets adapters finalize a
-child they recovered from an existing request association. Retaining a raw
-Container does not grant permission to reuse a closed invocation; Container's
-legacy reuse semantics are separate from the lifetime capability.
+managed child they recovered from an existing request association. Unmanaged
+containers are rejected. Disposal permanently closes a container to new resolution.

@@ -65,11 +65,10 @@ export const createAi = (options: CreateAiOptions = {}): Ai => {
 
     const embeddingProvider = requireProvider();
 
-    const resolveEmbedding =
-      embeddingProvider.embeddingModel ?? embeddingProvider.textEmbeddingModel;
+    const resolveEmbedding = embeddingProvider.embeddingModel;
     if (typeof resolveEmbedding !== 'function') {
       throw new Error(
-        '@velajs/ai: the configured provider exposes no `embeddingModel` or `textEmbeddingModel` — ' +
+        '@velajs/ai: the configured provider exposes no `embeddingModel` — ' +
           'pass an AI SDK EmbeddingModel object to embeddingModel() instead of a model-id string',
       );
     }

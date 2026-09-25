@@ -60,7 +60,7 @@ export class QueueDispatchBinding {
           'Queue driver already belongs to an application. Use a driver factory for isolated reuse.',
         );
       }
-      driver.bind(
+      const unbind = driver.bind(
         async (job) => {
           await this.#deliver(job);
         },
@@ -68,7 +68,9 @@ export class QueueDispatchBinding {
           onError: (error, job) => this.#routeError(error, job),
         },
       );
-      this.#unbind = () => driver.unbind?.();
+      if (typeof unbind !== 'function')
+        throw new TypeError('Queue driver bind() must return a cleanup function.');
+      this.#unbind = unbind;
       ownedDrivers.add(driver);
     }
   }

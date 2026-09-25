@@ -46,6 +46,10 @@ class ServerSocket implements WsClient {
   send(event: string, data?: unknown, id?: string): void {
     this.sendRaw(JSON.stringify({ id, event, data }));
   }
+  trySendRaw(payload: string): 'accepted' {
+    this.sendRaw(payload);
+    return 'accepted';
+  }
   sendRaw(payload: string): void {
     if (this.dead) throw new Error('socket closed');
     this.onFrame?.(payload);

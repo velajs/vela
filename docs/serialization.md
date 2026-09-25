@@ -94,8 +94,8 @@ validates it at runtime. If that schema transforms a string into a domain value,
 pass the original string; `project` receives the transformed domain value.
 `parse(unknown)` is the dynamic boundary. `.output` retains the original wire
 schema. A projection returns the output schema's input type; the serializer
-result is its transformed output type. Legacy parsers without an input type
-contract validate that projection at runtime.
+result is its transformed output type. Both boundaries require Standard Schema
+validators or DTO descriptors.
 
 The serializer never reads `#private` fields, constructs domain classes, revives
 JSON into instances, or traverses object graphs. Use public domain methods for

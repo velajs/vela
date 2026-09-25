@@ -28,7 +28,12 @@
 import { Hono } from 'hono';
 import { Controller, Module, VelaFactory } from '@velajs/vela';
 import { ALL_CRUD_ENDPOINTS, Crud, CrudException, multiTenant } from '@velajs/crud';
-import { clearMemoryStorage, memoryAdapter } from '@velajs/crud-memory';
+import {
+  clearMemoryStorage,
+  memoryAdapter,
+  transactionalMemoryAdapter,
+  MemoryStore,
+} from '@velajs/crud-memory';
 import type { AdapterContext, AdapterDescriptor } from '../contract';
 import {
   CONFORMANCE_CURSOR_TABLE,
@@ -140,7 +145,9 @@ async function setup(): Promise<AdapterContext> {
     unique: [['email']],
   });
 
-  const etagAdapter = memoryAdapter({
+  const etagStore = new MemoryStore();
+  const etagAdapter = transactionalMemoryAdapter({
+    store: etagStore,
     tableName: CONFORMANCE_ETAG_TABLE,
     primaryKey: 'id',
     softDeleteField: 'deletedAt',
@@ -201,6 +208,7 @@ async function setup(): Promise<AdapterContext> {
     teardown: () => app.dispose(),
     reset: () => {
       clearMemoryStorage();
+      etagStore.table(CONFORMANCE_ETAG_TABLE).clear();
     },
   };
 }

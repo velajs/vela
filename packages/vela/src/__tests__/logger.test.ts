@@ -1,15 +1,7 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Logger, LogLevel } from '../services/logger.js';
 import { Container } from '../container/container.js';
-import type { LoggerService } from '../services/logger.js';
-
-beforeEach(() => {
-  Logger.setLogLevel(LogLevel.LOG);
-  Logger.overrideLogger(false);
-  // Re-enable after clearing
-  (Logger as any)['globalLogger'] = undefined;
-});
 
 describe('Logger', () => {
   describe('basic output', () => {
@@ -50,9 +42,9 @@ describe('Logger', () => {
     });
 
     it('should output debug messages when level allows', () => {
-      Logger.setLogLevel(LogLevel.DEBUG);
       const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
       const logger = new Logger('Dbg');
+      logger.setLogLevel(LogLevel.DEBUG);
 
       logger.debug('debug info');
 
@@ -63,9 +55,9 @@ describe('Logger', () => {
     });
 
     it('should output verbose messages when level allows', () => {
-      Logger.setLogLevel(LogLevel.VERBOSE);
       const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
       const logger = new Logger('Vbs');
+      logger.setLogLevel(LogLevel.VERBOSE);
 
       logger.verbose('verbose info');
 
@@ -78,9 +70,9 @@ describe('Logger', () => {
 
   describe('log level filtering', () => {
     it('should suppress log when level is WARN', () => {
-      Logger.setLogLevel(LogLevel.WARN);
       const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const logger = new Logger();
+      logger.setLogLevel(LogLevel.WARN);
 
       logger.log('should not appear');
 
@@ -89,9 +81,9 @@ describe('Logger', () => {
     });
 
     it('should suppress debug when level is LOG', () => {
-      Logger.setLogLevel(LogLevel.LOG);
       const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
       const logger = new Logger();
+      logger.setLogLevel(LogLevel.LOG);
 
       logger.debug('hidden');
 
@@ -100,12 +92,12 @@ describe('Logger', () => {
     });
 
     it('should suppress everything in SILENT mode', () => {
-      Logger.setLogLevel(LogLevel.SILENT);
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
       const logger = new Logger();
+      logger.setLogLevel(LogLevel.SILENT);
 
       logger.log('a');
       logger.error('b');
@@ -121,39 +113,6 @@ describe('Logger', () => {
       errorSpy.mockRestore();
       warnSpy.mockRestore();
       debugSpy.mockRestore();
-    });
-  });
-
-  describe('overrideLogger', () => {
-    it('should delegate to custom logger', () => {
-      const calls: string[] = [];
-      const custom: LoggerService = {
-        log: (msg) => calls.push(`log:${msg}`),
-        error: (msg) => calls.push(`error:${msg}`),
-        warn: (msg) => calls.push(`warn:${msg}`),
-        debug: (msg) => calls.push(`debug:${msg}`),
-        verbose: (msg) => calls.push(`verbose:${msg}`),
-      };
-
-      Logger.overrideLogger(custom);
-      const logger = new Logger('Ctx');
-
-      logger.log('a');
-      logger.error('b');
-      logger.warn('c');
-
-      expect(calls).toEqual(['log:a', 'error:b', 'warn:c']);
-    });
-
-    it('should silence all output when overrideLogger(false)', () => {
-      Logger.overrideLogger(false);
-      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const logger = new Logger();
-
-      logger.log('silenced');
-
-      expect(spy).not.toHaveBeenCalled();
-      spy.mockRestore();
     });
   });
 

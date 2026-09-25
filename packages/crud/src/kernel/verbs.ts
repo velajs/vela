@@ -192,15 +192,29 @@ export async function executeRead(
   const includes = parseIncludeParam(req, config.allowedIncludes);
 
   const row = await config.adapter.requestScope(async (scope) => {
+    const ctx = buildHookContext(req, scope);
+    if (config.hooks?.beforeRead) await config.hooks.beforeRead(ctx, lookup.value);
     const found = await config.adapter.readOne(lookup, {}, scope);
-    if (found) await attachIncludes(resource, req, includes, [found], scope);
-    return found;
+    if (!found) return null;
+    await assertReadAllowed(resource, policyCtx, found, lookup.value);
+    // Hooks receive a detached row: returning/mutating it must not modify storage.
+    const observed = structuredClone(found);
+    const current = config.hooks?.afterRead
+      ? await runBeforeChain(
+          config.hooks.afterMode ?? 'sequential',
+          [config.hooks.afterRead],
+          ctx,
+          observed,
+        )
+      : observed;
+    if (config.hooks?.afterRead)
+      await assertReadAllowed(resource, policyCtx, current, lookup.value);
+    await attachIncludes(resource, req, includes, [current], scope);
+    return { current, stored: found };
   }, txCtx(req));
 
   if (!row) throw new NotFoundException(resource.model.name, lookup.value);
-  await assertReadAllowed(resource, policyCtx, row, lookup.value);
-
-  const shaped = await shapeOne(resource, policyCtx, req, row, false);
+  const shaped = await shapeOne(resource, policyCtx, req, row.current, false);
   let output: unknown = shaped;
   if (config.hooks?.transformRead) {
     const ctx = buildHookContext(req, { tx: undefined });
@@ -209,7 +223,7 @@ export async function executeRead(
   if (config.contracts?.response ?? resource.model.contracts?.response)
     output = await responseContract(resource, parseRecord(output));
   if (config.etag) {
-    const tag = await etagFor(resource, policyCtx, row);
+    const tag = await etagFor(resource, policyCtx, row.stored);
     if (matchesIfNoneMatch(req.request?.headers.get('If-None-Match'), tag)) {
       return { status: 304, body: null, headers: { ETag: tag } };
     }
@@ -240,6 +254,8 @@ export async function executeUpdate(
     if (
       nestedDriver ||
       model.policies?.write ||
+      model.policies?.read ||
+      model.policies?.readPushdown ||
       model.versioning ||
       model.audit ||
       config.etag ||
@@ -265,7 +281,7 @@ export async function executeUpdate(
 
   const { prior, current } = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
-    const prior = await config.adapter.readOne(lookup, {}, scope);
+    const prior = await config.adapter.readOne(lookup, { forUpdate: config.etag === true }, scope);
     if (!prior) throw new NotFoundException(model.name, lookup.value);
     await assertWriteAllowed(resource, policyCtx, prior);
 
@@ -359,11 +375,12 @@ export async function executeDelete(
   ) {
     if (
       model.policies?.write ||
+      model.policies?.read ||
+      model.policies?.readPushdown ||
       model.versioning ||
       model.audit ||
       config.hooks?.beforeDelete ||
-      config.hooks?.afterDelete ||
-      Object.values(model.relations ?? {}).some((relation) => relation.cascade)
+      config.hooks?.afterDelete
     ) {
       throw new CrudException(
         'This delete requires callback transactions',

@@ -43,16 +43,17 @@ class ThrottlerConfiguration {
     this.storage.validate?.(throttlers);
     const { fixedLimits } = this.storage;
     const filter = { metadataOnly: true, deferLazy: true };
-    for (const { metatype, meta } of this.discovery.providersWithMeta<ThrottleRecord>(
+    for (const { metatype, meta } of this.discovery.registrationsWithMeta<ThrottleRecord>(
       THROTTLE_METADATA,
       filter,
     )) {
       checkThrottleRecord(meta, metatype.name, throttlers, fixedLimits);
     }
-    for (const { class: owner, methodName, meta } of this.discovery.methodsWithMeta<ThrottleRecord>(
-      THROTTLE_METADATA,
-      filter,
-    )) {
+    for (const {
+      class: owner,
+      methodName,
+      meta,
+    } of this.discovery.registeredMethodsWithMeta<ThrottleRecord>(THROTTLE_METADATA, filter)) {
       checkThrottleRecord(
         meta,
         `${owner.metatype.name}.${String(methodName)}`,

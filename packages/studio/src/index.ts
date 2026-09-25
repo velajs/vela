@@ -8,10 +8,6 @@
  * time-travel, and adapter ops land in later milestones.
  */
 
-// Reserved base path (kept for compatibility; canonical value lives in the
-// protocol's STUDIO_DEFAULT_PATH).
-export const STUDIO_ADMIN_BASE_PATH = '/_vela/admin';
-
 // Module + config
 export { StudioModule, STUDIO_MODULE_OPTIONS } from './studio.module';
 // The one panel contract: StudioModule.forRoot({ plugins: [...] })

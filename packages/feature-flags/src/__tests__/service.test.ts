@@ -1,13 +1,16 @@
 import { Logger, type RequestContext } from '@velajs/vela';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FeatureFlagDriverRegistry } from '../drivers/registry';
 import { MemoryFlagDriver } from '../drivers/memory.driver';
 import { FeatureFlagsService } from '../feature-flags.service';
 import type { FeatureFlagDriver } from '../drivers/driver';
 import type { FlagContext, FeatureFlagsOptions } from '../feature-flags.types';
 
-function service(options: FeatureFlagsOptions): FeatureFlagsService {
-  return new FeatureFlagsService(buildRegistry(options), options);
+function service(
+  options: FeatureFlagsOptions,
+  logger = new Logger().setWriter(() => {}),
+): FeatureFlagsService {
+  return new FeatureFlagsService(buildRegistry(options), options, logger);
 }
 
 function buildRegistry(options: FeatureFlagsOptions): FeatureFlagDriverRegistry {
@@ -123,9 +126,6 @@ describe('FeatureFlagsService', () => {
   });
 
   describe('parsed object values', () => {
-    beforeEach(() => Logger.setWriter(() => {}));
-    afterEach(() => Logger.resetWriter());
-
     it('returns the parser output rather than asserting the stored payload shape', async () => {
       const flags = service({
         drivers: [new MemoryFlagDriver({ values: { layout: { theme: 'dark', extra: 1 } } })],
@@ -194,19 +194,19 @@ describe('FeatureFlagsService', () => {
   });
 
   describe('never-throw', () => {
-    beforeEach(() => Logger.resetWriter());
-    afterEach(() => Logger.resetWriter());
-
     it('absorbs a throwing driver into the fallback and logs a warning', async () => {
       const warnings: string[] = [];
-      Logger.setWriter((level, line) => {
+      const logger = new Logger().setWriter((level, line) => {
         if (level === 'WARN') warnings.push(line);
       });
 
-      const flags = service({
-        drivers: [new ThrowingDriver()],
-        manifest: { 'new-checkout': true },
-      });
+      const flags = service(
+        {
+          drivers: [new ThrowingDriver()],
+          manifest: { 'new-checkout': true },
+        },
+        logger,
+      );
 
       // fallback = manifest default (true), despite the driver rejecting
       expect(await flags.getBooleanValue('new-checkout')).toBe(true);
@@ -217,7 +217,6 @@ describe('FeatureFlagsService', () => {
     });
 
     it('details synthesize an ERROR reason on failure', async () => {
-      Logger.setWriter(() => {});
       const flags = service({ drivers: [new ThrowingDriver()] });
       const details = await flags.getBooleanDetails('x', false);
       expect(details).toMatchObject({ flagKey: 'x', value: false, reason: 'ERROR' });
@@ -225,7 +224,6 @@ describe('FeatureFlagsService', () => {
     });
 
     it('rejects a non-boolean driver value into a typed fallback', async () => {
-      Logger.setWriter(() => {});
       const flags = service({ drivers: [new MalformedBooleanDriver()] });
       expect(await flags.getBooleanValue('x', false)).toBe(false);
       expect(await flags.getBooleanDetails('x', false)).toMatchObject({
@@ -284,7 +282,6 @@ describe('FeatureFlagsService', () => {
     });
 
     it('returns manifest defaults when the context resolver throws', async () => {
-      Logger.setWriter(() => {});
       const flags = service({
         drivers: [new MemoryFlagDriver()],
         manifest: { a: true, b: 'x' },
@@ -294,7 +291,6 @@ describe('FeatureFlagsService', () => {
       });
       const bound = flags.forRequest(mockRequest('r'));
       expect(await bound.all()).toEqual({ a: true, b: 'x' });
-      Logger.resetWriter();
     });
   });
 

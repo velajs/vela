@@ -1,14 +1,5 @@
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Injectable,
-  Module,
-  Param,
-  Post,
-} from '@velajs/vela';
+import { Body, Controller, Get, Injectable, Module, Param, Post } from '@velajs/vela';
 import { defineCloudflareApp } from '@velajs/cloudflare';
 import {
   Gateways,
@@ -138,13 +129,20 @@ export class PageController {
 
 /** Validates an announcement body before any of it reaches a room: 1 to 500 characters of text. */
 const Announcement = {
-  parse(value: unknown): { text: string } {
-    const text: unknown =
-      typeof value === 'object' && value !== null ? Reflect.get(value, 'text') : undefined;
-    if (typeof text !== 'string' || text.length === 0 || text.length > 500) {
-      throw new BadRequestException('An announcement needs text of 1 to 500 characters');
-    }
-    return { text };
+  '~standard': {
+    version: 1 as const,
+    vendor: 'chat-example',
+    validate(value: unknown) {
+      const text: unknown =
+        typeof value === 'object' && value !== null ? Reflect.get(value, 'text') : undefined;
+      if (typeof text !== 'string' || text.length === 0 || text.length > 500)
+        return {
+          issues: [
+            { message: 'An announcement needs text of 1 to 500 characters', path: ['text'] },
+          ],
+        };
+      return { value: { text } };
+    },
   },
 };
 

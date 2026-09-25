@@ -64,7 +64,7 @@ describe('queue driver application ownership', () => {
   });
 
   it('rejects sharing a custom bound driver between applications', async () => {
-    const shared = { kind: 'test', enqueue: async () => {}, bind: () => {} };
+    const shared = { kind: 'test', enqueue: async () => {}, bind: () => () => {} };
     @Injectable()
     class Producer {
       constructor(@Inject(queueToken('shared')) readonly queue: QueueClient) {}

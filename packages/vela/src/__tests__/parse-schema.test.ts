@@ -41,25 +41,22 @@ describe('shared schema boundary', () => {
     expect(transform).toHaveBeenCalledTimes(1);
   });
 
-  it('prefers legacy parseAsync and preserves its receiver', async () => {
-    const schema = {
-      number: 7,
-      parse: vi.fn(() => {
-        throw new Error('sync path');
-      }),
-      async parseAsync() {
-        return this.number;
-      },
-    };
-    expect(await parseSchemaAsync(schema, null)).toBe(7);
+  it('rejects parser-only validators without invoking them', async () => {
+    const schema = { parse: vi.fn(), parseAsync: vi.fn() };
+    // @ts-expect-error Obsolete validator shape from JavaScript callers.
+    await expect(parseSchemaAsync(schema, null)).rejects.toThrow('Standard Schema');
     expect(schema.parse).not.toHaveBeenCalled();
-    expect(parseSchema({ parse: (value) => value }, 'sync')).toBe('sync');
+    expect(schema.parseAsync).not.toHaveBeenCalled();
+    // @ts-expect-error DTOs also require the Standard Schema protocol.
+    expect(() => defineDto(schema)).toThrow('Standard Schema');
   });
 
-  it('normalizes legacy validation failures but keeps unrelated failures internal', async () => {
+  it('normalizes Standard validation failures but keeps unrelated failures internal', async () => {
     const invalid = {
-      parse: () =>
-        Promise.reject({
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: async () => ({
           issues: [
             {
               message: 'Required',
@@ -70,6 +67,7 @@ describe('shared schema boundary', () => {
             },
           ],
         }),
+      },
     };
     await expect(parseSchemaAsync(invalid, {})).rejects.toMatchObject({
       issues: [{ message: 'Required', path: ['a.b', 0], code: 'required' }],
@@ -102,10 +100,13 @@ describe('shared schema boundary', () => {
     // @ts-expect-error intentionally unknown result from an external realm
     expect(await parseSchemaAsync(schema, null)).toBe(12);
     const invalid = {
-      parse: () => {
-        throw { issues: [{ path: [null] }] };
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: () => ({ issues: [{ path: [null] }] }),
       },
     };
+    // @ts-expect-error Malformed issues are rejected at runtime.
     await expect(parseSchemaAsync(invalid, null)).rejects.toBeInstanceOf(TypeError);
   });
 });

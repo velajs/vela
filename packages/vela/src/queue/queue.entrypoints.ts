@@ -42,17 +42,19 @@ export class QueueTransportEntrypoints {
       methodName: 'consume',
       meta: route.meta,
     }));
-    const declarations: Entrypoint[] = this.queues.all().map((queue) => ({
-      kind: 'queue:registration',
-      token: queueToken(queue.name),
-      moduleId: this.container.getOwnerModuleIds(queueToken(queue.name))[0],
-      instance: undefined,
-      meta: {
-        name: queue.name,
-        ...(queue.binding === undefined ? {} : { binding: queue.binding }),
-        consumers: [...queue.consumers],
-      },
-    }));
+    const declarations: Entrypoint[] = this.queues.all().flatMap((queue) =>
+      this.container.getOwnerModuleIds(queueToken(queue.name)).map((moduleId) => ({
+        kind: 'queue:registration',
+        token: queueToken(queue.name),
+        moduleId,
+        instance: undefined,
+        meta: {
+          name: queue.name,
+          ...(queue.binding === undefined ? {} : { binding: queue.binding }),
+          consumers: [...queue.consumers],
+        },
+      })),
+    );
     return [...routes, ...declarations];
   }
 

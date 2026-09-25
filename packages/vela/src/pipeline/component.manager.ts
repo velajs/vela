@@ -11,12 +11,10 @@ import type {
   MiddlewareType,
   PipeType,
 } from '../registry/types';
-import { PipelineRunner } from './pipeline-runner';
 import type {
   ArgumentMetadata,
   CanActivate,
   ExceptionFilter,
-  ExecutionContext,
   NestInterceptor,
   NestMiddleware,
   PipeTransform,
@@ -104,16 +102,5 @@ export class ComponentManager {
       transformed = await pipe.transform(transformed, metadata);
     }
     return transformed;
-  }
-
-  // Interceptor chain (onion pattern) — canonical implementation lives in
-  // PipelineRunner; kept here as a stable alias.
-
-  static async runInterceptorChain(
-    interceptors: NestInterceptor[],
-    context: ExecutionContext,
-    coreHandler: () => Promise<unknown>,
-  ): Promise<unknown> {
-    return PipelineRunner.chainInterceptors(interceptors, context, coreHandler);
   }
 }

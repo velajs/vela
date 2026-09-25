@@ -143,7 +143,8 @@ queues itself.
 For deterministic tests, create `inline({ mode: 'manual' })` per application and
 await `flush()`. Failed jobs reject the flush after all buffered jobs are tried;
 the inline driver does not retry them. Closing the application releases its
-binding and clears pending jobs. Legacy adds after inline disposal remain no-ops.
+binding and clears pending jobs. Adds after inline disposal reject. A driver that implements `bind` must return
+a cleanup function; the module calls it at disposal.
 Inline delivery is in memory and does not support delayed or durable delivery.
 
 ## Cloudflare Queues
@@ -303,8 +304,8 @@ mutating validators cannot change the wire snapshot. Transport carries the
 original input shape; each processor validates it into output before invoking
 the method. Async schemas are supported. Schemas should be deterministic and
 free of external side effects because producer and consumer both validate.
-Typed jobs must be structured-cloneable. Legacy `add(name, data)` and
-`@Process(name)` retain their existing behavior without automatic validation.
+Typed jobs must be structured-cloneable. Raw `add(name, data)` and `@Process(name)` transport arbitrary payloads without
+automatic validation; use definitions for validated jobs.
 
 The decorator checks the annotated handler's job type. As in NestJS, a
 `@Process(definition)` composed through `applyDecorators` does not check the

@@ -1,7 +1,6 @@
 // Ported from @stratal/testing (MIT, © Temitayo Fadojutimi), minus Macroable —
 // vela has no Macroable, so TestResponse is a plain class.
 import { expect } from 'vitest';
-import type { SchemaParser } from '@velajs/vela/validation';
 import {
   parseSchemaAsync,
   type SchemaOutput,
@@ -51,7 +50,6 @@ export class TestResponse {
   /** Read JSON as unknown, or infer validated output from a supplied parser. */
   json(): Promise<unknown>;
   json<Schema extends ValidationSchema>(parser: Schema): Promise<SchemaOutput<Schema>>;
-  json<Value>(parser: SchemaParser<Value>): Promise<Value>;
   async json(parser?: ValidationSchema): Promise<unknown> {
     this.jsonData ??= this.response.clone().json();
     const value = await this.jsonData;

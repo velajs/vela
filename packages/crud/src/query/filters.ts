@@ -1,4 +1,5 @@
 import { matchesPredicate } from './predicate';
+import { InputValidationException } from '../envelope/errors';
 /**
  * Query-string filter parsing + in-memory operator evaluation.
  *
@@ -7,10 +8,9 @@ import { matchesPredicate } from './predicate';
  * (packages/memory/src/filter.ts) onto the native engine's `FilterCondition` /
  * `ListQuery` shapes. Two cross-adapter contracts are preserved verbatim:
  *
- *  - **Fail-closed operators/fields.** An unknown bracket operator or a field
- *    that is not allow-listed is silently dropped (never forged into an invalid
- *    operator that a downstream adapter ignores, disabling the filter and
- *    returning every row). `matchesFilter` likewise returns `false` for an
+ *  - **Allowlisted operators/fields.** Read queries ignore unknown filters.
+ *    Mutation queries use `strictFilters` and reject unknown fields, operators
+ *    and list-only parameters before selecting any rows. `matchesFilter` likewise returns `false` for an
  *    operator outside the closed union rather than matching everything.
  *  - **Literal-needle like/ilike.** The user value is a literal substring
  *    needle — `%` is stripped, `_` is inert — never a live SQL wildcard.
@@ -165,6 +165,8 @@ export type RawQuery = Record<string, string | string[] | undefined>;
  * `ListFilterParseOptions`.
  */
 export interface ParseListQueryOptions {
+  /** Mutation filters reject unknown fields/operators and query-only options. */
+  strictFilters?: boolean;
   // Filtering
   filterFields?: string[];
   filterConfig?: FilterConfig;
@@ -230,7 +232,7 @@ function firstString(raw: string | string[]): string {
  * Parse raw query params into the validated {@link ListQuery} handed to
  * `CrudAdapter.list`: allow-listed, operator-validated `FilterCondition[]` plus
  * the accompanying {@link ListOptions}. Faithful port of hono-crud
- * `parseListFilters` — same reserved-param routing, same fail-closed filter
+ * `parseListFilters` — same reserved-param routing, same read-filter
  * allow-listing, same clamping and cursor-mode ordering override.
  */
 export function parseListFilters(query: RawQuery, config: ParseListQueryOptions = {}): ListQuery {
@@ -274,6 +276,30 @@ export function parseListFilters(query: RawQuery, config: ParseListQueryOptions 
   }
 
   for (const [key, rawValue] of Object.entries(query)) {
+    if (config.strictFilters) {
+      const bracket = key.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[([a-z]+)\]$/);
+      const field = bracket?.[1] ?? key;
+      const operator = bracket?.[2] ?? 'eq';
+      const operators = Object.hasOwn(allowedFilters, field) ? allowedFilters[field] : undefined;
+      if (
+        !Array.isArray(operators) ||
+        !isFilterOperator(operator) ||
+        !operators.includes(operator) ||
+        RESERVED_LIST_PARAMS.some((param) => param === key) ||
+        key === searchParamName ||
+        key === softDeleteQueryParam ||
+        typeof rawValue !== 'string'
+      )
+        throw new InputValidationException(`Invalid mutation filter '${key}'`);
+      if (
+        (operator === 'between' && rawValue.split(',').length !== 2) ||
+        (operator === 'null' && !/^(true|false)$/i.test(rawValue))
+      ) {
+        throw new InputValidationException(`Invalid mutation filter value for '${key}'`);
+      }
+      filters.push({ field, operator, value: coerceFilterValue(operator, rawValue) });
+      continue;
+    }
     if (rawValue === undefined || rawValue === null) continue;
 
     const value = firstString(rawValue);
@@ -340,10 +366,7 @@ export function parseListFilters(query: RawQuery, config: ParseListQueryOptions 
         .split(',')
         .map((v) => v.trim())
         .filter(Boolean);
-      options.include =
-        allowedIncludes.length > 0
-          ? requested.filter((r) => allowedIncludes.includes(r))
-          : requested;
+      options.include = requested.filter((r) => allowedIncludes.includes(r));
       continue;
     }
 

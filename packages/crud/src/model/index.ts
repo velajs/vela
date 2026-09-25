@@ -7,8 +7,6 @@
 
 // -- Types ------------------------------------------------------------------
 export type {
-  CascadeAction,
-  CascadeConfig,
   ComputedFieldConfig,
   ComputedFieldFn,
   ComputedFieldsConfig,

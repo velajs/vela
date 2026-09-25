@@ -29,6 +29,7 @@ interface SelectBuilder extends PromiseLike<Row[]> {
   groupBy(...columns: SQLWrapper[]): SelectBuilder;
   limit(value: number): SelectBuilder;
   offset(value: number): SelectBuilder;
+  for(strength: 'update'): SelectBuilder;
 }
 interface MutationBuilder extends PromiseLike<unknown> {
   onConflictDoNothing(options: { target: AnyColumn[] }): MutationBuilder;

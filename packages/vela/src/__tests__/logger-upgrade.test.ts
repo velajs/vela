@@ -1,13 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Logger, LogLevel } from '../services/logger.js';
-
-beforeEach(() => {
-  Logger.setLogLevel(LogLevel.LOG);
-  Logger.overrideLogger(false);
-  (Logger as any).globalLogger = undefined;
-  Logger.clearContextProviders();
-  Logger.resetWriter();
-});
 
 describe('Logger — context providers', () => {
   it('instance-level provider appends key=value pairs to the output line', () => {
@@ -23,24 +15,23 @@ describe('Logger — context providers', () => {
     spy.mockRestore();
   });
 
-  it('global provider applies to all loggers', () => {
+  it('context providers belong to each logger', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    Logger.addContextProvider(() => ({ env: 'test' }));
 
-    const a = new Logger('A');
+    const a = new Logger('A').addContextProvider(() => ({ env: 'test' }));
     const b = new Logger('B');
     a.log('one');
     b.log('two');
 
     expect(spy.mock.calls[0]![0] as string).toContain('env=test');
-    expect(spy.mock.calls[1]![0] as string).toContain('env=test');
+    expect(spy.mock.calls[1]![0] as string).not.toContain('env=test');
     spy.mockRestore();
   });
 
-  it('global + instance merge; instance overrides on same key', () => {
+  it('later providers override earlier values', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    Logger.addContextProvider(() => ({ scope: 'global', env: 'prod' }));
     const logger = new Logger('Svc');
+    logger.addContextProvider(() => ({ scope: 'global', env: 'prod' }));
     logger.addContextProvider(() => ({ scope: 'instance' }));
 
     logger.log('msg');
@@ -161,13 +152,13 @@ describe('Logger — extend()', () => {
 });
 
 describe('Logger — pluggable writer', () => {
-  it('Logger.setWriter replaces default console output', () => {
+  it('setWriter replaces console output for the instance', () => {
     const lines: Array<{ level: string; line: string }> = [];
-    Logger.setWriter((level, line) => {
+    const logger = new Logger('Svc');
+    logger.setWriter((level, line) => {
       lines.push({ level, line: line as string });
     });
 
-    const logger = new Logger('Svc');
     logger.log('a');
     logger.warn('b');
     logger.error('c');
@@ -179,9 +170,10 @@ describe('Logger — pluggable writer', () => {
     expect(lines[2]!.level).toBe('ERROR');
   });
 
-  it('instance setWriter overrides global writer for that logger only', () => {
+  it('writers belong to each logger', () => {
     const globalLines: string[] = [];
-    Logger.setWriter((_level, line) => {
+    const other = new Logger('Other');
+    other.setWriter((_level, line) => {
       globalLines.push(line as string);
     });
 
@@ -192,7 +184,7 @@ describe('Logger — pluggable writer', () => {
     });
 
     logger.log('custom');
-    new Logger('Other').log('global');
+    other.log('global');
 
     expect(instanceLines).toHaveLength(1);
     expect(instanceLines[0]).toContain('custom');
@@ -216,16 +208,31 @@ describe('Logger — pluggable writer', () => {
   });
 
   it('resetWriter restores default console behavior', () => {
-    Logger.setWriter(() => {
+    const logger = new Logger('Svc');
+    logger.setWriter(() => {
       /* noop */
     });
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    new Logger('Svc').log('before-reset');
+    logger.log('before-reset');
     expect(spy).not.toHaveBeenCalled();
 
-    Logger.resetWriter();
-    new Logger('Svc').log('after-reset');
+    logger.resetWriter();
+    logger.log('after-reset');
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });
+});
+
+it('isolates logger levels and snapshots child configuration', () => {
+  const first = vi.fn();
+  const second = vi.fn();
+  const parent = new Logger().setWriter(first).setLogLevel(LogLevel.ERROR);
+  const child = parent.extend('child');
+  const other = new Logger().setWriter(second);
+  parent.setLogLevel(LogLevel.DEBUG);
+  child.log('hidden');
+  parent.debug('visible');
+  other.log('visible');
+  expect(first).toHaveBeenCalledTimes(1);
+  expect(second).toHaveBeenCalledTimes(1);
 });

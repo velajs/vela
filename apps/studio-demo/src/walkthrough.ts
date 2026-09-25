@@ -234,10 +234,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     const author = list.find((m) => m.name === MODEL_IDS.author);
     assert(
       JSON.stringify([...(author?.capabilities ?? [])].toSorted()) ===
-        JSON.stringify(['aggregate', 'cascade', 'transactions']),
+        JSON.stringify(['aggregate', 'transactions']),
       'author caps',
     );
-    return `3 models [author, book, tag]; author caps=[aggregate,cascade,transactions], book caps=[nativeSearch,transactions]`;
+    return `3 models [author, book, tag]; author caps=[aggregate,transactions], book caps=[nativeSearch,transactions]`;
   });
 
   await step('data.describeModel', async () => {
@@ -304,15 +304,6 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       `facets ${JSON.stringify([...byValue])}`,
     );
     return `facets(author.role)=admin:1, member:2`;
-  });
-
-  await step('data.cascadePreview', async () => {
-    const preview = unwrap(
-      await call('data.cascadePreview', { model: MODEL_IDS.author, ids: ['a1'] }),
-    );
-    const books = preview.relations.find((r) => r.relation === 'books');
-    assert(books?.affected === 2, `expected 2 live child books, got ${books?.affected}`);
-    return `cascadePreview(author a1): books relation affects 2 live rows (b4 tombstoned skipped)`;
   });
 
   // -- data browser: writes -------------------------------------------------

@@ -2,8 +2,7 @@
 
 Use `DiscoveryService.getRegistrations`, `registrationsWithMeta`, or
 `registeredMethodsWithMeta` for dispatch. `{ metadataOnly: true }` returns each
-registration's `moduleId` and effective scope without constructing it. Legacy
-provider discovery keeps one result per token for compatibility.
+registration's required `moduleId` and effective scope without constructing it.
 
 Resolve an entrypoint with `await resolveEntrypoint(scope, entry)`. Resolve its
 decorated components with `resolveScopedComponentsAsync(kind, target, method,

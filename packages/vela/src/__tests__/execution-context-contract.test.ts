@@ -58,6 +58,9 @@ describe('execution context contracts', () => {
       data: {},
       raw: undefined,
       send() {},
+      trySendRaw(): 'accepted' {
+        return 'accepted';
+      },
       sendRaw() {},
       join() {},
       leave() {},

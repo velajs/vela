@@ -53,10 +53,8 @@ export type { Binding, BindingKind, BindingRef, EnvFactory } from './binding';
 // Discovery — decorator-driven provider discovery
 export { DiscoveryService, createDiscoverableDecorator } from './discovery/index';
 export type {
-  DiscoveredClass,
   DiscoveredRegistration,
   DiscoveredRegisteredMethodMeta,
-  DiscoveredMethodMeta,
   DiscoveryFilter,
   DiscoverableDecorator,
   CreateDiscoverableDecoratorOptions,

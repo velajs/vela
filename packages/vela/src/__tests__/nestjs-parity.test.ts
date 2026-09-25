@@ -101,7 +101,8 @@ import {
 import {
   EventEmitterModule,
   EventEmitter,
-  EventEmitterSubscriber,
+  EventDispatcher,
+  defineEvent,
   OnEvent,
 } from '../event-emitter/index.js';
 import { ScheduleModule, ScheduleRegistry, Cron, Interval } from '../schedule/index.js';
@@ -131,6 +132,8 @@ import type {
   ArgumentMetadata,
   ExceptionFilter,
 } from '../index.js';
+
+const userCreatedEvent = defineEvent('user.created', z.string());
 
 // =============================================================================
 // @HttpCode
@@ -2955,7 +2958,7 @@ describe('EventEmitter / @OnEvent', () => {
 
     @Injectable()
     class UserListener {
-      @OnEvent('user.created')
+      @OnEvent(userCreatedEvent)
       onCreated(name: string) {
         received.push(name);
       }
@@ -2965,7 +2968,7 @@ describe('EventEmitter / @OnEvent', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    await app.get(EventEmitter).emit('user.created', 'Alice');
+    await app.get(EventDispatcher).emit(userCreatedEvent, 'Alice');
     expect(received).toEqual(['Alice']);
   });
 
@@ -2988,37 +2991,6 @@ describe('EventEmitter / @OnEvent', () => {
     const res = await app.getHonoApp().request('/emit');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ fired: true });
-  });
-
-  it('wildcard patterns (* and **) match event names', async () => {
-    const received: string[] = [];
-
-    @Injectable()
-    class WildListener {
-      @OnEvent('order.*')
-      onShallow(payload: string) {
-        received.push(`shallow:${payload}`);
-      }
-
-      @OnEvent('order.**')
-      onDeep(payload: string) {
-        received.push(`deep:${payload}`);
-      }
-    }
-
-    @Module({ imports: [EventEmitterModule], providers: [WildListener] })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    const emitter = app.get(EventEmitter);
-
-    await emitter.emit('order.created', 'A');
-    await emitter.emit('order.item.added', 'B');
-
-    expect(received).toContain('shallow:A');
-    expect(received).not.toContain('shallow:B'); // * doesn't match nested
-    expect(received).toContain('deep:A');
-    expect(received).toContain('deep:B');
   });
 });
 
@@ -3047,10 +3019,10 @@ describe('ScheduleModule / @Cron / @Interval', () => {
     const app = await VelaFactory.create(AppModule);
     const registry = app.get(ScheduleRegistry);
 
-    const jobs = registry.getCronJobs();
+    const jobs = registry.getCronEntrypoints();
     expect(jobs).toHaveLength(2);
-    expect(jobs.map((j) => j.expression)).toContain('0 * * * *');
-    expect(jobs.map((j) => j.expression)).toContain('0 0 * * *');
+    expect(jobs.map((j) => j.meta.expression)).toContain('0 * * * *');
+    expect(jobs.map((j) => j.meta.expression)).toContain('0 0 * * *');
   });
 
   it('ScheduleRegistry discovers @Interval jobs after bootstrap', async () => {
@@ -3064,9 +3036,9 @@ describe('ScheduleModule / @Cron / @Interval', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const jobs = app.get(ScheduleRegistry).getIntervalJobs();
+    const jobs = app.get(ScheduleRegistry).getIntervalEntrypoints();
     expect(jobs).toHaveLength(1);
-    expect(jobs[0].ms).toBe(1000);
+    expect(jobs[0].meta.ms).toBe(1000);
   });
 
   it('@Interval fires repeatedly under ScheduleNodeModule', async () => {
@@ -3986,15 +3958,10 @@ describe('enableCors', () => {
 // =============================================================================
 
 describe('Logger / LoggerService', () => {
-  afterEach(() => {
-    Logger.overrideLogger(undefined as unknown as false);
-    Logger.setLogLevel(LogLevel.LOG);
-  });
-
   it('Logger.log() calls console.log at LOG level', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const logger = new Logger('TestCtx');
-    Logger.setLogLevel(LogLevel.LOG);
+    logger.setLogLevel(LogLevel.LOG);
     logger.log('hello');
     expect(spy).toHaveBeenCalledOnce();
     expect(spy.mock.calls[0]![0]).toContain('hello');
@@ -4017,27 +3984,9 @@ describe('Logger / LoggerService', () => {
     spy.mockRestore();
   });
 
-  it('Logger.overrideLogger() routes messages to custom logger', () => {
-    const custom = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
-    Logger.overrideLogger(custom);
-    const logger = new Logger();
-    logger.log('via custom');
-    expect(custom.log).toHaveBeenCalledWith('via custom');
-  });
-
-  it('Logger.overrideLogger(false) suppresses all output', () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    Logger.overrideLogger(false);
-    const logger = new Logger();
-    logger.log('should not appear');
-    expect(consoleSpy).not.toHaveBeenCalled();
-    consoleSpy.mockRestore();
-  });
-
   it('Logger.setLogLevel(SILENT) suppresses everything', () => {
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    Logger.setLogLevel(LogLevel.SILENT);
-    const logger = new Logger();
+    const logger = new Logger().setLogLevel(LogLevel.SILENT);
     logger.log('suppressed');
     expect(consoleSpy).not.toHaveBeenCalled();
     consoleSpy.mockRestore();

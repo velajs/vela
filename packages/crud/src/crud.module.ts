@@ -17,7 +17,6 @@ import type { DynamicModule, Type } from '@velajs/vela';
 import type { CrudAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import type { CrudDatabaseRegistry } from './databases';
-import { missingDefaultAdapter } from './missing-adapter';
 import { resolveCrudDatabase } from './resolve-database';
 import { compileResource } from './kernel/resource';
 import {
@@ -58,7 +57,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModul
       }),
       defineProvider(CRUD_DEFAULT_ADAPTER, {
         useFactory: (options) => {
-          return options.adapter ?? missingDefaultAdapter;
+          return options.adapter;
         },
         inject: [OPTIONS],
       }),

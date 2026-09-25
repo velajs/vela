@@ -41,6 +41,8 @@ export const ADAPTER_CAPABILITIES = [
   'scopedUpsert',
   /** Real transactional scope (memory adapters use a no-op sentinel instead). */
   'transactions',
+  /** Transactional readOne({ forUpdate: true }) serializes competing writers. */
+  'rowLocks',
   /** Core update/delete return rows from the same atomic SQL statement. */
   'atomicMutations',
   /** Precomputed commands commit or roll back together; distinct from callbacks. */
@@ -61,8 +63,6 @@ export const ADAPTER_CAPABILITIES = [
   'nativeBatch',
   /** Nested relation writes (create/update/delete/connect/disconnect/set). */
   'nestedWrites',
-  /** Cascade handling on delete (cascade/setNull/restrict). */
-  'cascade',
   /** Soft-delete stamping in `delete` + soft-delete-aware reads. */
   'softDelete',
   /**
@@ -168,13 +168,6 @@ export interface NestedWriteInspection<Row = Record<string, unknown>> {
   setDisconnect: Row[];
 }
 
-/** Cascade-on-delete operations (hono-crud `endpoints/delete.ts` semantics). */
-export interface CascadeDriver {
-  countRelated(relation: string, parentKey: unknown, scope: AdapterScope): Promise<number>;
-  deleteRelated(relation: string, parentKey: unknown, scope: AdapterScope): Promise<number>;
-  nullifyRelated(relation: string, parentKey: unknown, scope: AdapterScope): Promise<number>;
-}
-
 /**
  * Owner-scope applied while fetching related rows (parity with the SQL
  * adapters' WHERE push-down): a related row in another tenant or a
@@ -271,7 +264,6 @@ export interface CrudAdapter<Row = Record<string, unknown>> {
   createMany?(rows: Array<Partial<Row>>, scope: AdapterScope): Promise<Row[]>;
 
   nested?: NestedWriteDriver<Row>;
-  cascade?: CascadeDriver;
   relations?: RelationLoader<Row>;
 }
 
@@ -285,7 +277,6 @@ export const CAPABILITY_MEMBERS: Partial<Record<AdapterCapability, keyof Runtime
   bulkPatch: 'updateWhere',
   nativeBatch: 'createMany',
   nestedWrites: 'nested',
-  cascade: 'cascade',
 };
 
 /** Adapter data plane used after the engine validates request schemas. */

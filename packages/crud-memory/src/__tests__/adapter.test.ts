@@ -359,23 +359,6 @@ describe('memoryAdapter drivers', () => {
     expect(scoped.get('u2')).toHaveLength(1);
   });
 
-  it('cascade driver counts, deletes, and nullifies related rows', async () => {
-    const adapter = users();
-    seed(
-      [
-        { id: 'p1', authorId: 'u1' },
-        { id: 'p2', authorId: 'u1' },
-        { id: 'p3', authorId: 'u2' },
-      ],
-      'posts',
-    );
-    expect(await adapter.cascade!.countRelated('posts', 'u1', scope)).toBe(2);
-    expect(await adapter.cascade!.nullifyRelated('posts', 'u2', scope)).toBe(1);
-    expect((getStore('posts').get('p3') as Record<string, unknown>).authorId).toBeNull();
-    expect(await adapter.cascade!.deleteRelated('posts', 'u1', scope)).toBe(2);
-    expect(getStore('posts').size).toBe(1);
-  });
-
   it('nested driver creates children stamped with the parent foreign key', async () => {
     const adapter = users();
     const parent = { id: 'u1' };

@@ -55,29 +55,26 @@ export function buildEntrypointExecutionContext<const Kind extends string>(
   };
 }
 
-/** Resolve legacy entrypoints only when the owning registration is unambiguous. */
+/** Validate the explicit owner before resolving an entrypoint. */
 export function getEntrypointModuleId(
   container: Container,
-  target: { readonly token: Token; readonly moduleId?: string },
-): string | undefined {
+  target: { readonly token: Token; readonly moduleId: string },
+): string {
   assertExecutionScopeActive(container);
   const owners = container.getOwnerModuleIds(target.token);
-  if (target.moduleId !== undefined) {
-    if (!owners.includes(target.moduleId)) {
-      throw new Error(`Entrypoint owner '${target.moduleId}' does not register its token.`);
-    }
-    return target.moduleId;
+  if (typeof target.moduleId !== 'string' || target.moduleId.length === 0) {
+    throw new Error('Entrypoint requires an explicit moduleId.');
   }
-  if (owners.length > 1) {
-    throw new Error('Entrypoint token has multiple module owners; supply moduleId.');
+  if (!owners.includes(target.moduleId)) {
+    throw new Error(`Entrypoint owner '${target.moduleId}' does not register its token.`);
   }
-  return owners[0];
+  return target.moduleId;
 }
 
 /** Preserve token inference while materializing the exact owning module asynchronously. */
 export function resolveEntrypoint<K extends Token>(
   container: Container,
-  target: { readonly token: K; readonly moduleId?: string },
+  target: { readonly token: K; readonly moduleId: string },
 ): Promise<InferToken<K>> {
   return container.resolveAsync(target.token, getEntrypointModuleId(container, target));
 }

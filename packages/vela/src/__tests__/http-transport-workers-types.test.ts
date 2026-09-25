@@ -22,7 +22,7 @@ it('accepts native Workers Fetcher bindings in a Workers-global consumer', () =>
       const result = await http.get('https://internal.example/items', {
         transport: binding,
         signal: new AbortController().signal,
-        schema: { parse: (_value: unknown) => ({ count: 1 }) },
+        schema: { '~standard': { version: 1, vendor: 'test', types: undefined as { input: unknown; output: { count: number } } | undefined, validate: () => ({ value: { count: 1 } }) } },
       });
       const count: number = result.data.count;
       // @ts-expect-error The schema produces numbers.

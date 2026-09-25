@@ -111,7 +111,7 @@ Studio stays closed without a token. Use the [Studio local host](studio/README.m
 to view the logs. Capture subscribes to `APP_LOGGER`; write through its
 `createLogger(category, fields)` API or the scoped logger described in
 [Logging](logging.md). Records reach Studio after normalization and redaction.
-Legacy `Logger`, `console.log`, and platform logs are separate sources. Capture
+Standalone `Logger`, `console.log`, and platform logs are separate sources. Capture
 unsubscribes when the application closes. Set `sinks: []` on `LoggingModule` if you
 want subscription-only delivery.
 

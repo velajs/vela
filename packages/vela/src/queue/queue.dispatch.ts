@@ -35,7 +35,7 @@ export interface QueueDispatchResult {
 /** One dispatchable processor: its class token + `@Processor` meta. */
 export interface QueueEntry {
   token: Token;
-  moduleId?: string;
+  moduleId: string;
   meta: ProcessorMetadata;
 }
 

@@ -24,16 +24,15 @@ export interface RouteTarget {
   readonly tail: '' | '*' | '+';
 }
 
-// A trailing wildcard: `*` or Nest's `{*name}`, then Nest's `*name` or `(.*)`.
+// A trailing wildcard: `*` or Nest's `{*name}`, then Nest's `*name`.
 const WILDCARD =
-  /^(?:(\*|\{\*[\p{ID_Start}$_][\p{ID_Continue}$]*\})|\*[\p{ID_Start}$_][\p{ID_Continue}$]*|\(\.\*\))$/u;
+  /^(?:(\*|\{\*[\p{ID_Start}$_][\p{ID_Continue}$]*\})|\*[\p{ID_Start}$_][\p{ID_Continue}$]*)$/u;
 
 /**
  * Parses a target: literal segments, matched exactly, and `:name` segments
  * whose name is an identifier. The last segment may instead be `*` or
- * `{*name}` (the parent path and every path beneath it) or `*name` or `(.*)`
- * (one or more characters beneath the parent; `forRoutes()` widens a trailing
- * `(.*)` to its parent, as Nest 11 reads it). A trailing `/` is a segment of
+ * `{*name}` (the parent path and every path beneath it) or `*name`
+ * (one or more characters beneath the parent). A trailing `/` is a segment of
  * its own. Throws, naming the cause, for a `{regex}` constraint, an optional
  * `?`, a wildcard before the last segment, a parameter name that is not an
  * identifier, a `*` or `:` inside a segment, any other parentheses or braces,
@@ -55,7 +54,7 @@ export function parseTarget(path: string): RouteTarget {
         : /^:.*\{/s.test(part)
           ? "uses a '{regex}' constraint: use ':name' or target the controller"
           : /[(){}]/.test(part)
-            ? "uses a group: only a trailing '{*name}' or '(.*)' may use braces or parentheses"
+            ? "uses a group: only a trailing '{*name}' may use braces"
             : !/^(?::[\p{ID_Start}$_][\p{ID_Continue}$]*|[^*:]*)$/u.test(part)
               ? "puts '*' or ':' inside a segment, or names a parameter that is not an " +
                 "identifier: use a whole ':name' segment, list the paths, or target the controller"

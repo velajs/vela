@@ -88,17 +88,8 @@ export class DatabaseAdapterOwner {
 
   bind(adapter: RuntimeAdapter): RuntimeAdapter {
     if (adapter.transactionOwner) this.#nativeOwners.add(adapter.transactionOwner);
-    const {
-      aggregate,
-      search,
-      restore,
-      upsertOne,
-      updateWhere,
-      createMany,
-      nested,
-      cascade,
-      relations,
-    } = adapter;
+    const { aggregate, search, restore, upsertOne, updateWhere, createMany, nested, relations } =
+      adapter;
     return {
       ...adapter,
       transactionOwner: adapter.transactionOwner ? this : undefined,
@@ -139,18 +130,6 @@ export class DatabaseAdapterOwner {
                 nested.createNested(row, name, items, this.#native(scope)),
               applyNested: (row, name, operations, scope) =>
                 nested.applyNested(row, name, operations, this.#native(scope)),
-            },
-          }
-        : {}),
-      ...(cascade
-        ? {
-            cascade: {
-              countRelated: (name, key, scope) =>
-                cascade.countRelated(name, key, this.#native(scope)),
-              deleteRelated: (name, key, scope) =>
-                cascade.deleteRelated(name, key, this.#native(scope)),
-              nullifyRelated: (name, key, scope) =>
-                cascade.nullifyRelated(name, key, this.#native(scope)),
             },
           }
         : {}),

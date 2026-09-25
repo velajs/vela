@@ -1108,9 +1108,7 @@ describe('target syntax outside the grammar fails the route build', () => {
     '*/*',
     'users/*/posts',
     'files/*a/*b',
-    'files/(.*)/(.*)',
     'files/*a/{*b}',
-    'files/(.*)/x/*b',
     'files/*a/*',
     'files/*a/b*',
   ])("rejects the wildcard before the last segment of '%s'", async (target) => {
@@ -1434,9 +1432,7 @@ describe('Nest wildcard targets', () => {
     },
   );
 
-  // Nest 11 rewrites a trailing '(.*)' to '{*path}', so forRoutes() covers
-  // the parent path with it, while exclude() keeps the strict reading below.
-  it.each(['cats/{*splat}', 'cats/*', 'cats/(.*)'])(
+  it.each(['cats/{*splat}', 'cats/*'])(
     "translates '%s' to a trailing Hono wildcard that also matches /cats",
     async (target) => {
       const request = await createApp(
@@ -1453,7 +1449,7 @@ describe('Nest wildcard targets', () => {
     },
   );
 
-  it.each(['cats/*path', 'cats/(.*)'])(
+  it.each(['cats/*path'])(
     "keeps running middleware on /cats itself when '%s' is excluded",
     async (target) => {
       const request = await createApp([CatsWithIndexController, DogsController], (consumer) => {
@@ -1469,7 +1465,7 @@ describe('Nest wildcard targets', () => {
   );
 
   it.each(
-    ['(.*)', '/(.*)'].flatMap((target) => [
+    ['*', '/*'].flatMap((target) => [
       [target, ''],
       [target, '/api'],
     ]),
@@ -1515,22 +1511,20 @@ describe('Nest wildcard targets', () => {
   // A wildcard that spans segments before the last one would need
   // backtracking, so these targets fail the route build instead of matching
   // something else.
-  it.each([
-    'cats/*path/toys',
-    'cats/(.*)/toys',
-    'files/*path/:id',
-    'files/(.*)/:id',
-    'users/*id/admin',
-    'cats/{*splat}/toys',
-  ])("rejects the Nest wildcard before the last segment of '%s'", async (target) => {
-    const message = `Middleware route '${target}' has a wildcard before its last segment`;
-    await expect(createApp([CatsWithIndexController], forRoutes(target))).rejects.toThrow(message);
-    await expect(
-      createApp([CatsWithIndexController], (consumer) => {
-        consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
-      }),
-    ).rejects.toThrow(message);
-  });
+  it.each(['cats/*path/toys', 'files/*path/:id', 'users/*id/admin', 'cats/{*splat}/toys'])(
+    "rejects the Nest wildcard before the last segment of '%s'",
+    async (target) => {
+      const message = `Middleware route '${target}' has a wildcard before its last segment`;
+      await expect(createApp([CatsWithIndexController], forRoutes(target))).rejects.toThrow(
+        message,
+      );
+      await expect(
+        createApp([CatsWithIndexController], (consumer) => {
+          consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+        }),
+      ).rejects.toThrow(message);
+    },
+  );
 
   it('reports a Nest wildcard target that only the parent route would match', async () => {
     @Controller('/cats')
@@ -1658,7 +1652,6 @@ describe('targets match decoded line terminators', () => {
       'admin/*',
       'admin/*path',
       'admin/{*path}',
-      'admin/(.*)',
       'admin/users/:id',
       'admin/:section',
     ].flatMap((target) => TERMINATORS.map((encoded) => [target, encoded])),
@@ -1805,4 +1798,16 @@ describe('forRoutes(Controller) follows the handler Hono dispatches to', () => {
     expect((await outer.request('/outer/inner/admin/7')).status).toBe(200);
     expect(seen).toEqual(['GET /outer/inner/admin/7']);
   });
+});
+
+it.each(['(.*)', '/(.*)', 'cats/(.*)'])('rejects obsolete middleware target %s', async (target) => {
+  @Controller('/cats')
+  class ObsoleteTargetController {
+    @Get() list() {
+      return [];
+    }
+  }
+  await expect(createApp([ObsoleteTargetController], forRoutes(target))).rejects.toThrow(
+    'uses a group',
+  );
 });

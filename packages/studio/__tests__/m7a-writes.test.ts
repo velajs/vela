@@ -1,9 +1,9 @@
+import { z } from 'zod';
+import { Crud } from '@velajs/crud';
 import { matchesPredicate } from '@velajs/crud/query';
 import { bindAdapter } from '@velajs/crud/adapter';
 import { describe, expect, it } from 'vitest';
 import { Controller, Module, VelaFactory } from '@velajs/vela';
-import { METADATA_KEYS, defineMetadata } from '@velajs/vela/module-kit';
-import type { CrudConfig } from '@velajs/crud';
 import type { Model, RelationConfig } from '@velajs/crud/model';
 import type {
   AdapterScope,
@@ -44,17 +44,17 @@ interface FieldSpec {
   nullable?: boolean;
 }
 
-function zField(spec: FieldSpec): unknown {
-  let node: { def: { type: string; innerType?: unknown } } = { def: { type: spec.type } };
-  if (spec.nullable) node = { def: { type: 'nullable', innerType: node } };
-  if (spec.optional) node = { def: { type: 'optional', innerType: node } };
+function zField(spec: FieldSpec): z.ZodType {
+  let node: z.ZodType = spec.type === 'number' ? z.number() : z.string();
+  if (spec.nullable) node = node.nullable();
+  if (spec.optional) node = node.optional();
   return node;
 }
 
 function zSchema(shape: Record<string, FieldSpec>): Model['schema'] {
-  const built: Record<string, unknown> = {};
-  for (const [name, spec] of Object.entries(shape)) built[name] = zField(spec);
-  return { shape: built } as unknown as Model['schema'];
+  return z.object(
+    Object.fromEntries(Object.entries(shape).map(([name, spec]) => [name, zField(spec)])),
+  );
 }
 
 const userModel: Model = {
@@ -240,19 +240,11 @@ async function makeApp(
 
   @Controller('/users')
   class UsersController {}
-  defineMetadata(
-    METADATA_KEYS.CRUD,
-    { model: userModel, adapter: usersAdapter } satisfies CrudConfig,
-    UsersController,
-  );
+  Crud({ ...{ model: userModel, adapter: usersAdapter }, only: [] })(UsersController);
 
   @Controller('/posts')
   class PostsController {}
-  defineMetadata(
-    METADATA_KEYS.CRUD,
-    { model: postModel, adapter: postsAdapter } satisfies CrudConfig,
-    PostsController,
-  );
+  Crud({ ...{ model: postModel, adapter: postsAdapter }, only: [] })(PostsController);
 
   @Module({
     imports: [StudioModule.forRoot({ token: TOKEN, ...studio, plugins: [crud] })],

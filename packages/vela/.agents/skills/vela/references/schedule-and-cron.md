@@ -41,8 +41,8 @@ class AppModule {}
 
 // inspect registered jobs
 const registry = app.get(ScheduleRegistry);
-registry.getCronJobs();      // [{ expression, methodName, instance, target }]
-registry.getIntervalJobs();  // [{ ms, methodName, instance, target }]
+registry.getCronEntrypoints();      // [{ expression, methodName, instance, target }]
+registry.getIntervalEntrypoints();  // [{ ms, methodName, instance, target }]
 registry.getCronEntrypoints(); // owner-bearing metadata, including async/request providers
 registry.getIntervalEntrypoints();
 ```

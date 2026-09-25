@@ -45,7 +45,12 @@ class RoomClient implements WsClient {
     this.rooms = new Set([room]);
   }
   send(): void {}
-  sendRaw(): void {}
+  trySendRaw(payload: string): 'accepted' {
+    this.sendRaw(payload);
+    return 'accepted';
+  }
+
+  sendRaw(_payload: string): void {}
   join(room: string): void {
     this.rooms.add(room);
   }

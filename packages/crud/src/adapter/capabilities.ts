@@ -37,6 +37,9 @@ export function assertAdapterSatisfies(
   adapter: RuntimeAdapter,
 ): void {
   const problems: string[] = [];
+  if (adapter.capabilities.has('rowLocks') && !adapter.capabilities.has('transactions')) {
+    problems.push('rowLocks requires transactions');
+  }
   if (adapter.capabilities.has('atomicBatch')) {
     try {
       requireAtomicBatch(adapter);

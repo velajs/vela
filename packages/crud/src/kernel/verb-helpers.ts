@@ -236,9 +236,7 @@ export async function parseBody(schema: StandardSchemaV1, body: unknown): Promis
       throw new InputValidationException(
         'Validation failed',
         error.issues.map((issue) => ({
-          path: (issue.path ?? [])
-            .map((part) => (typeof part === 'object' ? String(part.key) : String(part)))
-            .join('.'),
+          path: (issue.path ?? []).map(String).join('.'),
           message: issue.message,
           code: 'validation',
         })),
@@ -524,7 +522,7 @@ export async function updateSchemaFor(
   return deriveUpdateSchema({ ...model, schema }, resource.config.updateFields ?? {});
 }
 
-/** Stable complete identifier for audit and legacy version-store display fields. */
+/** Stable complete identifier for audit and version-store display fields. */
 export function rowIdentifier(resource: AnyResource, row: Row): string | number {
   const lookup = lookupFromRow(resource, {}, row);
   if (resource.model.primaryKeys.length === 1) {

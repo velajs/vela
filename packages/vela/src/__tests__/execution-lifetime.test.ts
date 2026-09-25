@@ -230,7 +230,10 @@ describe('owner-qualified entrypoint resolution', () => {
       'beta',
     );
     const scope = createExecutionScope(container);
-    expect(() => getEntrypointModuleId(scope.container, { token: TOKEN })).toThrow('multiple');
+    // @ts-expect-error Untyped integrations must also provide an owner.
+    expect(() => getEntrypointModuleId(scope.container, { token: TOKEN })).toThrow(
+      'explicit moduleId',
+    );
     expect(() =>
       getEntrypointModuleId(scope.container, { token: TOKEN, moduleId: 'foreign' }),
     ).toThrow('does not register');

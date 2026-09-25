@@ -1,7 +1,6 @@
 # Application-owned logging
 
-`Logger` and its text `Writer` remain supported with their existing static settings.
-For application-isolated structured logs, import `LoggingModule` once at the root:
+For application-owned structured logs, import `LoggingModule` once at the root:
 
 ```ts
 import { Inject, Injectable, Module } from '@velajs/vela';
@@ -31,7 +30,7 @@ class AppModule {}
 ```
 
 The provider is global **within that application** by default. It never changes
-legacy `Logger` settings or another application's logger. `forRootAsync` accepts
+standalone `Logger` settings or another application's logger. `forRootAsync` accepts
 the existing typed provider factory options for environment-owned sinks. Direct
 `new ApplicationLogger(options)` also works without modules or DI. No Node APIs,
 ambient context, console patching, or telemetry service is required.
@@ -51,7 +50,7 @@ also derived from its normalized representation.
 `subscribe(sink)` returns an idempotent unsubscribe function. Function identity
 deduplicates configured sinks and subscribers. An empty `sinks: []` disables the
 default JSON console sink while allowing subscribers. Optional integrations such
-as Studio can subscribe and detach with their own lifecycle; legacy global
+as Studio can subscribe and detach with their own lifecycle; standalone
 Logger calls and arbitrary console calls are not captured.
 
 ## Serialization and redaction
@@ -145,3 +144,11 @@ request-owned services again. Such late asynchronous deliveries are owned by the
 application logger; adapters must explicitly flush/register that work with their
 platform lifetime when required. This exception-report path does not reactivate
 ordinary retained scoped loggers.
+
+## Standalone text logging
+
+`new Logger('worker')` provides a text logger with instance methods `setLogLevel`,
+`setWriter`, `resetWriter`, and `addContextProvider`. `extend()` copies the current
+level, writer, and providers to an independent child. There are no static settings
+or process-wide overrides. Configure application sinks and levels through
+`LoggingModule` or `ApplicationLogger`.

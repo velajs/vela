@@ -414,6 +414,10 @@ describe('redis() sync driver', () => {
       data: {},
       raw: null,
       send() {},
+      trySendRaw(payload: string): 'accepted' {
+        this.sendRaw(payload);
+        return 'accepted';
+      },
       sendRaw: (p: string) => received.push(JSON.parse(p)),
       join() {},
       leave() {},
@@ -539,6 +543,10 @@ describe('websocket-node — code-review regressions', () => {
       data: {},
       raw: null,
       send() {},
+      trySendRaw(payload: string): 'accepted' {
+        this.sendRaw(payload);
+        return 'accepted';
+      },
       sendRaw: (p: string) => received.push(JSON.parse(p)),
       join() {},
       leave() {},

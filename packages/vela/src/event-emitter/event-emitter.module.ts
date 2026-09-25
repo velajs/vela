@@ -3,7 +3,6 @@ import { Module } from '../module/decorators';
 import { defineModule } from '../module/define-module';
 import { DEFAULT_MODULE_KEY } from '../module/module-identity';
 import { EventEmitter } from './event-emitter.service';
-import { EventEmitterSubscriber } from './event-emitter.subscriber';
 
 /** `EventEmitterModule` takes no options; `forRoot()` is the uniform entry. */
 export type EventEmitterModuleOptions = Record<never, never>;
@@ -20,7 +19,7 @@ const { ConfigurableModuleClass } = defineModule<EventEmitterModuleOptions>({
 // nothing at cold start. See docs/modules.md "Lazy modules".
 @Module({
   lazy: true,
-  providers: [EventEmitter, EventEmitterSubscriber, EventDispatcher],
+  providers: [EventEmitter, EventDispatcher],
   exports: [EventEmitter, EventDispatcher],
 })
 export class EventEmitterModule extends ConfigurableModuleClass {}

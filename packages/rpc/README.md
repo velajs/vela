@@ -10,7 +10,7 @@ pnpm add @velajs/vela zod
 
 ## Define a shared contract
 
-Keep contracts in a module that does not import server classes or environment bindings. Vela's shared validation contract accepts Standard Schema and synchronous or asynchronous parser schemas. Standard Schema carries both input and output types; legacy parser-only schemas retain `unknown` input.
+Keep contracts in a module that does not import server classes or environment bindings. Vela's shared validation contract accepts Standard Schema validators and DTO descriptors, retaining their input and output types and supporting asynchronous validation.
 
 ```ts
 // contracts.ts

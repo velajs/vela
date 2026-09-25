@@ -56,7 +56,7 @@ describe('RouteContributor registry', () => {
 });
 
 describe('RouteManager — route contributor integration', () => {
-  it('does not warn for vela:crud metadata without a contributor when the controller has real routes (native crud >=1.18)', async () => {
+  it('does not interpret unclaimed extension metadata on controllers with routes', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       @Controller('/users')
@@ -79,7 +79,7 @@ describe('RouteManager — route contributor integration', () => {
     }
   });
 
-  it('warns (instead of throwing) when vela:crud metadata produced no routes and no contributor claims it', async () => {
+  it('does not interpret unclaimed extension metadata on empty controllers', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       @Controller('/bare')
@@ -90,7 +90,7 @@ describe('RouteManager — route contributor integration', () => {
       class AppModule {}
 
       await expect(VelaFactory.create(AppModule)).resolves.toBeDefined();
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('produced no routes'));
+      expect(warn).not.toHaveBeenCalled();
     } finally {
       warn.mockRestore();
     }

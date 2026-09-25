@@ -36,7 +36,7 @@ policy, and native fetch retains its normal redirect behavior.
 
 ## URLs and headers
 
-`baseURL` remains a literal string prefix for compatibility. With
+`baseURL` is a literal string prefix. With
 `baseURL: 'https://api.example.com/v1'`, `get('/items')` calls
 `https://api.example.com/v1/items`. Slashes are not inserted or removed, and an
 absolute request URL does not override the prefix. Omit `baseURL` when supplying
@@ -65,7 +65,7 @@ modified.
 | Objects, arrays, numbers, booleans, `null` | JSON serialized; `application/json` is added only if no content type exists |
 | `undefined` | No body |
 
-Explicit `null` remains JSON `null` for compatibility. Native streams are passed
+Explicit `null` is encoded as JSON `null`. Native streams are passed
 with `duplex: 'half'` for transports that require it. JSON serialization errors
 are raised before transport starts. A pre-serialized JSON string needs an
 explicit JSON content type. For binary and URL-encoded bodies, avoid setting a
@@ -92,7 +92,7 @@ response.data.count; // number, validated and transformed
 ```
 
 The shared [validation machinery](types.md) accepts Standard Schema
-validators, `defineDto` descriptors, and parsers with `parse`/`parseAsync`.
+validators and `defineDto` descriptors.
 Async validation is awaited once. Validation failures use
 `SchemaValidationError`; validator implementation exceptions retain their
 original identity. Bodyless responses still run a supplied schema against

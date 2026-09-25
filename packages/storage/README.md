@@ -215,3 +215,5 @@ disk:
 | Worker HMAC `getPresignedUrl()` and the `GET /storage/:disk` proxy route | `publicBaseUrl`, the authorized `http: { download: 'proxy' }` controller, or provider-signed URLs from the S3 or R2 HTTP/hybrid drivers |
 
 URLs issued by the removed proxy route stop working once it is gone.
+
+Compression middleware requires a metadata-capable driver and valid `vela-zip` metadata on stored objects. Untagged objects are rejected. Encryption rejects invalid ciphertext; it has no plaintext passthrough mode.

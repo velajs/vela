@@ -135,6 +135,11 @@ export function defineModel<
   for (const [name, rel] of Object.entries(
     (config.relations ?? {}) as Record<string, RelationConfig>,
   )) {
+    if ('cascade' in rel) {
+      throw new ConfigurationException(
+        `Model '${config.name}': relation '${name}' uses unsupported cascade configuration. Use database foreign keys for hard deletes or transactional hooks for soft deletes`,
+      );
+    }
     if (rel?.nestedWrites === undefined) continue;
     if (rel.type === 'belongsTo') {
       throw new ConfigurationException(

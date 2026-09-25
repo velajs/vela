@@ -19,7 +19,7 @@ const recordingProvider = (): { provider: AiProvider; resolved: string[] } => {
   };
 
   const provider: AiProvider = Object.assign(base, {
-    textEmbeddingModel: (modelId: string): EmbeddingModel => {
+    embeddingModel: (modelId: string): EmbeddingModel => {
       resolved.push(`embed:${modelId}`);
 
       return new MockEmbeddingModelV4({ modelId });
@@ -87,7 +87,7 @@ describe('createAi — model resolution seam', () => {
     expect(ai.embeddingModel(byoEmbed)).toBe(byoEmbed);
   });
 
-  it('throws for an embedding id when the provider has no textEmbeddingModel', () => {
+  it('throws for an embedding id when the provider has no embeddingModel', () => {
     const provider: AiProvider = (modelId: string) => new MockLanguageModelV4({ modelId });
     const ai = createAi({ provider });
 

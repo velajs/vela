@@ -7,16 +7,19 @@ describe('HTTP transport on native Workers', () => {
     const http = new HttpService({ transport: SELF, baseURL: 'http://example.com' });
     const response = await http.get('/health', {
       schema: {
-        parse(value: unknown) {
-          if (
-            !value ||
-            typeof value !== 'object' ||
-            !('status' in value) ||
-            value.status !== 'ok'
-          ) {
-            throw new Error('Invalid health response');
-          }
-          return { healthy: true };
+        '~standard': {
+          version: 1,
+          vendor: 'test',
+          validate(value: unknown) {
+            if (
+              !value ||
+              typeof value !== 'object' ||
+              !('status' in value) ||
+              value.status !== 'ok'
+            )
+              return { issues: [{ message: 'Invalid health response' }] };
+            return { value: { healthy: true } };
+          },
         },
       },
     });

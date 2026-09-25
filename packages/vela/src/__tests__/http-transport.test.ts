@@ -259,11 +259,9 @@ describe('HTTP response decoding and schemas', () => {
     const failure = new Error('validator failed');
     await expect(
       http.get(url, {
-        schema: {
-          parse() {
-            throw failure;
-          },
-        },
+        schema: z.unknown().transform(() => {
+          throw failure;
+        }),
       }),
     ).rejects.toBe(failure);
     expect((await http.get<{ value: number }>(url)).data).toEqual({ value: 'wire' });
@@ -417,12 +415,10 @@ describe('HTTP cancellation', () => {
     const started = Promise.withResolvers<void>();
     const { http } = client({ timeout: 10 });
     const pending = http.get(url, {
-      schema: {
-        parse() {
-          started.resolve();
-          return new Promise(() => {});
-        },
-      },
+      schema: z.unknown().transform(async () => {
+        started.resolve();
+        return new Promise(() => {});
+      }),
     });
     const outcome = expect(pending).rejects.toMatchObject({ name: 'TimeoutError' });
     await started.promise;
@@ -495,12 +491,10 @@ describe('HTTP instrumentation seam', () => {
     };
     const { http, transport } = client({ observer });
     const response = await http.get(url, {
-      schema: {
-        parse(value) {
-          events.push('parse');
-          return value;
-        },
-      },
+      schema: z.unknown().transform((value) => {
+        events.push('parse');
+        return value;
+      }),
     });
     expect(events).toEqual(['request', 'response', 'parse', 'end']);
     expect(new Headers(transport.mock.calls[0]?.[1]?.headers).get('traceparent')).toBe('trace');

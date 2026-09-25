@@ -1,5 +1,3 @@
-import type { RuntimeParser, SchemaParser } from './dto';
-import { isPromiseLike } from './promise-like';
 import {
   isStandardSchema,
   SchemaValidationError,
@@ -7,112 +5,70 @@ import {
   type StandardSchemaV1,
 } from './standard-schema';
 
-/** Portable structural boundary; descriptors retain their concrete underlying schema. */
-export type ValidationSchema =
-  | RuntimeParser
-  | StandardSchemaV1
-  | {
-      readonly schema: RuntimeParser | StandardSchemaV1;
-    };
+/** Standard Schema, optionally wrapped in a named DTO descriptor. */
+export type ValidationSchema = StandardSchemaV1 | { readonly schema: StandardSchemaV1 };
 
 export type SchemaInput<S extends ValidationSchema> = S extends {
-  readonly schema: infer Inner extends ValidationSchema;
+  readonly schema: infer Inner extends StandardSchemaV1;
 }
-  ? SchemaInput<Inner>
+  ? StandardSchemaV1.InferInput<Inner>
   : S extends StandardSchemaV1
     ? StandardSchemaV1.InferInput<S>
-    : unknown;
+    : never;
 
 export type SchemaOutput<S extends ValidationSchema> = S extends {
-  readonly schema: infer Inner extends ValidationSchema;
+  readonly schema: infer Inner extends StandardSchemaV1;
 }
-  ? SchemaOutput<Inner>
+  ? StandardSchemaV1.InferOutput<Inner>
   : S extends StandardSchemaV1
     ? StandardSchemaV1.InferOutput<S>
-    : S extends { parseAsync(value: unknown): infer Output }
-      ? Awaited<Output>
-      : S extends SchemaParser<infer Output>
-        ? Awaited<Output>
-        : never;
+    : never;
 
-export function resolveValidationSchema(
-  value: unknown,
-): RuntimeParser | StandardSchemaV1 | undefined {
-  if (value === null || (typeof value !== 'object' && typeof value !== 'function'))
-    return undefined;
-  if ('schema' in value) {
-    const schema = value.schema;
-    if (isStandardSchema(schema) || isParser(schema)) return schema;
-    throw new TypeError(
-      'Validation metadata contains a schema without a parse() function or Standard Schema validator.',
-    );
+/** Read a schema or the descriptor a parameter class carries. */
+export function resolveValidationSchema(value: unknown): StandardSchemaV1 | undefined {
+  const seen = new Set<unknown>();
+  while (value !== null && (typeof value === 'object' || typeof value === 'function')) {
+    if (isStandardSchema(value)) return value;
+    if (!('schema' in value)) break;
+    if (seen.has(value)) throw new TypeError('Circular schema descriptor.');
+    seen.add(value);
+    value = value.schema;
   }
-  return isStandardSchema(value) || isParser(value) ? value : undefined;
+  if (seen.size > 0)
+    throw new TypeError('Validation metadata requires a Standard Schema validator.');
+  return undefined;
 }
 
-/** Recognize supported schema metadata without accepting malformed descriptors. */
 export function isValidationSchema(value: unknown): value is ValidationSchema {
-  if (
-    value !== null &&
-    (typeof value === 'object' || typeof value === 'function') &&
-    'schema' in value
-  )
-    return isStandardSchema(value.schema) || isParser(value.schema);
-  return isStandardSchema(value) || isParser(value);
+  return (
+    isStandardSchema(value) ||
+    (value !== null &&
+      (typeof value === 'object' || typeof value === 'function') &&
+      'schema' in value &&
+      isStandardSchema(value.schema))
+  );
 }
 
-/**
- * The schema a parameter class carries: its static `schema` (a Standard
- * Schema, a `defineDto` descriptor or a `parse()` parser, as `ValidationPipe`
- * reads it), or the class itself when it is a Standard Schema. `@Body()`
- * validates such a parameter class.
- */
+/** The Standard Schema or DTO descriptor a parameter class carries. */
 export function staticSchema(metatype: unknown): ValidationSchema | undefined {
   if (typeof metatype !== 'function') return undefined;
   if (isStandardSchema(metatype)) return metatype;
   const schema: unknown = Reflect.get(metatype, 'schema');
-  return isValidationSchema(schema) ? schema : undefined;
+  if (schema === undefined) return undefined;
+  if (!isValidationSchema(schema))
+    throw new TypeError('Validation metadata requires a Standard Schema validator.');
+  return schema;
 }
 
-function isParser(value: unknown): value is RuntimeParser {
-  return (
-    value !== null &&
-    (typeof value === 'object' || typeof value === 'function') &&
-    'parse' in value &&
-    typeof value.parse === 'function'
-  );
-}
-
-function legacyFailure(error: unknown): never {
-  if (error instanceof SchemaValidationError) throw error;
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'issues' in error &&
-    Array.isArray(error.issues)
-  ) {
-    throw new SchemaValidationError(error.issues);
-  }
-  throw error;
-}
-
-/** Parse one boundary once. Only structured legacy failures become validation errors;
- * exceptions thrown by Standard validators remain untouched. */
+/** Validate once; exceptions thrown by validator code remain internal errors. */
 export function parseSchema<S extends ValidationSchema>(
   schema: S,
   value: unknown,
 ): SchemaOutput<S> | Promise<SchemaOutput<S>>;
 export function parseSchema(schema: ValidationSchema, value: unknown): unknown {
   const resolved = resolveValidationSchema(schema);
-  if (!resolved)
-    throw new TypeError('Expected a schema with parse() or a Standard Schema validator.');
-  if (isStandardSchema(resolved)) return validateSchema(resolved, value);
-  try {
-    const result = resolved.parseAsync ? resolved.parseAsync(value) : resolved.parse(value);
-    return isPromiseLike(result) ? Promise.resolve(result).catch(legacyFailure) : result;
-  } catch (error) {
-    return legacyFailure(error);
-  }
+  if (!resolved) throw new TypeError('Expected a Standard Schema validator.');
+  return validateSchema(resolved, value);
 }
 
 /** Async boundaries avoid Zod's sync-probe/retry Standard adapter by using its

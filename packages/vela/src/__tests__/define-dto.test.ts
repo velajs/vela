@@ -29,13 +29,17 @@ describe('schema DTO descriptors', () => {
     const schema = z.object({ name: z.string() });
     expect(defineDto(schema).toJSONSchema()).toEqual(schema.toJSONSchema());
     const parser = {
-      parse(value: unknown): unknown {
-        return value;
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: (value: unknown) => ({ value }),
       },
     };
     const dto = defineDto(parser, { name: 'CustomParser' });
     expect(dto.parse('value')).toBe('value');
-    expect(() => dto.toJSONSchema()).toThrow("DTO 'CustomParser' does not provide toJSONSchema()");
+    expect(() => dto.toJSONSchema()).toThrow(
+      "DTO 'CustomParser' does not provide Standard JSON Schema conversion.",
+    );
   });
 });
 
@@ -57,7 +61,7 @@ describe('validation schema boundaries', () => {
     });
     expect(() =>
       pipe.transform(value, { type: 'body', metatype: { schema: { parse: true } } }),
-    ).toThrow('schema without a parse() function');
+    ).toThrow('Standard Schema validator');
   });
 
   it('formats validation issues but preserves unrelated parser failures', () => {
@@ -65,8 +69,12 @@ describe('validation schema boundaries', () => {
     expect(() => pipe.transform({ name: 123 }, { type: 'body' })).toThrow(BadRequestException);
     const failure = new Error('schema unavailable');
     const broken = new ValidationPipe({
-      parse(): never {
-        throw failure;
+      '~standard': {
+        version: 1,
+        vendor: 'test',
+        validate: () => {
+          throw failure;
+        },
       },
     });
     expect(() => broken.transform({}, { type: 'body' })).toThrow(failure);

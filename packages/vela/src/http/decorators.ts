@@ -191,7 +191,7 @@ const CUSTOM_PARAM_TYPE = 'custom';
 
 /**
  * A parameter decorator for a request value. A schema argument (a Standard Schema such
- * as Zod, a `parse()` parser, or a `defineDto` descriptor) validates the value with
+ * as Zod or a `defineDto` descriptor) validates the value with
  * `ValidationPipe`: invalid input is a 400, OpenAPI documents the schema, and pipes
  * written after it receive the schema's parsed output.
  *

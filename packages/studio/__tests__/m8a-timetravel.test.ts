@@ -1,9 +1,9 @@
+import { z } from 'zod';
+import { Crud } from '@velajs/crud';
 import { matchesPredicate } from '@velajs/crud/query';
 import { bindAdapter } from '@velajs/crud/adapter';
 import { defineProvider, Controller, Module, VelaFactory } from '@velajs/vela';
 import { describe, expect, it } from 'vitest';
-import { METADATA_KEYS, defineMetadata } from '@velajs/vela/module-kit';
-import type { CrudConfig } from '@velajs/crud';
 import { MemoryAuditStore } from '@velajs/crud/audit';
 import type { Model, RelationConfig } from '@velajs/crud/model';
 import type {
@@ -558,15 +558,15 @@ function arm(bookmark: string, confirmToken: string): RestoreRequest {
 const TOKEN = 'test-master-token-value';
 const BASE = '/_vela/admin';
 
-function zField(type: string, optional = false): unknown {
-  const node = { def: { type } };
-  return optional ? { def: { type: 'optional', innerType: node } } : node;
-}
-
 function zSchema(shape: Record<string, { type: string; optional?: boolean }>): Model['schema'] {
-  const built: Record<string, unknown> = {};
-  for (const [name, spec] of Object.entries(shape)) built[name] = zField(spec.type, spec.optional);
-  return { shape: built } as unknown as Model['schema'];
+  return z.object(
+    Object.fromEntries(
+      Object.entries(shape).map(([name, spec]) => {
+        const field = spec.type === 'number' ? z.number() : z.string();
+        return [name, spec.optional ? field.optional() : field];
+      }),
+    ),
+  );
 }
 
 const widgetModel: Model = {
@@ -685,11 +685,7 @@ async function makeApp(
 
   @Controller('/widgets')
   class WidgetsController {}
-  defineMetadata(
-    METADATA_KEYS.CRUD,
-    { model: widgetModel, adapter } satisfies CrudConfig,
-    WidgetsController,
-  );
+  Crud({ ...{ model: widgetModel, adapter }, only: [] })(WidgetsController);
 
   const plugins = tt === 'off' ? [crudPanel()] : [crudPanel(), timeTravelPanel(tt)];
 

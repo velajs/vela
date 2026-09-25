@@ -42,7 +42,7 @@ export interface WsClient<TData = Record<string, unknown>> {
   /** Send an already-serialized string. Escape hatch for custom framing. */
   sendRaw(payload: string): void;
   /** Optional explicit local admission result; accepted never means remote delivery. */
-  trySendRaw?(payload: string): WebSocketSendResult;
+  trySendRaw(payload: string): WebSocketSendResult;
   join(room: string): void | Promise<void>;
   leave(room: string): void | Promise<void>;
   /** Persist `data`/room mutations made during a handler. */

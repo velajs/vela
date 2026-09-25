@@ -94,10 +94,11 @@ void client.addBulk(['1'].map((value) => ({ job: zodJob, data: { value }, delay:
 // @ts-expect-error bulk options are the same AddJobOptions add() accepts
 void client.addBulk([{ job: 'audit', data: 1, options: { delay: 1000 } }]);
 
-// Legacy bind implementations may return ignored values; the void contract stays intact.
-const legacyDriver: import('../queue').QueueDriver = {
-  kind: 'legacy',
+// Binding requires deterministic application cleanup.
+const invalidDriver: import('../queue').QueueDriver = {
+  kind: 'invalid',
   enqueue: async () => {},
+  // @ts-expect-error Binding must return a cleanup function.
   bind: () => 42,
 };
-void legacyDriver;
+void invalidDriver;

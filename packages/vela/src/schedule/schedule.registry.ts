@@ -6,20 +6,6 @@ import { CRON_METADATA, INTERVAL_METADATA } from './schedule.tokens';
 import { parseCronMetadata, parseIntervalMetadata } from './schedule.metadata';
 import type { CronMetadata, IntervalMetadata } from './schedule.types';
 
-export interface RegisteredCronJob {
-  expression: string;
-  methodName: string;
-  instance: unknown;
-  target: Function;
-}
-
-export interface RegisteredIntervalJob {
-  ms: number;
-  methodName: string;
-  instance: unknown;
-  target: Function;
-}
-
 @Injectable()
 export class ScheduleRegistry implements OnApplicationBootstrap {
   readonly #discovery: DiscoveryService;
@@ -60,36 +46,5 @@ export class ScheduleRegistry implements OnApplicationBootstrap {
 
   getIntervalEntrypoints(): Entrypoint<IntervalMetadata>[] {
     return this.#interval.map((entry) => ({ ...entry, meta: { ...entry.meta } }));
-  }
-
-  /** Legacy instance view for introspection; never used to execute a scheduled job. */
-  getCronJobs(): RegisteredCronJob[] {
-    return this.#discovery.methodsWithMeta<CronMetadata>(CRON_METADATA).flatMap((found) => {
-      if (!found.class.instance) return [];
-      const meta = parseCronMetadata(found.meta);
-      return [
-        {
-          expression: meta.expression,
-          methodName: String(found.methodName),
-          instance: found.class.instance,
-          target: found.class.metatype,
-        },
-      ];
-    });
-  }
-
-  getIntervalJobs(): RegisteredIntervalJob[] {
-    return this.#discovery.methodsWithMeta<IntervalMetadata>(INTERVAL_METADATA).flatMap((found) => {
-      if (!found.class.instance) return [];
-      const meta = parseIntervalMetadata(found.meta);
-      return [
-        {
-          ms: meta.ms,
-          methodName: String(found.methodName),
-          instance: found.class.instance,
-          target: found.class.metatype,
-        },
-      ];
-    });
   }
 }

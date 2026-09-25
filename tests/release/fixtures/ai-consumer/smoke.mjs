@@ -6,13 +6,7 @@ import { MockLanguageModelV4, MockEmbeddingModelV4 } from 'ai/test';
 
 for (const name of ['createAi', 'generateText', 'streamText', 'embed', 'tool', 'jsonSchema'])
   assert.equal(typeof core[name], 'function');
-for (const name of [
-  'defineRag',
-  'memoryVectors',
-  'fixedWindowChunks',
-  'contentHash',
-  'mapWithConcurrency',
-])
+for (const name of ['defineRag', 'memoryVectors', 'fixedWindowChunks', 'mapWithConcurrency'])
   assert.equal(typeof ragExports[name], 'function');
 assert.equal(ragExports.DEFAULT_SYNC_CONCURRENCY, 8);
 assert.throws(() => import.meta.resolve('@ai-sdk/openai'), /Cannot find package/);

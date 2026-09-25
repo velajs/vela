@@ -82,7 +82,7 @@ describe('InferToken / InferTokens', () => {
 
   it('falls back to unknown[] when inject is not a literal tuple', () => {
     type Opts = AsyncModuleOptions<{ ok: true }>;
-    // Default Inject — `useFactory` accepts variadic unknown[] (backwards-compat).
+    // Default Inject — `useFactory` accepts variadic unknown[] for dynamically described dependencies.
     const opts: Opts = {
       inject: [],
       useFactory: (...args: unknown[]) => {

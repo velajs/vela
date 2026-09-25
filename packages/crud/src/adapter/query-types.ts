@@ -183,6 +183,9 @@ export interface Lookup {
 }
 
 export interface ReadOptions {
+  /** Lock the row against concurrent writers until the current transaction ends.
+   * Requires the adapter's `rowLocks` capability and a transaction scope. */
+  forUpdate?: boolean;
   /** Relations to include (allow-listed upstream). */
   include?: string[];
   /** Match soft-deleted records too (restore's pre-read, withDeleted reads). */
@@ -228,22 +231,9 @@ export interface AggregateField {
   alias?: string;
 }
 
-/**
- * A validated aggregate query.
- *
- * Multi-aggregation parity with hono-crud 0.13: `aggregations` is the
- * authoritative list. `operation`/`field` are retained as the legacy
- * single-operation head (`= aggregations[0]`) so an adapter that only reads the
- * single-op fields still compiles; every field beyond `operation`/`filters` is
- * OPTIONAL and additive.
- */
+/** A validated aggregate query with one entry per requested operation and field. */
 export interface AggregateSpec {
-  /** Legacy single-op head = `aggregations[0].operation`. */
-  operation: AggregateOperation;
-  /** Legacy single-op field = `aggregations[0].field` (omitted for `COUNT(*)`). */
-  field?: string;
-  /** Full multi-aggregation list; one entry per requested operation+field. */
-  aggregations?: AggregateField[];
+  aggregations: AggregateField[];
   groupBy?: string[];
   /** HAVING: output-alias → comparison-op (`eq|ne|gt|gte|lt|lte`) → threshold. */
   having?: Record<string, Record<string, string>>;

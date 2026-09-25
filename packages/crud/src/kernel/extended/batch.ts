@@ -776,7 +776,15 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
   // Parse + scope the body filters exactly like list (allow-listed fields /
   // operators, tenant scope, policy pushdown). Soft-delete exclusion comes from
   // the list options (default) / the explicit visibility filter (updateWhere).
-  const parsed = parseListFilters(body.filter ?? {}, listParseOptions(resource));
+  if (
+    body.filter !== undefined &&
+    (body.filter === null || typeof body.filter !== 'object' || Array.isArray(body.filter))
+  )
+    throw new InputValidationException('Bulk patch filter must be an object');
+  const parsed = parseListFilters(body.filter ?? {}, {
+    ...listParseOptions(resource),
+    strictFilters: true,
+  });
   const scoped = scopeListQuery(resource, req, policyCtx, parsed);
   const countQuery: ListQuery = {
     filters: scoped.filters,

@@ -13,7 +13,7 @@ import { atomicBatchDriver } from './atomic';
  * - NO `nativeSearch` — hono-crud's drizzle search was LIKE-based; the
  *   engine's scoring fallback is equivalent and keeps one code path.
  * - sqlite/pg can opt into scoped native upserts with `atomicUpsert`, using
- *   real unique conflict targets. Legacy matching retains transaction synthesis.
+ *   real unique conflict targets. Non-native upserts use transaction synthesis.
  * - `databaseGeneratedId` relies on RETURNING (sqlite/pg). The mysql branch
  *   follows hono-crud's insertId pattern but is NOT exercised by tests.
  */
@@ -33,7 +33,6 @@ import type {
   AdapterCapability,
   AdapterScope,
   BulkOutcome,
-  CascadeDriver,
   CrudAdapter,
   DeleteOptions,
   FilterCondition,
@@ -135,6 +134,7 @@ const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
   'structuredPredicates',
   'nestedPredicates',
   'transactions',
+  'rowLocks',
   'atomicMutations',
   'atomicBatch',
   'databaseGeneratedId',
@@ -144,7 +144,6 @@ const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
   'nativeBatch',
   'restore',
   'nestedWrites',
-  'cascade',
   'softDelete',
   'uniqueConstraints',
 ] as const);
@@ -212,6 +211,7 @@ export function drizzleAdapter(
   }
   const nativeCapabilities = [...CAPABILITIES].filter(
     (cap) =>
+      (cap !== 'rowLocks' || config.dialect === 'mysql' || supportsAtomicBatch) &&
       (cap !== 'atomicBatch' || supportsAtomicBatch) &&
       (config.atomicUpsert === true || (cap !== 'upsert' && cap !== 'scopedUpsert')),
   );
@@ -219,7 +219,7 @@ export function drizzleAdapter(
     config.driver === 'd1'
       ? new Set(
           nativeCapabilities.filter(
-            (cap) => cap !== 'transactions' && cap !== 'nestedWrites' && cap !== 'cascade',
+            (cap) => cap !== 'transactions' && cap !== 'rowLocks' && cap !== 'nestedWrites',
           ),
         )
       : config.dialect === 'mysql'
@@ -425,34 +425,6 @@ export function drizzleAdapter(
     },
   };
 
-  const cascade: CascadeDriver = {
-    async countRelated(relation, parentKey, scope) {
-      const rel = requireRelation(config, relation);
-      const rows = await handle(scope)
-        .select({ count: sql`count(*)` })
-        .from(rel.table)
-        .where(eq(getColumn(rel.table, rel.foreignKey), parentKey));
-      return Number(rows[0]?.count) || 0;
-    },
-    async deleteRelated(relation, parentKey, scope) {
-      const rel = requireRelation(config, relation);
-      const count = await cascade.countRelated(relation, parentKey, scope);
-      await handle(scope)
-        .delete(rel.table)
-        .where(eq(getColumn(rel.table, rel.foreignKey), parentKey));
-      return count;
-    },
-    async nullifyRelated(relation, parentKey, scope) {
-      const rel = requireRelation(config, relation);
-      const count = await cascade.countRelated(relation, parentKey, scope);
-      await handle(scope)
-        .update(rel.table)
-        .set({ [rel.foreignKey]: null })
-        .where(eq(getColumn(rel.table, rel.foreignKey), parentKey));
-      return count;
-    },
-  };
-
   const relations: RelationLoader<Row> = {
     async load(rows, relation, loadScope: RelationLoadScope, scope) {
       const rel = requireRelation(config, relation);
@@ -602,6 +574,22 @@ export function drizzleAdapter(
     },
 
     async readOne(lookup, opts: ReadOptions, scope) {
+      if (opts.forUpdate) {
+        if (!capabilities.has('rowLocks'))
+          throw new CrudException('Adapter cannot lock rows', 400, 'TRANSACTION_UNSUPPORTED');
+        const db = handle(scope);
+        if (scope.tx == null) throw new TypeError('Row locks require a transaction scope');
+        if (dialect === 'pg' || dialect === 'mysql') {
+          const rows = await db
+            .select()
+            .from(table)
+            .where(lookupWhere(lookup, opts.withDeleted ?? false))
+            .limit(1)
+            .for('update');
+          return rows[0] ? parseRow(rows[0]) : null;
+        }
+        // SQLite serializes writers at the transaction boundary.
+      }
       return selectOne(handle(scope), lookupWhere(lookup, opts.withDeleted ?? false));
     },
 
@@ -802,9 +790,7 @@ export function drizzleAdapter(
       const where = buildWhere(table, spec.filters, dialect);
 
       const fields: Record<string, DrizzleSql> = {};
-      const aggregations = spec.aggregations ?? [
-        { operation: spec.operation, field: spec.field ?? '*' },
-      ];
+      const aggregations = spec.aggregations;
       for (const agg of aggregations) {
         const alias = agg.alias ?? deriveAlias(agg.operation, agg.field);
         assertSafeResultKey(alias, 'aggregate alias');
@@ -902,7 +888,7 @@ export function drizzleAdapter(
       }
     },
 
-    ...(config.driver === 'd1' ? {} : { nested, cascade }),
+    ...(config.driver === 'd1' ? {} : { nested }),
     relations,
   });
 }

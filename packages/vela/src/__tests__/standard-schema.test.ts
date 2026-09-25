@@ -104,10 +104,14 @@ it('lets generated handlers own validation while retaining explicit pipe behavio
   });
 });
 
-it('maps async legacy input failures without forwarding vendor values', async () => {
+it('maps async Standard input failures without forwarding vendor values', async () => {
   const pipe = new ValidationPipe({
-    parse: async () => {
-      throw { issues: [{ message: 'Invalid', path: ['value'], input: 'secret' }] };
+    '~standard': {
+      version: 1,
+      vendor: 'test',
+      validate: async () => ({
+        issues: [{ message: 'Invalid', path: ['value'], input: 'secret' }],
+      }),
     },
   });
   try {

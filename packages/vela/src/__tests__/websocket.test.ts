@@ -70,6 +70,10 @@ function sink(id: string, path?: string): SinkClient {
     raw: null,
     received,
     send() {},
+    trySendRaw(payload: string): 'accepted' {
+      this.sendRaw(payload);
+      return 'accepted';
+    },
     sendRaw(payload: string) {
       received.push(JSON.parse(payload));
     },
@@ -96,6 +100,11 @@ class FakeClient implements WsClient {
   send(event: string, data?: unknown, id?: string): void {
     this.sent.push({ event, data, id });
   }
+  trySendRaw(payload: string): 'accepted' {
+    this.sendRaw(payload);
+    return 'accepted';
+  }
+
   sendRaw(payload: string): void {
     this.sent.push({ event: '__raw__', data: payload });
   }
@@ -730,6 +739,10 @@ describe('rooms + Server handle', () => {
       data: trustedSocketData(),
       raw: null,
       send() {},
+      trySendRaw(payload: string): 'accepted' {
+        this.sendRaw(payload);
+        return 'accepted';
+      },
       sendRaw(payload) {
         sent.push(payload);
       },

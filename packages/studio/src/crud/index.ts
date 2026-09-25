@@ -36,8 +36,6 @@ import type {
   SearchQuery,
 } from '@velajs/crud/adapter';
 import type {
-  CascadePreviewRequest,
-  CascadePreviewResponse,
   ClearTableRequest,
   DeleteRowsRequest,
   FacetsRequest,
@@ -165,7 +163,7 @@ function mapColumnType(tag: string | undefined): StudioColumn['type'] {
  * (optional/nullable wrappers), `unique` (pk OR a single-column `model.unique`
  * tuple), `fk` (a `belongsTo` relation whose `foreignKey` names the column),
  * `managed` (timestamp/soft-delete/tenant columns). Composite unique tuples are
- * not projected per-column, and `onSoftDelete` cascade is not surfaced here.
+ * not projected per-column. Database foreign-key actions require a database-aware source.
  */
 function deriveColumns(model: Model): StudioColumn[] {
   const pks = new Set(model.primaryKeys);
@@ -242,11 +240,10 @@ function toRelation(
     type: 'hasOne' | 'hasMany' | 'belongsTo';
     target?: string;
     foreignKey: string;
-    cascade?: { onDelete?: string };
   },
 ): StudioModelDescriptor['relations'][number] {
   const base = { name, type: rel.type, target: rel.target ?? '', foreignKey: rel.foreignKey };
-  return rel.cascade?.onDelete !== undefined ? { ...base, cascade: rel.cascade.onDelete } : base;
+  return base;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,7 +369,7 @@ export class CrudStudioModelSource implements StudioModelSource {
         bulkWrites: adapter.capabilities.has('transactions'),
         facets: adapter.capabilities.has('aggregate'),
         search: adapter.capabilities.has('nativeSearch'),
-        cascade: adapter.capabilities.has('cascade'),
+        cascade: false,
       },
     };
   }
@@ -435,7 +432,6 @@ export class CrudStudioModelSource implements StudioModelSource {
     }
     const aggregate = entry.adapter.aggregate.bind(entry.adapter);
     const spec: AggregateSpec = {
-      operation: 'count',
       aggregations: [{ operation: 'count', field: '*' }],
       groupBy: [request.field],
       filters: mapFilters(request.filters),
@@ -449,54 +445,6 @@ export class CrudStudioModelSource implements StudioModelSource {
       count: firstCount(group.values),
     }));
     return { buckets };
-  }
-
-  async cascadePreview(request: CascadePreviewRequest): Promise<CascadePreviewResponse> {
-    const index = this.index();
-    const entry = index.get(request.model);
-    if (entry === undefined) {
-      throw studioError('STUDIO_UNKNOWN_MODEL', `unknown model '${request.model}'`);
-    }
-    // Privacy parity with `list`/`facets`: those 404 an excluded model outright,
-    // so a cascade preview must not leak that same model back through a
-    // neighbor's relation — not even an aggregate `affected` count. Relations
-    // whose TARGET model is not itself managed (excluded via `managedModels`, or
-    // simply not a discovered resource) are skipped entirely. Visible targets
-    // are matched by model name OR table name (relation `target` is normalized
-    // to the sibling's `tableName`).
-    const visibleTargets = new Set<string>();
-    for (const managed of index.values()) {
-      if (managed.database !== entry.database) continue;
-      visibleTargets.add(managed.model.name);
-      visibleTargets.add(managed.model.tableName);
-    }
-    const cascade =
-      entry.adapter.capabilities.has('cascade') && entry.adapter.cascade !== undefined
-        ? entry.adapter.cascade
-        : undefined;
-    const relations: CascadePreviewResponse['relations'] = [];
-    for (const [name, rel] of Object.entries(entry.model.relations ?? {})) {
-      // Children referencing this model via the FK are what a delete cascades to.
-      if (rel.type !== 'hasMany' && rel.type !== 'hasOne') continue;
-      // Skip relations that point at an unmanaged (e.g. excluded) target model.
-      if (!visibleTargets.has(rel.target ?? '')) continue;
-      const action = rel.cascade?.onDelete ?? 'noAction';
-      let affected = 0;
-      if (cascade !== undefined) {
-        for (const id of request.ids) {
-          affected += await entry.adapter.requestScope((scope: AdapterScope) =>
-            cascade.countRelated(name, id, scope),
-          );
-        }
-      }
-      relations.push({
-        relation: name,
-        target: this.relationIdentity(entry, rel.target ?? '', index),
-        action,
-        affected,
-      });
-    }
-    return { relations };
   }
 
   // --- writes (adapter-direct; see the write-helpers header above) ---------
@@ -806,19 +754,7 @@ export class CrudStudioModelSource implements StudioModelSource {
     for (const found of this.discovery.registrationsWithMeta<CrudConfig>(METADATA_KEYS.CRUD, {
       metadataOnly: true,
     })) {
-      // Native @Crud records compiled runtime config. Keep metadata-only legacy
-      // integrations working without interpreting their authoring hooks.
-      const runtime =
-        getCrudConfig(found.metatype) ??
-        (found.meta?.model === undefined
-          ? undefined
-          : {
-              model: found.meta.model,
-              adapter: found.meta.adapter?.runtime,
-              database: found.meta.database,
-              databaseResource: found.meta.databaseResource,
-              searchFields: found.meta.searchFields,
-            });
+      const runtime = getCrudConfig(found.metatype);
       if (runtime === undefined) continue;
       const crudConfig = resolveCrudDatabaseSync(this.container, runtime);
       const identity =

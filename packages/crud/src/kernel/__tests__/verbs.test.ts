@@ -1,3 +1,4 @@
+import { serializedTransaction } from '../../__tests__/test-adapter';
 import { bindAdapter } from '../../adapter/contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -23,7 +24,7 @@ type Row = Record<string, unknown>;
  * pipeline to be observable without depending on @velajs/crud-memory.
  */
 function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAdapter<Row> {
-  const scopeSentinel: AdapterScope = { tx: { fake: true } };
+  const transaction = serializedTransaction(store);
   const visible = (row: Row, withDeleted: boolean) =>
     withDeleted || softDeleteField === undefined || row[softDeleteField] == null;
 
@@ -38,13 +39,15 @@ function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAda
   };
 
   return bindAdapter({
-    capabilities: new Set(softDeleteField !== undefined ? (['softDelete'] as const) : []),
+    capabilities: new Set<AdapterCapability>([
+      'transactions',
+      'rowLocks',
+      ...(softDeleteField !== undefined ? ['softDelete' as const] : []),
+    ]),
     async requestScope(fn) {
       return fn({ tx: undefined });
     },
-    async transaction(fn) {
-      return fn(scopeSentinel);
-    },
+    transaction,
     async create(input) {
       const row = { ...input } as Row;
       store.set(String(row.id), row);
@@ -228,12 +231,16 @@ describe('transaction context', () => {
   // Proves the engine threads the request tenant into adapter.transaction at
   // every tx open (the RLS seam) — memory/libsql can't enforce RLS, so the
   // assertion is seam invocation, not database isolation.
-  it('passes the request tenant to adapter request scopes', async () => {
+  it('passes the request tenant to adapter write and read scopes', async () => {
     const store = new Map<string, Row>();
     const inner = fakeAdapter(store);
     const seen: Array<TransactionContext | undefined> = [];
     const adapter = bindAdapter({
       ...inner.runtime,
+      transaction: (fn, ctx) => {
+        seen.push(ctx);
+        return inner.transaction(fn, ctx);
+      },
       requestScope: (fn, ctx) => {
         seen.push(ctx);
         return inner.requestScope(fn, ctx);
@@ -1068,7 +1075,7 @@ describe('create', () => {
         },
         afterCreate: (ctx: { db: { tx: unknown } }, record: Row) => {
           order.push('after');
-          expect(ctx.db.tx).toEqual({ fake: true });
+          expect(ctx.db.tx).toEqual({ test: true });
           expect(record.name).toBe('Hook!');
         },
       },

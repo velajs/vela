@@ -198,10 +198,10 @@ function demoDatabase(): DynamicModule {
   const database = defineCrudDatabase(DEMO_DATABASE, {
     handle: db,
     resources: {
-      // author: aggregate (facets on `role`) + cascade (preview author→books).
+      // author: aggregate (facets on `role`).
       author: {
         model: models.author,
-        adapter: memoryAdapter(models.author, db, ['aggregate', 'cascade']),
+        adapter: memoryAdapter(models.author, db, ['aggregate']),
       },
       // book: nativeSearch (inline search on title) + soft-delete (from the model).
       book: { model: models.book, adapter: memoryAdapter(models.book, db, ['nativeSearch']) },

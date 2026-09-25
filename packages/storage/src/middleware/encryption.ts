@@ -12,8 +12,6 @@ import { passthrough, type RawPreservingMiddleware } from './wrap';
 export interface EncryptionOptions {
   /** A 256-bit AES-GCM key: a `CryptoKey` or 32 raw bytes. */
   key: CryptoKey | Uint8Array;
-  /** How to treat objects that aren't valid ciphertext (legacy data). Default `throw`. */
-  onInvalid?: 'throw' | 'passthrough';
 }
 
 const IV_BYTES = 12;
@@ -57,7 +55,6 @@ export function encryption(opts: EncryptionOptions): RawPreservingMiddleware {
       const file = await inner.download(k);
       const framed = new Uint8Array(await file.arrayBuffer());
       if (framed.byteLength < IV_BYTES) {
-        if (opts.onInvalid === 'passthrough') return file;
         throw new StorageError('Parse', `object too small to be encrypted: ${k}`);
       }
       const iv = framed.subarray(0, IV_BYTES);
@@ -69,7 +66,6 @@ export function encryption(opts: EncryptionOptions): RawPreservingMiddleware {
           await crypto.subtle.decrypt({ name: 'AES-GCM', iv: asBuf(iv) }, key, asBuf(ciphertext)),
         );
       } catch (e) {
-        if (opts.onInvalid === 'passthrough') return file;
         throw new StorageError('Provider', `decryption failed: ${k}`, { cause: e });
       }
       return createStoredFile(

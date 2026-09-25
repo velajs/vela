@@ -51,16 +51,6 @@ export type IdStrategy = 'uuid' | 'database' | 'client' | (() => string | number
 
 export type RelationType = 'hasOne' | 'hasMany' | 'belongsTo';
 
-/** Cascade behavior when a parent record is (soft-)deleted. */
-export type CascadeAction = 'cascade' | 'setNull' | 'restrict' | 'noAction';
-
-export interface CascadeConfig {
-  /** Action when the parent row is hard-deleted. @default 'noAction' */
-  onDelete?: CascadeAction;
-  /** Action when the parent row is soft-deleted. @default 'noAction' */
-  onSoftDelete?: CascadeAction;
-}
-
 /**
  * Per-relation nested-write authoring flags (hono-crud 0.13 parity). All
  * default OFF. Enabling any flag merges the relation's write shape into the
@@ -93,8 +83,7 @@ export interface CascadeConfig {
  *   AND `allowDisconnect` (it relinks and mass-detaches); `set: null`
  *   disconnects all; create-via-set is unsupported.
  * - Children are not echoed in write responses (read them via `?include=`),
- *   and the memory adapter's no-op transaction cannot roll back the parent
- *   if a nested op fails (SQL adapters roll back atomically).
+ *   nested writes require a transactional adapter so failures roll back the parent.
  */
 export interface NestedWriteConfig {
   /** Accept nested child payloads on create + `create` ops on update. @default false */
@@ -136,8 +125,6 @@ export interface RelationConfig<TTable = unknown> {
    * external relations should author it when the target has response policies.
    */
   response?: RelationResponseConfig;
-  /** Cascade behavior on parent (soft-)delete. */
-  cascade?: CascadeConfig;
   /** Nested-write authoring flags — see {@link NestedWriteConfig}. */
   nestedWrites?: NestedWriteConfig;
   /**

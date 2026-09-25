@@ -226,7 +226,7 @@ describe('Reflector.createDecorator', () => {
     expect(new Set([...original, ...copy]).size).toBe(6);
   });
 
-  it('should still work with string keys (backwards compat)', () => {
+  it('supports explicit string metadata keys', () => {
     const reflector = new Reflector();
 
     @Roles('admin')

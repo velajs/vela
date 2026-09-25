@@ -505,8 +505,6 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
     const flat = await scopeOf((s) =>
       adapter.aggregate!(
         {
-          operation: 'count',
-          field: '*',
           filters: [],
           aggregations: [
             { operation: 'count', field: '*' },
@@ -521,8 +519,6 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
     const grouped = await scopeOf((s) =>
       adapter.aggregate!(
         {
-          operation: 'sum',
-          field: 'qty',
           filters: [],
           aggregations: [{ operation: 'sum', field: 'qty' }],
           groupBy: ['tenantId'],
@@ -543,7 +539,6 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
         scopeOf((s) =>
           adapter.aggregate!(
             {
-              operation: 'count',
               filters: [],
               aggregations: [{ operation: 'count', field: '*', alias: unsafe }],
             },
@@ -556,7 +551,6 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
         scopeOf((s) =>
           adapter.aggregate!(
             {
-              operation: 'count',
               filters: [],
               aggregations: [{ operation: 'count', field: '*' }],
               groupBy: [unsafe],
@@ -568,7 +562,7 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
     },
   );
 
-  it('relation loader groups with owner-scope pushdown; cascade counts/deletes/nullifies', async () => {
+  it('relation loader groups with owner-scope pushdown', async () => {
     const adapter = makeAdapter();
     await scopeOf((s) => adapter.create({ id: 'u1', name: 'U1' }, s));
     // Seed the related table outside any adapter transaction — a write on the
@@ -583,10 +577,6 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
       adapter.relations!.load([{ id: 'u1' }], 'posts', { excludeDeletedField: 'deletedAt' }, s),
     );
     expect(loaded.get('u1')).toHaveLength(1);
-
-    expect(await scopeOf((s) => adapter.cascade!.countRelated('posts', 'u1', s))).toBe(2);
-    expect(await scopeOf((s) => adapter.cascade!.nullifyRelated('posts', 'zz', s))).toBe(1);
-    expect(await scopeOf((s) => adapter.cascade!.deleteRelated('posts', 'u1', s))).toBe(2);
   });
 });
 

@@ -93,6 +93,7 @@ export class Container {
   #disposalOwners = new WeakMap<object, Container | null>();
   #pendingConstructions = new Set<Promise<unknown>>();
   #disposing?: Promise<void>;
+  #disposed = false;
   #constructionOwner: Container = this;
   // Lazy-module seam (root-owned; children reach it via this.#root). A
   // resolution of a deferred registration CLAIMS its module; claimed groups
@@ -854,6 +855,7 @@ export class Container {
    * instances separately per child (per request).
    */
   createChild(): Container {
+    this.#assertNotDisposing();
     const child = new Container({ diagnostics: this.#diagnostics });
     // Share state by reference — request-scope children must see the same
     // module graph as the root.
@@ -890,11 +892,14 @@ export class Container {
     return (
       this.#disposables.size > 0 ||
       this.#pendingConstructions.size > 0 ||
-      this.#disposing !== undefined
+      (this.#disposing !== undefined && !this.#disposed)
     );
   }
 
   #assertNotDisposing(): void {
+    if (this.#disposed || this.#root.#disposed) {
+      throw new Error('Cannot resolve providers after the container is disposed');
+    }
     if (this.#disposing || this.#root.#disposing) {
       throw new Error('Cannot resolve providers while the container is disposing');
     }
@@ -917,16 +922,16 @@ export class Container {
    * Drain owned construction, then dispose owned instances in reverse creation
    * order. Singleton graphs belong to the root; request/transient graphs belong
    * to their retaining container. Caller-owned values/seeds are never tracked.
-   * Concurrent calls share teardown; after awaiting disposal the container may
-   * be reused, preserving the 1.x reset semantics. Do not start new work during
-   * teardown. Disposer errors are logged and do not interrupt the remaining work.
+   * Disposal is final and concurrent callers share teardown. No new providers
+   * or child scopes may be resolved during or after teardown. Disposer errors
+   * are logged and do not interrupt the remaining work.
    */
   dispose(): Promise<void> {
     if (this.#disposing) return this.#disposing;
     // Schedule after installing the guard, including before user disposers run.
     const pending = Promise.resolve().then(() => this.disposeOwned());
     this.#disposing = pending.finally(() => {
-      this.#disposing = undefined;
+      this.#disposed = true;
     });
     return this.#disposing;
   }

@@ -19,22 +19,17 @@ function capture(options: ConstructorParameters<typeof ApplicationLogger>[0] = {
 }
 
 describe('application-owned structured logging', () => {
-  it('isolates app levels, contexts, sinks and legacy static configuration', () => {
+  it('isolates app levels, contexts, sinks and standalone logger configuration', () => {
     const a = capture({ level: LogLevel.DEBUG });
     const b = capture({ level: LogLevel.ERROR });
-    const previous = Logger.level;
-    Logger.setLogLevel(LogLevel.SILENT);
-    try {
-      a.log.withFields({ app: 'a' }).debug('visible');
-      b.log.debug('hidden');
-      b.log.error('visible');
-      expect(a.records).toHaveLength(1);
-      expect(a.records[0]?.fields).toEqual({ app: 'a' });
-      expect(b.records).toHaveLength(1);
-      expect(b.records[0]?.fields).toEqual({});
-    } finally {
-      Logger.setLogLevel(previous);
-    }
+    new Logger().setLogLevel(LogLevel.SILENT);
+    a.log.withFields({ app: 'a' }).debug('visible');
+    b.log.debug('hidden');
+    b.log.error('visible');
+    expect(a.records).toHaveLength(1);
+    expect(a.records[0]?.fields).toEqual({ app: 'a' });
+    expect(b.records).toHaveLength(1);
+    expect(b.records[0]?.fields).toEqual({});
   });
 
   it('snapshots child context without retaining caller references or changing parent', () => {

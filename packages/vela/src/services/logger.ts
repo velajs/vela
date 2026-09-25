@@ -45,43 +45,21 @@ function formatValue(v: unknown): string {
 
 @Injectable()
 export class Logger implements LoggerService {
-  static level: LogLevel = LogLevel.LOG;
-
-  private static globalLogger: LoggerService | false | undefined;
-  private static globalContextProviders: ContextProvider[] = [];
-  private static globalWriter: Writer = defaultWriter;
-
+  private level: LogLevel = LogLevel.LOG;
   private context?: string;
   private instanceContextProviders: ContextProvider[] = [];
   private instanceWriter?: Writer;
 
-  static setLogLevel(level: LogLevel): void {
-    Logger.level = level;
+  /** Set this logger's minimum level. Children inherit it when created. */
+  setLogLevel(level: LogLevel): this {
+    this.level = level;
+    return this;
   }
 
-  static overrideLogger(logger: LoggerService | false): void {
-    Logger.globalLogger = logger;
-  }
-
-  /** Register a context provider run on every log line from every logger. */
-  static addContextProvider(provider: ContextProvider): void {
-    Logger.globalContextProviders.push(provider);
-  }
-
-  /** Remove all registered global context providers. */
-  static clearContextProviders(): void {
-    Logger.globalContextProviders = [];
-  }
-
-  /** Replace the default console writer. Useful on edge runtimes that have
-   *  a different output sink (e.g. `env.LOGS.writeDataPoint` on Workers). */
-  static setWriter(writer: Writer): void {
-    Logger.globalWriter = writer;
-  }
-
-  /** Restore the default console-based writer. */
-  static resetWriter(): void {
-    Logger.globalWriter = defaultWriter;
+  /** Restore console output for this logger. */
+  resetWriter(): this {
+    this.instanceWriter = undefined;
+    return this;
   }
 
   constructor(context?: string) {
@@ -113,6 +91,7 @@ export class Logger implements LoggerService {
   extend(namespace: string): Logger {
     const newContext = this.context ? `${this.context}:${namespace}` : namespace;
     const child = new Logger(newContext);
+    child.level = this.level;
     child.instanceContextProviders = [...this.instanceContextProviders];
     if (this.instanceWriter) child.instanceWriter = this.instanceWriter;
     return child;
@@ -144,20 +123,10 @@ export class Logger implements LoggerService {
     message: unknown,
     rest: unknown[],
   ): void {
-    if (Logger.level > levelValue) return;
-    if (Logger.globalLogger === false) return;
-
-    if (Logger.globalLogger) {
-      const method = levelName.toLowerCase() as keyof LoggerService;
-      const fn = Logger.globalLogger[method] as
-        | ((message: unknown, ...optionalParams: unknown[]) => void)
-        | undefined;
-      if (fn) fn.call(Logger.globalLogger, message, ...rest);
-      return;
-    }
+    if (this.level > levelValue) return;
 
     const line = this.formatMessage(levelName, message);
-    const writer = this.instanceWriter ?? Logger.globalWriter;
+    const writer = this.instanceWriter ?? defaultWriter;
     writer(levelName, line, ...rest);
   }
 
@@ -170,13 +139,6 @@ export class Logger implements LoggerService {
 
   private collectContext(): Record<string, unknown> {
     const result: Record<string, unknown> = {};
-    for (const provider of Logger.globalContextProviders) {
-      try {
-        Object.assign(result, provider());
-      } catch {
-        // Provider threw; drop its contribution and keep going.
-      }
-    }
     for (const provider of this.instanceContextProviders) {
       try {
         Object.assign(result, provider());

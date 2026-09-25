@@ -30,6 +30,11 @@ class SchemaClient implements WsClient {
 
   constructor(readonly id = 'schema-client') {}
   send(): void {}
+  trySendRaw(payload: string): 'accepted' {
+    this.sendRaw(payload);
+    return 'accepted';
+  }
+
   sendRaw(payload: string): void {
     const envelope: unknown = JSON.parse(payload);
     const frame = readLiveEnvelope(envelope);

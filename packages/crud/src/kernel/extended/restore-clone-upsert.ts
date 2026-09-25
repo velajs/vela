@@ -240,6 +240,7 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
       config.hooks?.beforeUpsert ||
       config.hooks?.afterUpsert ||
       model.policies?.read ||
+      model.policies?.readPushdown ||
       model.policies?.write ||
       model.versioning ||
       model.audit ||

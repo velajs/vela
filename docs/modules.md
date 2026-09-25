@@ -332,7 +332,7 @@ export const QueueConsumer = createDiscoverableDecorator<{ queue: string }>('pkg
 class QueueRegistry implements OnApplicationBootstrap {
   constructor(private readonly discovery: DiscoveryService) {}
   onApplicationBootstrap() {
-    for (const { instance, meta } of this.discovery.providersWithMeta(QueueConsumer)) {
+    for (const { instance, meta } of this.discovery.registrationsWithMeta(QueueConsumer)) {
       if (!instance) continue; // request-scoped providers are not materialized
       this.register(instance, meta);
     }
@@ -340,15 +340,9 @@ class QueueRegistry implements OnApplicationBootstrap {
 }
 ```
 
-`providersWithMeta` (class-level) and `methodsWithMeta` (per-method — both
-the appended-list convention and true handler metadata) resolve instances
-through the container and honor its diagnostics mode (`throw`/`log`/`silent`)
-in one place. Discovery is kernel-level (not encapsulation-scoped);
-`DiscoveryFilter.moduleId` narrows when needed. These legacy methods return one
-hit per class token; a filter resolves the first matching owner.
-
-Dispatchers that support multiple module instances should use
-`getRegistrations`, `registrationsWithMeta`, or `registeredMethodsWithMeta`.
+Use `getRegistrations`, `registrationsWithMeta`, or `registeredMethodsWithMeta`.
+Discovery resolves instances through the container and honors its diagnostics
+mode. It is kernel-level; `DiscoveryFilter.moduleId` narrows the owners.
 They return one hit per class-token registration with an exact `moduleId` and
 that owner's effective `scope`. Method hits carry ownership on `hit.class`.
 `moduleIds` remains the full owner list for diagnostics. Registrations whose
@@ -396,8 +390,8 @@ for (const ep of app.entrypoints.ofKind('websocket')) { ... }
 Decorator-derived entries carry `entry.moduleId`, including request-scoped and
 lazy registrations with `instance: undefined`. Resolve in the invocation's
 container using `resolveAsync(entry.token, entry.moduleId)`. Computed contributors
-should preserve the same owner field. It stays optional for existing 1.x
-contributors; omission retains legacy unscoped resolution.
+must provide the same owner field. Missing owners fail registry construction;
+foreign owners fail before dispatch.
 
 `entry.meta` is `unknown` by default. Pass a metadata parser as the second
 argument to `ofKind(kind, parseMeta)` to validate it and infer its result type.

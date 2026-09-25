@@ -65,13 +65,10 @@ for replay, checkpoint parsing, errors, limits, and subscription cleanup.
 
 ## Local notification delivery
 
-The core `EventEmitter.emit(name, ...args)` retains its 1.x delivery policy:
-exact handlers run concurrently, followed by matching wildcard groups. A rejected
-group rejects the call and skips later groups. Use
-`emitWithOptions(name, { settlement: 'complete' }, ...args)` to snapshot every
-matching listener, attempt them all, and await completion. One failure is rethrown
-unchanged; multiple failures become an `AggregateError` in registration order
-(exact handlers before wildcard groups).
+`EventEmitter.emit(name, ...args)` snapshots every matching listener, attempts
+them all, and awaits completion. One failure is rethrown unchanged; multiple
+failures become an `AggregateError` in registration order (exact handlers before
+wildcard groups).
 
 A `once` registration is consumed before its callback starts, including when the
 callback throws, recursively emits, or overlaps another emission. `off` still
@@ -143,13 +140,9 @@ listener dependencies stay alive until delivery settles, and failures reject the
 completion promise. Await immediate `emit` calls before finishing their scope.
 Payload objects supplied to `defer` must not be mutated before completion.
 
-Existing `@OnEvent('name')` methods keep the `EventEmitter` path. Singleton and
-transient providers keep their application subscription instance; request-scoped
-providers, including consumers of request dependencies, now resolve in a fresh
-managed invocation for each listener delivery. These independent invocations do
-not copy HTTP authority. Every listener is resolved from its declaring module,
-including duplicate class tokens in keyed modules. For several listeners sharing
-one existing tenant/request context, use schema definitions with `inScope`.
+`@OnEvent` requires an event definition. Use `EventDispatcher` for decorated
+listeners; every listener resolves from its declaring module within a managed
+invocation. `EventEmitter.on(name, callback)` remains a standalone callback API.
 
 Deferred notifications and CRUD `afterCommit` remain best-effort invocation work.
 They provide no durable outbox, atomic database-plus-event write, or cross-worker

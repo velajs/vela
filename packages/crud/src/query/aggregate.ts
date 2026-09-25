@@ -229,13 +229,10 @@ export function buildAggregateSpec(
     limit = config.defaultLimit ?? 100;
   }
 
-  const head = aggregations[0];
   const spec: AggregateSpec = {
-    operation: head.operation,
     aggregations,
     filters,
   };
-  if (head.field !== '*') spec.field = head.field;
   if (groupBy) spec.groupBy = groupBy;
   if (having) spec.having = having;
   if (orderBy !== undefined) {
@@ -311,12 +308,6 @@ function computeOne(rows: Array<Record<string, unknown>>, agg: AggregateField): 
   }
 }
 
-/** The aggregations a spec runs — `aggregations` if present, else the legacy head. */
-function specAggregations(spec: AggregateSpec): AggregateField[] {
-  if (spec.aggregations && spec.aggregations.length > 0) return spec.aggregations;
-  return [{ operation: spec.operation, field: spec.field ?? '*' }];
-}
-
 // ---------------------------------------------------------------------------
 // In-memory compute (fallback for adapters without native aggregation)
 // ---------------------------------------------------------------------------
@@ -337,7 +328,7 @@ export function computeAggregateFallback<T extends Record<string, unknown>>(
   rows: T[],
   spec: AggregateSpec,
 ): AggregateResult {
-  const aggregations = specAggregations(spec);
+  const aggregations = spec.aggregations;
   const groupBy = spec.groupBy;
 
   if (!groupBy || groupBy.length === 0) {

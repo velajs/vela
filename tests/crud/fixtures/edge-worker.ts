@@ -119,6 +119,29 @@ export class EdgeObject extends DurableObject {
         this.ctx.storage.sql.exec("SELECT * FROM entries WHERE part='two'").toArray()[0],
     );
     assert(lookup.rank === 2, 'compound lookup');
+    const conditional = defineResource('conditional', { model, adapter, etag: true });
+    const id = { part: 'two', id: 'same' };
+    const current = await conditional.execute('read', { vars, id });
+    const updates = await Promise.allSettled(
+      [10, 11].map((rank) =>
+        conditional.execute('update', {
+          vars,
+          id,
+          body: { rank },
+          request: new Request('https://edge.test/', {
+            headers: { 'If-Match': current.headers!.ETag! },
+          }),
+        }),
+      ),
+    );
+    assert(
+      updates.filter((result) => result.status === 'fulfilled').length === 1,
+      'ETag must commit once',
+    );
+    assert(
+      updates.some((result) => result.status === 'rejected' && result.reason.statusCode === 409),
+      'ETag conflict',
+    );
     const tenants = new DurableObjectTenantRegistryStore(this.ctx.storage);
     tenants.migrate();
     const registry = new TenantRegistry({ store: tenants, authorize: () => true });
@@ -140,6 +163,7 @@ export class EdgeObject extends DurableObject {
     );
     assert(!(await policies.put(policyScope, { policies: {} }, null, audit())), 'policy CAS');
     return Response.json({
+      etag: true,
       rollback: true,
       compound: true,
       upsert: true,

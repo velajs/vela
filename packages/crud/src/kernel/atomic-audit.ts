@@ -40,16 +40,16 @@ export function assertAtomicAuditConfig(config: RuntimeResourceConfig): void {
     config.model.versioning ||
     config.etag ||
     config.model.policies?.write ||
+    config.model.policies?.read ||
+    config.model.policies?.readPushdown ||
     Object.entries(config.hooks ?? {}).some(
       ([key, hook]) =>
         hook && /^(before|after)(Create|Update|Delete|Restore|Upsert|Batch)/.test(key),
     ) ||
-    Object.values(config.model.relations ?? {}).some(
-      (relation) => relation.nestedWrites || relation.cascade,
-    )
+    Object.values(config.model.relations ?? {}).some((relation) => relation.nestedWrites)
   )
     throw new ConfigurationException(
-      'Atomic auditing does not support database-generated IDs, versioning, ETags, mutation hooks, row write policies, nested writes or cascades',
+      'Atomic auditing does not support database-generated IDs, versioning, ETags, mutation hooks, row policies, nested writes',
     );
 }
 

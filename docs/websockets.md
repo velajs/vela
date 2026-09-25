@@ -627,7 +627,7 @@ returns `accepted`, `closed`, `too-large`, or `backpressure`. `accepted` means t
 local transport accepted the frame; it is not an acknowledgment from the remote
 application. Existing `send()` and `sendRaw()` remain `void`. Integrations can use
 `trySendWebSocketFrame(client, payload)` to honor a connection's frame ceiling and
-explicit rejection, with a fallback for legacy clients. Live-query baselines advance
+explicit rejection. Every client must implement `trySendRaw`. Live-query baselines advance
 only on local admission, so a refused snapshot is never treated as delivered.
 
 Gateways may configure `sendPolicy: { maxBufferedBytes, maxBytesPerSecond }`.
