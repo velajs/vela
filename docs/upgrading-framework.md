@@ -93,7 +93,10 @@ wherever the path is mounted.
 other options. A factory that returns a structural option no longer compiles and
 fails bootstrap, and any other call-site option besides `key`, `lazy`, an extra
 such as `isGlobal` and the factory wiring (`imports`, `inject`, `useFactory`,
-`useClass`, `useExisting`) throws. Better
+`useClass`, `useExisting`) throws. In 1.30.0 such an option (for example `baseURL`
+in `HttpModule.forRootAsync({ baseURL, useFactory })` or `roles` in
+`AuthzModule.forRootAsync({ roles, useFactory })`) was merged under the factory's
+result as a default; return it from the factory instead. Better
 Auth's factory returns the module options instead of the auth instance, and
 Storage's returns them instead of a bare driver or `{ driver, multipartGrantSecret }`;
 Storage's `prefix`, `readonly` and `hooks` move into the factory result:
