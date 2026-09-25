@@ -45,7 +45,9 @@ interface ExportedModule {
  */
 const WORKERS_ONLY = new Set([
   '@velajs/cloudflare/durable-objects',
+  '@velajs/cloudflare/entrypoints',
   '@velajs/cloudflare/testing',
+  '@velajs/cloudflare/workflows',
   '@velajs/authz-cedar/cloudflare',
 ]);
 

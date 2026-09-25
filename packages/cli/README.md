@@ -15,7 +15,7 @@ pnpm add -D @velajs/cli
 | Command | What it does |
 | --- | --- |
 | `vela new my-api` | Create a Workers project (`--template minimal` or `api`, `--pm pnpm\|npm\|yarn\|bun`, `--install`, `--git`). |
-| `vela generate <schematic> <name>` | Alias `vela g`. Generate a `module`, `controller`, `service`, `resource`, `queue`, `cron` or `durable-object` and register it in the parent module or the Worker entry. |
+| `vela generate <schematic> <name>` | Alias `vela g`. Generate a `module`, `controller`, `service`, `resource`, `queue`, `cron`, `durable-object`, `workflow` or `entrypoint` and register it in the parent module or the Worker entry. |
 | `vela add <d1\|kv\|r2\|queue> <BINDING>` | Create the resource with the project's Wrangler, refresh the binding types and register the binding in the application. |
 | `vela cf sync` | Compare the Wrangler file with the application's cron triggers, queues, Durable Objects and Workflows; `--write` updates JSON/JSONC in place. |
 | `vela deploy check` | Check the Wrangler target (top level, or `--env`) against the application's entrypoints without building or deploying. See the [deployment guide](../../docs/deployment.md). |
@@ -84,6 +84,8 @@ vela g controller billing                   # registered in src/billing/billing.
 vela g queue emails --binding EMAIL_QUEUE   # @Processor + QueueModule.registerQueue(); the driver once
 vela g cron digest --schedule "0 6 * * *"   # @Cron(..., { dialect: 'cloudflare' })
 vela g durable-object counter               # exported from the Worker entry
+vela g workflow signup                      # a Workflow built from the entry's app
+vela g entrypoint billing                   # a service entrypoint (WorkerEntrypoint)
 vela g service audit --skip-import          # prints the registration instead
 ```
 
@@ -104,8 +106,13 @@ computes a key that may set the list, is refused with nothing written.
 Generated code uses the application kit, feature subpaths
 (`@velajs/vela/queue`, `@velajs/vela/schedule`), `ENV`, and plain decorator
 routes; a resource validates bodies with zod when the project depends
-on it, and with generated parse functions otherwise. Existing files are never
-overwritten; `--dry-run` lists the changes.
+on it, and with generated parse functions otherwise. A `workflow` or
+`entrypoint` writes an `@Injectable()` host and declares
+`VelaWorkflow(app, SignupHost)` or `VelaEntrypoint(app, BillingHost, { rpc: ['ping'] })`
+after the Worker entry's app: both run in the Worker's application, so an
+entry that default-exports `createCloudflareWorker(AppModule, options)` first
+becomes `const app = defineCloudflareApp(AppModule, options); export default app.worker;`.
+Existing files are never overwritten; `--dry-run` lists the changes.
 
 ### Add Cloudflare resources
 
@@ -153,7 +160,11 @@ The application declares what the Worker needs: a cron trigger per `@Cron`
 expression, a queue producer per `QueueModule.registerQueue({ binding })`, a
 consumer per processed or `@QueueConsumer` queue, a Durable Object binding and a
 `new_sqlite_classes` migration per exported Durable Object class, and a
-`workflows` entry per exported `WorkflowEntrypoint`. `--write` edits JSON and
+`workflows` entry per exported `WorkflowEntrypoint` (Vela Workflows included).
+It warns about a Durable Object, Workflow or service entrypoint class the app
+defines but the entry does not export, naming the call that defined it (export
+that class), and about a service binding to an `entrypoint` of this Worker
+that the entry does not export. `--write` edits JSON and
 JSONC files through `jsonc-parser`; a `wrangler.toml` is only compared. A cron
 trigger no `@Cron` job declares is reported as such and kept, since a Worker entry
 with its own `scheduled` handler may serve it; `--prune` removes those triggers.
@@ -190,7 +201,7 @@ metadata, and builds the application `createCloudflareWorker(AppModule,
 options)` describes: the descriptor it attaches under
 `Symbol.for('vela.cloudflare.worker')` carries the root module and options.
 `cloudflare:*` imports resolve to inert Node stand-ins, so a Worker entry that
-exports Durable Object or Workflow classes loads too. Commands that list or
+exports Durable Object, Workflow or entrypoint classes loads too. Commands that list or
 check the application seed `ENV` with the Wrangler `vars` only, never bindings or
 secrets: keep binding I/O out of bootstrap. `vela db seed` uses Wrangler's
 `getPlatformProxy()` local bindings, persisted like `vite dev`.

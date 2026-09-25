@@ -505,7 +505,11 @@ describe('deployment alignment', () => {
         target: 'Lobby',
         meta: JSON.stringify({ kind: 'websocket', methods: ['broadcast'] }),
       },
-      { kind: 'cf:durable-object', target: '(not exported) AuditHost', meta: { exported: false } },
+      {
+        kind: 'cf:durable-object',
+        target: '(not exported) AuditHost',
+        meta: { exported: false, kind: 'host', host: 'AuditHost', methods: ['record'] },
+      },
     ];
     const bound = checkDeployment(
       config({
@@ -527,12 +531,83 @@ describe('deployment alignment', () => {
       'static-only',
     ]);
     expect(bound.warnings[0]?.message).toContain('"Lobby"');
-    expect(bound.warnings[1]?.message).toContain('AuditHost');
+    // The class exists: export it, with the rpc list it was defined with.
+    expect(bound.warnings[1]?.message).toBe(
+      "The app defines a Durable Object class, VelaDurableObject(app, AuditHost, { rpc: ['record'] }), " +
+        'that the Worker entry does not export, so no binding can reach it: export that class from ' +
+        'the Worker entry.',
+    );
     expect(
       checkDeployment(config(), 'staging', [
         { kind: 'cf:durable-object', target: 'Counter', meta: { kind: 'mystery' } },
       ]).errors.map((error) => error.code),
     ).toEqual(['invalid-metadata']);
+  });
+
+  it('checks the Workflow and service entrypoint classes the Worker entry defines and exports', () => {
+    const snapshot = [
+      { kind: 'cf:workflow', target: 'Signup', meta: { host: 'SignupHost' } },
+      { kind: 'cf:workflow', target: 'Report', meta: JSON.stringify({ host: 'ReportHost' }) },
+      {
+        kind: 'cf:workflow',
+        target: '(not exported) AuditHost',
+        meta: { exported: false, host: 'AuditHost' },
+      },
+      {
+        kind: 'cf:entrypoint',
+        target: 'Billing',
+        meta: { host: 'BillingHost', methods: ['charge'] },
+      },
+      {
+        kind: 'cf:entrypoint',
+        target: '(not exported) SearchHost',
+        meta: { exported: false, host: 'SearchHost', methods: ['query'] },
+      },
+    ];
+    const result = checkDeployment(
+      config({
+        workflows: [
+          { name: 'signups', binding: 'SIGNUPS', class_name: 'Signup' },
+          // Another Worker's class of the same name does not run this one.
+          { name: 'reports', binding: 'REPORTS', class_name: 'Report', script_name: 'reporting' },
+        ],
+      }),
+      'staging',
+      snapshot,
+    );
+    expect(result.status).toBe('passed');
+    expect(result.warnings.map((warning) => warning.code)).toEqual([
+      'unbound-workflow',
+      'unexported-workflow',
+      'unexported-entrypoint',
+      'static-only',
+    ]);
+    expect(result.warnings[0]?.message).toContain('"Report"');
+    expect(result.warnings[1]?.message).toContain('VelaWorkflow(app, AuditHost)');
+    expect(result.warnings[2]?.message).toContain(
+      "VelaEntrypoint(app, SearchHost, { rpc: ['query'] })",
+    );
+    expect(
+      checkDeployment(config(), 'staging', [
+        { kind: 'cf:entrypoint', target: 'Billing', meta: { methods: 'charge' } },
+      ]).errors.map((error) => error.code),
+    ).toEqual(['invalid-metadata']);
+  });
+
+  it('warns when service entrypoint RPC failures would reach callers without their shape', () => {
+    const warnings = checkDeployment(config({ compatibility_date: '2025-10-01' }), 'staging', [
+      {
+        kind: 'cf:entrypoint',
+        target: 'Billing',
+        meta: { host: 'BillingHost', methods: ['charge'] },
+      },
+    ]).warnings;
+    expect(warnings.map((warning) => warning.code)).toEqual([
+      'rpc-error-serialization',
+      'static-only',
+    ]);
+    expect(warnings[0]?.message).toContain('"Billing"');
+    expect(warnings[0]?.message).toContain('EntrypointError');
   });
 
   it('warns when Durable Object RPC failures would reach callers without their shape', () => {
@@ -551,21 +626,19 @@ describe('deployment alignment', () => {
 
     const legacy = warnings({ compatibility_date: '2025-10-01' });
     expect(legacy.map((warning) => warning.code)).toEqual([
-      'durable-object-error-serialization',
+      'rpc-error-serialization',
       'static-only',
     ]);
     expect(legacy[0]?.message).toContain('Counter');
     expect(legacy[0]?.message).toContain('2025-10-01');
     expect(legacy[0]?.message).toContain('enhanced_error_serialization');
-    expect(codes({ compatibility_date: '2026-04-20' })).toContain(
-      'durable-object-error-serialization',
-    );
+    expect(codes({ compatibility_date: '2026-04-20' })).toContain('rpc-error-serialization');
     expect(
       codes({
         compatibility_date: '2026-09-20',
         compatibility_flags: ['legacy_error_serialization'],
       }),
-    ).toContain('durable-object-error-serialization');
+    ).toContain('rpc-error-serialization');
     // workerd keeps the error's own properties from 2026-04-21, or with the flag.
     expect(codes({ compatibility_date: '2026-04-21' })).toEqual(['static-only']);
     expect(

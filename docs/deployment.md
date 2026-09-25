@@ -90,12 +90,24 @@ Host, { rpc })` or `VelaWebSocketDurableObject(app)` but the entry does not expo
 `(not exported) <Host>`. An exported class that no `durable_objects` binding of
 the selected environment names warns with `unbound-durable-object` (another
 Worker may bind it through `script_name`), and a class the entry does not export
-warns with `unexported-durable-object`: nothing can bind it. An exported host
-class with RPC methods warns with `durable-object-error-serialization` when the
-selected environment's `compatibility_date` predates 2026-04-21 without the
+warns with `unexported-durable-object`: nothing can bind it. The warning names
+the call that defined it, with its `rpc` list, so you export that class.
+
+[Workflow](workflows.md) classes built with `VelaWorkflow(app, Host)` appear as
+`cf:workflow` rows (their host), and [service entrypoint](entrypoints.md)
+classes built with `VelaEntrypoint(app, Host, { rpc })` as `cf:entrypoint` rows
+(their host and RPC methods), each by export name, then those the app defines
+but the entry does not export. An exported Workflow class that no `workflows`
+entry of the selected environment names (without `script_name`) warns with
+`unbound-workflow`; unexported classes warn with `unexported-workflow` and
+`unexported-entrypoint`. An exported Durable Object host or service entrypoint
+with RPC methods warns with `rpc-error-serialization` when the selected
+environment's `compatibility_date` predates 2026-04-21 without the
 `enhanced_error_serialization` flag (or sets `legacy_error_serialization`):
-workerd then drops a `DurableObjectError`'s `status`, `code` and `details` on the
-way to the caller.
+workerd then drops an `EntrypointError`'s `status`, `code` and `details` on the
+way to the caller. `@OnEmail()` and `@OnTail()` handlers list as `cf:email` and
+`cf:tail` rows; Email Routing and `tail_consumers` are configured outside this
+Worker's bindings, so the check does not compare them.
 
 Queues registered with `QueueModule.registerQueue()` appear as
 `queue:registration` rows. Each registered `binding` must be a

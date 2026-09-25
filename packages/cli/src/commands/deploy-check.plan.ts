@@ -1,6 +1,7 @@
 import { cronDialectAmbiguity, parseCronMetadata } from '@velajs/vela/module-kit';
 import { parseCron } from '@velajs/vela/schedule';
 import { z } from 'zod';
+import { definitionOf } from '../project/vela-classes.js';
 import { selectDeploymentTarget, type DeploymentTarget } from './deploy-check.config.js';
 
 export interface DeploymentIssue {
@@ -53,6 +54,15 @@ const registrationSchema = z.object({
 const moduleConsumerSchema = z.object({ consumers: z.array(queueName) });
 const durableObjectSchema = z.object({
   kind: z.enum(['host', 'websocket']).optional(),
+  host: z.string().optional(),
+  methods: z.array(z.string()).optional(),
+  exported: z.boolean().optional(),
+});
+const workflowSchema = z.object({
+  host: z.string().optional(),
+  exported: z.boolean().optional(),
+});
+const entrypointSchema = z.object({
   host: z.string().optional(),
   methods: z.array(z.string()).optional(),
   exported: z.boolean().optional(),
@@ -114,8 +124,14 @@ export function checkDeployment(
   let moduleConsumer = false;
   // Physical queues the native module consumer pins (its cf:queue:module rows).
   const modulePins = new Set<string>();
-  // Exported Durable Object hosts whose RPC calls reject with DurableObjectError.
+  // Exported Durable Object hosts and service entrypoints whose RPC calls reject with EntrypointError.
   const rpcHosts: string[] = [];
+  // The class a row names, as the Worker entry defines it.
+  const unexportedClass = (
+    kind: 'durable-object' | 'workflow' | 'entrypoint',
+    target: string,
+    methods: readonly string[] = [],
+  ) => definitionOf({ kind, serves: target.replace(/^\(not exported\) /, ''), methods });
   const stale = (kind: string, replacement: string): void => {
     report(
       'stale-entrypoint-snapshot',
@@ -146,6 +162,8 @@ export function checkDeployment(
         'rpc:client',
         'websocket',
         'cf:durable-object',
+        'cf:workflow',
+        'cf:entrypoint',
       ].includes(row.kind)
     )
       continue;
@@ -165,11 +183,13 @@ export function checkDeployment(
         continue;
       }
       if (durable.data.exported === false) {
+        const serves = durable.data.kind === 'websocket' ? 'WebSocket' : row.target;
         warnings.push({
           code: 'unexported-durable-object',
           message:
-            `The app defines a Durable Object class (${row.target.replace(/^\(not exported\) /, '')}) ` +
-            'that the Worker entry does not export, so no binding can reach it.',
+            `The app defines a Durable Object class, ` +
+            `${unexportedClass('durable-object', serves, durable.data.methods)}, that the Worker ` +
+            'entry does not export, so no binding can reach it: export that class from the Worker entry.',
         });
       } else {
         if (durable.data.kind === 'host' && (durable.data.methods?.length ?? 0) > 0) {
@@ -184,6 +204,53 @@ export function checkDeployment(
               '--write) unless another Worker binds it.',
           });
         }
+      }
+      continue;
+    }
+    if (row.kind === 'cf:workflow') {
+      // Vela Workflow classes the Worker entry exports, and those its app defines without exporting.
+      const workflow = workflowSchema.safeParse(meta);
+      if (!workflow.success) {
+        report('invalid-metadata', `Invalid ${row.kind} metadata.`);
+        continue;
+      }
+      if (workflow.data.exported === false) {
+        warnings.push({
+          code: 'unexported-workflow',
+          message:
+            `The app defines a Workflow class, ${unexportedClass('workflow', row.target)}, that the ` +
+            'Worker entry does not export, so no workflows binding can run it: export that class ' +
+            'from the Worker entry.',
+        });
+      } else if (!target.workflowClasses.includes(row.target)) {
+        warnings.push({
+          code: 'unbound-workflow',
+          message:
+            `The Worker exports the Workflow class ${JSON.stringify(row.target)}, which no ` +
+            'workflows entry of the selected environment names; declare it (vela cf sync --write) ' +
+            'unless another Worker runs it.',
+        });
+      }
+      continue;
+    }
+    if (row.kind === 'cf:entrypoint') {
+      // Vela service entrypoint classes the Worker entry exports, and those its app defines without exporting.
+      const entrypoint = entrypointSchema.safeParse(meta);
+      if (!entrypoint.success) {
+        report('invalid-metadata', `Invalid ${row.kind} metadata.`);
+        continue;
+      }
+      if (entrypoint.data.exported === false) {
+        warnings.push({
+          code: 'unexported-entrypoint',
+          message:
+            'The app defines a service entrypoint class, ' +
+            `${unexportedClass('entrypoint', row.target, entrypoint.data.methods)}, that the Worker ` +
+            'entry does not export, so no service binding can reach it: export that class from the ' +
+            'Worker entry.',
+        });
+      } else if ((entrypoint.data.methods?.length ?? 0) > 0) {
+        rpcHosts.push(row.target);
       }
       continue;
     }
@@ -477,14 +544,14 @@ export function checkDeployment(
       );
   if (rpcHosts.length > 0 && !serializesErrorProperties(target)) {
     warnings.push({
-      code: 'durable-object-error-serialization',
+      code: 'rpc-error-serialization',
       message:
-        `The Durable Object ${rpcHosts.length === 1 ? 'class' : 'classes'} ` +
+        `The ${rpcHosts.length === 1 ? 'class' : 'classes'} ` +
         `${rpcHosts.map((name) => JSON.stringify(name)).join(', ')} reject failed RPC calls with ` +
-        `a DurableObjectError, but compatibility_date ${target.compatibilityDate} predates ` +
+        `an EntrypointError, but compatibility_date ${target.compatibilityDate} predates ` +
         `${ENHANCED_ERROR_SERIALIZATION_DATE} without the enhanced_error_serialization flag: ` +
         'callers receive a plain Error without its status, code and details, so ' +
-        'isDurableObjectError() is false. Set compatibility_date to ' +
+        'isEntrypointError() is false. Set compatibility_date to ' +
         `${ENHANCED_ERROR_SERIALIZATION_DATE} or later, or add enhanced_error_serialization to ` +
         'compatibility_flags.',
     });

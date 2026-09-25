@@ -194,8 +194,36 @@ interceptors, and exception filters resolve in that module. Context exposes the
 owning module ID and current scope. All invocations finish and dispose before
 dispatch returns or rejects, including lazy dependencies and failure paths.
 Application-wide `APP_*` pipeline components are not applied. Unclaimed errors
-are reported with `kind: 'mail:inbound'` and the core `queue` error category, then
+are reported with `kind: 'mail:inbound'` on the core `email` edge, then
 propagated to the host. The result is `{ gated, handled, failed }`.
+
+### Email Workers messages
+
+`readInboundEmail(message, options?)` reads a platform inbound message (the
+SMTP envelope `from` and `to`, a raw `ReadableStream` and its `rawSize`), such
+as the `ForwardableEmailMessage` an `@OnEmail()` handler of
+`@velajs/cloudflare/email` receives, into an `InboundEmail`. It refuses a
+declared size over `limits.maxMessageBytes` before reading, cancels a longer
+stream, and parses the bytes with the SMTP envelope as `envelope`:
+
+```ts
+import { OnEmail } from '@velajs/cloudflare/email';
+import { readInboundEmail } from '@velajs/mail';
+
+@Injectable()
+class SupportInbox {
+  @OnEmail({ to: 'support@example.com' })
+  async receive(message: ForwardableEmailMessage): Promise<void> {
+    const email = await readInboundEmail(message);
+    // email.envelope, email.subject, email.headers, email.raw() for a MIME parser
+  }
+}
+```
+
+The options are `parseInboundEmail`'s, less `envelope`. Nothing verifies the
+sender unless you pass `verifiedAuthentication` from a source you trust (or
+`trustedAuthservIds` under the conditions below), so the default gate refuses
+such a message.
 
 ### Authentication gate
 
@@ -246,10 +274,11 @@ in local development; it has no authentication or persistence. Testing assertion
 throw plain `Error` and have no test-framework dependency.
 
 The portable runtime uses Web APIs. No native Cloudflare send-email adapter,
-`CloudflareEmailModule`, automatic Worker `email()` hook, SMTP transport, or full
-MIME parser is implemented in this monorepo. The dispatch seam can be wired by an
-application host, but native Email Workers behavior is not claimed or tested by
-this package. The Resend transport uses fetch; tests exercise injected responses,
+SMTP transport, or full MIME parser is implemented in this monorepo. A Worker
+receives Email Workers messages through `@OnEmail()` handlers of
+`@velajs/cloudflare/email`, which read them with `readInboundEmail()`; the
+dispatch seam can be wired by an application host, but native Email Workers
+behavior is not claimed or tested by this package. The Resend transport uses fetch; tests exercise injected responses,
 not a live provider account.
 
 `MailError` exposes `code`, `internal`, optional `status`, and `cause`. Codes include

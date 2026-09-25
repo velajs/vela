@@ -285,6 +285,7 @@ describe('dispatchInboundEmail — routing & pipeline', () => {
 
   it('reports then rethrows an unclaimed handler error', async () => {
     const reports: unknown[] = [];
+    const contexts: unknown[] = [];
 
     @Injectable()
     class Inbox {
@@ -298,8 +299,9 @@ describe('dispatchInboundEmail — routing & pipeline', () => {
       Inbox,
       defineProvider(APP_EXCEPTION_HANDLER, {
         useValue: {
-          report: (e: unknown) => {
+          report: (e: unknown, context: unknown) => {
             reports.push(e);
+            contexts.push(context);
           },
         },
       }),
@@ -309,6 +311,10 @@ describe('dispatchInboundEmail — routing & pipeline', () => {
       dispatchInboundEmail(app.getContainer(), app.entrypoints, emailWith('pass')),
     ).rejects.toThrow('unclaimed');
     expect(reports).toHaveLength(1);
+    // Inbound mail reports on the email edge.
+    expect(contexts).toMatchObject([
+      { edge: 'email', kind: 'mail:inbound', source: 'Inbox.handle' },
+    ]);
   });
 
   it('re-resolves a request-scoped handler by token per dispatch (lazy-safe)', async () => {

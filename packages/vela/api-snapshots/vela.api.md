@@ -3904,7 +3904,7 @@ declare class VelaApplicationContext {
 type ErrorMatcher = string | ((error: unknown) => boolean) | (new (...args: never[]) => Error);
 
 interface ErrorReportContext {
-  edge: 'http' | 'ws' | 'live' | 'queue' | 'schedule' | 'hono' | 'graphql' | 'rpc' | 'cache' | 'durable-object';
+  edge: 'http' | 'ws' | 'live' | 'queue' | 'schedule' | 'hono' | 'graphql' | 'rpc' | 'cache' | 'durable-object' | 'workflow' | 'email' | 'tail';
 
   source?: string;
 

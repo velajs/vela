@@ -44,6 +44,14 @@
       "types": "./dist/durable-objects.d.ts",
       "import": "./dist/durable-objects.js"
     },
+    "./email": {
+      "types": "./dist/email.d.ts",
+      "import": "./dist/email.js"
+    },
+    "./entrypoints": {
+      "types": "./dist/entrypoints.d.ts",
+      "import": "./dist/entrypoints.js"
+    },
     "./queues": {
       "types": "./dist/queues.d.ts",
       "import": "./dist/queues.js"
@@ -52,9 +60,17 @@
       "types": "./dist/storage.d.ts",
       "import": "./dist/storage.js"
     },
+    "./tail": {
+      "types": "./dist/tail.d.ts",
+      "import": "./dist/tail.js"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.js"
+    },
+    "./workflows": {
+      "types": "./dist/workflows.d.ts",
+      "import": "./dist/workflows.js"
     }
   },
   "publishConfig": {

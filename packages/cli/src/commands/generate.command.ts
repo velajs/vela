@@ -13,13 +13,17 @@ export class GenerateCommand extends Command {
   static override usage = Command.Usage({
     category: 'Project',
     description:
-      'Generate a module, controller, service, resource, queue, cron job or Durable Object.',
+      'Generate a module, controller, service, resource, queue, cron job, Durable Object, ' +
+      'Workflow or service entrypoint.',
     details:
       'Writes the new files under src/<name>/ and registers them: a module or resource in the module ' +
       'of the directory above, a controller, service, cron job or queue processor in the module of ' +
       'its directory (else the nearest one up to the root module), QueueModule.registerQueue() next ' +
       'to a processor and QueueModule.forRoot({ driver: cloudflareQueues() }) in the root module ' +
-      'once, and a Durable Object as an export of the Worker entry Wrangler names. Module files ' +
+      'once, and a Durable Object, Workflow or service entrypoint as an export of the Worker ' +
+      'entry Wrangler names. A Workflow or service entrypoint runs in the Worker application, so ' +
+      'an entry that default-exports createCloudflareWorker(AppModule) is given its app first ' +
+      '(const app = defineCloudflareApp(AppModule)). Module files ' +
       'are edited in place with Oxc and magic-string; everything else in them is kept. ' +
       '--skip-import prints the registration instead. Existing files are never overwritten.',
     examples: [
@@ -27,6 +31,8 @@ export class GenerateCommand extends Command {
       ['A queue processor and its registration', 'vela g queue emails --binding EMAIL_QUEUE'],
       ['A cron job', 'vela g cron digest --schedule "30 6 * * MON"'],
       ['A Durable Object', 'vela g durable-object counter'],
+      ['A Workflow', 'vela g workflow signup'],
+      ['A service entrypoint (WorkerEntrypoint)', 'vela g entrypoint billing'],
       ['Register it yourself', 'vela g controller health --skip-import'],
     ],
   });

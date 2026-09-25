@@ -37,7 +37,10 @@ export interface ErrorReportContext {
     | 'graphql'
     | 'rpc'
     | 'cache'
-    | 'durable-object';
+    | 'durable-object'
+    | 'workflow'
+    | 'email'
+    | 'tail';
   /** e.g. `'CatsController.findAll'` or a query name. */
   source?: string;
   /** e.g. `'exception filter threw'`. */

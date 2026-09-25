@@ -82,13 +82,11 @@ async function runHandler(
         },
       });
     } catch (error) {
-      // Report BEFORE the filter loop and BEFORE any rethrow. Inbound email is
-      // an async host-delivered entrypoint (the CF `email()` hook is a sibling
-      // of `queue()`/`scheduled()`), so it reports under the 'queue' edge
-      // category; vela's `ErrorReportContext.edge` is a closed union without a
-      // mail member, and the precise transport rides the open `kind` key.
+      // Report BEFORE the filter loop and BEFORE any rethrow, on the email
+      // edge that host-delivered inbound mail (a Worker's `email()` hook)
+      // reports on; the precise transport rides the open `kind` key.
       resolveErrorReporter(scope).report(error, {
-        edge: 'queue',
+        edge: 'email',
         kind: 'mail:inbound',
         source: `${token.name}.${String(methodName)}`,
       });

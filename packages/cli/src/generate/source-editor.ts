@@ -907,6 +907,100 @@ export function importedWorkerApp(file: string, source: string): NamedImport | u
   return undefined;
 }
 
+/** How {@link defineWorkerApp} defines the app of a Worker entry. */
+export interface WorkerAppDefinition extends SourceEdit {
+  /** The statement defining the app, such as `const app = defineCloudflareApp(AppModule);`. */
+  readonly statement: string;
+  /** The default export that replaces the Worker's: `export default app.worker;`. */
+  readonly defaultExport: string;
+}
+
+/**
+ * Bind the app of a Worker entry that default-exports
+ * `createCloudflareWorker(root, options)` or `defineCloudflareApp(root, options).worker`:
+ * the call becomes `const app = defineCloudflareApp(root, options);` and the
+ * default export `app.worker`, so classes defined from the app can be
+ * declared after it. The `@velajs/cloudflare` import names
+ * `defineCloudflareApp` in place of a `createCloudflareWorker` used nowhere
+ * else. Throws when the default export is another expression, or `binding`
+ * is taken.
+ */
+export function defineWorkerApp(
+  file: string,
+  source: string,
+  binding = 'app',
+): WorkerAppDefinition {
+  const program = parse(file, source);
+  const statement = program.body.find((node) => node.type === 'ExportDefaultDeclaration');
+  const exported =
+    statement?.type === 'ExportDefaultDeclaration' ? statement.declaration : undefined;
+  const call =
+    exported?.type === 'CallExpression'
+      ? exported
+      : exported?.type === 'MemberExpression' &&
+          !exported.computed &&
+          exported.property.type === 'Identifier' &&
+          exported.property.name === 'worker' &&
+          exported.object.type === 'CallExpression'
+        ? exported.object
+        : undefined;
+  const factory = call === undefined ? undefined : calleeName(call);
+  const matches =
+    statement !== undefined &&
+    call !== undefined &&
+    ((factory === 'createCloudflareWorker' && call === exported) ||
+      (factory === 'defineCloudflareApp' && call !== exported));
+  if (!matches) {
+    throw new SourceEditError(
+      `${file} does not default-export createCloudflareWorker(AppModule), so the app cannot be ` +
+        'defined for you: define it once (const app = defineCloudflareApp(AppModule, options); ' +
+        'export default app.worker;) and run the generator again.',
+    );
+  }
+  const taken =
+    program.body.some((node) => declaresBinding(node, binding)) ||
+    importDeclarations(program).some((declaration) =>
+      declaration.specifiers.some((specifier) => specifier.local.name === binding),
+    );
+  if (taken) {
+    throw new SourceEditError(
+      `${file} already declares ${binding}: define the app yourself ` +
+        `(const app = defineCloudflareApp(AppModule, options); export default app.worker;).`,
+    );
+  }
+  const [first] = call.arguments;
+  const last = call.arguments.at(-1);
+  const args = first && last ? source.slice(first.start, last.end) : '';
+  const definition = `const ${binding} = defineCloudflareApp(${args});`;
+  const defaultExport = `export default ${binding}.worker;`;
+  const code = new MagicString(source);
+  code.overwrite(statement.start, statement.end, `${definition}\n\n${defaultExport}`);
+  if (factory === 'createCloudflareWorker') {
+    // The factory's only use was the default export: name defineCloudflareApp in its place.
+    const uses = [...walk(program.body.filter((node) => node.type !== 'ImportDeclaration'))].filter(
+      (node) => node.type === 'Identifier' && node.name === 'createCloudflareWorker',
+    ).length;
+    const specifier = importDeclarations(program)
+      .filter((declaration) => declaration.source.value === '@velajs/cloudflare')
+      .flatMap((declaration) => declaration.specifiers)
+      .find(
+        (candidate) =>
+          candidate.type === 'ImportSpecifier' &&
+          candidate.local.name === 'createCloudflareWorker' &&
+          exportName(candidate.imported) === 'createCloudflareWorker',
+      );
+    // The default export was its only use.
+    if (specifier !== undefined && uses === 1) {
+      code.overwrite(specifier.start, specifier.end, 'defineCloudflareApp');
+    } else {
+      addImports(code, source, program, [
+        { name: 'defineCloudflareApp', from: '@velajs/cloudflare' },
+      ]);
+    }
+  }
+  return { source: code.toString(), changed: true, statement: definition, defaultExport };
+}
+
 /** What {@link addWorkerDeclaration} declares in the Worker entry. */
 export interface WorkerDeclaration {
   /** The top-level binding the declaration uses, such as the app: it goes after it. */

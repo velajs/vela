@@ -62,6 +62,8 @@ The returned worker offers:
 | `fetch(input, init?)` | Sends a request through the Worker's `fetch` handler; a path resolves against `http://localhost`. |
 | `queue(queue, messages)` | Delivers one batch of the physical queue through the Worker's `queue` handler, built with `cloudflare:test`'s `createMessageBatch()`, and returns `getQueueResult()`: `explicitAcks`, `ackAll`, `retryMessages`, `retryBatch`, plus `outcome` (`'exception'` and `error` when the handler rejected, after which Cloudflare retries every unacknowledged message). |
 | `scheduled(cron, { scheduledTime? })` | Fires the cron trigger with `createScheduledController()` and waits for its `@Cron` jobs. It rejects when no job declares `cron`: Cloudflare delivers the literal trigger expression. |
+| `email(message)` | Delivers an Email Workers message to the `@OnEmail()` handlers, as the Worker's `email` handler does: a message no handler accepts is rejected. |
+| `tail(events)` | Delivers Tail Workers events to the `@OnTail()` handlers; their failures are reported, never thrown. |
 | `module` | The compiled `TestingModule`: `get()`, `resolveInRequest()`, the fluent `http` client. |
 | `close()` | Cancels response bodies the test never read, waits for background work (`waitUntil`) and closes the application. |
 
@@ -71,6 +73,14 @@ and `job` a `defineQueueJob()` definition (whose wire input `data` must match)
 or a job name. The physical queue passed to `worker.queue()` is the Cloudflare
 queue the batch arrives on; a registration without a `consumer` pin accepts jobs
 from any of them.
+
+`emailMessage({ from, to, subject?, text?, headers?, raw? })` builds a
+`ForwardableEmailMessage` whose `setReject()`, `forward()` and `reply()` are
+recorded on it (`rejectReason`, `forwards`, `replies`) instead of sending
+anything, and `traceItem(overrides?)` builds a `TraceItem` (see
+[entrypoints](entrypoints.md#tests)). Workflows run through the real engine
+with `introspectWorkflowInstance()` from `cloudflare:test` (see
+[Workflows](workflows.md#tests)).
 
 The subpath imports `cloudflare:test`, so it only runs inside the Workers
 Vitest pool, and it needs `@velajs/testing` installed. It is never part of a

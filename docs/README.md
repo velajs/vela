@@ -39,6 +39,10 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [WebSockets](websockets.md): gateways, transports, rooms, and authentication.
 - [Durable Objects](durable-objects.md): one app definition, host classes as
   typed JS-RPC methods through the pipeline, and standalone application contexts.
+- [Workflows](workflows.md): Cloudflare Workflows whose runs execute an
+  injectable host in the Worker's application, with steps untouched.
+- [Service entrypoints, email and tail](entrypoints.md): typed service RPC with
+  caller props, `@OnEmail()` and `@OnTail()` handlers, and `EntrypointError`.
 - [Live queries](live-queries.md): subscriptions, invalidation, reconnects,
   delivery guarantees, and runtime limits.
 
