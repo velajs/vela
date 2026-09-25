@@ -136,7 +136,7 @@ describe('FeatureFlagsService', () => {
       expect(await flags.getObjectDetails('layout', parseTheme, { theme: 'light' })).toEqual({
         flagKey: 'layout',
         value: { theme: 'dark' },
-        reason: 'STATIC',
+        reason: 'UNKNOWN',
       });
     });
 
@@ -151,6 +151,7 @@ describe('FeatureFlagsService', () => {
         value: fallback,
         reason: 'ERROR',
         errorMessage: 'theme must be a string',
+        errorCode: 'GENERAL',
       });
     });
 
@@ -232,12 +233,12 @@ describe('FeatureFlagsService', () => {
       });
     });
 
-    it('details synthesize a STATIC reason on success', async () => {
+    it('details report UNKNOWN when a provider supplies no metadata', async () => {
       const flags = service({ drivers: [new MemoryFlagDriver({ values: { x: true } })] });
       expect(await flags.getBooleanDetails('x', false)).toMatchObject({
         flagKey: 'x',
         value: true,
-        reason: 'STATIC',
+        reason: 'UNKNOWN',
       });
     });
   });
@@ -321,6 +322,129 @@ describe('FeatureFlagsService', () => {
       await flags.getBooleanValue('x');
       expect(ctxSpy).not.toHaveBeenCalled();
       expect(recording.lastContext).toBeUndefined();
+    });
+  });
+});
+
+describe('provider evaluation metadata', () => {
+  it('uses detail methods without a second value read and preserves native fields', async () => {
+    const driver = new MemoryFlagDriver({ values: { flag: false } });
+    const getBoolean = vi.spyOn(driver, 'getBoolean');
+    const getBooleanDetails = vi.fn(async (flagKey: string) => ({
+      flagKey,
+      value: true,
+      reason: 'TARGETING_MATCH',
+      variant: 'enabled',
+    }));
+    const flags = service({ drivers: [Object.assign(driver, { getBooleanDetails })] });
+    expect(await flags.getBooleanDetails('flag', false)).toEqual({
+      flagKey: 'flag',
+      value: true,
+      reason: 'TARGETING_MATCH',
+      variant: 'enabled',
+    });
+    expect(getBooleanDetails).toHaveBeenCalledOnce();
+    expect(getBoolean).not.toHaveBeenCalled();
+  });
+
+  it('preserves errors and returns the fallback even for inconsistent provider values', async () => {
+    const driver = Object.assign(new MemoryFlagDriver(), {
+      getBooleanDetails: async (flagKey: string) => ({
+        flagKey,
+        value: true,
+        reason: 'DEFAULT',
+        errorCode: 'FLAG_NOT_FOUND',
+      }),
+    });
+    expect(await service({ drivers: [driver] }).getBooleanDetails('flag', false)).toEqual({
+      flagKey: 'flag',
+      value: false,
+      reason: 'DEFAULT',
+      errorCode: 'FLAG_NOT_FOUND',
+    });
+  });
+
+  it('preserves object metadata after validation and does not parse a failure fallback', async () => {
+    const driver = Object.assign(new MemoryFlagDriver(), {
+      getObjectDetails: async (flagKey: string) => ({
+        flagKey,
+        value: { theme: 'dark', ignored: 1 },
+        reason: 'SPLIT',
+        variant: 'treatment',
+      }),
+    });
+    const flags = service({ drivers: [driver] });
+    expect(await flags.getObjectDetails('layout', parseTheme, { theme: 'light' })).toEqual({
+      flagKey: 'layout',
+      value: { theme: 'dark' },
+      reason: 'SPLIT',
+      variant: 'treatment',
+    });
+    const broken = Object.assign(new MemoryFlagDriver(), {
+      getObjectDetails: async (flagKey: string) => ({
+        flagKey,
+        value: {},
+        reason: 'ERROR',
+        errorCode: 'PARSE_ERROR',
+      }),
+    });
+    const parse = vi.fn(parseTheme);
+    const fallback = { theme: 'light' };
+    const result = await service({ drivers: [broken] }).getObjectDetails('layout', parse, fallback);
+    expect(result.value).toBe(fallback);
+    expect(result.errorCode).toBe('PARSE_ERROR');
+    expect(parse).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { reason: 1 },
+    { variant: {} },
+    { errorCode: false },
+    { errorMessage: [] },
+    { flagKey: 'another-flag' },
+    { value: 'true' },
+  ])('rejects malformed details %j', async (invalid) => {
+    const driver = Object.assign(new MemoryFlagDriver(), {
+      getBooleanDetails: async (flagKey: string) => ({
+        flagKey,
+        value: true,
+        reason: 'STATIC',
+        ...invalid,
+      }),
+    }) as unknown as FeatureFlagDriver;
+    expect(await service({ drivers: [driver] }).getBooleanDetails('flag', false)).toMatchObject({
+      value: false,
+      reason: 'ERROR',
+      errorCode: 'GENERAL',
+    });
+  });
+
+  it('rejects malformed strings and non-finite numbers in values, details and manifest reads', async () => {
+    const driver = Object.assign(new MemoryFlagDriver(), {
+      getString: async () => 42 as unknown as string,
+      getNumber: async () => NaN,
+    });
+    const flags = service({ drivers: [driver], manifest: { text: 'safe', count: 3 } });
+    expect(await flags.getStringValue('text')).toBe('safe');
+    expect(await flags.getNumberValue('count')).toBe(3);
+    expect(await flags.getStringDetails('text')).toMatchObject({ value: 'safe', reason: 'ERROR' });
+    expect(await flags.getNumberDetails('count')).toMatchObject({ value: 3, reason: 'ERROR' });
+    expect(await flags.all()).toEqual({ text: 'safe', count: 3 });
+  });
+
+  it('reports UNKNOWN for absent provider reasons and equal-to-fallback values', async () => {
+    expect(await service({}).getBooleanDetails('missing', false)).toEqual({
+      flagKey: 'missing',
+      value: false,
+      reason: 'UNKNOWN',
+    });
+    const driver = Object.assign(new MemoryFlagDriver(), {
+      getStringDetails: async (flagKey: string) => ({ flagKey, value: 'same' }),
+    }) as unknown as FeatureFlagDriver;
+    expect(await service({ drivers: [driver] }).getStringDetails('flag', 'same')).toEqual({
+      flagKey: 'flag',
+      value: 'same',
+      reason: 'UNKNOWN',
     });
   });
 });

@@ -52,7 +52,8 @@ export class FeatureFlagGuard implements CanActivate {
     const requestContext = this.requestContext(context);
     if (!requestContext) return this.deny(meta);
     const details = await this.flags.forRequest(requestContext).getBooleanDetails(meta.key, false);
-    if (details.reason !== 'ERROR' && details.value === true) return true;
+    if (details.reason !== 'ERROR' && details.errorCode === undefined && details.value === true)
+      return true;
 
     return this.deny(meta);
   }

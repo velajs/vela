@@ -7,6 +7,7 @@
     "noEmit": true
   },
   "files": [
+    "src/__tests__/flagship-flag-driver.test.ts",
     "src/__tests__/queues.test.ts",
     "src/__tests__/scheduled.test.ts",
     "src/__tests__/scheduled-diagnostics.test.ts",

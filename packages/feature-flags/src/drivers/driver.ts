@@ -1,4 +1,4 @@
-import type { FlagContext } from '../feature-flags.types';
+import type { FlagContext, FlagEvaluationDetails } from '../feature-flags.types';
 
 /**
  * The cross-package contract every feature-flag backend implements.
@@ -7,11 +7,11 @@ import type { FlagContext } from '../feature-flags.types';
  * ships a Flagship-binding driver and a KV-backed driver against this exact
  * interface, `@velajs/feature-flags` ships {@link MemoryFlagDriver}. A driver
  * maps a key + fallback (+ optional targeting context) onto a value and
- * MUST return the `fallback` — never throw — when it cannot resolve the key.
+ * returns the `fallback` when it cannot resolve the key. Unexpected failures
+ * may reject; the service owns the never-throw boundary.
  *
- * Evaluation *details* (`FlagEvaluationDetails`) are synthesized by
- * `FeatureFlagsService` around these four value methods; drivers may
- * optionally override that synthesis, but the value methods are the contract.
+ * Optional detail methods preserve provider metadata. Without one, the service
+ * reports UNKNOWN: a returned fallback cannot be distinguished from a hit.
  */
 export interface FeatureFlagDriver {
   readonly name: string;
@@ -20,5 +20,24 @@ export interface FeatureFlagDriver {
   getNumber(key: string, fallback: number, ctx?: FlagContext): Promise<number>;
   /** Object payloads remain unknown until the service applies the caller's parser. */
   getObject(key: string, fallback: object, ctx?: FlagContext): Promise<unknown>;
-  // details are synthesized by the service; drivers may optionally override
+  getBooleanDetails?(
+    key: string,
+    fallback: boolean,
+    ctx?: FlagContext,
+  ): Promise<FlagEvaluationDetails<boolean>>;
+  getStringDetails?(
+    key: string,
+    fallback: string,
+    ctx?: FlagContext,
+  ): Promise<FlagEvaluationDetails<string>>;
+  getNumberDetails?(
+    key: string,
+    fallback: number,
+    ctx?: FlagContext,
+  ): Promise<FlagEvaluationDetails<number>>;
+  getObjectDetails?(
+    key: string,
+    fallback: object,
+    ctx?: FlagContext,
+  ): Promise<FlagEvaluationDetails<unknown>>;
 }

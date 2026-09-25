@@ -113,9 +113,9 @@ export type FlagValue = boolean | string | number | object;
 
 /**
  * Why a flag evaluation returned the value it did. A local structural mirror of
- * `@velajs/feature-flags`' `FlagEvaluationReason` union (its members, exactly).
+ * `@velajs/feature-flags`' provider-defined reason, including UNKNOWN.
  */
-export type FlagEvaluationReason = 'STATIC' | 'DEFAULT' | 'ERROR';
+export type FlagEvaluationReason = string;
 
 /**
  * A feature-flag row. A flag resolves to a {@link FlagValue}, not a boolean —
@@ -131,12 +131,14 @@ export interface FlagRow {
  * The result of evaluating a flag against a context. Mirrors
  * `@velajs/feature-flags`' `FlagEvaluationDetails`: `flagKey`, the resolved
  * {@link FlagValue}, a required {@link FlagEvaluationReason}, and an optional
- * `errorMessage` present only on `reason: 'ERROR'`.
+ * error message, native variant and error code.
  */
 export interface FlagEvaluation {
   flagKey: string;
   value: FlagValue;
   reason: FlagEvaluationReason;
+  variant?: string;
+  errorCode?: string;
   errorMessage?: string;
 }
 

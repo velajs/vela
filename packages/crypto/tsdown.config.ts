@@ -2,6 +2,7 @@ import { defineConfig } from 'tsdown';
 export default defineConfig({
   entry: [
     'src/index.ts',
+    'src/cloudflare/index.ts',
     'src/vela/index.ts',
     'src/tenant/index.ts',
     'src/fields/index.ts',

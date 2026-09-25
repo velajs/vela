@@ -144,7 +144,11 @@ export class FeatureFlagsService {
     const fallback = this.fallback(flagKey, defaultValue, '', isString);
     return this.safe(
       flagKey,
-      async () => this.driver.getString(flagKey, fallback, await this.context(context)),
+      async () =>
+        strictValue(
+          await this.driver.getString(flagKey, fallback, await this.context(context)),
+          isString,
+        ),
       () => fallback,
     );
   }
@@ -158,7 +162,11 @@ export class FeatureFlagsService {
     const fallback = this.fallback(flagKey, defaultValue, 0, isNumber);
     return this.safe(
       flagKey,
-      async () => this.driver.getNumber(flagKey, fallback, await this.context(context)),
+      async () =>
+        strictValue(
+          await this.driver.getNumber(flagKey, fallback, await this.context(context)),
+          isNumber,
+        ),
       () => fallback,
     );
   }
@@ -181,77 +189,109 @@ export class FeatureFlagsService {
     );
   }
 
-  /** Evaluate a `boolean` flag with synthesized evaluation metadata. */
+  /** Evaluate a boolean flag, preserving provider metadata when available. */
   async getBooleanDetails(
     flagKey: FlagKey,
     defaultValue?: boolean,
     context?: FlagContext,
   ): Promise<FlagEvaluationDetails<boolean>> {
     const fallback = this.fallback(flagKey, defaultValue, false, isBoolean);
-    return this.safe(
+    return this.evaluateDetails(
       flagKey,
-      async () =>
-        this.details(
-          flagKey,
-          strictBoolean(
-            await this.driver.getBoolean(flagKey, fallback, await this.context(context)),
-            flagKey,
-          ),
-        ),
-      (error) => this.errorDetails(flagKey, fallback, error),
+      fallback,
+      context,
+      this.driver.getBooleanDetails?.bind(this.driver),
+      this.driver.getBoolean.bind(this.driver),
+      (value) => strictValue(value, isBoolean),
     );
   }
 
-  /** Evaluate a `string` flag with synthesized evaluation metadata. */
+  /** Evaluate a string flag, preserving provider metadata when available. */
   async getStringDetails(
     flagKey: FlagKey,
     defaultValue?: string,
     context?: FlagContext,
   ): Promise<FlagEvaluationDetails<string>> {
     const fallback = this.fallback(flagKey, defaultValue, '', isString);
-    return this.safe(
+    return this.evaluateDetails(
       flagKey,
-      async () =>
-        this.details(
-          flagKey,
-          await this.driver.getString(flagKey, fallback, await this.context(context)),
-        ),
-      (error) => this.errorDetails(flagKey, fallback, error),
+      fallback,
+      context,
+      this.driver.getStringDetails?.bind(this.driver),
+      this.driver.getString.bind(this.driver),
+      (value) => strictValue(value, isString),
     );
   }
 
-  /** Evaluate a `number` flag with synthesized evaluation metadata. */
+  /** Evaluate a number flag, preserving provider metadata when available. */
   async getNumberDetails(
     flagKey: FlagKey,
     defaultValue?: number,
     context?: FlagContext,
   ): Promise<FlagEvaluationDetails<number>> {
     const fallback = this.fallback(flagKey, defaultValue, 0, isNumber);
-    return this.safe(
+    return this.evaluateDetails(
       flagKey,
-      async () =>
-        this.details(
-          flagKey,
-          await this.driver.getNumber(flagKey, fallback, await this.context(context)),
-        ),
-      (error) => this.errorDetails(flagKey, fallback, error),
+      fallback,
+      context,
+      this.driver.getNumberDetails?.bind(this.driver),
+      this.driver.getNumber.bind(this.driver),
+      (value) => strictValue(value, isNumber),
     );
   }
 
-  /** Evaluate a typed object flag with synthesized evaluation metadata. */
+  /** Validate an object flag while retaining native evaluation metadata. */
   async getObjectDetails<T extends object>(
     flagKey: FlagKey,
     parse: (value: unknown) => T,
     fallback: NoInfer<T>,
     context?: FlagContext,
   ): Promise<FlagEvaluationDetails<T>> {
+    return this.evaluateDetails(
+      flagKey,
+      fallback,
+      context,
+      this.driver.getObjectDetails?.bind(this.driver),
+      this.driver.getObject.bind(this.driver),
+      parse,
+    );
+  }
+
+  private evaluateDetails<T extends FlagValue>(
+    flagKey: string,
+    fallback: T,
+    context: FlagContext | undefined,
+    readDetails:
+      | ((key: string, fallback: T, ctx?: FlagContext) => Promise<FlagEvaluationDetails<unknown>>)
+      | undefined,
+    readValue: (key: string, fallback: T, ctx?: FlagContext) => Promise<unknown>,
+    validate: (value: unknown) => T | Promise<T>,
+  ): Promise<FlagEvaluationDetails<T>> {
     return this.safe(
       flagKey,
-      async () =>
-        this.details(
-          flagKey,
-          parse(await this.driver.getObject(flagKey, fallback, await this.context(context))),
-        ),
+      async () => {
+        const ctx = await this.context(context);
+        const details = readDetails
+          ? await readDetails(flagKey, fallback, ctx)
+          : { flagKey, value: await readValue(flagKey, fallback, ctx), reason: 'UNKNOWN' };
+        if (!details || details.flagKey !== flagKey || !('value' in details))
+          throw new TypeError('Invalid feature flag evaluation details');
+        const metadata: Omit<FlagEvaluationDetails<T>, 'value'> = { flagKey, reason: 'UNKNOWN' };
+        for (const field of ['reason', 'variant', 'errorCode', 'errorMessage'] as const) {
+          const value = details[field];
+          if (value !== undefined) {
+            if (typeof value !== 'string') throw new TypeError('Invalid feature flag metadata');
+            metadata[field] = value;
+          }
+        }
+        // A provider failure always returns the caller's fallback, even if a
+        // malformed provider supplies a different value alongside its error code.
+        const value =
+          details.reason === 'ERROR' || details.errorCode !== undefined
+            ? fallback
+            : await validate(details.value);
+        return { ...metadata, value };
+      },
       (error) => this.errorDetails(flagKey, fallback, error),
     );
   }
@@ -339,13 +379,15 @@ export class FeatureFlagsService {
       case 'number':
         return this.safe(
           flagKey,
-          () => this.driver.getNumber(flagKey, declared, context),
+          async () =>
+            strictValue(await this.driver.getNumber(flagKey, declared, context), isNumber),
           () => declared,
         );
       case 'string':
         return this.safe(
           flagKey,
-          () => this.driver.getString(flagKey, declared, context),
+          async () =>
+            strictValue(await this.driver.getString(flagKey, declared, context), isString),
           () => declared,
         );
       default:
@@ -380,16 +422,12 @@ export class FeatureFlagsService {
     }
   }
 
-  private details<T extends FlagValue>(flagKey: string, value: T): FlagEvaluationDetails<T> {
-    return { flagKey, value, reason: 'STATIC' };
-  }
-
   private errorDetails<T extends FlagValue>(
     flagKey: string,
     value: T,
     error: unknown,
   ): FlagEvaluationDetails<T> {
-    return { flagKey, value, reason: 'ERROR', errorMessage: message(error) };
+    return { flagKey, value, reason: 'ERROR', errorCode: 'GENERAL', errorMessage: message(error) };
   }
 }
 
@@ -402,5 +440,10 @@ function strictBoolean(value: unknown, flagKey: string): boolean {
   if (typeof value !== 'boolean') {
     throw new TypeError(`Feature flag "${flagKey}" returned a non-boolean value`);
   }
+  return value;
+}
+
+function strictValue<T>(value: unknown, accepts: (value: unknown) => value is T): T {
+  if (!accepts(value)) throw new TypeError('Invalid feature flag value');
   return value;
 }

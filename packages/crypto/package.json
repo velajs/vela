@@ -48,6 +48,10 @@
     "./files": {
       "types": "./dist/files/index.d.ts",
       "import": "./dist/files/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
     }
   },
   "publishConfig": {
@@ -56,6 +60,7 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
+    "test:workers": "pnpm build && node --test tests/secrets-store.workers.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "lint": "oxlint .",
     "format": "oxfmt .",

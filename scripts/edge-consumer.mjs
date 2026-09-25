@@ -102,6 +102,7 @@ import { D1PolicyStore } from '@velajs/authz-cedar/d1';
 import { PostgresPolicyStore } from '@velajs/authz-cedar/postgres';
 import { DurableObjectPolicyStore } from '@velajs/authz-cedar/durable-objects';
 import { CryptoService, LocalKeyRing } from '@velajs/crypto';
+import { SecretsStoreKeyProvider } from '@velajs/crypto/cloudflare';
 import { CryptoModule } from '@velajs/crypto/vela';
 import { TenantCrypto } from '@velajs/crypto/tenant';
 import { fieldProtection } from '@velajs/crypto/fields';
@@ -127,7 +128,9 @@ const exactHandle:MemoryStore=registry.get('main').handle;void exactHandle;
 // @ts-expect-error The registry retains the literal database name.
 registry.get('missing');
 const dto=defineDto(create);new ValidationPipe(dto);
-declare const d1:D1Database, storage:DurableObjectStorage, bucket:R2Bucket;
+declare const d1:D1Database, storage:DurableObjectStorage, bucket:R2Bucket, secret:SecretsStoreSecret;
+const secretProvider=new SecretsStoreKeyProvider({activeKeyId:'v2',keys:{v1:secret,v2:secret},cacheTtlMs:1000});
+new CryptoService(secretProvider); secretProvider.invalidate('v1');
 const nativeStorage=createStorage({driver:r2Driver({bucket})});
 const exactBucket:R2Bucket=nativeStorage.raw;void exactBucket;
 void nativeStorage.stat('key');void nativeStorage.listMetadata();
@@ -180,7 +183,8 @@ void [hmacCursorCodec,durableObjectSqliteAdapter,TenantService,TenantModule,tena
       '-e',
       `
     import assert from 'node:assert/strict';
-    import {CryptoService,LocalKeyRing} from '@velajs/crypto';
+    import {CryptoService,LocalKeyRing,encodeBase64Url} from '@velajs/crypto';
+    import {SecretsStoreKeyProvider} from '@velajs/crypto/cloudflare';
     import {TenantService,MemoryTenantRegistryStore} from '@velajs/tenant';
     import {defineVocabulary} from '@velajs/authz-cedar/vocabulary';
     import {MemoryPolicyStore,initializeCedar} from '@velajs/authz-cedar';
@@ -188,6 +192,20 @@ void [hmacCursorCodec,durableObjectSqliteAdapter,TenantService,TenantModule,tena
     const service=new CryptoService(await LocalKeyRing.fromRaw('key',{key:crypto.getRandomValues(new Uint8Array(32))}));
     const context={namespace:'app',purpose:'test'};
     assert.equal(await service.decryptText(await service.encryptText('roundtrip',context),context),'roundtrip');
+    const firstKey=encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    let nextKey=encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const first={get:async()=>firstKey},next={get:async()=>nextKey};
+    const old=new CryptoService(new SecretsStoreKeyProvider({activeKeyId:'v1',keys:{v1:first}}));
+    const oldEnvelope=await old.encryptText('rotating',context);
+    const provider=new SecretsStoreKeyProvider({activeKeyId:'v2',keys:{v1:first,v2:next}});
+    const rotated=new CryptoService(provider);
+    assert.equal(await rotated.decryptText(oldEnvelope,context),'rotating');
+    const updated=await rotated.reencrypt(oldEnvelope,context);
+    const retired=new CryptoService(new SecretsStoreKeyProvider({activeKeyId:'v2',keys:{v2:next}}));
+    assert.equal(await retired.decryptText(updated,context),'rotating');
+    await assert.rejects(()=>retired.decryptText(oldEnvelope,context));
+    nextKey=firstKey;provider.invalidate();
+    await assert.rejects(()=>provider.current(),error=>error.message==='Secrets Store wrapping key could not be loaded'&&error.cause===undefined);
     const tenant=new TenantService({lookup:new MemoryTenantRegistryStore([{id:'a',name:'A',status:'active',revision:1,settings:{}}]),authorize:()=>true});
     assert.equal(await tenant.run({tenantId:'a',principal:{issuer:'test',subject:'a',principalType:'user'}},scope=>scope.requireTenantId()),'a');
     assert.ok(defineVocabulary);assert.ok(MemoryPolicyStore);assert.ok(initializeCedar);

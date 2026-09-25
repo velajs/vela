@@ -20,7 +20,12 @@ import {
 } from '../../../packages/authz-cedar/dist/index.js';
 import { D1PolicyStore, policySqliteSchema } from '../../../packages/authz-cedar/dist/d1/index.js';
 import { DurableObjectPolicyStore } from '../../../packages/authz-cedar/dist/durable-objects/index.js';
-import { CryptoService, LocalKeyRing } from '../../../packages/crypto/dist/index.js';
+import {
+  CryptoService,
+  LocalKeyRing,
+  encodeBase64Url,
+} from '../../../packages/crypto/dist/index.js';
+import { SecretsStoreKeyProvider } from '../../../packages/crypto/dist/cloudflare/index.js';
 import { encryptToR2, decryptFromR2 } from '../../../packages/crypto/dist/files/index.js';
 const table = sqliteTable(
   'entries',
@@ -284,6 +289,19 @@ export default {
         return Response.json({ wasm: true, revocation: true });
       }
       if (path === '/crypto') {
+        const material = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+        const secrets = new CryptoService(
+          new SecretsStoreKeyProvider({
+            activeKeyId: 'test-v1',
+            keys: { 'test-v1': { get: async () => material } },
+          }),
+        );
+        const secretContext = { namespace: 'fixture', purpose: 'secrets-store' };
+        const sealed = await secrets.encryptText('roundtrip', secretContext);
+        assert(
+          (await secrets.decryptText(sealed, secretContext)) === 'roundtrip',
+          'Secrets Store provider',
+        );
         const ring = await LocalKeyRing.fromRaw('one', {
             one: crypto.getRandomValues(new Uint8Array(32)),
           }),
