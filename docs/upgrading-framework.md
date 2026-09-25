@@ -296,7 +296,10 @@ inherits unchanged, the ancestors' method metadata, method-level enhancers,
 markers are inherited too: `@Public()`, `@OptionalAuth()`, `@TenantIgnored()`,
 `@CedarPublic()` or `@SkipThrottle()` on a base controller now opens its subclasses'
 routes. Remove a declaration from the base class, or override the method, where a
-subclass must not inherit it.
+subclass must not inherit it. Unlike Nest, route decorators (`@Get()`, `@Post()`, …)
+are still read from the controller class itself, so a method a base class routes
+is not mounted on its subclasses: route the inherited method on the subclass, for
+example `Get('list')(Sub.prototype, 'list', descriptor)`.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
 Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule`, `CedarModule` and
