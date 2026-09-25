@@ -1,9 +1,6 @@
 ---
 '@velajs/vela': minor
-'@velajs/studio-protocol': minor
 '@velajs/studio': minor
-'@velajs/studio-ui': minor
-'@velajs/studio-host': minor
 '@velajs/cli': minor
 ---
 
