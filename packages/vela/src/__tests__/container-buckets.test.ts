@@ -14,14 +14,14 @@ describe('Container per-module buckets', () => {
       localProviders: new Set([TOKEN]),
       importedModules: new Set(),
       exportedTokens: new Set([TOKEN]),
-      isGlobal: false,
+      global: false,
     });
     c.registerScope({
       moduleId: 'B',
       localProviders: new Set([TOKEN]),
       importedModules: new Set(),
       exportedTokens: new Set([TOKEN]),
-      isGlobal: false,
+      global: false,
     });
 
     c.register(defineProvider(TOKEN, { useValue: 'from-A' }), 'A');
@@ -41,21 +41,21 @@ describe('Container per-module buckets', () => {
       localProviders: new Set([TOKEN]),
       importedModules: new Set(),
       exportedTokens: new Set([TOKEN]),
-      isGlobal: false,
+      global: false,
     });
     c.registerScope({
       moduleId: 'B',
       localProviders: new Set([TOKEN]),
       importedModules: new Set(),
       exportedTokens: new Set([TOKEN]),
-      isGlobal: false,
+      global: false,
     });
     c.registerScope({
       moduleId: 'Consumer',
       localProviders: new Set(),
       importedModules: new Set(['A', 'B']),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
     c.register(defineProvider(TOKEN, { useValue: 'a' }), 'A');
     c.register(defineProvider(TOKEN, { useValue: 'b' }), 'B');
@@ -70,21 +70,21 @@ describe('Container per-module buckets', () => {
       localProviders: new Set([TOKEN]),
       importedModules: new Set(),
       exportedTokens: new Set([TOKEN]),
-      isGlobal: false,
+      global: false,
     });
     c.registerScope({
       moduleId: 'mid',
       localProviders: new Set(),
       importedModules: new Set(['leaf']),
       exportedTokens: new Set([TOKEN]),
-      isGlobal: false,
+      global: false,
     });
     c.registerScope({
       moduleId: 'top',
       localProviders: new Set(),
       importedModules: new Set(['mid']),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
     c.register(defineProvider(TOKEN, { useValue: 'leaf-value' }), 'leaf');
 
@@ -98,14 +98,14 @@ describe('Container per-module buckets', () => {
       localProviders: new Set([TOKEN]),
       importedModules: new Set(),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
     c.registerScope({
       moduleId: 'consumer',
       localProviders: new Set(),
       importedModules: new Set(),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
     c.register(defineProvider(TOKEN, { useValue: 'hidden' }), 'private');
 
@@ -119,14 +119,14 @@ describe('Container per-module buckets', () => {
       localProviders: new Set([TOKEN]),
       importedModules: new Set(),
       exportedTokens: new Set([TOKEN]),
-      isGlobal: true,
+      global: true,
     });
     c.registerScope({
       moduleId: 'consumer',
       localProviders: new Set(),
       importedModules: new Set(),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
     c.register(defineProvider(TOKEN, { useValue: 'globally-visible' }), 'global');
 
@@ -169,7 +169,7 @@ describe('Container per-module buckets', () => {
       localProviders: new Set([Dep, WithDep]),
       importedModules: new Set(),
       exportedTokens: new Set([Dep, WithDep]),
-      isGlobal: false,
+      global: false,
     });
     c.register(Dep, 'A');
     c.register(WithDep, 'A');
@@ -189,7 +189,7 @@ describe('Container per-module buckets', () => {
       localProviders: new Set([Real, ALIAS]),
       importedModules: new Set(),
       exportedTokens: new Set([Real, ALIAS]),
-      isGlobal: false,
+      global: false,
     });
     c.register(Real, 'A');
     c.register(defineProvider(ALIAS, { useExisting: Real }), 'A');
@@ -210,14 +210,14 @@ describe('Container per-module buckets', () => {
       localProviders: new Set([ITEM]),
       importedModules: new Set(),
       exportedTokens: new Set([ITEM]),
-      isGlobal: true,
+      global: true,
     });
     c.registerScope({
       moduleId: 'B',
       localProviders: new Set([ITEM]),
       importedModules: new Set(),
       exportedTokens: new Set([ITEM]),
-      isGlobal: true,
+      global: true,
     });
     c.register(defineProvider(ITEM, { useValue: new Item('a') }), 'A');
     c.register(defineProvider(ITEM, { useValue: new Item('b') }), 'B');

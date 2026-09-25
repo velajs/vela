@@ -12,14 +12,14 @@ describe('factory provider module boundaries', () => {
       localProviders: new Set([secret]),
       importedModules: new Set(),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
     container.registerScope({
       moduleId: 'consumer',
       localProviders: new Set([consumer]),
       importedModules: new Set(['owner']),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
     container.register(defineProvider(secret, { useValue: 'private' }), 'owner');
     container.register(
@@ -47,7 +47,7 @@ describe('factory provider module boundaries', () => {
       localProviders: new Set([dependency, consumer]),
       importedModules: new Set(),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
     });
     container.register(
       defineProvider(dependency, {

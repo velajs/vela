@@ -218,7 +218,7 @@ describe('owner-qualified entrypoint resolution', () => {
         localProviders: new Set([TOKEN]),
         importedModules: new Set(),
         exportedTokens: new Set(),
-        isGlobal: false,
+        global: false,
       });
     }
     container.register(

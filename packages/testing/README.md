@@ -116,7 +116,9 @@ A falsy result (such as `undefined`) supplies nothing: the dependency stays
 unresolved and `compile()` rejects with `UnresolvedDependencyError`, so a
 missing import is not hidden behind a partial mocker. `@Optional()` parameters, `ModuleRef`, `InjectionToken` defaults and provided or
 overridden tokens never reach it; `moduleRef.get(token)` returns the supplied
-value.
+value. Overrides and the mocker reach module classes too: a module that
+implements `NestModule` is built with them before its `configure(consumer)`
+runs.
 
 ### Environment and runtime adapters
 

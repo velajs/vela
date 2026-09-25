@@ -92,10 +92,13 @@ interface MountedFeature {
 const mountedFeatures = new WeakMap<Type, MountedFeature>();
 
 // The routes a controller path mounts, however it is spelled: routes join the
-// path without its trailing slash, and a parameter segment matches whatever
-// it is named. Two paths with one canonical form mount the same routes.
+// path without its trailing slash, a parameter segment matches whatever it is
+// named, and repeated slashes (which proxies and clients commonly collapse)
+// read as one. Routing is case-sensitive, so case is kept. Two paths with one
+// canonical form mount the same routes.
 function canonicalPath(path: string): string {
-  const joined = (path.endsWith('/') ? path.slice(0, -1) : path) || '/';
+  const collapsed = path.replace(/\/{2,}/g, '/');
+  const joined = (collapsed.endsWith('/') ? collapsed.slice(0, -1) : collapsed) || '/';
   return joined.replace(/(^|\/):[^/]*/g, '$1:param');
 }
 
@@ -105,8 +108,8 @@ function canonicalPath(path: string): string {
  * decorators, hooks or policies) would both mount, and import order would
  * decide which one serves; the identical `defineCrudFeature()` value, imported
  * by several modules, is one policy. Paths compare in canonical form, so
- * spellings that mount the same routes (a trailing slash, other parameter
- * names) are one path.
+ * spellings of one path (a trailing slash, repeated slashes, other parameter
+ * names) are one path; routing is case-sensitive, so another case is not.
  */
 class CrudFeaturePaths {
   readonly #discovery: DiscoveryService;

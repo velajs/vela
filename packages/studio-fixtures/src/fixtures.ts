@@ -85,7 +85,7 @@ export const modules: ModuleNode[] = [
   {
     moduleId: 'AppModule',
     imports: ['UsersModule', 'AuthModule'],
-    isGlobal: false,
+    global: false,
     lazy: false,
     providers: ['AppService'],
     exports: [],
@@ -93,7 +93,7 @@ export const modules: ModuleNode[] = [
   {
     moduleId: 'UsersModule',
     imports: [],
-    isGlobal: false,
+    global: false,
     lazy: false,
     providers: ['UsersService', 'UsersController'],
     exports: ['UsersService'],
@@ -101,7 +101,7 @@ export const modules: ModuleNode[] = [
   {
     moduleId: 'AuthModule',
     imports: [],
-    isGlobal: true,
+    global: true,
     lazy: true,
     providers: ['AuthService'],
     exports: ['AuthService'],

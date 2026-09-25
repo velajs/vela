@@ -245,7 +245,7 @@ export class Container {
     if (!this.#providers.has(scope.moduleId)) {
       this.#providers.set(scope.moduleId, new Map());
     }
-    if (scope.isGlobal) {
+    if (scope.global) {
       // Match NestJS / the loader's existing globalExports semantic: only
       // exported tokens become globally visible. Non-exported providers of
       // a @Global module still need explicit imports.
@@ -717,7 +717,7 @@ export class Container {
       out.push({
         moduleId: scope.moduleId,
         imports: [...scope.importedModules],
-        isGlobal: scope.isGlobal,
+        global: scope.global,
         lazy: scope.lazy === true,
         providers: [...(this.#providers.get(scope.moduleId)?.keys() ?? [])].map(describeToken),
         exports: [...scope.exportedTokens].map(describeToken),
@@ -728,7 +728,7 @@ export class Container {
       out.push({
         moduleId: ROOT_MODULE_ID,
         imports: [],
-        isGlobal: false,
+        global: false,
         lazy: false,
         providers: [...rootBucket.keys()].map(describeToken),
         exports: [],

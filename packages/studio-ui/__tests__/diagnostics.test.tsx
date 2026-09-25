@@ -51,7 +51,7 @@ it('explains the class-token scope snapshot', async () => {
             imports: [],
             providers: ['Emails'],
             exports: [],
-            isGlobal: false,
+            global: false,
             lazy: true,
             providerScopes: [{ token: 'Emails', scope: 'request' }],
           },

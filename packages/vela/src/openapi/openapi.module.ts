@@ -1,11 +1,13 @@
-import { InjectionToken } from '../container/types';
+import { InjectionToken, type Type } from '../container/types';
 import { Controller } from '../http/decorators';
 import { registerRouteContributor } from '../http/route-contributor';
+import { RouteManager } from '../http/route.manager';
 import { defineMetadata } from '../metadata';
 import { defineModule } from '../module/define-module';
+import { collectControllers } from '../module/graph';
 import { ROOT_MODULE } from '../module/root-module';
 import type { DynamicModule } from '../registry/types';
-import { createOpenApiDocument } from './document';
+import { openApiDocumentFor } from './document';
 import type { CreateOpenApiDocumentOptions, OpenApiDocument } from './types';
 
 export interface OpenApiModuleOptions extends Omit<CreateOpenApiDocumentOptions, 'globalPrefix'> {
@@ -21,6 +23,20 @@ const CONCRETE_PATH = /^(?:\/[A-Za-z0-9._~-]+)+$/;
 
 function isOptions(value: unknown): value is OpenApiModuleOptions {
   return typeof value === 'object' && value !== null;
+}
+
+/**
+ * The controllers the application serves, each once: those the root module
+ * declares in its declaration order, then any other (a module a testing
+ * module substituted) in registration order.
+ */
+function servedControllers(routeManager: RouteManager, root: Type | DynamicModule): Type[] {
+  const served = [...new Set(routeManager.getControllers().map(({ controller }) => controller))];
+  const declared = collectControllers(root);
+  const rank = new Map(declared.map((controller, index) => [controller, index]));
+  return served.toSorted(
+    (a, b) => (rank.get(a) ?? declared.length) - (rank.get(b) ?? declared.length),
+  );
 }
 
 registerRouteContributor({
@@ -45,14 +61,20 @@ registerRouteContributor({
       throw new Error(`OpenApiModule path '${path}' conflicts with an existing route.`);
     }
 
-    // The application root, as passed to the factory. The document is built on
-    // the first request and kept for this application only: every application
-    // (one per environment on Workers) documents its own global prefix.
+    // The controllers this application serves, which a testing module's
+    // overrideModule() may have replaced, in the order the application root
+    // declares them. The document is built on the first request and kept for
+    // this application only: every application (one per environment on
+    // Workers) documents its own global prefix.
+    const routeManager = context.container.resolve(RouteManager);
     const root = context.container.resolve(ROOT_MODULE);
     const globalPrefix = context.globalPrefix;
     let document: OpenApiDocument | undefined;
     app.get(path, (c) => {
-      document ??= createOpenApiDocument(root, { ...documentOptions, globalPrefix });
+      document ??= openApiDocumentFor(servedControllers(routeManager, root), {
+        ...documentOptions,
+        globalPrefix,
+      });
       return c.json(document);
     });
   },
@@ -69,8 +91,8 @@ registerRouteContributor({
  * export class AppModule {}
  * ```
  *
- * The document covers the application root (`ROOT_MODULE`) under its global
- * prefix. The document route itself, and anything marked `@ApiExclude()`, is
+ * The document covers the controllers the application serves (after any
+ * testing-module `overrideModule()`) under its global prefix. The document route itself, and anything marked `@ApiExclude()`, is
  * left out. Routes run no guards: put a document you want to protect behind
  * consumer middleware.
  */

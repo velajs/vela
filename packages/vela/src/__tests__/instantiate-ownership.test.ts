@@ -22,7 +22,7 @@ describe('pipeline component ownership', () => {
         localProviders: new Set([VALUE, Guard]),
         importedModules: new Set(),
         exportedTokens: new Set(),
-        isGlobal: false,
+        global: false,
       });
       container.register(defineProvider(VALUE, { useValue: moduleId }), moduleId);
       container.register(Guard, moduleId);
@@ -52,7 +52,7 @@ describe('pipeline component ownership', () => {
         localProviders: new Set([VALUE, Guard]),
         importedModules: new Set(),
         exportedTokens: new Set(),
-        isGlobal: false,
+        global: false,
       });
       container.register(
         defineProvider(VALUE, {

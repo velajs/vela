@@ -14,9 +14,11 @@ operation identity, metadata and error fields. The browser client uses these
 parsers before exposing typed results; callers cannot choose an arbitrary result
 type. Dynamic model rows and OpenAPI documents retain their declared unknown data.
 
-Protocol v3 labels the default provider lifetime `default` instead of `singleton` in
-`app.modules` and `app.entrypoints`. Upgrade host, server and UI together. There is no
-compatibility path for an earlier protocol version.
+Protocol v4 names a module's visibility flag `global` (was `isGlobal`) in `app.modules`,
+as `ModuleMetadata` and `DynamicModule` do. Protocol v3 labeled the default provider
+lifetime `default` instead of `singleton` in `app.modules` and `app.entrypoints`. Upgrade
+host, server and UI together. There is no compatibility path for an earlier protocol
+version.
 
 ## License
 

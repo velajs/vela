@@ -121,6 +121,8 @@ export class ModuleLoader {
   #moduleExportsCache = new Map<Type, Map<string, Set<Token>>>();
   #globalExports = new Set<Token>();
   #consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
+  // Module instances whose class implements NestModule, in load order.
+  #configurable: Array<{ moduleClass: Type<NestModule>; moduleId: string }> = [];
   #appProviderCounter = 0;
   #appProviderTokens = new Map<Token, Token[]>([
     [APP_GUARD, []],
@@ -166,7 +168,14 @@ export class ModuleLoader {
     );
   }
 
-  load(rootModule: Type | DynamicModule): void {
+  /**
+   * Register the module graph of `rootModule`, then call each
+   * `NestModule.configure()` on its module instance. `prepare` runs between
+   * the two, on the complete registrations: the testing module applies its
+   * provider overrides and `useMocker` there, so a module class is built
+   * with the providers the application will use.
+   */
+  load(rootModule: Type | DynamicModule, prepare?: () => void): void {
     this.processModule(this.override(rootModule));
     // After every module loaded, so visibility includes all global exports.
     this.registerEnhancers();
@@ -177,11 +186,22 @@ export class ModuleLoader {
       }
     }
 
+    prepare?.();
+
+    // Call configure() on the module instance that later receives its
+    // lifecycle hooks, once the whole graph is registered.
+    for (const { moduleClass, moduleId } of this.#configurable) {
+      const instance = this.container.resolve(moduleClass, moduleId);
+      const builder = new MiddlewareBuilder();
+      instance.configure(builder);
+      this.#consumerMiddlewareDefinitions.push(
+        ...builder.getDefinitions().map((definition) => ({ ...definition, moduleId })),
+      );
+    }
+
     // Arm the deferred-init seam HERE — at the end of load(), not in
     // bootstrap() — so every consumer of the loader gets identical lazy
-    // semantics, including hand-rolled bootstrap paths that never call
-    // bootstrap() (@velajs/testing's TestingModuleBuilder.compile builds its
-    // own container). Still after all module-load-time resolutions
+    // semantics. Still after all module-load-time resolutions
     // (NestModule.configure), so load-time resolution never claims a group.
     // Registered as a provider so VelaApplication can drive the phase
     // transitions from any of those paths.
@@ -395,7 +415,7 @@ export class ModuleLoader {
       // include it in its own scope.
       localProviders.add(moduleClass);
 
-      const isGlobal =
+      const global =
         metadata.global ||
         (isDynamicModule(moduleClassOrDynamic) && moduleClassOrDynamic.global === true);
 
@@ -421,7 +441,7 @@ export class ModuleLoader {
         localProviders,
         importedModules: importedModuleIds,
         exportedTokens: new Set<Token>(moduleExports),
-        isGlobal,
+        global,
         lazy: isLazy,
         moduleClass,
         moduleKey: key,
@@ -468,22 +488,14 @@ export class ModuleLoader {
       );
       this.cacheExports(moduleClass, key, exports);
 
-      if (isGlobal) {
+      if (global) {
         for (const token of exports) {
           this.#globalExports.add(token);
         }
       }
 
-      // Call configure() if the module implements NestModule, on the module
-      // instance that later receives its lifecycle hooks.
-      if (implementsNestModule(moduleClass)) {
-        const instance = this.container.resolve(moduleClass, moduleId);
-        const builder = new MiddlewareBuilder();
-        instance.configure(builder);
-        this.#consumerMiddlewareDefinitions.push(
-          ...builder.getDefinitions().map((definition) => ({ ...definition, moduleId })),
-        );
-      }
+      // configure() runs once the whole graph is registered (see load()).
+      if (implementsNestModule(moduleClass)) this.#configurable.push({ moduleClass, moduleId });
 
       return exports;
     } finally {

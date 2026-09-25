@@ -364,6 +364,37 @@ tracker callbacks remain security-sensitive and must never read forwarding
 headers. A custom global authentication guard declares
 `static readonly phase = 'authenticate'` so it establishes identity first.
 
+The default store, `ThrottlerStorage`, counts in the application's memory. Each
+key's counter lasts until its own window (`ttl`) ends, however long, and is then
+evicted. A key is one route, throttler and client: the default key joins the
+controller, the handler, the throttler name and the tracker, so one client
+calling 25 routes under two throttlers holds 50 windows. The store tracks at
+most `maxKeys` open windows (default 50,000). When every tracked window is
+still open, a request with a new key is refused with 429 until the earliest
+window ends, and the first refusal logs a warning: the store never evicts a
+live counter, which would reset that client's limit early. A client that
+already has a counter keeps being counted normally.
+
+Size `maxKeys` for the busiest window: distinct clients per longest `ttl`,
+times the routes each one calls, times the throttlers. A one-hour window with
+2,000 clients calling 25 routes needs 50,000 keys. An open window takes about
+300 bytes with an address tracker, so the default holds about 15 MB. Callers
+who can mint tracker values (rotating addresses, say) can fill the table on
+purpose and lock out new clients for up to a window, so keep in-memory windows
+short and count long ones in a shared `ThrottlerStore`, such as one backed by a
+Durable Object. Build the store in a function so each application keeps its
+own, as the default does:
+
+```ts
+ThrottlerModule.forRoot({
+  throttlers: [{ ttl: 3_600_000, limit: 1000 }],
+  storage: () => new ThrottlerStorage({ maxKeys: 200_000 }),
+});
+```
+
+A `storage: new ThrottlerStorage(...)` instance written in the module's
+metadata is shared by every application built from that module.
+
 HTTP and WebSocket `ExecutionContext` expose `getModuleId()` so authorization
 can resolve policy in the declaring module bucket rather than by class name.
 

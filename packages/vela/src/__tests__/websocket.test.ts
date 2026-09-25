@@ -441,6 +441,75 @@ describe('WsDispatcher', () => {
     }
   });
 
+  it('applies the @SubscribeMessage handlers an ancestor gateway class declares', async () => {
+    let denied = 0;
+    @Injectable()
+    class DenyGuard implements CanActivate {
+      canActivate(): boolean {
+        denied++;
+        return false;
+      }
+    }
+
+    abstract class EchoGateway {
+      prefix = 'base';
+      @SubscribeMessage('echo')
+      onEcho(@MessageBody() body: { text: string }) {
+        return { event: 'echo', data: `${this.prefix}:${body.text}` };
+      }
+      @SubscribeMessage('ping')
+      onPing() {
+        return { event: 'pong', data: 'base' };
+      }
+      @SubscribeMessage('locked')
+      @UseGuards(DenyGuard)
+      onLocked() {
+        return { event: 'locked', data: 'leaked' };
+      }
+      @SubscribeMessage('overridden')
+      onOverridden() {
+        return { event: 'overridden', data: 'base' };
+      }
+    }
+
+    @WebSocketGateway({ path: '/echo' })
+    class RoomEchoGateway extends EchoGateway {
+      override prefix = 'room';
+      // Its own declaration of an event replaces the ancestor's.
+      @SubscribeMessage('ping')
+      onOwnPing() {
+        return { event: 'pong', data: 'room' };
+      }
+      // An override without the decorator is not a handler, as in Nest.
+      override onOverridden() {
+        return { event: 'overridden', data: 'room' };
+      }
+    }
+
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomEchoGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const client = new FakeClient();
+      const dispatcher = app.get(WsDispatcher);
+      await dispatcher.dispatchMessage('/echo', client, frame('echo', { text: 'hi' }, '1'));
+      await dispatcher.dispatchMessage('/echo', client, frame('ping', {}, '2'));
+      await dispatcher.dispatchMessage('/echo', client, frame('locked', {}, '3'));
+      await dispatcher.dispatchMessage('/echo', client, frame('overridden', {}, '4'));
+
+      // 'overridden' has no handler on the subclass: ignored like any unknown event.
+      expect(client.sent).toEqual([
+        { event: 'echo', data: 'room:hi', id: '1' },
+        { event: 'pong', data: 'room', id: '2' },
+        { event: 'exception', data: { message: 'Forbidden' }, id: '3' },
+      ]);
+      expect(denied).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('reuses the interceptor onion chain', async () => {
     @Injectable()
     class WrapInterceptor implements NestInterceptor {
@@ -927,14 +996,14 @@ describe('rooms + Server handle', () => {
     expect(recorded).toEqual([]);
   });
 
-  it('serves a gateway whose module imports several WebSocketModule instances', async () => {
+  it('fails bootstrap when a gateway module imports several WebSocketModule instances', async () => {
     @WebSocketGateway({ path: '/rooms' })
     class RoomGateway {
       constructor(@WebSocketServer() readonly server: WsServer) {}
     }
 
-    // Both instances share one registry, so the socket is reachable through
-    // whichever instance's server serves the gateway.
+    // Each instance has its own server and sync driver: which one serves the
+    // gateway would depend on which dispatcher connected it first.
     const registry = new InMemoryRoomRegistry();
     @Module({
       imports: [
@@ -945,16 +1014,10 @@ describe('rooms + Server handle', () => {
     })
     class GatewayModule {}
 
-    const app = await VelaFactory.create(GatewayModule, { diagnostics: 'silent' });
-    try {
-      const client = sink('c1', '/rooms');
-      registry.register(client);
-      registry.join(client, 'r1');
-      await app.get(RoomGateway).server.to('r1').emit('hello', 1);
-      expect(client.received).toEqual([{ event: 'hello', data: 1 }]);
-    } finally {
-      await app.close();
-    }
+    await expect(VelaFactory.create(GatewayModule, { diagnostics: 'silent' })).rejects.toThrow(
+      "RoomGateway's @WebSocketServer() is ambiguous: its module 'GatewayModule#default' sees " +
+        "2 WS_SERVER providers, from 'WebSocketModule#ws#local', 'WebSocketModule#second'.",
+    );
   });
 
   it("refuses a gateway's pushes without WebSocketModule, naming how to serve or substitute it", async () => {

@@ -647,9 +647,11 @@ is not declared fails the operation with an error naming it and
 `kv_namespaces`; the cache treats that as a miss and sends the error to the
 application's error reporter (edge `'cache'`).
 
-`KVCacheStore` and `KVCacheInvalidationStore` take a namespace or a function
-returning one, for composition such as
-`store: (env) => new TieredCacheStore([new MemoryCacheStore(), new KVCacheStore(env.CACHE)])`.
+`kvCache({ binding })` is a function of `ENV`, so a tier composes it without
+reading `ENV` directly:
+`store: (env) => new TieredCacheStore([new MemoryCacheStore(), kvCache({ binding: 'CACHE' })(env)])`.
+`KVCacheStore` and `KVCacheInvalidationStore` also take a namespace or a
+function returning one.
 Construct `KvFlagDriver` with a native namespace: `new KvFlagDriver(env.CACHE)`.
 Cache reads and object-valued flag reads return `unknown`; validate them with an
 application parser (`cache.scope(scope).getParsed(key, parser)`).

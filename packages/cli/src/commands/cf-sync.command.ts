@@ -22,10 +22,13 @@ export class CloudflareSyncCommand extends Command {
       'Durable Object and Workflow class the Worker entry exports. By default it prints the ' +
       'differences and exits 1 when there are any. --write applies them to wrangler.json(c) in ' +
       'place, keeping comments; a wrangler.toml is only compared. Cron triggers no @Cron job ' +
-      'declares are removed; anything else the application does not use is reported, never deleted.',
+      'declares are reported and kept, since a Worker entry with its own scheduled handler may ' +
+      'serve them; --prune removes them. Anything else the application does not use is ' +
+      'reported, never deleted.',
     examples: [
       ['Compare', 'vela cf sync'],
       ['Update wrangler.jsonc', 'vela cf sync --write'],
+      ['Also remove cron triggers no @Cron job declares', 'vela cf sync --write --prune'],
       ['Update the staging environment', 'vela cf sync --env staging --write'],
     ],
   });
@@ -37,6 +40,9 @@ export class CloudflareSyncCommand extends Command {
     description: 'Named Wrangler environment (default: the top-level configuration).',
   });
   write = Option.Boolean('--write', false, { description: 'Apply the changes to the file.' });
+  prune = Option.Boolean('--prune', false, {
+    description: 'Also remove cron triggers no @Cron job declares.',
+  });
   json = Option.Boolean('--json', false, { description: 'Emit the plan as JSON.' });
 
   async execute(): Promise<number> {
@@ -71,7 +77,7 @@ export class CloudflareSyncCommand extends Command {
       (message) => this.context.stderr.write(`${message}\n`),
       this.context.stderr,
     );
-    const plan = planCloudflareSync(wrangler, this.environment, facts);
+    const plan = planCloudflareSync(wrangler, this.environment, facts, { prune: this.prune });
     const status = plan.changes.length === 0 ? 'in-sync' : this.write ? 'written' : 'out-of-sync';
     if (status === 'written') {
       await writeFile(path, applyCloudflareSync(wrangler.text, plan.changes), 'utf8');

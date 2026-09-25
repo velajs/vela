@@ -4,6 +4,7 @@ import '../metadata';
 export { ThrottlerModule } from './throttler.module';
 export { ThrottlerGuard } from './throttler.guard';
 export { ThrottlerStorage } from './throttler.storage';
+export type { ThrottlerStorageOptions } from './throttler.storage';
 export { Throttle, SkipThrottle } from './throttler.decorators';
 export {
   RATE_LIMIT,

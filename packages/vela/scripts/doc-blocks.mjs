@@ -4,10 +4,12 @@
 //
 // Each ```ts block compiles as its own module. Examples are often fragments
 // that use names declared elsewhere in the text, so diagnostics a fragment
-// raises by design (an undeclared name, an unused declaration) are ignored;
-// everything else fails, above all imports of missing packages, subpaths and
-// exports, and calls that do not match a documented signature. Mark a block
-// that shows invalid code on purpose with ```ts nocheck.
+// raises by design (an undeclared name, an unused declaration) are ignored,
+// and so is an import of a relative file or of a third-party package the
+// workspace does not install. Everything else fails, above all imports of
+// missing `@velajs/*` packages, subpaths and exports, and calls that do not
+// match a documented signature. Mark a block that shows invalid code on
+// purpose with ```ts nocheck.
 
 import { execFileSync } from 'node:child_process';
 import {

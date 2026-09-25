@@ -637,7 +637,7 @@ describe('lazy cold-start init — concurrency', () => {
       localProviders: new Set([Slow]),
       importedModules: new Set(),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
       lazy: true,
     });
     container.registerScope({
@@ -645,7 +645,7 @@ describe('lazy cold-start init — concurrency', () => {
       localProviders: new Set([Fast]),
       importedModules: new Set(),
       exportedTokens: new Set(),
-      isGlobal: false,
+      global: false,
       lazy: true,
     });
     container.register(Slow, 'M1');

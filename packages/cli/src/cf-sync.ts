@@ -37,8 +37,19 @@ export interface SyncChange {
 
 export interface SyncPlan {
   readonly changes: readonly SyncChange[];
-  /** What the command cannot fix itself; nothing is removed but cron triggers. */
+  /**
+   * What the command reports without changing: what it cannot fix itself, and
+   * cron triggers no `@Cron` job declares unless `prune` removes them.
+   */
   readonly warnings: readonly string[];
+}
+
+export interface SyncOptions {
+  /**
+   * Remove the cron triggers no `@Cron` job declares. Off by default: a Worker
+   * entry with its own `scheduled` handler may serve them.
+   */
+  readonly prune?: boolean;
 }
 
 function strings(value: unknown): string[] {
@@ -114,6 +125,7 @@ export function planCloudflareSync(
   config: WranglerConfig,
   environment: string | undefined,
   facts: CloudflareFacts,
+  options: SyncOptions = {},
 ): SyncPlan {
   const changes: SyncChange[] = [];
   const warnings: string[] = [];
@@ -163,15 +175,26 @@ export function planCloudflareSync(
   }
   // Last first, so each index still names the element read from the file.
   const listed: unknown[] = Array.isArray(current) ? current : [];
+  const undeclared: string[] = [];
   for (let index = listed.length - 1; index >= 0; index--) {
     const cron = listed[index];
     if (typeof cron !== 'string' || crons.includes(cron)) continue;
+    if (!options.prune) {
+      undeclared.unshift(cron);
+      continue;
+    }
     changes.push({
       path: [...path, index],
       value: cron,
       op: 'remove',
       summary: `- ${label(path)}: ${JSON.stringify(cron)} (no @Cron job declares it)`,
     });
+  }
+  // A Worker entry with its own scheduled handler may serve them.
+  for (const cron of undeclared) {
+    warnings.push(
+      `${label(path)}: ${JSON.stringify(cron)} is not declared by any @Cron job; kept (pass --prune to remove it).`,
+    );
   }
 
   // Queues: producers for registered bindings, consumers for processed queues.

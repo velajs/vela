@@ -1997,14 +1997,16 @@ export declare class ThrottlerGuard implements CanActivate {
   private tracker;
 }
 
+interface ThrottlerStorageOptions {
+
+  maxKeys?: number;
+}
+
 export declare class ThrottlerStorage implements ThrottlerStore {
-  private current;
-  private previous;
-  private lastSwap;
-  private readonly swapIntervalMs;
-  increment(key: string, ttlMs: number): ThrottlerStorageRecord;
+  #private;
+  constructor(options?: ThrottlerStorageOptions);
+  increment(key: string, ttlMs: number, limit?: number): ThrottlerStorageRecord;
   reset(key: string): void;
-  private maybeSwap;
 }
 
 export declare const Throttle: (overrides: Record<string, ThrottleConfig>) => (target: object, propertyKey?: string | symbol, descriptor?: PropertyDescriptor) => void;
@@ -2020,7 +2022,7 @@ export declare const THROTTLE_METADATA = "vela:throttle";
 
 export declare const SKIP_THROTTLE_METADATA = "vela:skip-throttle";
 
-export type { RateLimitInfo, ThrottleConfig, ThrottlerModuleOptions, ThrottlerOptions, ThrottlerStorageRecord, ThrottlerStore };
+export type { RateLimitInfo, ThrottleConfig, ThrottlerModuleOptions, ThrottlerOptions, ThrottlerStorageOptions, ThrottlerStorageRecord, ThrottlerStore };
 ```
 
 ## `./validation`
@@ -4137,7 +4139,8 @@ declare class ModuleLoader {
   constructor(container: Container, router: RouteManager, moduleOverrides?: ModuleOverrides | undefined);
 
   private override;
-  load(rootModule: Type | DynamicModule): void;
+
+  load(rootModule: Type | DynamicModule, prepare?: () => void): void;
   private getModuleId;
   private isProcessed;
   private markProcessed;
@@ -4175,6 +4178,8 @@ interface BootstrapOptions extends RouteManagerOptions {
 interface BootstrapInternals {
 
   moduleOverrides?: ModuleOverrides;
+
+  prepareGraph?(container: Container): void;
 }
 interface BootstrapResult {
   container: Container;
@@ -4728,7 +4733,8 @@ interface ModuleScope {
   localProviders: Set<Token>;
   importedModules: Set<string>;
   exportedTokens: Set<Token>;
-  isGlobal: boolean;
+
+  global: boolean;
 
   lazy?: boolean;
 
@@ -4764,7 +4770,8 @@ interface ModuleDescription {
   moduleId: string;
 
   imports: string[];
-  isGlobal: boolean;
+
+  global: boolean;
   lazy: boolean;
 
   providers: string[];

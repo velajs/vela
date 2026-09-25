@@ -374,4 +374,264 @@ export class AppModule {}
     expect(taken.code).toBe(1);
     expect(taken.output).toContain('EMAILS is already a binding');
   });
+
+  it.each(['delete', 'class', 'await', 'eval', 'arguments', 'enum', 'static'])(
+    'rejects the reserved word %s as a binding name before creating anything',
+    async (binding) => {
+      const result = await add('kv', binding);
+      expect(result.code).toBe(1);
+      expect(result.output).toContain(
+        `${binding} is a JavaScript reserved word; vela add declares the binding as a constant, so choose another name.`,
+      );
+      await expect(read('wrangler-calls.log')).rejects.toThrow();
+      await expect(read('src/bindings.module.ts')).rejects.toThrow();
+    },
+  );
+
+  it.each(['ENV', 'Module', 'Global', 'InjectionToken', 'defineProvider', 'BindingsModule'])(
+    'rejects %s, a name the bindings module already uses, before creating anything',
+    async (binding) => {
+      const result = await add('d1', binding);
+      expect(result.code).toBe(1);
+      expect(result.output).toContain(
+        `${binding} would collide with a name src/bindings.module.ts declares or imports; choose another binding name.`,
+      );
+      await expect(read('wrangler-calls.log')).rejects.toThrow();
+    },
+  );
+
+  it('rejects a name an existing bindings module imports from elsewhere', async () => {
+    await writeFile(
+      join(project, 'src/bindings.module.ts'),
+      `import { ENV, Global, InjectionToken, Module, defineProvider } from '@velajs/vela';
+import { Logger } from './logging.js';
+
+@Global()
+@Module({ providers: [Logger], exports: [Logger] })
+export class BindingsModule {}
+`,
+    );
+    const result = await add('kv', 'Logger');
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('Logger would collide with a name src/bindings.module.ts');
+    await expect(read('wrangler-calls.log')).rejects.toThrow();
+  });
+
+  it('registers through an existing bindings module whatever its class is called', async () => {
+    const bindings = `import { ENV, Global, InjectionToken, Module, defineProvider } from '@velajs/vela';
+
+export const DB = new InjectionToken<D1Database>('DB');
+
+@Global()
+@Module({
+  providers: [defineProvider(DB, { useFactory: (env) => env.DB, inject: [ENV] })],
+  exports: [DB],
+})
+export class PlatformBindings {}
+`;
+    await writeFile(join(project, 'src/bindings.module.ts'), bindings);
+    const result = await add('kv', 'CACHE');
+    expect(result.code, result.output).toBe(0);
+    const app = await read('src/app.module.ts');
+    expect(app).toContain("import { PlatformBindings } from './bindings.module.js';");
+    expect(app).toContain('imports: [PlatformBindings],');
+    expect(app).not.toContain('BindingsModule');
+    const updated = await read('src/bindings.module.ts');
+    expect(updated).toContain('exports: [DB, CACHE]');
+    expect(updated).toContain('export class PlatformBindings {}');
+    // Its class name is taken as well.
+    const collision = await add('kv', 'PlatformBindings');
+    expect(collision.code).toBe(1);
+    expect(collision.output).toContain('PlatformBindings would collide');
+
+    // A bindings module that does not export its class cannot be imported.
+    await writeFile(
+      join(project, 'src/bindings.module.ts'),
+      bindings.replace('export class PlatformBindings', 'class PlatformBindings'),
+    );
+    const unexported = await add('kv', 'SESSIONS');
+    expect(unexported.code).toBe(1);
+    expect(unexported.output).toContain(
+      'src/bindings.module.ts does not export its module class PlatformBindings by name',
+    );
+    expect(unexported.output).toContain('Nothing was created');
+    expect((await calls()).map((call) => call[0])).toEqual(['kv', 'types']);
+  });
+
+  it('refuses a root module that imports another BindingsModule, creating nothing', async () => {
+    const app = `import { Module } from '@velajs/vela';
+import { BindingsModule } from './platform/bindings.module.js';
+import { AppController } from './app.controller.js';
+
+@Module({ imports: [BindingsModule], controllers: [AppController] })
+export class AppModule {}
+`;
+    await writeFile(join(project, 'src/app.module.ts'), app);
+    const result = await add('kv', 'CACHE');
+    expect(result.code).toBe(1);
+    expect(result.output).toContain(
+      "imports BindingsModule from './platform/bindings.module.js', not from './bindings.module.js'",
+    );
+    expect(result.output).toContain('Nothing was created');
+    await expect(read('wrangler-calls.log')).rejects.toThrow();
+    await expect(read('src/bindings.module.ts')).rejects.toThrow();
+    expect(await read('src/app.module.ts')).toBe(app);
+  });
+
+  it('plans the Wrangler file edit of a queue before creating it', async () => {
+    const wrangler = `{
+  "name": "demo",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-20",
+  "queues": "managed elsewhere",
+}
+`;
+    await writeFile(join(project, 'wrangler.jsonc'), wrangler);
+    const result = await add('queue', 'EMAILS');
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('cannot add the EMAILS producer and its consumer');
+    expect(result.output).toContain('Nothing was created');
+    await expect(read('wrangler-calls.log')).rejects.toThrow();
+    expect(await read('wrangler.jsonc')).toBe(wrangler);
+    expect(await read('src/app.module.ts')).not.toContain('QueueModule');
+  });
+
+  it('prints the wrangler.toml steps it cannot apply and exits 2', async () => {
+    await rm(join(project, 'wrangler.jsonc'));
+    const toml = 'name = "demo"\nmain = "src/worker.ts"\ncompatibility_date = "2026-09-20"\n';
+    await writeFile(join(project, 'wrangler.toml'), toml);
+    const result = await add('queue', 'EMAILS');
+    expect(result.code, result.output).toBe(2);
+    expect((await calls())[0]).toEqual(['queues', 'create', 'demo-emails']);
+    expect(result.output).toContain(
+      'Manual steps required: vela add and Wrangler edit wrangler.json and wrangler.jsonc files only.',
+    );
+    expect(result.output).toContain(
+      '1. Add the queue to wrangler.toml:\n[[queues.producers]]\nbinding = "EMAILS"\nqueue = "demo-emails"\n\n[[queues.consumers]]\nqueue = "demo-emails"',
+    );
+    expect(result.output).toContain('2. Then run your types script');
+    // The Wrangler file is left to you; the module registration is done.
+    expect(await read('wrangler.toml')).toBe(toml);
+    expect(await read('src/app.module.ts')).toContain(
+      "QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' })",
+    );
+  });
+
+  it.each([
+    [
+      'd1',
+      'DB',
+      '[[d1_databases]]\nbinding = "DB"\ndatabase_name = "demo-db"\ndatabase_id = "<the database_id Wrangler printed above>"',
+    ],
+    ['kv', 'CACHE', '[[kv_namespaces]]\nbinding = "CACHE"\nid = "<the id Wrangler printed above>"'],
+    ['r2', 'UPLOADS', '[[r2_buckets]]\nbinding = "UPLOADS"\nbucket_name = "demo-uploads"'],
+  ] as const)(
+    'prints the wrangler.toml binding of a %s resource, which Wrangler does not write, and exits 2',
+    async (kind, binding, table) => {
+      await rm(join(project, 'wrangler.jsonc'));
+      const toml = 'name = "demo"\nmain = "src/worker.ts"\ncompatibility_date = "2026-09-20"\n';
+      await writeFile(join(project, 'wrangler.toml'), toml);
+      const result = await add(kind, binding);
+      expect(result.code, result.output).toBe(2);
+      // Wrangler creates the resource and prints the snippet; it edits JSON files only.
+      expect((await calls())[0]).toContain('--update-config');
+      expect(result.output).toContain(`1. Add the binding to wrangler.toml:\n${table}`);
+      expect(result.output).toContain('2. Then run your types script');
+      expect(await read('wrangler.toml')).toBe(toml);
+      // The module registration is done.
+      expect(await read('src/bindings.module.ts')).toContain(`exports: [${binding}]`);
+
+      // A named environment gets its own table.
+      await writeFile(
+        join(project, 'wrangler.toml'),
+        `${toml}\n[env.staging]\nname = "demo-staging"\n`,
+      );
+      const staged = await add(kind, `${binding}_STAGING`, '--env', 'staging');
+      expect(staged.code, staged.output).toBe(2);
+      expect(staged.output).toContain(`[[env.staging.${table.slice(2, table.indexOf(']'))}]]`);
+    },
+  );
+
+  it('exits 0 with --skip-import, printing the registration it leaves to you', async () => {
+    const result = await add('kv', 'CACHE', '--skip-import');
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).not.toContain('Manual steps required');
+    expect(result.output).toContain('Provide it yourself');
+  });
+
+  it('keeps a root module that lists the bindings module through a path alias or barrel', async () => {
+    const app = await read('src/app.module.ts');
+    const aliased = `import { BindingsModule } from '@/bindings.module';\n${app.replace(
+      'controllers: [',
+      'imports: [BindingsModule],\n  controllers: [',
+    )}`;
+    await writeFile(join(project, 'src/app.module.ts'), aliased);
+    const first = await add('kv', 'CACHE');
+    expect(first.code, first.output).toBe(0);
+    // The alias may name this very file: the root stays as it is.
+    expect(await read('src/app.module.ts')).toBe(aliased);
+    expect(await read('src/bindings.module.ts')).toContain('exports: [CACHE]');
+
+    // A relative barrel is followed to the file it re-exports.
+    await mkdir(join(project, 'src/modules'), { recursive: true });
+    await writeFile(
+      join(project, 'src/modules/index.ts'),
+      "export { BindingsModule } from '../bindings.module.js';\n",
+    );
+    const barrel = `import { BindingsModule } from './modules/index.js';\n${app}`;
+    await writeFile(join(project, 'src/app.module.ts'), barrel);
+    const second = await add('d1', 'DB');
+    expect(second.code, second.output).toBe(0);
+    const root = await read('src/app.module.ts');
+    expect(root).toContain('imports: [BindingsModule],');
+    expect(root.match(/import \{ BindingsModule \}/g)).toHaveLength(1);
+    expect(await read('src/bindings.module.ts')).toContain('exports: [CACHE, DB]');
+  });
+
+  it.each([
+    ["const CACHE = 'not-a-token';", 'CACHE'],
+    ['const helpers = { version: 1 };', 'helpers'],
+    ['export const { region: CACHE } = settings;', 'CACHE'],
+    ["const CACHE = new InjectionToken<KVNamespace>('CACHE');", 'CACHE'],
+  ])(
+    'refuses a binding named like a variable the bindings module declares: %s',
+    async (line, binding) => {
+      const bindings = `import { ENV, Global, InjectionToken, Module, defineProvider } from '@velajs/vela';
+
+${line}
+
+@Global()
+@Module({ providers: [], exports: [] })
+export class BindingsModule {}
+`;
+      await writeFile(join(project, 'src/bindings.module.ts'), bindings);
+      const result = await add('kv', binding);
+      expect(result.code).toBe(1);
+      expect(result.output).toContain(
+        `${binding} would collide with a name src/bindings.module.ts declares or imports`,
+      );
+      await expect(read('wrangler-calls.log')).rejects.toThrow();
+      expect(await read('src/bindings.module.ts')).toBe(bindings);
+    },
+  );
+
+  it('reuses the token an earlier vela add declared for the same binding', async () => {
+    const bindings = `import { ENV, Global, InjectionToken, Module, defineProvider } from '@velajs/vela';
+
+export const CACHE = new InjectionToken<KVNamespace>('CACHE');
+
+@Global()
+@Module({ providers: [], exports: [] })
+export class BindingsModule {}
+`;
+    await writeFile(join(project, 'src/bindings.module.ts'), bindings);
+    const result = await add('kv', 'CACHE');
+    expect(result.code, result.output).toBe(0);
+    const updated = await read('src/bindings.module.ts');
+    expect(updated.match(/export const CACHE/g)).toHaveLength(1);
+    expect(updated).toContain(
+      'defineProvider(CACHE, { useFactory: (env) => env.CACHE, inject: [ENV] })',
+    );
+    expect(updated).toContain('exports: [CACHE]');
+  });
 });

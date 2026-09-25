@@ -129,16 +129,30 @@ bindings become injection tokens of a global `BindingsModule` next to the root
 module (`constructor(@Inject(DB) db: D1Database)`), and a queue becomes
 `QueueModule.registerQueue({ name, binding })`, with the `cloudflareQueues()`
 driver added to the root module unless a module already configures it.
-`--config <file>` is passed on to Wrangler. Every module edit is computed
-before anything is created, so a root module or `bindings.module.ts` the CLI
-cannot edit fails with nothing created; a failed type refresh only warns.
-`--skip-import` prints the registration instead and needs no editable root.
+`--config <file>` is passed on to Wrangler. Every module edit, and a queue's
+Wrangler file edit, is computed before anything is created, so a root module,
+`bindings.module.ts` or Wrangler file the CLI cannot edit fails with nothing
+created; a failed type refresh only warns. A D1, KV or R2 `BINDING` that is a
+JavaScript reserved word, or a name `bindings.module.ts` declares (a class,
+function, variable or enum) or imports (`ENV`, `Global`, `InjectionToken`,
+`Module`, `defineProvider` or its module class), is refused first; the
+`InjectionToken` an earlier `vela add` declared for that binding is reused. An
+existing `bindings.module.ts` keeps its class name, and a root module that
+already lists it through a path alias or a barrel is left as it is. Wrangler
+and the CLI edit `wrangler.json` and `wrangler.jsonc` only: with a
+`wrangler.toml`, the resource is created and registered, but its binding (for a
+queue, its producer and consumer) is printed under `Manual steps required` and
+the command exits 2. Exit code 0 means everything was applied, apart from the
+registration `--skip-import` prints; 1 means the command failed. Source edits
+keep CRLF files CRLF. `--skip-import` prints the registration instead and needs
+no editable root.
 
 ### Keep Wrangler in sync
 
 ```sh
 vela cf sync            # exit 1 and list the differences
 vela cf sync --write    # apply them to wrangler.jsonc, keeping comments
+vela cf sync --write --prune   # also remove cron triggers no @Cron job declares
 vela cf sync --env staging --write
 ```
 
@@ -151,9 +165,11 @@ It warns about a Durable Object, Workflow or service entrypoint class the app
 defines but the entry does not export, naming the call that defined it (export
 that class), and about a service binding to an `entrypoint` of this Worker
 that the entry does not export. `--write` edits JSON and
-JSONC files through `jsonc-parser`; a `wrangler.toml` is only compared. Cron
-triggers no job declares are removed; anything else the application does not use
-is reported and left in place. Run the `types` script afterwards.
+JSONC files through `jsonc-parser`; a `wrangler.toml` is only compared. A cron
+trigger no `@Cron` job declares is reported as such and kept, since a Worker entry
+with its own `scheduled` handler may serve it; `--prune` removes those triggers.
+Anything else the application does not use is reported and left in place. Run the
+`types` script afterwards.
 
 ### MCP server
 

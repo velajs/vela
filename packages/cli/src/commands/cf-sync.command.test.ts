@@ -114,6 +114,37 @@ describe('vela cf sync', () => {
     });
   });
 
+  it('keeps cron triggers no @Cron job declares, removing them only with --prune', async () => {
+    const text = WRANGLER.replace(
+      '"compatibility_date": "2026-09-20",',
+      '"compatibility_date": "2026-09-20",\n  // Served by the entry\'s own scheduled handler.\n  "triggers": { "crons": ["0 3 * * *", "30 5 * * *"] },',
+    );
+    writeFileSync(join(project, 'wrangler.jsonc'), text);
+    const written = await sync('--write');
+    expect(written.code, written.output).toBe(0);
+    expect(written.output).toContain(
+      'Warning: triggers.crons: "30 5 * * *" is not declared by any @Cron job; kept (pass --prune to remove it).',
+    );
+    const kept = parse(readFileSync(join(project, 'wrangler.jsonc'), 'utf8'), [], {
+      allowTrailingComma: true,
+    });
+    expect(kept.triggers).toEqual({ crons: ['0 3 * * *', '30 5 * * *'] });
+
+    // The comparison lists the removal only when pruning.
+    const check = await sync();
+    expect(check.code, check.output).toBe(0);
+    const prunable = await sync('--prune');
+    expect(prunable.code).toBe(1);
+    expect(prunable.output).toContain('- triggers.crons: "30 5 * * *" (no @Cron job declares it)');
+
+    const pruned = await sync('--write', '--prune');
+    expect(pruned.code, pruned.output).toBe(0);
+    const after = parse(readFileSync(join(project, 'wrangler.jsonc'), 'utf8'), [], {
+      allowTrailingComma: true,
+    });
+    expect(after.triggers).toEqual({ crons: ['0 3 * * *'] });
+  });
+
   it('finds a Worker without jobs, queues or classes in sync', async () => {
     writeFileSync(
       join(project, 'src/worker.mjs'),

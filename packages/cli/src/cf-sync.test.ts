@@ -67,8 +67,28 @@ const TEXT = `{
 `;
 
 describe('vela cf sync plan', () => {
+  it('keeps cron triggers no @Cron job declares unless pruning, and reports them', () => {
+    // A Worker entry with its own scheduled handler may need them.
+    const kept = planCloudflareSync(wrangler(TEXT), undefined, APP);
+    expect(kept.changes.filter((change) => change.op === 'remove')).toEqual([]);
+    expect(kept.warnings).toEqual([
+      'triggers.crons: "0 4 * * *" is not declared by any @Cron job; kept (pass --prune to remove it).',
+    ]);
+    const pruned = planCloudflareSync(wrangler(TEXT), undefined, APP, { prune: true });
+    expect(pruned.changes.filter((change) => change.op === 'remove')).toMatchObject([
+      { path: ['triggers', 'crons', 0], value: '0 4 * * *', op: 'remove' },
+    ]);
+    expect(pruned.warnings).toEqual([]);
+    // Once in sync, a kept trigger is reported again, but nothing changes.
+    const synced = applyCloudflareSync(TEXT, kept.changes);
+    expect(planCloudflareSync(wrangler(synced), undefined, APP)).toEqual({
+      changes: [],
+      warnings: kept.warnings,
+    });
+  });
+
   it('derives crons, queues, Durable Objects, migrations and Workflows from the app', () => {
-    const plan = planCloudflareSync(wrangler(TEXT), undefined, APP);
+    const plan = planCloudflareSync(wrangler(TEXT), undefined, APP, { prune: true });
     expect(plan.changes.map(({ path, value, op }) => ({ path, value, op }))).toEqual([
       { path: ['triggers', 'crons'], value: '0 3 * * *', op: 'append' },
       { path: ['triggers', 'crons', 0], value: '0 4 * * *', op: 'remove' },
@@ -105,7 +125,7 @@ describe('vela cf sync plan', () => {
   it('reports nothing for a configuration that matches the app', () => {
     const synced = applyCloudflareSync(
       TEXT,
-      planCloudflareSync(wrangler(TEXT), undefined, APP).changes,
+      planCloudflareSync(wrangler(TEXT), undefined, APP, { prune: true }).changes,
     );
     expect(planCloudflareSync(wrangler(synced), undefined, APP)).toEqual({
       changes: [],
@@ -177,7 +197,10 @@ describe('vela cf sync plan', () => {
       },
     });
     const sync = (text: string, facts: CloudflareFacts) =>
-      applyCloudflareSync(text, planCloudflareSync(wrangler(text), undefined, facts).changes);
+      applyCloudflareSync(
+        text,
+        planCloudflareSync(wrangler(text), undefined, facts, { prune: true }).changes,
+      );
     const written = (text: string) => parse(text, [], { allowTrailingComma: true }).triggers.crons;
 
     it('adds and removes single triggers, keeping the comments of the array', () => {
@@ -385,20 +408,25 @@ describe('vela cf sync plan', () => {
   });
 
   it('adds new sections after the last one, keeping its comment and trailing comma', () => {
-    const plan = planCloudflareSync(wrangler(TEXT), undefined, {
-      entrypoints: APP.entrypoints.filter(
-        (entry) => entry.kind === 'schedule:cron' || entry.kind.startsWith('queue'),
-      ),
-      exports: {
-        durableObjects: [],
-        workflows: [],
-        entrypoints: [],
-        velaDurableObjects: [],
-        velaWorkflows: [],
-        velaEntrypoints: [],
-        unexported: [],
+    const plan = planCloudflareSync(
+      wrangler(TEXT),
+      undefined,
+      {
+        entrypoints: APP.entrypoints.filter(
+          (entry) => entry.kind === 'schedule:cron' || entry.kind.startsWith('queue'),
+        ),
+        exports: {
+          durableObjects: [],
+          workflows: [],
+          entrypoints: [],
+          velaDurableObjects: [],
+          velaWorkflows: [],
+          velaEntrypoints: [],
+          unexported: [],
+        },
       },
-    });
+      { prune: true },
+    );
     expect(applyCloudflareSync(TEXT, plan.changes)).toBe(`{
   // The Worker.
   "name": "shop",

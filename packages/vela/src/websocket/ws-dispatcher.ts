@@ -23,6 +23,7 @@ import type {
   NestInterceptor,
   PipeTransform,
 } from '../pipeline/types';
+import { classLineage, methodLineage } from '../registry/inherited-metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type {
   Constructor,
@@ -142,6 +143,38 @@ export function readWsEntrypointMeta(value: unknown): WsEntrypointMeta {
 }
 
 /**
+ * The `@SubscribeMessage` handlers of a gateway, each with the class that
+ * declares it: its own, then those an ancestor class declares on a method the
+ * gateway inherits unchanged, as Nest reads them from the prototype chain. The
+ * nearest declaration of an event wins; an override the gateway does not
+ * decorate is not a handler.
+ */
+function gatewaySubscriptions(
+  type: Constructor,
+): Array<{ event: string; methodName: string; owner: Constructor }> {
+  const handled = new Set<string>();
+  const subscriptions: Array<{ event: string; methodName: string; owner: Constructor }> = [];
+  for (const owner of classLineage(type)) {
+    const declared =
+      (MetadataRegistry.getCustomClassMeta(owner, WS_SUBSCRIBE_METADATA) as
+        | SubscribeMessageMetadata[]
+        | undefined) ?? [];
+    // Within one class the last declaration of an event wins.
+    const own = new Map<string, string>();
+    for (const { event, methodName } of declared) {
+      if (handled.has(event)) continue;
+      if (owner !== type && !methodLineage(type, methodName).includes(owner)) continue;
+      own.set(event, methodName);
+    }
+    for (const [event, methodName] of own) {
+      handled.add(event);
+      subscriptions.push({ event, methodName, owner });
+    }
+  }
+  return subscriptions;
+}
+
+/**
  * Discovers `@WebSocketGateway` classes at bootstrap (via `DiscoveryService`)
  * and routes inbound messages to `@SubscribeMessage` handlers. Transports read
  * the gateways from `app.entrypoints.ofKind('websocket')` (this dispatcher
@@ -238,18 +271,18 @@ export class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, Contr
 
   /**
    * The module whose `WS_SERVER` serves a gateway declared in `moduleId`:
-   * that module when it sees exactly one `WS_SERVER`. When it sees none, or
-   * only the servers of several `WebSocketModule` instances it imports, the
-   * server of the first dispatcher that connects the gateway serves it. A
-   * `WS_SERVER` from another module beside those is ambiguous, and fails.
+   * that module when it sees exactly one `WS_SERVER`. When it sees none, the
+   * server of the dispatcher that connects the gateway serves it. Two or more,
+   * whether from several `WebSocketModule` instances or another module beside
+   * one, are ambiguous and fail bootstrap: which server pushed would depend on
+   * which dispatcher connected the gateway first.
    */
   private serverModule(gatewayClass: Type, moduleId: string | undefined): string | undefined {
     if (moduleId === undefined) return undefined;
     const candidates = this.#container.getVisibleProviderSnapshots(WS_SERVER, moduleId);
+    if (candidates.length === 0) return undefined;
     if (candidates.length === 1) return moduleId;
-    // Every WebSocketModule instance provides a dispatcher next to its server.
     const owners = candidates.map((candidate) => candidate.moduleId);
-    if (owners.every((owner) => this.#container.hasInScope(WsDispatcher, owner))) return undefined;
     throw new Error(
       `${gatewayClass.name}'s @WebSocketServer() is ambiguous: its module '${moduleId}' sees ` +
         `${owners.length} WS_SERVER providers, from ${owners.map((owner) => `'${owner}'`).join(', ')}. ` +
@@ -797,14 +830,9 @@ export class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, Contr
     }
     const maxFrameBytes = resolveMaxFrameBytes(options);
     const ctor = gatewayClass as unknown as Constructor;
-    const subs =
-      (MetadataRegistry.getCustomClassMeta(ctor, WS_SUBSCRIBE_METADATA) as
-        | SubscribeMessageMetadata[]
-        | undefined) ?? [];
-    const allParams = MetadataRegistry.getParameters(ctor);
 
     const handlers = new Map<string, HandlerEntry>();
-    for (const { event, methodName } of subs) {
+    for (const { event, methodName, owner } of gatewaySubscriptions(ctor)) {
       // The `$` namespace belongs to framework modules (@ReservedWsEvent) — an
       // app gateway subscribing to it would never receive the frames anyway.
       if (event.startsWith(RESERVED_WS_EVENT_PREFIX)) {
@@ -815,12 +843,13 @@ export class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, Contr
         console.warn(msg);
         continue;
       }
-      const paramMeta = [...(allParams.get(methodName) ?? [])].sort((a, b) => a.index - b.index);
-      const paramTypes = Reflect.getMetadata(
-        'design:paramtypes',
-        gatewayClass.prototype,
-        methodName,
-      ) as unknown[] | undefined;
+      // The method's parameter declarations, on the class that declares it.
+      const paramMeta = [...(MetadataRegistry.getParameters(owner).get(methodName) ?? [])].sort(
+        (a, b) => a.index - b.index,
+      );
+      const paramTypes = Reflect.getMetadata('design:paramtypes', owner.prototype, methodName) as
+        | unknown[]
+        | undefined;
 
       // Recorded before any message, as for HTTP routes (Reflector reads).
       handlerFunction(gatewayClass, methodName);
