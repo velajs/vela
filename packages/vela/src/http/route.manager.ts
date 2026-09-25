@@ -154,6 +154,14 @@ export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024;
 // them. Core therefore has no default client identity.
 const defaultGetClientIp = (_c: Context): string | null => null;
 
+// A loop, not /\/+$/: that pattern backtracks quadratically on a long run of
+// slashes followed by another character.
+function trimTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === 47) end--;
+  return path.slice(0, end);
+}
+
 /**
  * Track the transmission of a response body without owning the invocation's
  * deferred work: send `body` in place of the original, and `done` resolves once
@@ -1140,7 +1148,7 @@ export class RouteManager {
         route,
       );
     }
-    const prefix = this.globalPrefix.replace(/\/+$/, '');
+    const prefix = trimTrailingSlashes(this.globalPrefix);
     const reached = (target: RouteTarget, method: string, outside?: boolean) => {
       const shape = `/${[...target.parts, ...(target.tail ? [target.tail === '*' ? '*' : ':_'] : [])].join('/')}`;
       const reaches = (route: { method: string; path: string }) =>
@@ -1299,7 +1307,7 @@ export class RouteManager {
     const legacy = forRoutes && path.endsWith('(.*)');
     let target = parseTarget(path);
     if (!target.parts.length && (legacy || target.tail === '*')) return { method };
-    const prefix = this.globalPrefix.replace(/\/+$/, '');
+    const prefix = trimTrailingSlashes(this.globalPrefix);
     if (prefix && !absolute) {
       const written = `/${path.replace(/^\//, '')}`;
       // A relative target that repeats the prefix would resolve to
