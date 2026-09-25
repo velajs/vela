@@ -3929,6 +3929,7 @@ interface OpenApiRequestBody {
       explode?: boolean;
     }>;
   }>;
+
   'x-vela-body-limits'?: {
     maxBytes?: number;
     maxFields?: number;
