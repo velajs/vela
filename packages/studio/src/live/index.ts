@@ -1,16 +1,16 @@
-import { Inject, Injectable, defineModule, defineProvider } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
+import { Inject, Injectable, defineProvider } from '@velajs/vela';
+import { Container, readEnv, type EnvFactory } from '@velajs/vela/module-kit';
 import { LiveInspector } from '@velajs/vela/live';
 import type { LiveSubscriptionRow, PresenceRoomRow } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
 import { studioError } from '../studio.errors';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 import { STUDIO_LIVE_SOURCE } from './live.port';
 import type { StudioLiveSource } from './live.port';
 
 export { STUDIO_LIVE_SOURCE } from './live.port';
 export type { StudioLiveSource } from './live.port';
-export const STUDIO_LIVE_MODULE_ID = 'studio.live';
 
 @Injectable()
 export class StudioLiveOps {
@@ -36,7 +36,7 @@ export class StudioLiveOps {
   }
 }
 
-export interface StudioLiveModuleOptions {
+export interface LivePanelOptions {
   /**
    * Rooms Studio inspects through `LiveModule`, read where their subscriptions
    * live: on Cloudflare each room's Durable Object, reached through the
@@ -44,16 +44,19 @@ export interface StudioLiveModuleOptions {
    * own engine. There is no global room list, so name each room.
    */
   rooms?: readonly string[];
-  /** A custom inspection source, instead of `rooms`. */
-  source?: StudioLiveSource;
+  /**
+   * A custom inspection source instead of `rooms`, or a function that builds
+   * it from the application's `ENV`.
+   */
+  source?: StudioLiveSource | EnvFactory<StudioLiveSource>;
 }
 
 /** The inspection source `LiveModule` provides for the named rooms. */
 function liveRoomsSource(container: Container, rooms: readonly string[]): StudioLiveSource {
   if (!container.has(LiveInspector)) {
     throw new Error(
-      'StudioLiveModule.forRoot({ rooms }) reads rooms through LiveModule: import ' +
-        'LiveModule.forRoot() from @velajs/vela/live.',
+      'livePanel({ rooms }) reads rooms through LiveModule: import LiveModule.forRoot() ' +
+        'from @velajs/vela/live.',
     );
   }
   const named = [...rooms];
@@ -74,30 +77,29 @@ function liveRoomsSource(container: Container, rooms: readonly string[]): Studio
   };
 }
 
-const { ConfigurableModuleClass } = defineModule<StudioLiveModuleOptions>({
-  name: 'StudioLive',
-  setup: ({ OPTIONS }) => ({
+/**
+ * The live and presence panel: authenticated polling of live subscriptions
+ * and presence rooms, lighting the `live` and `presence` features. It reads
+ * the rooms named in `rooms` through `LiveModule`, or a custom `source`;
+ * without either the features stay off:
+ * `StudioModule.forRoot({ plugins: [livePanel({ rooms: ['default'] })] })`.
+ */
+export function livePanel(options: LivePanelOptions = {}): StudioPlugin {
+  const { rooms, source } = options;
+  if (rooms !== undefined && source !== undefined) {
+    throw new TypeError('livePanel takes either rooms or source, not both.');
+  }
+  return defineStudioPlugin({
+    name: 'live',
     providers: [
       defineProvider(STUDIO_LIVE_SOURCE, {
-        inject: [OPTIONS, Container],
-        useFactory: (options, container) => {
-          if (options.rooms !== undefined && options.source !== undefined) {
-            throw new Error('StudioLiveModule takes either rooms or source, not both.');
-          }
-          return options.rooms === undefined
-            ? options.source
-            : liveRoomsSource(container, options.rooms);
+        inject: [Container],
+        useFactory: (container: Container) => {
+          if (rooms !== undefined) return liveRoomsSource(container, rooms);
+          return typeof source === 'function' ? source(readEnv(container)) : source;
         },
       }),
       StudioLiveOps,
     ],
-    exports: [STUDIO_LIVE_SOURCE],
-  }),
-});
-
-/**
- * Authenticated polling of live subscriptions and presence rooms: the rooms
- * named in `forRoot({ rooms })`, read through `LiveModule`, or a custom
- * `source`. Without either, the features stay disabled.
- */
-export class StudioLiveModule extends ConfigurableModuleClass {}
+  });
+}

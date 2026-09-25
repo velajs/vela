@@ -1,4 +1,5 @@
-import { defineProvider, defineModule } from '@velajs/vela';
+import { defineProvider } from '@velajs/vela';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 /**
  * `@velajs/studio/auth` — the OPTIONAL better-auth binding for the auth panels.
  *
@@ -6,9 +7,9 @@ import { defineProvider, defineModule } from '@velajs/vela';
  * `@velajs/better-auth` (and transitively `better-auth`): the core `.` entry
  * never does (the auth ops are authored against {@link STUDIO_AUTH_SOURCE}), so
  * apps without better-auth still mount `StudioModule` and just report the `auth`
- * feature false. An app WITH better-auth additionally imports
- * `StudioAuthModule`, which binds a {@link BetterAuthStudioSource} to the core
- * `STUDIO_AUTH_SOURCE` token.
+ * feature false. An app WITH better-auth adds `authPanel()` to
+ * `StudioModule.forRoot({ plugins })`, which binds a
+ * {@link BetterAuthStudioSource} to the core `STUDIO_AUTH_SOURCE` token.
  *
  * TRUSTED-SERVER READ PATH (why we DON'T call `service.api`). better-auth's
  * admin/organization HTTP endpoints (`api.listUsers`, `api.listUserSessions`,
@@ -57,8 +58,6 @@ import type {
 import { studioError, studioNotFound } from '../studio.errors';
 import { STUDIO_AUTH_SOURCE } from './auth.port';
 import type { StudioAuthCapabilities, StudioAuthSource } from './auth.port';
-
-export const STUDIO_AUTH_MODULE_ID = 'studio.auth';
 
 export { STUDIO_AUTH_SOURCE } from './auth.port';
 export type { StudioAuthCapabilities, StudioAuthSource } from './auth.port';
@@ -298,12 +297,14 @@ export class BetterAuthStudioSource implements StudioAuthSource {
   }
 }
 
-/** Options for {@link StudioAuthModule}. Reserved for future auth-panel wiring. */
-export type StudioAuthModuleOptions = Record<string, never>;
-
-const { ConfigurableModuleClass } = defineModule<StudioAuthModuleOptions>({
-  name: 'StudioAuth',
-  setup: () => ({
+/**
+ * The auth panel: binds {@link BetterAuthStudioSource} to `STUDIO_AUTH_SOURCE`,
+ * lighting the `auth` feature in apps with `BetterAuthModule`:
+ * `StudioModule.forRoot({ plugins: [authPanel()] })`.
+ */
+export function authPanel(): StudioPlugin {
+  return defineStudioPlugin({
+    name: 'auth',
     providers: [
       defineProvider(STUDIO_AUTH_SOURCE, {
         useFactory: (container: Container) =>
@@ -311,13 +312,5 @@ const { ConfigurableModuleClass } = defineModule<StudioAuthModuleOptions>({
         inject: [Container],
       }),
     ],
-    exports: [STUDIO_AUTH_SOURCE],
-  }),
-});
-
-/**
- * Binds {@link BetterAuthStudioSource} to `STUDIO_AUTH_SOURCE`. Import it with
- * `StudioAuthModule.forRoot({})` ALONGSIDE `StudioModule` (and `BetterAuthModule`)
- * in apps that use better-auth — this is the seam that lights the `auth` feature.
- */
-export class StudioAuthModule extends ConfigurableModuleClass {}
+  });
+}

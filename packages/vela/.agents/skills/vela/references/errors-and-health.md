@@ -90,43 +90,55 @@ class HealthController {
 
 ## Throttling — `ThrottlerModule`
 
-`ThrottlerModule.forRoot({ limit, ttl })` registers a global rate-limit guard (`APP_GUARD`) — importing it throttles all routes:
+Nest v5 named throttlers. `ThrottlerModule.forRoot({ throttlers: [{ name?, ttl, limit }, ...], storage? })` registers a global rate-limit guard (`APP_GUARD`) — importing it throttles all routes, counting every request once per throttler, each in its own bucket:
 
 ```ts
 import { ThrottlerModule, Throttle, SkipThrottle } from '@velajs/vela/throttler';
 
-@Module({ imports: [ThrottlerModule.forRoot({ limit: 100, ttl: 60_000 })] }) // ttl in MILLISECONDS
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      throttlers: [
+        { name: 'short', ttl: 1_000, limit: 3 },    // ttl in MILLISECONDS
+        { name: 'long', ttl: 60_000, limit: 100 },
+      ],
+    }),
+  ],
+})
 class AppModule {}
 
 @Controller('/api')
 class ApiController {
   @Get('/tight')
-  @Throttle({ limit: 1, ttl: 60_000 })   // per-route override (both fields required)
+  @Throttle({ long: { limit: 10 } })        // override one named throttler (ttl/limit optional)
   tight() { return { ok: true }; }
 
-  @Get('/open')
-  @SkipThrottle()                          // exempt this route
-  open() { return { ok: true }; }
+  @Get('/burst-ok')
+  @SkipThrottle({ short: true })           // skip one named throttler
+  burst() { return { ok: true }; }
 }
 ```
 
-`ThrottlerModuleOptions`: `limit`, `ttl` (**milliseconds**), optional `storage`, `getTracker(request)` (application override), `generateKey`. It sets `X-RateLimit-*` headers, publishes `{ limit, remaining?, reset }` under the `RATE_LIMIT` request-context key (`requestContext.get(RATE_LIMIT)`), and throws `TooManyRequestsException` (429) with `Retry-After` when the limit is exceeded. `ThrottlerGuard` runs in the `feature` guard phase, after authentication, so it partitions by the trusted identity whatever the import order. Custom stores implement `ThrottlerStore` (`increment(key, ttlMs)`, `reset(key)`); the default is in-memory.
+A throttler without `name` is `'default'`; `@SkipThrottle()` skips `'default'` only, as in Nest. A route's `limit` and `ttl` for a name override its controller's field by field, as in Nest v5 (`{ limit }` on a route keeps the controller's `ttl`); both must be positive integers. `@Throttle()` naming an undeclared throttler fails bootstrap, including one a controller inherits from an ancestor class. Headers: `X-RateLimit-Limit`, `-Remaining`, `-Reset` and `Retry-After` for `'default'`, suffixed `-<name>` for the others (`X-RateLimit-Limit-short`); the first throttler exceeded answers 429 (`TooManyRequestsException`). The guard publishes one `{ limit, remaining?, reset }` per throttler name under the `RATE_LIMIT` request-context key (`requestContext.get(RATE_LIMIT)?.default`). `ThrottlerGuard` runs in the `feature` guard phase, after authentication, so it partitions by the trusted identity whatever the import order. `ThrottlerModuleOptions`: `throttlers` (non-empty, unique names, positive integer `ttl`/`limit`), `storage?` (a `ThrottlerStore` or `(env) => ThrottlerStore`; default per-application memory), `getTracker(request, context)` (fallback after trusted identity), `generateKey(context, tracker, throttlerName)`. Custom stores implement `ThrottlerStore` (`increment(key, ttl, limit, throttlerName)`, `reset(key)`, optional `fixedLimits`, optional `validate(throttlers)` called with the declared throttlers at bootstrap). On Workers, `storage: rateLimitStore({ binding: 'API_LIMITER' })` (or `{ binding: { short: 'BURST', long: 'API' } }`) from `@velajs/cloudflare` uses Workers Rate Limiting bindings: each binding's `simple.limit`/`period` must equal its throttler's `limit`/`ttl` (10 or 60 s), and since the platform enforces them, a `@Throttle()` override that changes them fails bootstrap; one binding serves only throttlers sharing a `limit`/`ttl`, and the store fails bootstrap for another period, mixed values on one binding or a throttler its map leaves out. Its counters are per location and eventually consistent (approximate limits); for strict ones implement a `ThrottlerStore` counting in a Durable Object.
 
 ## Caching — `CacheModule`
 
-`CacheModule.forRoot({ ttl, max })` provides `CacheService` (manual) and `CacheInterceptor` (auto-cache GET responses):
+`CacheModule` is the one cache module, asynchronous end to end. `namespace` and a trusted `scope(context)` resolver are required; `store` defaults to a per-application `MemoryCacheStore` (`max` entries, default 1000):
 
 ```ts
-import {
-  CacheModule,
-  CacheService,
-  CacheInterceptor,
-  Cacheable,
-  CacheKey,
-  CacheTTL,
-} from '@velajs/vela/cache';
+import { Body, Controller, Get, Module, Post } from '@velajs/vela';
+import { CacheModule, CacheResponse, CacheService, MemoryCacheInvalidationStore } from '@velajs/vela/cache';
 
-@Module({ imports: [CacheModule.forRoot({ ttl: 60, max: 100 })] }) // ttl in SECONDS
+@Module({
+  imports: [
+    CacheModule.forRoot({
+      namespace: 'reports-v1',
+      scope: (context) => trustedScope(context),        // runs after guards; undefined bypasses
+      invalidation: () => new MemoryCacheInvalidationStore(), // needed for tags; a function builds one per app
+      ttl: 30,                                          // seconds, default 30
+    }),
+  ],
+})
 class AppModule {}
 
 @Controller('/reports')
@@ -134,31 +146,26 @@ class ReportsController {
   constructor(private readonly cache: CacheService) {}
 
   @Get('/summary')
-  @UseInterceptors(CacheInterceptor)   // opt-in per route (or CacheModule.forRoot({ globalInterceptor: true }))
-  @Cacheable()
-  @CacheKey('reports:summary')
-  @CacheTTL(30)
+  @CacheResponse({ ttl: 30, tags: ['reports'], key: 'summary' }) // opt-in; undecorated routes never cache
   summary() { return this.buildSummary(); }
 
-  private buildSummary() { return { total: 0 }; }
-
-  @Get('/manual')
-  manual() {
-    const value = this.cache.get('n');
-    const hit = typeof value === 'number' ? value : 0;
-    this.cache.set('n', hit + 1);      // set(key, value, ttl?)
-    return { count: hit + 1 };
+  @Post('/')
+  async create(@Body() body: unknown) {
+    const created = await this.save(body);
+    await this.cache.scope(trustedScope()).invalidateTags(['reports']); // after commit
+    return created;
   }
+
+  private buildSummary() { return { total: 0 }; }
+  private async save(body: unknown) { return body; }
 }
 ```
 
-`CacheModuleOptions`: `ttl` (seconds, default 5), `max` (default 100), `globalInterceptor?` (registers `CacheInterceptor` app-wide; structural), `store?` (synchronous only), `varyBy?` (trusted principal/tenant partition). Routes require `@Cacheable()`. Custom keys are suffixes beneath host/path/canonical query. Credentialed requests need an explicit trusted variation. `CacheService` stays synchronous with unknown raw reads and parser-inferred `getParsed`.
+`CacheModuleOptions`: `namespace`, `scope`, `store?` (a `CacheStore`, sync or async, or `(env) => CacheStore`), `invalidation?` (a `CacheInvalidationStore` or `(env) => …`), `ttl?`, `max?`, `maxBytes?`, `shouldCache?`, `onError?`. On Workers use `store: kvCache({ binding: 'CACHE' })` and `invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' })` from `@velajs/cloudflare`: each reads its namespace from the application's `ENV` when used. Configure one `CacheModule` per application (`forRoot` or `forRootAsync`); it installs its interceptor automatically, and scopes return `{ visibility: 'public' | 'private', partition }` from trusted identity/tenant data. Guards authorize every hit; public scopes bypass credentialed requests.
 
-For asynchronous stores, use `ResponseCacheModule.forRoot({ namespace, store, scope, invalidation? })` and `@CacheResponse({ ttl, tags, key })`. This module installs its opt-in interceptor automatically. `scope(context)` runs after guards and returns `{ visibility: 'public' | 'private', partition }` from trusted identity/tenant data, or undefined to bypass. Guards authorize every hit. Never mix `@Cacheable` and `@CacheResponse` on one route.
+Inject `CacheService` and obtain `cache.scope(trustedScope)` for async `get`, `getParsed`, `set`, `remember`, `invalidateKey`, `invalidateTags`, and `invalidateAll`. Tags and whole-scope invalidation reach routes and custom values in that partition only. Invalidate after a successful commit. Invalidation resolves `{ ok: true }` or `{ ok: false, reason }`, so cache failures do not report a committed write as failed. Tags require a `CacheInvalidationStore`; `MemoryCacheInvalidationStore` is process-local, and the KV one is eventually consistent.
 
-Inject `ResponseCacheService` and obtain `cache.scope(trustedScope)` for async `get`, `getParsed`, `set`, `remember`, `invalidateKey`, `invalidateTags`, and `invalidateAll`. Tags and whole-scope invalidation reach routes and custom values in that partition only. Invalidate after a successful commit. Invalidation resolves `{ ok: true }` or `{ ok: false, reason }`, so cache failures do not report a committed write as failed. Tags require optional `CacheInvalidationStore`; `MemoryCacheInvalidationStore` is process-local, and `KVCacheInvalidationStore` in `@velajs/cloudflare` is eventually consistent.
-
-The async path caches only bounded JSON snapshots, never responses, streams, cookie-setting output or authentication secrets. Generation stamps fence old fills, and absolute expiry prevents stale replay. `TieredCacheStore` promotes only known-expiry entries into destinations implementing `CacheEntryWriter`, preserving their absolute deadline. KV generations require a dedicated namespace without expiry/reset; successful KV invalidation is not a global read-after-write guarantee. See `docs/caching.md` in the repository for the complete contract.
+Only bounded JSON snapshots are cached, never responses, streams, cookie-setting output or authentication secrets. Generation stamps fence old fills, and absolute expiry prevents stale replay. `TieredCacheStore` promotes only known-expiry entries into destinations implementing `CacheEntryWriter`, preserving their absolute deadline. KV generations require a dedicated namespace without expiry/reset; successful KV invalidation is not a global read-after-write guarantee. See `docs/caching.md` in the repository for the complete contract.
 
 
 ## Application-owned structured logging

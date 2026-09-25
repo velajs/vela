@@ -13,7 +13,7 @@ import {
   type CloudflareScheduledEvent,
 } from '@velajs/cloudflare';
 import { StudioModule } from '../../src';
-import { StudioScheduleModule } from '../../src/schedule';
+import { schedulePanel } from '../../src/schedule';
 
 // The documented Workers job: it reads the trigger event and extends its
 // invocation. Studio's run-now must give it what a cron trigger would.
@@ -41,9 +41,8 @@ Cron('30 2 * * *', { dialect: 'cloudflare' })(
 class App {}
 Module({
   imports: [
-    StudioModule.forRoot({ editable: { ops: true } }),
+    StudioModule.forRoot({ editable: { ops: true }, plugins: [schedulePanel()] }),
     ScheduleModule,
-    StudioScheduleModule.forRoot({}),
   ],
   providers: [Exports],
 })(App);

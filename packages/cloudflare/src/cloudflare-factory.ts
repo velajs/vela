@@ -1,6 +1,7 @@
 import type { ExecutionContext } from 'hono';
 import { VelaFactory } from '@velajs/vela';
 import type {
+  CorsOptions,
   GlobalPrefixOptions,
   VelaApplication,
   VelaCreateOptions,
@@ -26,6 +27,8 @@ export interface CloudflareAppOptions {
   /** URI versioning: the version segment prefix (default `'v'`). */
   versioning?: VersioningOptions;
   security?: VelaSecurityOptions;
+  /** Enable CORS for every route: `true` or `CorsOptions`, as `app.enableCors()` takes. */
+  cors?: CorsOptions | boolean;
   /** Further runtime adapters, composed after the Cloudflare adapter for each application. */
   adapters?: RuntimeAdapter[];
 }
@@ -131,6 +134,7 @@ export function cloudflareCreateOptions(options: CreateCloudflareAppOptions): Ve
     globalPrefixOptions: options.globalPrefixOptions,
     versioning: options.versioning,
     security: options.security,
+    cors: options.cors,
     adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
   };
 }

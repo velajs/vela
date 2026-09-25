@@ -12,7 +12,7 @@ Vela (`@velajs/vela`) provides a NestJS-style framework for **edge runtimes**, b
 
 - The **main export** `@velajs/vela` is edge-safe by contract (no `node:*`, `Buffer`, `process`, `setInterval`) — enforced in CI.
 - The root is the **application kit**: `VelaFactory`, modules and DI, controllers and route/param decorators, guards/pipes/interceptors/filters, HTTP exceptions, `ConfigModule`, `Logger` and lifecycle types. Every name has exactly one import path.
-- Feature subpaths: `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/security` (SecurityModule, CORS, signed-URL primitives, nonce store), `/logging`, `/openapi` (`OpenApiModule`, `@Endpoint`, OpenAPI documents), `/dispatch` (signed internal dispatch), `/http-client`, `/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/storage`, `/streaming`, `/observability`, `/schedule-node` and `/websocket-node` (Node/Bun only).
+- Feature subpaths: `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/security` (SecurityModule, signed-URL primitives, nonce store), `/logging`, `/openapi` (`OpenApiModule`, `@Endpoint`, OpenAPI documents), `/dispatch` (signed internal dispatch), `/http-client`, `/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/streaming`, `/observability`, `/schedule-node` and `/websocket-node` (Node/Bun only).
 - `@velajs/vela/module-kit` holds the seams for module, integration and adapter authors (`Container`, `MetadataRegistry`, `DiscoveryService`, entrypoint kinds, execution scopes, `PipelineRunner`, route contributors, `invokeScheduledJob`); `@velajs/vela/internal` holds bootstrap plumbing for first-party tooling.
 - Sibling packages: `@velajs/cloudflare` (Workers adapter: KV/D1/R2/Queues/DO), `@velajs/crud`, `@velajs/better-auth`, `@velajs/authz`, `@velajs/client` / `@velajs/react`, `@velajs/storage`, `@velajs/testing`, `@velajs/cli`, `@velajs/feature-flags`.
 
@@ -66,9 +66,9 @@ export default app;   // { fetch } handler — runs on Workers, Deno, Bun, Node
 ```
 
 - `VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`. The root is a module class or a `DynamicModule` (`AppModule.forRoot(...)`); any module can inject it as the global `ROOT_MODULE`.
-- `VelaCreateOptions`: `globalPrefix?`, `globalPrefixOptions?` (`{ exclude }`), `versioning?` (`{ prefix }` of the URI version segment), `getClientIp?`, `middleware?`, `adapters?` (platform `RuntimeAdapter`s), `env?` (seeds the framework `ENV`), `ambientContainer?` (opt-in AsyncLocalStorage), `diagnostics?`. There is **no** `logger` or `cors` option, and **no** `app.setGlobalPrefix()` method — routes are built at creation, so set the prefix via the create option and read it with `app.getGlobalPrefix()`.
+- `VelaCreateOptions`: `globalPrefix?`, `globalPrefixOptions?` (`{ exclude }`), `versioning?` (`{ prefix }` of the URI version segment), `getClientIp?`, `middleware?`, `cors?` (`true` or `CorsOptions`, as Nest's), `adapters?` (platform `RuntimeAdapter`s), `env?` (seeds the framework `ENV`), `ambientContainer?` (opt-in AsyncLocalStorage), `diagnostics?`. There is **no** `logger` option, and **no** `app.setGlobalPrefix()` method — routes are built at creation, so set the prefix via the create option and read it with `app.getGlobalPrefix()`.
 - `app.fetch` is the universal handler (`serve({ fetch: app.fetch })` on Node via `@hono/node-server`; `export default app` on edge).
-- `VelaApplication` methods: `get(token)`, `getHonoApp()` (for `.request()` in tests), `describeRoutes()`, `mountOpenApi(opts)`, `useGlobal*(...)`, `materializeLazyModules()`, `entrypoints`, `close(signal?)`, `dispose()`.
+- `VelaApplication` methods: `get(token)`, `getHonoApp()` (for `.request()` in tests), `describeRoutes()`, `mountOpenApi(opts)`, `enableCors(options?)` (Hono's `cors` ahead of every route and guard; no rebuild), `useGlobal*(...)`, `materializeLazyModules()`, `entrypoints`, `close(signal?)`, `dispose()`.
 - Convention: examples export an `async function createXApp()` factory. `@velajs/cli` builds the Worker entry's application itself; an optional `vela.config.ts` supplies a `createApp()` factory instead — Vela itself has no `createApp` API.
 
 For Cloudflare export `createCloudflareWorker(AppModule)`; it seeds the native environment as the framework `ENV` before bootstrap and isolates applications by environment. Its adapter also wires the core `WebSocketModule` and `LiveModule` to Durable Objects (`WS_TRANSPORT`/`LIVE_PLATFORM`), so the same `AppModule` runs on Node and Workers. Inject bindings with `@InjectEnv()` or `inject: [ENV]`, typed by `wrangler types` (`worker-configuration.d.ts`); never hand-write an environment `InjectionToken`. Read `references/cloudflare.md`. New projects: read `assets/project-scaffold.md`.
@@ -168,14 +168,14 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/schedule-and-cron.md` | `@velajs/vela/schedule`: `ScheduleModule`, `@Cron`/`@Interval`, edge-safe registry vs `@velajs/vela/schedule-node` executor |
 | `references/events.md` | `@velajs/vela/events`: `EventEmitterModule`, `@OnEvent`, wildcards, lazy note |
 | `references/i18n.md` | `@velajs/vela/i18n`: `I18nModule`, `I18nService.t`, detection middleware, `intl-messageformat` peer |
-| `references/errors-and-health.md` | HTTP exception family, exception filters, `HealthModule` (`@velajs/vela/health`), `ThrottlerModule`/`@Throttle` (`@velajs/vela/throttler`), `CacheModule`/`CacheInterceptor` (`@velajs/vela/cache`) |
+| `references/errors-and-health.md` | HTTP exception family, exception filters, `HealthModule` (`@velajs/vela/health`), `ThrottlerModule`/`@Throttle` (`@velajs/vela/throttler`), `CacheModule`/`@CacheResponse`/`CacheService` (`@velajs/vela/cache`) |
 | `references/seeders.md` | `@velajs/vela/seeder`: `@Seeder`, `SeederRegistry`, `runSeeders`, `vela db seed` |
 | `references/testing.md` | `@velajs/testing`: `Test.createTestingModule()`, `overrideProvider/Guard/...`, `overrideModule().useModule()`, `useMocker()`, HTTP testing; `createTestingWorker()` from `@velajs/cloudflare/testing` for `fetch`/`queue()`/`scheduled()` in workerd |
 | `references/cli-and-introspection.md` | `@velajs/cli` commands: new, generate, add, cf sync, deploy check, route/module/entrypoint/openapi introspection, optional `vela.config` |
 | `references/cloudflare.md` | `@velajs/cloudflare`: Workers adapter, KV/D1/R2/Queues/Durable Objects, `wrangler.toml`, `nodejs_compat` |
 | `references/crud.md` | `@velajs/crud`: generated CRUD controllers, `RouteContributor` |
 | `references/auth.md` | `@velajs/better-auth` authentication and shared `@velajs/authz/vela` authorization |
-| `references/storage.md` | `@velajs/storage` / `@velajs/vela/storage`: file storage; signed-URL primitives from `@velajs/vela/security` |
+| `references/storage.md` | `@velajs/storage`: the one file-storage module; `r2Storage({ binding })` from `@velajs/cloudflare/storage` on Workers |
 | `references/feature-flags.md` | `@velajs/feature-flags`: flags, parser-validated evaluation, drivers |
 | `references/incremental-adoption.md` | Mounting Vela into an existing Hono app; migrating from NestJS |
 | `assets/project-scaffold.md` | New project template (package.json, tsconfig, module/controller, main.ts) |
@@ -198,7 +198,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **`Circular dependency detected: ...`** → Break the cycle with `@Inject(forwardRef(() => Other))` (providers) or `imports: [forwardRef(() => OtherModule)]` (modules).
 
-**`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `CacheModule.forRoot({ ttl: 60, key: 'fast' })` and `forRoot({ ttl: 120, key: 'slow' })`; without keys the second configuration fails bootstrap). Import only one, or use a per-instance accessor.
+**`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `HttpModule.forRoot({ baseURL: a, key: 'a' })` and `forRoot({ baseURL: b, key: 'b' })`; without keys the second configuration fails bootstrap). Import only one, or use a per-instance accessor.
 
 **`lazy module 'X' has async providers or lifecycle hooks and was triggered through a synchronous resolution path.`** → A `lazy: true` module has async work but was reached via `app.get()` or another synchronous resolver. Use `resolveAsync()` or `app.materializeLazyModules()`. The HTTP pipeline supports async resolution.
 

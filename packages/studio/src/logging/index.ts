@@ -1,11 +1,10 @@
 /** Optional, application-owned structured log capture. No console patching or ambient state. */
-import { APP_INTERCEPTOR, defineModule, defineProvider } from '@velajs/vela';
+import { APP_INTERCEPTOR, defineProvider } from '@velajs/vela';
 import { APP_LOGGER } from '@velajs/vela/logging';
-import { describeToken, getExecutionLifetime } from '@velajs/vela/module-kit';
+import { Container, describeToken, getExecutionLifetime } from '@velajs/vela/module-kit';
 import type {
   CallHandler,
   ExecutionContext,
-  ModuleImport,
   NestInterceptor,
   OnModuleDestroy,
   OnModuleInit,
@@ -14,10 +13,9 @@ import type { ApplicationLogger, LogRecord } from '@velajs/vela/logging';
 import { parseStudioInvocationDiagnostic } from '@velajs/studio-protocol';
 import type { AdminLogEntry, StudioInvocationDiagnostic } from '@velajs/studio-protocol';
 import { AdminLogBuffer } from '../logs/log-buffer';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 
-export interface StudioLoggingModuleOptions {
-  /** Include the configured StudioModule and LoggingModule instances. */
-  imports?: ModuleImport[];
+export interface LogsPanelOptions {
   /** Record handler/inner-interceptor completion; excludes transport and deferred work. Default false. */
   timings?: boolean;
 }
@@ -109,26 +107,38 @@ export class StudioTimingInterceptor implements NestInterceptor {
   }
 }
 
-const { ConfigurableModuleClass } = defineModule<StudioLoggingModuleOptions, 'imports'>({
-  name: 'StudioLogging',
-  structural: ['imports'],
-  key: () => 'application',
-  setup: ({ OPTIONS, options }) => ({
-    imports: options.imports,
+/** The application's `APP_LOGGER`, which `LoggingModule.forRoot()` provides. */
+function applicationLogger(container: Container): ApplicationLogger {
+  if (!container.has(APP_LOGGER)) {
+    throw new Error(
+      'logsPanel() captures the application logger: import LoggingModule.forRoot() from ' +
+        '@velajs/vela/logging in the application.',
+    );
+  }
+  return container.resolve(APP_LOGGER);
+}
+
+/**
+ * The logs panel: captures the application's normalized, redacted structured
+ * records (from `LoggingModule`) into Studio's log buffer, and optionally the
+ * handler timings: `StudioModule.forRoot({ plugins: [logsPanel({ timings: true })] })`.
+ */
+export function logsPanel(options: LogsPanelOptions = {}): StudioPlugin {
+  const timings = options.timings === true;
+  return defineStudioPlugin({
+    name: 'logs',
     providers: [
       defineProvider(StudioLogCapture, {
-        inject: [APP_LOGGER, AdminLogBuffer],
-        useFactory: (logger, buffer) => new StudioLogCapture(logger, buffer),
+        inject: [Container, AdminLogBuffer],
+        useFactory: (container, buffer) =>
+          new StudioLogCapture(applicationLogger(container), buffer),
       }),
       defineProvider(StudioTimingInterceptor, {
-        inject: [APP_LOGGER, OPTIONS],
-        useFactory: (logger, settings) => new StudioTimingInterceptor(logger, settings.timings),
+        inject: [Container],
+        useFactory: (container) =>
+          new StudioTimingInterceptor(applicationLogger(container), timings),
       }),
       defineProvider(APP_INTERCEPTOR, { useExisting: StudioTimingInterceptor }),
     ],
-    exports: [StudioLogCapture, StudioTimingInterceptor],
-  }),
-});
-
-/** Opt in to capturing the configured application's normalized, redacted structured records. */
-export class StudioLoggingModule extends ConfigurableModuleClass {}
+  });
+}

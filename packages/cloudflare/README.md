@@ -136,6 +136,14 @@ export default createCloudflareWorker(AppModule, {
 });
 ```
 
+Enable CORS as in Nest, with the `cors` option or `app.enableCors()` inside
+`configure`; Hono's `cors` middleware then answers preflights ahead of every
+route and guard:
+
+```ts
+export default createCloudflareWorker(AppModule, { cors: { origin: ['https://app.example.com'] } });
+```
+
 For explicit construction inside a platform event:
 
 ```ts
@@ -380,7 +388,7 @@ hibernatable sockets, invalidations apply locally, and the cursor log is a
 `DoCursorLog` in the object's SQLite storage (in memory when the class is not
 SQLite-backed). `LiveInspector` reads a named room through the same gateway
 binding with the object's `inspectLive` RPC, which
-`StudioLiveModule.forRoot({ rooms })` uses. The same `RoomModule` serves the Worker, every Durable Object
+Studio's `livePanel({ rooms })` uses. The same `RoomModule` serves the Worker, every Durable Object
 and a node host. Without `WebSocketModule`, the Worker mounts no upgrade route,
 and the adapter reports each binding-backed gateway through the diagnostics
 policy.
@@ -419,36 +427,95 @@ package. `VelaNonceDurableObject` is exported from `/durable-objects`; its
 The root package contains no runtime `cloudflare:workers` import and can be
 loaded by Node tooling. Native classes belong to `/durable-objects`.
 
-## R2 storage and caches
+## Bindings by name
 
-For new object/file storage, prefer the independently imported
-[`@velajs/storage`](../storage/README.md#portable-storage-and-the-cloudflare-proxy)
-with a native R2 or hybrid driver. The storage module below remains the supported
-1.x Worker HMAC proxy API; its signed routes differ from provider-signed URLs.
+Module options name a binding instead of holding it. `kv`, `r2`, `d1`,
+`queue`, `durableObject` and `rateLimit` each take `{ binding }`, the name
+declared in the Wrangler configuration, and read nothing when declared: calling
+the reference with an application's `ENV` returns the typed native binding, or
+fails naming the binding and the Wrangler key that declares it
+(`ENV.UPLOADS is not set: declare the R2 bucket binding 'UPLOADS' under r2_buckets …`).
+The drivers and stores below are built on them, so one static module graph
+serves every environment.
 
-Configure named disks from an async factory using actual bucket values:
+## Rate limiting
+
+`ThrottlerModule` from `@velajs/vela/throttler` counts through Workers Rate
+Limiting bindings named in `rateLimitStore`:
 
 ```ts
-StorageModule.forRootAsync({
-  inject: [ENV],
-  useFactory: (env) => ({
-    defaultDisk: 'uploads',
-    secret: env.APP_SECRET,
-    disks: [{ disk: 'uploads', bucket: env.FILES, root: 'uploads/{year}' }],
-    presignedUrl: { defaultExpiry: 3600, maxExpiry: 86400 },
-  }),
+import { ThrottlerModule } from '@velajs/vela/throttler';
+import { rateLimitStore } from '@velajs/cloudflare';
+
+ThrottlerModule.forRoot({
+  throttlers: [
+    { name: 'burst', ttl: 10_000, limit: 20 },
+    { name: 'sustained', ttl: 60_000, limit: 100 },
+  ],
+  storage: rateLimitStore({ binding: { burst: 'BURST_LIMITER', sustained: 'API_LIMITER' } }),
 });
 ```
 
-`StorageService` supports upload, download, delete, existence checks, and expiring
-signed download URLs. The proxy validates signatures, HTTP method, expiry, and
-the configured root; returned files download as attachments.
+`rateLimitStore({ binding: 'API_LIMITER' })` serves every throttler from one
+binding. Each binding's `simple.limit` and `simple.period` in the Wrangler
+`ratelimits` block must equal its throttler's `limit` and `ttl` (10 or 60
+seconds): the platform enforces them, so a `@Throttle()` override that changes
+them fails at bootstrap, and one binding serves only throttlers that share a
+`limit` and `ttl`. The store checks the declared throttlers at bootstrap: another
+period, different values on one binding, or a throttler the per-name map leaves
+out fails the application before any binding is charged. The platform exposes no
+counters, so responses carry no `X-RateLimit-Remaining`, and no reset time, so
+`X-RateLimit-Reset` and `Retry-After` report the configured period.
 
-Construct `KVCacheStore` and `KvFlagDriver` with a native namespace:
-`new KVCacheStore(env.CACHE)` and `new KvFlagDriver(env.CACHE)`. Cache reads and
-object-valued flag reads return `unknown`; validate them with an application
-parser. Core `CacheService.getParsed(key, parser)` infers the result from that
-parser. Memory and tiered cache reads use the same unknown-value contract.
+Workers Rate Limiting counts per Cloudflare location, and its counters are
+eventually consistent: limits are approximate, not a global or exact quota. A
+client spread across locations can exceed them. For strict limits such as login
+attempts per account, implement a `ThrottlerStore` that counts in a Durable
+Object.
+
+## R2 storage and caches
+
+`StorageModule` from [`@velajs/storage`](../storage/README.md#storage-on-cloudflare-workers)
+is the one file-storage module. Its native R2 driver comes from the
+`@velajs/cloudflare/storage` subpath:
+
+```ts
+import { StorageModule } from '@velajs/storage';
+import { r2Storage } from '@velajs/cloudflare/storage';
+
+StorageModule.forRoot({ driver: r2Storage({ binding: 'UPLOADS' }) });
+```
+
+The bucket is read from each application's `ENV` on its first storage
+operation. The native binding cannot presign; use `publicBaseUrl`, the storage
+HTTP controller with `http: { download: 'proxy' }`, or the R2 HTTP/hybrid
+drivers for provider-signed URLs.
+
+`CacheModule` from `@velajs/vela/cache` takes its KV stores by binding name:
+
+```ts
+import { CacheModule } from '@velajs/vela/cache';
+import { kvCache, kvCacheInvalidation } from '@velajs/cloudflare';
+
+CacheModule.forRoot({
+  namespace: 'catalog-v1',
+  scope: trustedCacheScope,
+  store: kvCache({ binding: 'CACHE' }),
+  invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' }),
+});
+```
+
+Each operation reads the namespace from the application's `ENV`. A binding that
+is not declared fails the operation with an error naming it and
+`kv_namespaces`; the cache treats that as a miss and sends the error to the
+application's error reporter (edge `'cache'`).
+
+`KVCacheStore` and `KVCacheInvalidationStore` take a namespace or a function
+returning one, for composition such as
+`store: (env) => new TieredCacheStore([new MemoryCacheStore(), new KVCacheStore(env.CACHE)])`.
+Construct `KvFlagDriver` with a native namespace: `new KvFlagDriver(env.CACHE)`.
+Cache reads and object-valued flag reads return `unknown`; validate them with an
+application parser (`cache.scope(scope).getParsed(key, parser)`).
 
 ## Testing Worker handlers
 
@@ -527,13 +594,12 @@ The Workers suite uses real KV, D1, R2, WebSockets, SQLite Durable Objects, and
 cold event dispatch. See the [security guide](https://github.com/velajs/vela/blob/main/docs/cloudflare-security.md) for trusted identity,
 URL signing, and WebSocket boundaries.
 
-### Asynchronous response caches
+### KV caches
 
-`KVCacheStore` works directly in core `ResponseCacheModule` or as a tier beneath
-`TieredCacheStore`. The adapter retains absolute logical expiry in KV metadata;
-KV's minimum physical retention does not extend the requested TTL. For optional
-generic tags/scoped invalidation, configure `KVCacheInvalidationStore` with a
-separate dedicated KV namespace without TTLs or lifecycle cleanup. It is eventually
+`kvCache` works directly as `CacheModule`'s store or, through `KVCacheStore`, as
+a tier beneath `TieredCacheStore`. The adapter retains absolute logical expiry in
+KV metadata; KV's minimum physical retention does not extend the requested TTL.
+For tags and scoped invalidation, configure `kvCacheInvalidation` with a separate
+dedicated KV namespace without TTLs or lifecycle cleanup. It is eventually
 consistent, including concurrent writes and cached negative reads, and does not
-promise globally strong invalidation. Construct both in an environment-injected
-factory. See the [caching guide](../../docs/caching.md).
+promise globally strong invalidation. See the [caching guide](../../docs/caching.md).

@@ -18,19 +18,18 @@ export type {
 export { CloudflareApplication } from './cloudflare-application';
 export type { MountOpenApiOptions } from './cloudflare-application';
 
-// Storage (multi-disk over R2 + presign proxy)
-export {
-  StorageModule,
-  StorageService,
-  StorageManagerService,
-  StorageController,
-  R2StorageDriver,
-  STORAGE_OPTIONS,
-} from './storage/index';
-export type { StorageModuleOptions, DiskConfig, PresignedUrlConfig } from './storage/index';
+// Name-based binding factories: { binding } references resolved from each
+// application's ENV when used
+export { d1, durableObject, kv, queue, r2, rateLimit } from './bindings';
 
 // Services
-export { KVCacheStore, KVCacheInvalidationStore } from './services/kv-cache.store';
+export {
+  KVCacheStore,
+  KVCacheInvalidationStore,
+  kvCache,
+  kvCacheInvalidation,
+} from './services/kv-cache.store';
+export type { KVNamespaceSource } from './services/kv-cache.store';
 
 // Feature-flag drivers (implement @velajs/feature-flags' FeatureFlagDriver contract)
 export { FlagshipFlagDriver, flagshipFlagDriver } from './services/flagship-flag.driver';
@@ -72,12 +71,9 @@ export type { CfLiveDriver, DurableObjectLiveOptions, LiveNamespace } from './we
 // Types
 export type { QueueConsumerMetadata } from './decorators/queue-consumer';
 
-// Distributed abuse control (Cloudflare Workers Rate Limiting binding)
-export { cloudflareRateLimitStore } from './rate-limit/index';
-export type {
-  CloudflareRateLimitBinding,
-  CloudflareRateLimitStoreOptions,
-} from './rate-limit/index';
+// ThrottlerModule storage over Workers Rate Limiting bindings, by name
+export { rateLimitStore } from './rate-limit/index';
+export type { RateLimitStoreOptions } from './rate-limit/index';
 
 // Strict global single-use nonces (SQLite Durable Object)
 export { durableObjectNonceStore } from './nonce/index';

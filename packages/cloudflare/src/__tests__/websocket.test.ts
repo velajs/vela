@@ -1,6 +1,7 @@
 import { setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { describe, it, expect } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   Inject,
   InjectEnv,
   Injectable,
@@ -11,6 +12,8 @@ import {
   type MiddlewareConsumer,
   type NestMiddleware,
   type NestModule,
+  type ErrorReportContext,
+  type ExceptionHandler,
   type VelaContext,
   type VelaEnv,
 } from '@velajs/vela';
@@ -1003,6 +1006,49 @@ describe('gateway upgrade routes (Worker → DO)', () => {
 
     expect(res.status).toBe(400);
     expect(calls).toEqual([]);
+  });
+
+  it('fails an upgrade whose Durable Object binding is missing or of another kind, naming its Wrangler key', async () => {
+    @WebSocketGateway({
+      path: '/rooms/:id/ws',
+      roomParam: 'id',
+      binding: 'ROOM',
+      authenticator: TestUpgradeAuthenticator,
+    })
+    class RoomGateway {}
+    const reports: Array<{ error: unknown; context: ErrorReportContext }> = [];
+    const handler: ExceptionHandler = {
+      report(error, context) {
+        reports.push({ error, context });
+      },
+    };
+    @Module({
+      imports: [WebSocketModule.forRoot()],
+      providers: [RoomGateway, defineProvider(APP_EXCEPTION_HANDLER, { useValue: handler })],
+    })
+    class AppModule {}
+
+    const env: Record<string, unknown> = {};
+    const app = await createCloudflareApp(AppModule, { env });
+    const upgrade = () =>
+      app.getHonoApp().request('/rooms/general/ws', { headers: { upgrade: 'websocket' } }, env);
+    try {
+      const missing = await upgrade();
+      // Answered by the application's error handler with the redacted body.
+      expect(missing.status).toBe(500);
+      expect(await missing.text()).not.toContain('ROOM');
+      env.ROOM = { get: () => ({}) };
+      const wrongKind = await upgrade();
+      expect(wrongKind.status).toBe(500);
+      expect(reports.map(({ error }) => String(error))).toEqual([
+        "Error: ENV.ROOM is not set: declare the Durable Object namespace binding 'ROOM' under " +
+          'durable_objects.bindings in the runtime configuration.',
+        "TypeError: ENV.ROOM is not a binding of type Durable Object namespace: declare 'ROOM' " +
+          'under durable_objects.bindings in the runtime configuration.',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects cross-origin browsers and authorization failures before DO allocation', async () => {

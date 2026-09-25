@@ -1,12 +1,13 @@
-import { defineProvider, defineModule } from '@velajs/vela';
+import { defineProvider } from '@velajs/vela';
 /**
  * `@velajs/studio/crud` — the OPTIONAL crud binding for the data browser.
  *
  * This subpath is the ONLY module in the package that imports `@velajs/crud`
  * (the crud-drizzle optional-peer discipline): the core `.` entry never does, so
  * apps without crud still mount `StudioModule` and just report the `data`
- * feature false. An app WITH crud additionally imports `StudioCrudModule`, which
- * binds a {@link CrudStudioModelSource} to the core `STUDIO_MODEL_SOURCE` token.
+ * feature false. An app WITH crud adds `crudPanel()` to
+ * `StudioModule.forRoot({ plugins })`, which binds a {@link CrudStudioModelSource}
+ * to the core `STUDIO_MODEL_SOURCE` token.
  *
  * The source discovers `@Crud`-stamped controllers via the public
  * `DiscoveryService` metadata and `getCrudConfig`, resolves each resource with
@@ -51,7 +52,9 @@ import type {
   StudioRowPage,
   WriteRowRequest,
 } from '@velajs/studio-protocol';
-import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
+import { STUDIO_DATA_OPTIONS, STUDIO_MODEL_SOURCE } from '../data/model-source.port';
+import type { StudioDataOptions } from '../data/model-source.port';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 import type {
   StudioDeleteRowsOutcome,
   StudioGenerateRowsOutcome,
@@ -62,9 +65,7 @@ import type {
 import type { StudioChange, StudioChangeKind } from '@velajs/studio-protocol';
 import type { TimeTravelScope } from '@velajs/studio-protocol';
 import { studioConflict, studioError, studioNotFound } from '../studio.errors';
-import { STUDIO_RESOLVED_CONFIG } from '../tokens';
 import { StudioDataWriteOps } from '../data/data.write.ops';
-import type { ResolvedStudioConfig } from '../studio.types';
 import type { ChangeSource } from '../timetravel/change-source.port';
 
 /** Cap on per-row audit images (delete before-images / generate sample). */
@@ -797,7 +798,7 @@ export class CrudStudioModelSource implements StudioModelSource {
    * preserves lazy modules. Ambiguous identities and invalid selections fail closed.
    */
   private index(): Map<string, ManagedEntry> {
-    const config = this.resolvedConfig();
+    const config = this.dataOptions();
     const include = config?.managedModels?.include;
     const exclude = config?.managedModels?.exclude;
     const map = new Map<string, ManagedEntry>();
@@ -854,44 +855,41 @@ export class CrudStudioModelSource implements StudioModelSource {
     return map;
   }
 
-  private resolvedConfig(): ResolvedStudioConfig | undefined {
-    return this.container.has(STUDIO_RESOLVED_CONFIG)
-      ? this.container.resolve(STUDIO_RESOLVED_CONFIG)
+  private dataOptions(): StudioDataOptions | undefined {
+    return this.container.has(STUDIO_DATA_OPTIONS)
+      ? this.container.resolve(STUDIO_DATA_OPTIONS)
       : undefined;
   }
 }
 
 // ---------------------------------------------------------------------------
-// The module
+// The panel
 // ---------------------------------------------------------------------------
 
-/** Options for {@link StudioCrudModule}. Reserved for M7 write wiring. */
-export type StudioCrudModuleOptions = Record<string, never>;
-
-const { ConfigurableModuleClass } = defineModule<StudioCrudModuleOptions>({
-  name: 'StudioCrud',
-  setup: () => ({
+/**
+ * The data browser over `@Crud` resources: binds {@link CrudStudioModelSource}
+ * to `STUDIO_MODEL_SOURCE` and registers the data WRITE ops, lighting the
+ * `data` and `transfer` features:
+ * `StudioModule.forRoot({ plugins: [crudPanel({ managedModels: { include: ['todo'] } })] })`.
+ */
+export function crudPanel(options: StudioDataOptions = {}): StudioPlugin {
+  const settings = Object.freeze({ ...options });
+  return defineStudioPlugin({
+    name: 'crud',
     providers: [
+      defineProvider(STUDIO_DATA_OPTIONS, { useValue: settings }),
       defineProvider(STUDIO_MODEL_SOURCE, {
         useFactory: (discovery: DiscoveryService, container: Container) =>
           new CrudStudioModelSource(discovery, container),
         inject: [DiscoveryService, Container],
       }),
-      // The data WRITE ops. Registered here (not on core StudioModule) because a
-      // write is meaningless without a bound source; the dispatch registry
+      // The data WRITE ops. Registered with the source (not on core StudioModule)
+      // because a write is meaningless without one; the dispatch registry
       // discovers their `@AdminRpc`/`@AdminConfirmSummary` methods across the graph.
       StudioDataWriteOps,
     ],
-    exports: [STUDIO_MODEL_SOURCE],
-  }),
-});
-
-/**
- * Binds {@link CrudStudioModelSource} to `STUDIO_MODEL_SOURCE`. Import it with
- * `StudioCrudModule.forRoot({})` ALONGSIDE `StudioModule` in apps that use crud
- * — this is the seam that lights the `data` feature.
- */
-export class StudioCrudModule extends ConfigurableModuleClass {}
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Audit-backed CDC change source (the zero-seam `snapshot+cdc` path)
@@ -919,8 +917,8 @@ function inferChangeKind(hasAfter: boolean, hasBefore: boolean): StudioChangeKin
  * A {@link ChangeSource} over a crud {@link AuditStore} (`@velajs/crud/audit`) —
  * the zero-seam CDC path: it READS the audit log's `query()` change history
  * (before/after/timestamp per row) rather than adding a `changeFeed` capability
- * to crud. Bind it to the time-travel module (`StudioTimeTravelModule.forRoot({
- * changeSource })`) to enable `snapshot+cdc` restore-to-a-time.
+ * to crud. Pass it to the time-travel panel (`timeTravelPanel({ changeSource })`)
+ * to enable `snapshot+cdc` restore-to-a-time.
  *
  * The app supplies its OWN `AuditStore` instance — the wired default store sits
  * behind an internal crud token, so there is no public accessor for it (M8a

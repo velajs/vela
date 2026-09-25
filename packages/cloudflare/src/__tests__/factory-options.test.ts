@@ -157,7 +157,7 @@ describe('createCloudflareApp options', () => {
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 })],
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] })],
       controllers: [LimitedController],
     })
     class AppModule {}
@@ -205,6 +205,40 @@ describe('createCloudflareApp options', () => {
       env,
     );
     expect(await response.json()).toEqual({ ip: '192.0.2.10' });
+  });
+
+  it('enables CORS from the cors option and from app.enableCors() in configure', async () => {
+    @Controller('/data')
+    class DataController {
+      @Get() read() {
+        return { ok: true };
+      }
+    }
+    @Module({ controllers: [DataController] })
+    class AppModule {}
+    const request = () =>
+      new Request('https://worker.test/data', { headers: { Origin: 'https://app.test' } });
+
+    const option = createCloudflareWorker(AppModule, { cors: { origin: 'https://app.test' } });
+    const optionRes = await option.fetch(request(), {}, httpContext);
+    expect(optionRes.headers.get('access-control-allow-origin')).toBe('https://app.test');
+
+    const configured = createCloudflareWorker(AppModule, {
+      configure: (app) => {
+        app.enableCors({ origin: ['https://app.test'] });
+      },
+    });
+    const configuredRes = await configured.fetch(request(), {}, httpContext);
+    expect(configuredRes.headers.get('access-control-allow-origin')).toBe('https://app.test');
+    const preflight = await configured.fetch(
+      new Request('https://worker.test/data', {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://app.test', 'Access-Control-Request-Method': 'GET' },
+      }),
+      {},
+      httpContext,
+    );
+    expect(preflight.status).toBe(204);
   });
 
   it('forwards unified parser security options', async () => {

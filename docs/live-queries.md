@@ -193,8 +193,7 @@ is each room its socket joined; the sockets of a gateway without `roomParam`
 join its path, so name that path to inspect them. Each subscription and each
 room member is reported once, even when several named rooms live in one object. Without a platform
 reader, the application's own engine answers. Rows exclude query arguments,
-results and identity claims. Studio's `StudioLiveModule.forRoot({ rooms })`
-uses it.
+results and identity claims. Studio's `livePanel({ rooms })` uses it.
 
 ## Optimistic updates
 

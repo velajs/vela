@@ -97,19 +97,19 @@ describe('trusted request context keys', () => {
       constructor(@Inject(REQUEST_CONTEXT) private readonly context: RequestContext) {}
 
       @Get()
-      get(): RateLimitInfo | undefined {
+      get(): Readonly<Record<string, RateLimitInfo>> | undefined {
         return this.context.get(RATE_LIMIT);
       }
     }
 
     @Module({
-      imports: [ThrottlerModule.forRoot({ limit: 5, ttl: 60_000 })],
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 5, ttl: 60_000 }] })],
       controllers: [LimitedController],
     })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
     const response = await app.getHonoApp().request('/limited');
-    expect(await response.json()).toEqual({ limit: 5, remaining: 4, reset: 60 });
+    expect(await response.json()).toEqual({ default: { limit: 5, remaining: 4, reset: 60 } });
   });
 });

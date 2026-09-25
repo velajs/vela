@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { expandPathTemplate, joinStoragePath } from '../storage/index.js';
 import { signUrl, verifySignedUrl } from '../security/index.js';
 import { importHmacKey, toBase64Url } from '../crypto/hmac.js';
 
-describe('storage signed URLs', () => {
+describe('signed URLs', () => {
   const scope = { method: 'GET', purpose: 'test:storage' } as const;
 
   it('signs and verifies a relative URL', async () => {
@@ -90,40 +89,5 @@ describe('storage signed URLs', () => {
     await expect(signUrl('/x', 'secret', undefined as never)).rejects.toThrow(/required|positive/);
     const signed = await signUrl('/x', 'secret', { expiresIn: 60, ...scope });
     await expect(verifySignedUrl(signed, 'secret', undefined as never)).resolves.toBe(false);
-  });
-});
-
-describe('storage path templates', () => {
-  const d = new Date(Date.UTC(2026, 6, 1)); // 2026-07-01
-
-  it('expands date tokens deterministically', () => {
-    expect(expandPathTemplate('uploads/{year}/{month}/{day}', d)).toBe('uploads/2026/07/01');
-    expect(expandPathTemplate('{date}', d)).toBe('2026-07-01');
-  });
-
-  it('joins root + relative path, collapsing slashes and stripping the leading slash', () => {
-    expect(joinStoragePath('uploads/{year}', 'sub/a.png', d)).toBe('uploads/2026/sub/a.png');
-    expect(joinStoragePath('/uploads/', '/a.png', d)).toBe('uploads/a.png');
-    expect(joinStoragePath(undefined, 'a.png', d)).toBe('a.png');
-  });
-
-  it('neutralizes .. / . segments so keys cannot escape the disk root (path traversal)', () => {
-    // `..` is dropped, not applied — the key stays under the root.
-    expect(joinStoragePath('uploads', '../private/secret.txt', d)).toBe(
-      'uploads/private/secret.txt',
-    );
-    expect(joinStoragePath('uploads', '../../etc/passwd', d)).toBe('uploads/etc/passwd');
-    expect(joinStoragePath('uploads', './a/./b.png', d)).toBe('uploads/a/b.png');
-    // `..` segments are dropped (not applied), so the key stays under the root.
-    expect(joinStoragePath('media', 'a\\..\\..\\b', d)).toBe('media/a/b');
-    expect(joinStoragePath('uploads', '%2e%2e/private/secret.txt', d)).toBe(
-      'uploads/private/secret.txt',
-    );
-    expect(joinStoragePath('uploads', '.%2E/private/secret.txt', d)).toBe(
-      'uploads/private/secret.txt',
-    );
-    expect(joinStoragePath('uploads', '%252e%252e/private/secret.txt', d)).toBe(
-      'uploads/private/secret.txt',
-    );
   });
 });

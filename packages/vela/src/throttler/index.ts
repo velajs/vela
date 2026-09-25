@@ -14,6 +14,7 @@ export {
 } from './throttler.tokens';
 export type {
   ThrottlerModuleOptions,
+  ThrottlerOptions,
   ThrottleConfig,
   ThrottlerStore,
   ThrottlerStorageRecord,

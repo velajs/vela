@@ -1,10 +1,4 @@
-import type {
-  AnyCacheStore,
-  AsyncCacheStore,
-  CacheEntryReader,
-  CacheEntryWriter,
-  CacheEntry,
-} from './cache.types';
+import type { CacheEntry, CacheEntryReader, CacheEntryWriter, CacheStore } from './cache.types';
 
 /**
  * Ordered value tiers. Only entries with known absolute expiry are backfilled;
@@ -13,12 +7,12 @@ import type {
  * reject on failure. Mutations through this instance fence in-flight backfills.
  * Direct writes to underlying tiers and distributed replication are outside that fence.
  */
-export class TieredCacheStore implements AsyncCacheStore, CacheEntryReader, CacheEntryWriter {
-  private readonly tiers: AnyCacheStore[];
+export class TieredCacheStore implements CacheStore, CacheEntryReader, CacheEntryWriter {
+  private readonly tiers: CacheStore[];
   private revision = 0;
   private pending: Promise<void> = Promise.resolve();
 
-  constructor(tiers: AnyCacheStore[]) {
+  constructor(tiers: CacheStore[]) {
     if (tiers.length === 0) throw new Error('TieredCacheStore requires at least one tier.');
     this.tiers = [...tiers];
   }
@@ -75,7 +69,7 @@ export class TieredCacheStore implements AsyncCacheStore, CacheEntryReader, Cach
   clear(): Promise<void> {
     return this.mutate((tier) => tier.clear());
   }
-  private mutate(operation: (tier: AnyCacheStore) => unknown): Promise<void> {
+  private mutate(operation: (tier: CacheStore) => unknown): Promise<void> {
     this.revision++;
     return this.enqueue(async () => {
       const results = await Promise.allSettled(this.tiers.map(async (tier) => operation(tier)));
@@ -89,10 +83,10 @@ export class TieredCacheStore implements AsyncCacheStore, CacheEntryReader, Cach
   }
 }
 
-function hasEntries(store: AnyCacheStore): store is AnyCacheStore & CacheEntryReader {
+function hasEntries(store: CacheStore): store is CacheStore & CacheEntryReader {
   return 'getEntry' in store && typeof store.getEntry === 'function';
 }
 
-function hasEntryWriter(store: AnyCacheStore): store is AnyCacheStore & CacheEntryWriter {
+function hasEntryWriter(store: CacheStore): store is CacheStore & CacheEntryWriter {
   return 'setEntry' in store && typeof store.setEntry === 'function';
 }

@@ -102,9 +102,9 @@ Each name has exactly one import path.
 | `@velajs/vela/module-kit` | Seams for module, integration and adapter authors: `Container`, `MetadataRegistry`, `DiscoveryService`, entrypoint kinds and execution scopes, `PipelineRunner`, route contributors, `invokeScheduledJob`, module-authoring helpers |
 | `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/logging`, `/http-client` | Optional feature modules |
 | `@velajs/vela/openapi` | `OpenApiModule`, `@Endpoint`/`defineEndpoint`, `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`/`@ApiExclude` |
-| `@velajs/vela/security` | `SecurityModule`, `CorsModule`, `Secret`, signed-URL primitives, the nonce store |
+| `@velajs/vela/security` | `SecurityModule`, `Secret`, signed-URL primitives, the nonce store |
 | `@velajs/vela/dispatch` | Signed internal dispatch (`InternalDispatcher`, `@SignedInvocation`) |
-| `@velajs/vela/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/storage`, `/streaming`, `/observability` | Validation and the other feature subsystems |
+| `@velajs/vela/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/streaming`, `/observability` | Validation and the other feature subsystems; file storage is [`@velajs/storage`](https://github.com/velajs/vela/tree/main/packages/storage) |
 | `@velajs/vela/schedule-node`, `/websocket-node` | Node/Bun adapters |
 | `@velajs/vela/internal` | Bootstrap plumbing for first-party tooling such as `@velajs/testing` |
 
@@ -190,7 +190,6 @@ factory; the factory returns the rest:
 ```ts
 @Module({
   imports: [
-    CacheModule.forRoot({ ttl: 60 }),
     HttpModule.forRoot({ baseURL: 'https://api.example.com' }),
     ConfigModule.forRootAsync({
       inject: [ConfigLoader],
@@ -209,16 +208,22 @@ module's structural options only, so most modules have one instance per class:
 
 ```ts
 // The same configuration imported twice → one instance
-imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 60 })]
+imports: [
+  HttpModule.forRoot({ baseURL: 'https://a.example' }),
+  HttpModule.forRoot({ baseURL: 'https://a.example' }),
+]
 
 // A second configuration under the same key → bootstrap fails, whatever the
 // diagnostics policy: neither import may run on the other's options
-imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 120 })]
+imports: [
+  HttpModule.forRoot({ baseURL: 'https://a.example' }),
+  HttpModule.forRoot({ baseURL: 'https://b.example' }),
+]
 
 // Two instances: give each its own key
 imports: [
-  CacheModule.forRoot({ ttl: 60, key: 'fast' }),
-  CacheModule.forRoot({ ttl: 120, key: 'slow' }),
+  HttpModule.forRoot({ baseURL: 'https://a.example', key: 'a' }),
+  HttpModule.forRoot({ baseURL: 'https://b.example', key: 'b' }),
 ]
 ```
 
@@ -358,11 +363,12 @@ See the [edge capabilities guide](../../docs/edge-capabilities.md) for asynchron
 validation, tenant admission, Cedar authorization, compound IDs, scoped cursors,
 commit hooks, encryption, and backend guarantees.
 
-## Asynchronous response caching
+## Caching
 
-Use `ResponseCacheModule.forRoot({ namespace, store, scope, invalidation? })` and
-`@CacheResponse({ ttl, tags })` for async memory/tiered/remote response caching.
-Inject `ResponseCacheService` for scoped reads and post-commit invalidation.
-The legacy `CacheService` API stays synchronous. See the
+`CacheModule.forRoot({ namespace, scope, store?, invalidation? })` from
+`@velajs/vela/cache` is the one cache module: `@CacheResponse({ ttl, tags })`
+caches GET routes and the injected `CacheService` serves scoped reads and
+post-commit invalidation over the same store (memory by default; tiered, or
+`kvCache({ binding })` from `@velajs/cloudflare`). See the
 [caching guide](../../docs/caching.md) for trusted partitions, failure behavior,
 expiry and distributed consistency guarantees.

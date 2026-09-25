@@ -26,8 +26,8 @@ import {
 import { Crud, CrudModule, crudLiveTag, defineModel } from '@velajs/crud';
 import { drizzleAdapter } from '@velajs/crud-drizzle';
 import { StudioModule } from '@velajs/studio';
-import { StudioCrudModule } from '@velajs/studio/crud';
-import { StudioLiveModule } from '@velajs/studio/live';
+import { crudPanel } from '@velajs/studio/crud';
+import { livePanel } from '@velajs/studio/live';
 import { schema as authSchema } from './auth-schema';
 import { todoSchema, todoList } from './contracts';
 
@@ -149,11 +149,12 @@ class TodoGateway {}
     // secret from ENV; it stays closed without one.
     StudioModule.forRoot({
       editable: { ops: true },
-      managedModels: { include: ['todo'] },
+      plugins: [
+        crudPanel({ managedModels: { include: ['todo'] } }),
+        // Studio inspects the shared board's room in its Durable Object.
+        livePanel({ rooms: ['default'] }),
+      ],
     }),
-    StudioCrudModule.forRoot({}),
-    // Studio inspects the shared board's room in its Durable Object.
-    StudioLiveModule.forRoot({ rooms: ['default'] }),
   ],
   controllers: [TodosController, MeController, HealthController],
   providers: [

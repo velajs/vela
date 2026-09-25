@@ -1013,6 +1013,9 @@ importers:
       '@velajs/feature-flags':
         specifier: workspace:*
         version: link:../feature-flags
+      '@velajs/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@velajs/testing':
         specifier: workspace:*
         version: link:../testing

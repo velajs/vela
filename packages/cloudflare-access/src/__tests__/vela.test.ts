@@ -555,7 +555,7 @@ describe('shared identity enforcement across Access, authz and core', () => {
     @Module({
       // Throttling is imported first; the global Access guard still authenticates before it.
       imports: [
-        ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 }),
+        ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] }),
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
       ],
       controllers: [LimitedController],

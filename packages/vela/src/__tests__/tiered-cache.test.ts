@@ -1,8 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { MemoryCacheStore, TieredCacheStore, type AsyncCacheStore } from '../cache/index.js';
+import { MemoryCacheStore, TieredCacheStore, type CacheStore } from '../cache/index.js';
 
 // Minimal async store to exercise the promise path (mimics a KV-backed tier).
-class AsyncMapStore implements AsyncCacheStore {
+class AsyncMapStore implements CacheStore {
   private readonly map = new Map<string, unknown>();
   async get(key: string): Promise<unknown> {
     return this.map.get(key);

@@ -3,15 +3,15 @@
 The adapter preserves platform identity and isolates storage and WebSocket
 operations by their configured application scope.
 
-## R2 presigned URLs
+## R2 object downloads
 
-The R2 proxy route `/storage/:disk` carries the canonical full key as an opaque, signed
-base64url `key` claim. The proxy verifies method/purpose/expiry before decoding
-the claim exactly once, rejects malformed or non-canonical keys, and asserts the
-key remains beneath the configured disk root.
-
-Generate proxy URLs with `StorageService.url()` so the key and authorization
-claims are signed together.
+`r2Storage({ binding })` from `@velajs/cloudflare/storage` drives
+`@velajs/storage`'s `StorageModule` from the native R2 binding, which cannot
+presign. Serve objects through `publicBaseUrl`, through the storage HTTP
+controller with `http: { download: 'proxy' }`, where every download passes the
+module's `authorize` hook and is served as an attachment with
+`X-Content-Type-Options: nosniff`, or through provider-signed URLs from the S3
+or R2 HTTP/hybrid drivers. There is no Worker HMAC proxy route.
 
 ## Trusted client identity
 
@@ -19,8 +19,18 @@ claims are signed together.
 which reads the platform `CF-Connecting-IP` signal. `X-Forwarded-For` and
 `X-Real-IP` are not fallbacks. `@Ip()` and Vela's default throttler therefore use
 the same platform trust boundary. The built-in throttler store remains
-per-isolate; globally atomic limits require a Durable Object or Cloudflare rate
-limiting adapter.
+per-isolate; for limits shared across isolates, give `ThrottlerModule` the
+Workers Rate Limiting bindings by name:
+`ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }], storage: rateLimitStore({ binding: 'API_LIMITER' }) })`.
+Each binding's configured `limit` and `period` must equal its throttler's, so one
+binding serves only throttlers that share them. Workers Rate Limiting keeps its
+counters per Cloudflare location and updates them eventually, so its limits are
+approximate: a client spread across locations can exceed the declared quota, and
+nothing enforces a global or exact count. For strict limits, such as login
+attempts per account, implement a `ThrottlerStore` that counts in a Durable
+Object instead. The platform
+exposes no reset time, so `X-RateLimit-Reset` and `Retry-After` report the
+configured period, not a measured one.
 
 `createCloudflareApp({ security })` forwards Vela's body/query policy,
 including narrow streaming route overrides.

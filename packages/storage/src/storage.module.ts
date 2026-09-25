@@ -5,8 +5,9 @@ import {
   type Token,
   type TypedToken,
   type Type,
+  type VelaEnv,
 } from '@velajs/vela';
-import { lazyProvider } from '@velajs/vela/module-kit';
+import { Container, lazyProvider, readEnv, type EnvFactory } from '@velajs/vela/module-kit';
 import {
   createStorageController,
   type ResolvedHttpOptions,
@@ -50,12 +51,15 @@ export interface StorageHttpOptions {
 
 export interface StorageModuleOptions {
   /**
-   * The bucket's driver, or a function that builds it. A function runs on the
-   * first storage operation (and again on the next one until it succeeds), so
-   * a `forRootAsync` factory can return `{ driver: () => r2Driver(...) }`
-   * without touching a binding while the application initializes.
+   * The bucket's driver, or a function that builds it from the application's
+   * `ENV`. A function runs on the first storage operation (and again on the
+   * next one until it succeeds), with the ENV of the application performing
+   * it, so one static registration serves every environment and touches no
+   * binding while the application initializes:
+   * `driver: r2Storage({ binding: 'UPLOADS' })` from `@velajs/cloudflare/storage`,
+   * or `driver: (env) => r2Driver({ bucket: env.UPLOADS })`.
    */
-  driver: StorageDriver | (() => StorageDriver);
+  driver: StorageDriver | EnvFactory<StorageDriver>;
   /** Bucket name; each name is its own `StorageService` token. Structural. */
   name?: string;
   prefix?: string;
@@ -96,9 +100,9 @@ function optionalPositiveInteger(value: number | undefined, label: string): numb
   return value === undefined ? undefined : positiveInteger(value, label);
 }
 
-/** The driver itself, or the one its builder function returns, checked. */
-function buildDriver(driver: StorageModuleOptions['driver']): StorageDriver {
-  const built: unknown = typeof driver === 'function' ? driver() : driver;
+/** The driver itself, or the one its builder function returns from `env`, checked. */
+function buildDriver(driver: StorageModuleOptions['driver'], env: VelaEnv): StorageDriver {
+  const built: unknown = typeof driver === 'function' ? driver(env) : driver;
   if (
     typeof built !== 'object' ||
     built === null ||
@@ -159,8 +163,9 @@ const { ConfigurableModuleClass } = defineModule<StorageModuleOptions, StorageSt
         // Cloudflare bindings out of module load and application bootstrap.
         lazyProvider({
           provide: builderToken,
-          inject: [OPTIONS],
-          useFactory: (resolved: StorageModuleOptions) => buildDriver(resolved.driver),
+          inject: [OPTIONS, Container],
+          useFactory: (resolved: StorageModuleOptions, container: Container) =>
+            buildDriver(resolved.driver, readEnv(container)),
         }),
         defineProvider(serviceToken, {
           useFactory: (build, resolved) =>
