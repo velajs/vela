@@ -59,21 +59,16 @@ beforeAll(async () => {
   await database.exec(
     'CREATE TABLE parents (id TEXT PRIMARY KEY); CREATE TABLE children (id TEXT PRIMARY KEY, parentId TEXT NOT NULL, tenantId TEXT NOT NULL, label TEXT NOT NULL, deletedAt INTEGER)',
   );
-  await database.batch(
-    rows.flatMap(({ id }) => [
-      database.prepare('INSERT INTO parents VALUES (?)').bind(id),
-      ...['a', 'b'].map((tenant) =>
-        database
-          .prepare('INSERT INTO children VALUES (?, ?, ?, ?, NULL)')
-          .bind(`${id}-${tenant}`, id, tenant, 'visible'),
-      ),
-      database
-        .prepare('INSERT INTO children VALUES (?, ?, ?, ?, 1)')
-        .bind(`${id}-deleted`, id, 'a', 'visible'),
-      database
-        .prepare('INSERT INTO children VALUES (?, ?, ?, ?, NULL)')
-        .bind(`${id}-hidden`, id, 'a', 'hidden'),
-    ]),
+  const childValues = rows.flatMap(({ id }) => [
+    `('${id}-a', '${id}', 'a', 'visible', NULL)`,
+    `('${id}-b', '${id}', 'b', 'visible', NULL)`,
+    `('${id}-deleted', '${id}', 'a', 'visible', 1)`,
+    `('${id}-hidden', '${id}', 'a', 'hidden', NULL)`,
+  ]);
+  // One exec: each proxied prepare()/bind() is a synchronous round trip; 1000 of them overran 10s.
+  await database.exec(
+    `INSERT INTO parents VALUES ${rows.map(({ id }) => `('${id}')`).join(', ')}; ` +
+      `INSERT INTO children VALUES ${childValues.join(', ')}`,
   );
 });
 afterAll(() => runtime.dispose());
