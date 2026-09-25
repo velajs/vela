@@ -10,7 +10,11 @@ export default defineConfig({
     include: ['src/__tests__/workers/**/*.test.ts'],
   },
   plugins: [
-    cloudflareTest({ wrangler: { configPath: './wrangler.test.toml' } }),
+    cloudflareTest({
+      wrangler: { configPath: './wrangler.test.toml' },
+      // Miniflare's local Pipelines binding is a no-op, not a remote stream.
+      miniflare: { pipelines: ['PIPELINES_TEST_STREAM'] },
+    }),
     swc.vite({
       tsconfigFile: false,
       swcrc: false,

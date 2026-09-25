@@ -756,6 +756,90 @@ it('processes a created todo', async () => {
 
 The subpath is not part of any Worker bundle: import it from tests only.
 
+## Validated Pipelines producers
+
+`@velajs/cloudflare/pipelines` adds producer validation to a configured native
+stream handle. It is an optional adapter subpath: there is no module, queue
+driver, or replacement for the native Pipelines API.
+
+Configure the stream in Wrangler and regenerate your environment types:
+
+```jsonc
+{
+  "pipelines": [{ "binding": "EVENT_STREAM", "stream": "<STREAM_ID>" }],
+}
+```
+
+Use a Standard Schema validator whose **output** matches the deployed stream
+schema. Synchronous and asynchronous transforms are supported; `send()` takes
+schema **inputs** and sends the validated outputs:
+
+```ts
+import { ENV, InjectionToken, defineProvider } from '@velajs/vela';
+import { createPipelinesWriter, type PipelinesWriter } from '@velajs/cloudflare/pipelines';
+import { z } from 'zod';
+
+const event = z.object({
+  id: z.string().min(1),
+  count: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().nonnegative()),
+});
+
+export const EVENTS = new InjectionToken<PipelinesWriter<z.input<typeof event>>>('events');
+
+// Add this provider to your application's providers. ENV and the writer belong
+// to that application; do not capture a request's environment at module scope.
+export const eventsProvider = defineProvider(EVENTS, {
+  inject: [ENV],
+  useFactory: (env) => createPipelinesWriter(env.EVENT_STREAM, { schema: event }),
+});
+
+// In a provider that injects EVENTS:
+// await this.events.send([{ id: 'sample-1', count: '2' }]);
+```
+
+The factory also works directly with `createPipelinesWriter(env.EVENT_STREAM,
+{ schema: event })`. The binding is structural (`send(records): Promise<void>`),
+remains available as `env.EVENT_STREAM`, and needs no `cloudflare:pipelines`
+runtime import. Generated `Pipeline<RecordType>` bindings check schema output
+compatibility at compile time. Select the stream through trusted configuration;
+the writer does not accept a stream name or endpoint from a record or request.
+
+Each nonempty `send(records)` validates all records before making one native
+call. A failure rejects without sending any records; validation may stop at the
+first error. Standard Schema failures use `SchemaValidationError` from
+`@velajs/vela/validation`, with the record index prefixed to each issue path.
+Validator exceptions and native failures propagate. There is no automatic retry,
+batch splitting, rate limiter, or buffering. Empty batches reject.
+
+After schema transforms, each record must be a plain JSON object. Nested objects
+and dense arrays may contain strings, booleans, null, and finite numbers. The
+writer rejects undefined values (including explicitly undefined optional fields),
+functions, symbols, bigint, non-finite numbers, cycles, class instances, `Date`,
+`Map`, `Set`, typed arrays, getters, non-enumerable or symbol properties, extra
+array properties, and `toJSON` functions. Convert special values in your schema.
+Validated outputs are copied before the next asynchronous validation, so later
+mutations cannot alter already checked records. Callers must not mutate inputs
+while their schema is validating them.
+
+The writer measures the UTF-8 encoding of compact JSON outputs, including escapes,
+commas and array brackets, against a conservative **5,000,000-byte request
+ceiling**. A single record must fit inside that same JSON array (at most
+4,999,998 bytes). The current [Cloudflare limits](https://developers.cloudflare.com/pipelines/platform/limits/)
+document 5 MB per ingestion request without a separate record size cap; this
+adapter does not invent one. Oversize records or batches reject with `RangeError`;
+non-JSON output rejects with `TypeError`.
+
+`send()` resolves to `void` only after native ingestion acceptance. Cloudflare
+[accepts but later drops invalid structured events](https://developers.cloudflare.com/pipelines/streams/writing-to-streams/#schema-validation),
+so keep your producer schema aligned with the configured stream. Resolution
+provides no query visibility, transaction, application exactly-once, or terminal
+storage guarantee. A failed native request may have reached the service; any
+retry and deduplication policy belongs to the application.
+
+Tests cover producer behavior and native type compatibility. Workerd tests also
+exercise Miniflare's local Pipelines binding, whose `send()` is a no-op; they
+provide no remote ingestion, schema enforcement, or downstream storage proof.
+
 ## Development
 
 From the repository root:

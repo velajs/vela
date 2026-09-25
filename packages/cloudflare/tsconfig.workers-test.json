@@ -7,6 +7,7 @@
     "noEmit": true
   },
   "files": [
+    "src/__tests__/workers/pipelines-runtime.test.ts",
     "src/__tests__/workers/worker-configuration.d.ts",
     "src/__tests__/workers/entry.ts",
     "src/__tests__/workers/cache-runtime.test.ts",

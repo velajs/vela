@@ -52,6 +52,10 @@
       "types": "./dist/entrypoints.d.ts",
       "import": "./dist/entrypoints.js"
     },
+    "./pipelines": {
+      "types": "./dist/pipelines.d.ts",
+      "import": "./dist/pipelines.js"
+    },
     "./queues": {
       "types": "./dist/queues.d.ts",
       "import": "./dist/queues.js"

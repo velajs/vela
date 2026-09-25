@@ -6,6 +6,7 @@ const shared: UserConfig = {
     'src/durable-objects.ts',
     'src/email.ts',
     'src/entrypoints.ts',
+    'src/pipelines.ts',
     'src/queues.ts',
     'src/storage.ts',
     'src/tail.ts',
