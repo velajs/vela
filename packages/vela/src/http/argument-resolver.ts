@@ -30,9 +30,9 @@ const PARAM_EXTRACTORS = new Map<ParamType, ParamExtractor>([
 ]);
 
 // Pulls handler arguments from the request, applies shared pipes (global +
-// controller + method) and then per-param pipes. Empty paramMetadata returns
-// `[c]` to match the old direct-Hono-handler shape — a back-compat behavior
-// the framework's tests rely on.
+// controller + method), the reader's own check and then per-param pipes.
+// Empty paramMetadata returns `[c]` to match the old direct-Hono-handler
+// shape — a back-compat behavior the framework's tests rely on.
 export class ArgumentResolver {
   constructor(private readonly ipExtractor: (c: Context) => string | null) {}
 
@@ -62,16 +62,14 @@ export class ArgumentResolver {
         data: param.name,
         metatype: param.metatype ?? paramTypes?.[param.index],
       };
-      // The reader's validation holds while pipes pass its value on unchanged.
-      const read = value;
       if (extract?.validated) metadata.validated = true;
 
       for (const pipe of pipes) {
         value = await (pipe.transformAsync
           ? pipe.transformAsync(value, metadata)
           : pipe.transform(value, metadata));
-        metadata.validated &&= value === read;
       }
+      if (extract?.validate) value = await extract.validate(value, pipes);
 
       if (param.pipes && param.pipes.length > 0) {
         for (const paramPipe of param.pipes) {
@@ -83,7 +81,6 @@ export class ArgumentResolver {
           value = await (pipeInstance.transformAsync
             ? pipeInstance.transformAsync(value, metadata)
             : pipeInstance.transform(value, metadata));
-          metadata.validated &&= value === read;
         }
       }
 

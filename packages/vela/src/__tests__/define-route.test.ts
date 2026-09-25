@@ -12,6 +12,7 @@ import {
   Post,
   Query,
   VelaFactory,
+  type PipeTransform,
   type VelaApplication,
 } from '../index';
 import {
@@ -103,6 +104,20 @@ const stamps = {
     response: z.object({ id: z.number() }),
   }),
 };
+
+// Pipes before a global ValidationPipe: one copies an object value, one
+// changes it in place.
+class CopyPipe implements PipeTransform {
+  transform(value: unknown) {
+    return value !== null && typeof value === 'object' ? { ...value } : value;
+  }
+}
+class TouchPipe implements PipeTransform {
+  transform(value: unknown) {
+    if (value !== null && typeof value === 'object') Reflect.set(value, 'touched', true);
+    return value;
+  }
+}
 
 @Controller('/stamps')
 class Stamps {
@@ -263,11 +278,13 @@ describe('defineRoute contracts', () => {
   });
 
   it.each([
-    ['without a global pipe', false],
-    ['beside a global ValidationPipe', true],
-  ])('hands a contract-validated value to a schema-carrying class %s', async (_label, pipe) => {
+    ['without a global pipe', []],
+    ['beside a global ValidationPipe', [new ValidationPipe()]],
+    ['after a copying pipe and a global ValidationPipe', [new CopyPipe(), new ValidationPipe()]],
+    ['after an in-place pipe and a global ValidationPipe', [new TouchPipe(), new ValidationPipe()]],
+  ])('hands a contract-validated value to a schema-carrying class %s', async (_label, pipes) => {
     const { app } = await start(Stamps);
-    if (pipe) app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(...pipes);
     try {
       const created = await send(app, 'POST', '/stamps', { at: 'noon' });
       expect(created.status).toBe(201);

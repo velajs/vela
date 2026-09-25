@@ -41,7 +41,7 @@ export class ValidationPipe implements PipeTransform {
       metatype.validationOwner === 'handler'
     )
       return undefined;
-    // The route's reader validated the value and no pipe has changed it since.
+    // The route validated the value (a `defineRoute` group) before the pipes.
     if (metadata.validated) return undefined;
     return resolveValidationSchema(metatype);
   }

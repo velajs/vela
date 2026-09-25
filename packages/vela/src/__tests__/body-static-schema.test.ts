@@ -85,6 +85,31 @@ class PassPipe implements PipeTransform {
   }
 }
 
+// A pipe changing the object it receives and returning that same object.
+class TrimInPlacePipe implements PipeTransform {
+  transform(value: unknown) {
+    if (value === null || typeof value !== 'object') return value;
+    for (const [key, member] of Object.entries(value))
+      if (typeof member === 'string') Reflect.set(value, key, member.trim());
+    return value;
+  }
+}
+
+// Schemas whose transforms do not accept their own output.
+class Event {
+  static schema = z.object({
+    title: z.string().min(1),
+    at: z.iso.datetime().transform((at) => new Date(at)),
+  });
+  declare title: string;
+  declare at: Date;
+}
+
+class Stamp {
+  static schema = z.object({ at: z.string().transform((at) => at.length) });
+  declare at: number;
+}
+
 @Controller('/todos')
 class Todos {
   @Post()
@@ -115,6 +140,26 @@ class Todos {
   @Post('/notes')
   note(@Body() body: Note) {
     return body;
+  }
+
+  @Post('/events')
+  event(@Body() body: Event) {
+    return { title: body.title, at: body.at instanceof Date ? body.at.toISOString() : body.at };
+  }
+
+  @Post('/stamps')
+  stamp(@Body() body: Stamp) {
+    return body;
+  }
+
+  @Post('/checked-notes')
+  checkedNote(@Body(TrimInPlacePipe, ValidationPipe) body: Note) {
+    return body;
+  }
+
+  @Post('/checked-events')
+  checkedEvent(@Body(TrimPipe, ValidationPipe) body: Event) {
+    return { title: body.title, at: body.at instanceof Date ? body.at.toISOString() : body.at };
   }
 }
 
@@ -178,6 +223,80 @@ describe('@Body() with a schema-carrying parameter class', () => {
       const trimmed = await post(app, '/notes', { text: ' hi ' });
       expect(trimmed.status).toBe(201);
       expect(await trimmed.json()).toEqual({ text: 'hi' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('validates a value an earlier pipe changed in place before the global ValidationPipe', async () => {
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new TrimInPlacePipe(), new ValidationPipe());
+    try {
+      const blank = await post(app, '/notes', { text: '   ' });
+      expect(blank.status).toBe(400);
+      expect((await blank.json()).error.details.issues[0].path).toEqual(['text']);
+      const trimmed = await post(app, '/notes', { text: ' hi ' });
+      expect(trimmed.status).toBe(201);
+      expect(await trimmed.json()).toEqual({ text: 'hi' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('validates the input once when a pipe copies it before the global ValidationPipe', async () => {
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new TrimPipe(), new ValidationPipe());
+    try {
+      const event = await post(app, '/events', { title: ' Launch ', at: '2026-09-24T10:00:00Z' });
+      expect(event.status).toBe(201);
+      expect(await event.json()).toEqual({ title: 'Launch', at: '2026-09-24T10:00:00.000Z' });
+      const stamp = await post(app, '/stamps', { at: ' abc ' });
+      expect(stamp.status).toBe(201);
+      expect(await stamp.json()).toEqual({ at: 3 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('validates after the global pipes when none of them is a ValidationPipe', async () => {
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new TrimInPlacePipe());
+    try {
+      const blank = await post(app, '/notes', { text: '   ' });
+      expect(blank.status).toBe(400);
+      const trimmed = await post(app, '/notes', { text: ' hi ' });
+      expect(await trimmed.json()).toEqual({ text: 'hi' });
+      transforms = 0;
+      const created = await post(app, '', { title: ' Once ' });
+      expect(await created.json()).toEqual({ title: 'Once' });
+      expect(transforms).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("leaves the value to the parameter's own ValidationPipe, after its earlier pipes", async () => {
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      const blank = await post(app, '/checked-notes', { text: '   ' });
+      expect(blank.status).toBe(400);
+      expect(await (await post(app, '/checked-notes', { text: ' hi ' })).json()).toEqual({
+        text: 'hi',
+      });
+      const event = await post(app, '/checked-events', {
+        title: ' Launch ',
+        at: '2026-09-24T10:00:00Z',
+      });
+      expect(event.status).toBe(201);
+      expect(await event.json()).toEqual({ title: 'Launch', at: '2026-09-24T10:00:00.000Z' });
     } finally {
       await app.close();
     }

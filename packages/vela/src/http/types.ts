@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import type { HttpMethod, Scope } from '../constants';
 import type { Type } from '../container/types';
+import type { PipeTransform } from '../pipeline/types';
 import type { PipeType } from '../registry/types';
 import type { RouteContractMetadata } from './route-contract';
 import type { VersionValue } from './version';
@@ -26,11 +27,16 @@ export interface ParamExtractionRoute {
 
 /**
  * A parameter's request reader, built once per route. `validated` marks a
- * reader that returns a validated value (a `defineRoute` group, or the static
- * schema of the parameter's class), so pipes receive it as
- * `ArgumentMetadata.validated`.
+ * reader whose value the route validated (a `defineRoute` group), so pipes
+ * receive it as `ArgumentMetadata.validated`. `validate` runs after the
+ * global, controller and method pipes, which it receives, and before the
+ * parameter's own pipes: `@Body()` checks its class's static schema there
+ * when none of those pipes is a `ValidationPipe`.
  */
-export type ParamReader = ((c: Context) => unknown) & { readonly validated?: boolean };
+export type ParamReader = ((c: Context) => unknown) & {
+  readonly validated?: boolean;
+  readonly validate?: (value: unknown, pipes: readonly PipeTransform[]) => unknown;
+};
 
 /**
  * Builds a parameter's request reader for one route. Built-in `@Body`,

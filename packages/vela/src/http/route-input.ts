@@ -4,6 +4,7 @@ import {
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from '../errors/http-exception';
+import type { PipeTransform } from '../pipeline/types';
 import {
   isValidationSchema,
   parseSchemaAsync,
@@ -71,6 +72,14 @@ function parameterSchema(param: ParamMetadata): ValidationSchema | undefined {
   return undefined;
 }
 
+/** A `ValidationPipe` without a schema of its own, which validates the parameter's class. */
+function validatesClass(pipe: unknown): boolean {
+  return pipe instanceof ValidationPipe
+    ? pipe.parser === undefined
+    : pipe === ValidationPipe ||
+        (typeof pipe === 'function' && pipe.prototype instanceof ValidationPipe);
+}
+
 /** The input JSON Schema of a schema that can describe itself; undefined otherwise. */
 function describe(schema: ValidationSchema | undefined): JsonObject | undefined {
   if (!schema) return undefined;
@@ -94,7 +103,8 @@ function properties(json: JsonObject | undefined): [string, JsonObject][] {
     : [];
 }
 
-// A reader returning validated values, which `ValidationPipe` then leaves as is.
+// A reader returning values the route validated, which `ValidationPipe` then
+// leaves as is whatever the pipes before it return.
 function validated(read: (c: Context) => Promise<unknown>): ParamReader {
   return Object.assign(read, { validated: true });
 }
@@ -206,8 +216,10 @@ function formRecord(form: FormData, fields: Map<string, FormField> | undefined):
 /**
  * `@Body()`: JSON by default (415 for other media types), or the form or
  * multipart body the route opts into, bounded by its limits. A `defineRoute`
- * body schema validates here; so does a parameter class carrying a static
- * Standard Schema when the parameter names no schema of its own.
+ * body schema validates here, before the pipes. A parameter class carrying a
+ * static Standard Schema, when the parameter names no schema of its own, is
+ * validated where a `ValidationPipe` sits (the parameter's own, or one among
+ * the global, controller and method pipes), else right after those pipes.
  */
 export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => {
   const contract = route.contract;
@@ -241,10 +253,14 @@ export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => 
       pick(await once(c, key, async () => validate(group, await raw(c))), param.name),
     );
   }
+  const read = async (c: Context): Promise<unknown> => pick(await raw(c), param.name);
+  if (!auto || param.pipes?.some(validatesClass)) return read;
   // The class describes the value the parameter receives: the whole body, or
   // the member a named parameter reads.
-  if (auto) return validated(async (c) => validate(auto, pick(await raw(c), param.name)));
-  return async (c) => pick(await raw(c), param.name);
+  return Object.assign(read, {
+    validate: (value: unknown, pipes: readonly PipeTransform[]) =>
+      pipes.some(validatesClass) ? value : validate(auto, value),
+  });
 };
 
 // Query keys a schema declares as arrays; `true` when a named parameter's own
