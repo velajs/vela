@@ -7,9 +7,9 @@ import {
 } from '../src';
 
 describe('Studio connection boundary', () => {
-  // Version 3 labels the default provider lifetime 'default' instead of 'singleton'.
-  it('speaks protocol version 3', () => {
-    expect(STUDIO_PROTOCOL_VERSION).toBe(3);
+  // Version 4 names a module's visibility flag `global` in app.modules (was `isGlobal`).
+  it('speaks protocol version 4', () => {
+    expect(STUDIO_PROTOCOL_VERSION).toBe(4);
   });
   it('rejects incompatible or malformed bootstrap values', () => {
     for (const value of [
@@ -17,7 +17,7 @@ describe('Studio connection boundary', () => {
       {},
       { protocolVersion: 1 },
       {
-        protocolVersion: 2,
+        protocolVersion: 3,
         routerBasePath: '/studio',
         adminBasePath: '/custom',
         apiRequestPath: '/custom/api-request',

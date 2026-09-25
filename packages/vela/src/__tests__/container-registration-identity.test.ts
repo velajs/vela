@@ -14,7 +14,7 @@ function scope(container: Container, moduleId: string, tokens: Token[], imports:
     localProviders: new Set(tokens),
     exportedTokens: new Set(tokens),
     importedModules: new Set(imports),
-    isGlobal: false,
+    global: false,
   });
 }
 
@@ -162,7 +162,7 @@ describe('provider registration identity', () => {
           localProviders: new Set([target, alias]),
           exportedTokens: new Set([alias]),
           importedModules: new Set(),
-          isGlobal: false,
+          global: false,
         });
         root.register(
           defineProvider(target, {
@@ -212,7 +212,7 @@ describe('provider registration identity', () => {
         localProviders: new Set([target]),
         exportedTokens: new Set(),
         importedModules: new Set(),
-        isGlobal: false,
+        global: false,
       });
       scope(root, 'alias-owner', [alias], ['hidden']);
       root.register(defineProvider(target, { useValue: 'private' }), 'hidden');
@@ -274,7 +274,7 @@ describe('provider registration identity', () => {
       localProviders: new Set([token, alias, hidden]),
       exportedTokens: new Set([token, alias]),
       importedModules: new Set(),
-      isGlobal: false,
+      global: false,
     });
     const value = { count: 1 };
     root.register(defineProvider(token, { useValue: value }), 'A');

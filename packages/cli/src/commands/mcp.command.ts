@@ -61,7 +61,7 @@ function describeToken(app: VelaApplication, token: string): unknown {
     .filter((m) => m.providers.includes(token))
     .map((m) => ({
       moduleId: m.moduleId,
-      isGlobal: m.isGlobal,
+      global: m.global,
       lazy: m.lazy,
       exported: m.exports.includes(token),
     }));
@@ -73,7 +73,7 @@ function describeToken(app: VelaApplication, token: string): unknown {
     module: matchesModule
       ? {
           moduleId: matchesModule.moduleId,
-          isGlobal: matchesModule.isGlobal,
+          global: matchesModule.global,
           lazy: matchesModule.lazy,
         }
       : null,

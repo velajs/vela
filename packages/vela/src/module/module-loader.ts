@@ -415,7 +415,7 @@ export class ModuleLoader {
       // include it in its own scope.
       localProviders.add(moduleClass);
 
-      const isGlobal =
+      const global =
         metadata.global ||
         (isDynamicModule(moduleClassOrDynamic) && moduleClassOrDynamic.global === true);
 
@@ -441,7 +441,7 @@ export class ModuleLoader {
         localProviders,
         importedModules: importedModuleIds,
         exportedTokens: new Set<Token>(moduleExports),
-        isGlobal,
+        global,
         lazy: isLazy,
         moduleClass,
         controllers,
@@ -487,7 +487,7 @@ export class ModuleLoader {
       );
       this.cacheExports(moduleClass, key, exports);
 
-      if (isGlobal) {
+      if (global) {
         for (const token of exports) {
           this.#globalExports.add(token);
         }

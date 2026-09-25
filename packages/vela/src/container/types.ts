@@ -397,7 +397,8 @@ export interface ModuleScope {
   localProviders: Set<Token>;
   importedModules: Set<string>;
   exportedTokens: Set<Token>;
-  isGlobal: boolean;
+  /** Its exports are visible to every module (`@Global()` or `DynamicModule.global`). */
+  global: boolean;
   /** Module instance opted into deferred (first-use) materialization. */
   lazy?: boolean;
   /** Class this module instance was loaded from; carries module-level `@Use*` metadata. */
@@ -460,7 +461,8 @@ export interface ModuleDescription {
   moduleId: string;
   /** moduleIds this instance imports. */
   imports: string[];
-  isGlobal: boolean;
+  /** Its exports are visible to every module (`@Global()` or `DynamicModule.global`). */
+  global: boolean;
   lazy: boolean;
   /** Token labels registered in this instance's bucket (registration order). */
   providers: string[];

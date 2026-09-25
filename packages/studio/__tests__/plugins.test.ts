@@ -216,7 +216,10 @@ describe('StudioModule plugins', () => {
         defineProvider(APP_LOGGER, { useValue: new ApplicationLogger() }),
         'InjectionToken(vela.applicationLogger)',
       ],
-      [defineProvider(ROOT_MODULE, { useValue: class Other {} }), 'InjectionToken(vela.RootModule)'],
+      [
+        defineProvider(ROOT_MODULE, { useValue: class Other {} }),
+        'InjectionToken(vela.RootModule)',
+      ],
       [defineProvider(Container, { useValue: new Container() }), 'Container'],
       [
         defineProvider(DiscoveryService, {

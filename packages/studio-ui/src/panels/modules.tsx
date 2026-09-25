@@ -1,6 +1,6 @@
 /**
  * The modules panel: a list over `app.modules`. Each row shows the module id,
- * `lazy`/`isGlobal` badges, and provider/export/import counts; expanding a row
+ * `lazy`/`global` badges, and provider/export/import counts; expanding a row
  * reveals its import edges and the token labels it registers and exports.
  */
 import { useState } from 'react';
@@ -43,7 +43,7 @@ function ModuleRow({ node }: { node: ModuleNode }): ReactNode {
         </span>
         <span className="vela-module__id vela-mono">{node.moduleId}</span>
         <span className="vela-module__badges">
-          {node.isGlobal ? <Badge tone="accent">global</Badge> : null}
+          {node.global ? <Badge tone="accent">global</Badge> : null}
           {node.lazy ? <Badge tone="muted">lazy</Badge> : null}
           <Badge tone="neutral">{node.providers.length} providers</Badge>
           <Badge tone="neutral">{node.exports.length} exports</Badge>

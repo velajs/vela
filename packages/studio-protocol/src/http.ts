@@ -24,6 +24,7 @@ export const STUDIO_TOKEN_HEADER = 'authorization';
 /**
  * The wire protocol version. Bumped on any breaking change to the envelope or an
  * op's payload: version 3 labels the default provider lifetime `'default'`
- * instead of `'singleton'`.
+ * instead of `'singleton'`; version 4 names a module's visibility flag
+ * `global` (was `isGlobal`) in `app.modules`.
  */
-export const STUDIO_PROTOCOL_VERSION = 3;
+export const STUDIO_PROTOCOL_VERSION = 4;

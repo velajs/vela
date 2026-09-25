@@ -75,7 +75,7 @@ When `rootModule` is set it also serves an MCP **resource** `vela://openapi` (`a
 The CLI reads a built app through public `VelaApplication` seams (useful directly in scripts, too):
 
 - `app.describeRoutes()` → `RouteDescription[]` (`{ method, path, controller, handler, version? }`).
-- `app.getContainer().getModuleDescriptions()` → `ModuleDescription[]` (`{ moduleId, imports, isGlobal, lazy, providers, exports }`).
+- `app.getContainer().getModuleDescriptions()` → `ModuleDescription[]` (`{ moduleId, imports, global, lazy, providers, exports }`).
 - `app.entrypoints.kinds()` / `app.entrypoints.ofKind(kind)` → declared non-HTTP entry surfaces.
 - `app.getGlobalPrefix()` → the configured prefix.
 - `describeToken(token)` (a `@velajs/vela` free function) → a human-readable token label.
