@@ -134,10 +134,6 @@
       "types": "./dist/seeder/index.d.ts",
       "import": "./dist/seeder/index.js"
     },
-    "./storage": {
-      "types": "./dist/storage/index.d.ts",
-      "import": "./dist/storage/index.js"
-    },
     "./streaming": {
       "types": "./dist/streaming/index.d.ts",
       "import": "./dist/streaming/index.js"

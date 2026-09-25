@@ -20,7 +20,6 @@ const entry = [
   'src/schedule-node/index.ts',
   'src/security/index.ts',
   'src/seeder/index.ts',
-  'src/storage/index.ts',
   'src/streaming/index.ts',
   'src/throttler/index.ts',
   'src/validation/index.ts',

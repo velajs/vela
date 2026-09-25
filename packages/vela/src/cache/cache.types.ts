@@ -1,53 +1,20 @@
+import type { EnvFactory } from '../binding';
+import type { ExecutionContext } from '../pipeline/types';
+
 /** A value that may be returned synchronously or as a promise. */
 export type Awaitable<T> = T | Promise<T>;
 
-export interface CacheModuleOptions {
-  ttl?: number; // default TTL in seconds (default: 5)
-  max?: number; // max entries (default: 100)
-  /** Register `CacheInterceptor` application-wide (`APP_INTERCEPTOR`). Structural. */
-  globalInterceptor?: boolean;
-  /**
-   * Resolve the authenticated principal/tenant partition for a request.
-   * Credential-bearing requests are cached only when this returns a non-empty
-   * value. The value is SHA-256 hashed before it becomes part of the cache key.
-   * Throwing, returning an empty value, or returning an oversized value safely
-   * bypasses caching.
-   */
-  varyBy?: (request: Request) => Awaitable<string | undefined>;
-  /**
-   * Custom SYNC backing store (replaces the default in-memory store). For async
-   * (KV/tiered) response caching use `ResponseCacheModule` + `@CacheResponse()`.
-   * The legacy CacheService/CacheInterceptor path stays synchronous.
-   */
-  store?: CacheStore;
-}
-
 /**
- * Synchronous cache backing store. Reads return unknown; validate persisted
- * values at the consuming boundary. Undefined represents a cache miss.
+ * A cache backing store, synchronous (memory) or asynchronous (KV, tiered).
+ * Reads return unknown; validate persisted values at the consuming boundary.
+ * Undefined represents a miss.
  */
 export interface CacheStore {
-  get(key: string): unknown;
-  set(key: string, value: unknown, ttl?: number): void;
-  del(key: string): void;
-  clear(): void;
+  get(key: string): Awaitable<unknown>;
+  set(key: string, value: unknown, ttl?: number): Awaitable<void>;
+  del(key: string): Awaitable<void>;
+  clear(): Awaitable<void>;
 }
-
-/**
- * Asynchronous cache backing store (additive). Implemented by remote/tiered
- * stores (`TieredCacheStore`, and `KVCacheStore` in `@velajs/cloudflare`) where
- * reads/writes are inherently async. Use ResponseCacheModule for response caching
- * or inject it under your own token, never the synchronous CACHE_MANAGER.
- */
-export interface AsyncCacheStore {
-  get(key: string): Promise<unknown>;
-  set(key: string, value: unknown, ttl?: number): Promise<void>;
-  del(key: string): Promise<void>;
-  clear(): Promise<void>;
-}
-
-/** A store that may be sync or async (used to compose tiers). */
-export type AnyCacheStore = CacheStore | AsyncCacheStore;
 
 export interface CacheEntry<T = unknown> {
   value: T;
@@ -62,4 +29,82 @@ export interface CacheEntryReader {
 /** Optional absolute-expiry write capability. Required on destination tiers for safe backfill. */
 export interface CacheEntryWriter {
   setEntry(key: string, entry: CacheEntry): Awaitable<void>;
+}
+
+/** Only trusted, authorized identifiers belong here; never credentials or raw client headers. */
+export type CacheScope =
+  | { visibility: 'public'; partition: string }
+  | { visibility: 'private'; partition: string };
+
+/** Optional generation capability, separate from value storage. Never reuse an old generation. */
+export interface CacheInvalidationStore {
+  getVersion(key: string): Awaitable<string>;
+  invalidate(key: string): Awaitable<void>;
+}
+
+export interface CacheEntryOptions {
+  /** Seconds; zero bypasses caching. Default: module TTL (30 seconds). */
+  ttl?: number;
+  /** Generic labels, always confined to the selected scope. Requires an invalidation store. */
+  tags?: readonly string[];
+}
+
+export interface CacheResponseOptions extends CacheEntryOptions {
+  /** Additional variant; never replaces the route, origin, query or scope. */
+  key?: string;
+}
+
+export interface CacheModuleOptions {
+  /** Stable application/deployment namespace; use a different namespace for incompatible schemas. */
+  namespace: string;
+  /** Runs after guards. Undefined or a failed resolver bypasses caching. */
+  scope: (context: ExecutionContext) => Awaitable<CacheScope | undefined>;
+  /**
+   * The value store, or a function that builds it from the application's
+   * `ENV` (`kvCache({ binding: 'CACHE' })` from `@velajs/cloudflare`).
+   * Default: a per-application in-memory store holding `max` entries.
+   */
+  store?: CacheStore | EnvFactory<CacheStore>;
+  /** Optional generation store for tags and invalidation, or a function of `ENV`. */
+  invalidation?: CacheInvalidationStore | EnvFactory<CacheInvalidationStore>;
+  /** Default entry lifetime in seconds. Default 30. */
+  ttl?: number;
+  /** Capacity of the default in-memory store. Default 1000; ignored with `store`. */
+  max?: number;
+  /** Maximum UTF-8 JSON bytes per value; default 64 KiB, maximum 1 MiB. */
+  maxBytes?: number;
+  /** Optional additional domain check. Never allow secrets merely because a scope is private. */
+  shouldCache?: (value: unknown) => boolean;
+  /**
+   * Observability only, called after the application's error reporter (edge
+   * `'cache'`) receives the same failure. Callback failures are ignored; no
+   * raw keys or values are supplied.
+   */
+  onError?: (operation: 'read' | 'write' | 'invalidate' | 'scope', error: unknown) => void;
+}
+
+/** The options a {@link CacheModuleOptions} resolves to for one application. */
+export interface ResolvedCacheOptions extends Omit<CacheModuleOptions, 'store' | 'invalidation'> {
+  store: CacheStore;
+  invalidation?: CacheInvalidationStore;
+}
+
+/** Failures are reported as data so post-commit invalidation cannot throw a write failure. */
+export type CacheInvalidationResult =
+  | { ok: true }
+  | { ok: false; reason: 'unsupported' | 'invalid-input' | 'store-error' };
+
+export interface ScopedCache {
+  get(key: string): Promise<unknown>;
+  getParsed<T>(key: string, parse: (value: unknown) => T): Promise<T | undefined>;
+  set(key: string, value: unknown, options?: CacheEntryOptions): Promise<boolean>;
+  /** Concurrent misses run independently. Consistent generations fence fills started before invalidation. */
+  remember<T>(
+    key: string,
+    load: () => Promise<T>,
+    options?: CacheEntryOptions,
+  ): Promise<unknown | T>;
+  invalidateKey(key: string): Promise<CacheInvalidationResult>;
+  invalidateTags(tags: readonly string[]): Promise<CacheInvalidationResult>;
+  invalidateAll(): Promise<CacheInvalidationResult>;
 }

@@ -123,8 +123,28 @@ export interface StudioModelSource {
 }
 
 /**
- * DI token the data ops resolve their source from. Bound by `StudioCrudModule`
- * (crud subpath) or by a BYO source module. Unbound ⇒ the `data` feature reads
+ * DI token the data ops resolve their source from. Bound by `crudPanel()`
+ * (crud subpath) or by a BYO source panel. Unbound ⇒ the `data` feature reads
  * false and every `data.*` op reports `FEATURE_UNCONFIGURED`.
  */
 export const STUDIO_MODEL_SOURCE = new InjectionToken<StudioModelSource>('STUDIO_MODEL_SOURCE');
+
+/** The data panel's settings, provided by the panel that binds the model source. */
+export interface StudioDataOptions {
+  /**
+   * Restrict which discovered models the data browser manages. `include` is an
+   * allow-list (only these surface); `exclude` is a deny-list. Each entry
+   * matches a model by its qualified identity, name OR table name. Absent ⇒
+   * every discovered model is managed.
+   */
+  managedModels?: { include?: string[]; exclude?: string[] };
+  /**
+   * Impersonation identity applied to data WRITES, honored only when the
+   * `identity` editable gate is open. Server-only; never serialized. See
+   * {@link StudioRunAsIdentity}.
+   */
+  runAsIdentity?: StudioRunAsIdentity;
+}
+
+/** The data panel's {@link StudioDataOptions}; absent means every model and no impersonation. */
+export const STUDIO_DATA_OPTIONS = new InjectionToken<StudioDataOptions>('STUDIO_DATA_OPTIONS');

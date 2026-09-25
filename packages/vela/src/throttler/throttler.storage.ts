@@ -14,6 +14,7 @@ export class ThrottlerStorage implements ThrottlerStore {
   private readonly swapIntervalMs = 60_000;
 
   increment(key: string, ttlMs: number): ThrottlerStorageRecord {
+    // The window and limit arrive per call; a fixed-window counter needs only the window.
     this.maybeSwap();
 
     const now = Date.now();

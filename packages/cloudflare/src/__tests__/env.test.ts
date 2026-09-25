@@ -133,7 +133,7 @@ describe('Cloudflare runtime ENV', () => {
   it('takes no environment token and exports no environment parameter decorator', () => {
     // ENV is framework-owned: the entry options carry no application token.
     expectTypeOf<keyof CloudflareAppOptions>().toEqualTypeOf<
-      'globalPrefix' | 'globalPrefixOptions' | 'versioning' | 'security' | 'adapters'
+      'globalPrefix' | 'globalPrefixOptions' | 'versioning' | 'security' | 'cors' | 'adapters'
     >();
     expectTypeOf<keyof CloudflareWorkerOptions>().toEqualTypeOf<
       keyof CloudflareAppOptions | 'configure'

@@ -125,12 +125,12 @@ const MODULE_KIT = [
 ];
 
 const FEATURES: Record<string, string[]> = {
-  './cache': ['CacheModule', 'ResponseCacheModule', 'CacheResponse', 'Cacheable'],
+  './cache': ['CacheModule', 'CacheService', 'CacheResponse', 'MemoryCacheStore'],
   './throttler': ['ThrottlerModule', 'ThrottlerGuard', 'Throttle', 'SkipThrottle'],
   './schedule': ['ScheduleModule', 'ScheduleRegistry', 'Cron', 'Interval', 'parseCron'],
   './events': ['EventEmitterModule', 'EventEmitter', 'OnEvent', 'defineEvent', 'EventDispatcher'],
   './health': ['HealthModule', 'HealthCheckService', 'HealthIndicatorService'],
-  './security': ['SecurityModule', 'Secret', 'CorsModule', 'signUrl', 'NONCE_STORE'],
+  './security': ['SecurityModule', 'Secret', 'signUrl', 'NONCE_STORE'],
   './logging': ['LoggingModule', 'ApplicationLogger', 'APP_LOGGER', 'loggerForScope'],
   './openapi': ['createOpenApiDocument', 'OpenApiModule', 'ApiDoc', 'ApiResponse'],
   './contract': ['defineRoute'],
@@ -262,7 +262,6 @@ describe('public surface tiers', () => {
     const withoutDecorators = new Set([
       './contract',
       './observability',
-      './storage',
       './streaming',
       './websocket-node',
     ]);

@@ -3,13 +3,13 @@
  * layer, on the Node adapter (no Cloudflare). It wires:
  *
  *  - `StudioModule.forRoot(...)` — the reserved `/_vela/admin` surface, token +
- *    editable gates, and `rootModule` so `app.openapi` lights up.
- *  - `StudioCrudModule` — binds the crud-backed model source (lights `data.*`).
- *  - `StudioTimeTravelModule` — the PORTABLE tier: the in-memory snapshot store +
- *    the model source (granularity `snapshot`; CDC is a documented opt-in seam).
- *  - `StudioFlagsModule` + `FeatureFlagsModule` — the flags panel.
- *  - `StudioScheduleModule` + `ScheduleModule` — the schedule panel (a `@Cron` job).
- *  - `StudioQueueModule` + `QueueModule` — the queues panel (a `@Processor`).
+ *    editable gates, `rootModule` so `app.openapi` lights up, and its panels:
+ *    - `crudPanel()` — binds the crud-backed model source (lights `data.*`).
+ *    - `timeTravelPanel()` — the PORTABLE tier: the in-memory snapshot store +
+ *      the model source (granularity `snapshot`; CDC is a documented opt-in seam).
+ *    - `flagsPanel()` over `FeatureFlagsModule` — the flags panel.
+ *    - `schedulePanel()` over `ScheduleModule` — the schedule panel (a `@Cron` job).
+ *    - `queuesPanel()` over `QueueModule` — the queues panel (a `@Processor`).
  *  - `studioRuntimeAdapter` — opt-in route attribution (real `Controller#handler`).
  *
  * Every class is declared once, at module scope. Each `createApp()` call builds
@@ -36,11 +36,11 @@ import { FeatureFlagsModule } from '@velajs/feature-flags';
 import { Crud, CrudModule, createCrudDatabaseRegistry, defineCrudDatabase } from '@velajs/crud';
 import { StudioModule, readStudioEnv, studioRuntimeAdapter } from '@velajs/studio';
 import type { EditableFlags } from '@velajs/studio';
-import { StudioCrudModule } from '@velajs/studio/crud';
-import { StudioTimeTravelModule } from '@velajs/studio/timetravel';
-import { StudioFlagsModule } from '@velajs/studio/flags';
-import { StudioScheduleModule } from '@velajs/studio/schedule';
-import { StudioQueueModule } from '@velajs/studio/queue';
+import { crudPanel } from '@velajs/studio/crud';
+import { timeTravelPanel } from '@velajs/studio/timetravel';
+import { flagsPanel } from '@velajs/studio/flags';
+import { schedulePanel } from '@velajs/studio/schedule';
+import { queuesPanel } from '@velajs/studio/queue';
 import { models } from './models';
 import { MemoryDb, memoryAdapter } from './memory-adapter';
 
@@ -234,25 +234,20 @@ class DemoAppModule {
       ...(token === undefined ? {} : { token }),
       rootModule: ApiModule,
       editable,
+      plugins: [crudPanel(), timeTravelPanel(), flagsPanel(), schedulePanel(), queuesPanel()],
     });
-    const modelSourceModule = StudioCrudModule.forRoot({});
     return {
       module: DemoAppModule,
       imports: [
         demoDatabase(),
         ApiModule,
         studioModule,
-        modelSourceModule,
-        StudioTimeTravelModule.forRoot({ imports: [studioModule, modelSourceModule] }),
         FeatureFlagsModule.forRoot({ manifest: { ...FLAG_MANIFEST }, isGlobal: true }),
-        StudioFlagsModule.forRoot({}),
         ScheduleModule,
         ReportsModule,
-        StudioScheduleModule.forRoot({}),
         QueueModule.forRoot(),
         demoQueueModule,
         EmailProcessorModule,
-        StudioQueueModule.forRoot({}),
       ],
     };
   }

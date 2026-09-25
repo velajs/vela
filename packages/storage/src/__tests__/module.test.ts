@@ -1,5 +1,11 @@
 import { Test } from '@velajs/testing';
-import { Module, VelaFactory, type DynamicModule, type VelaApplication } from '@velajs/vela';
+import {
+  Module,
+  VelaFactory,
+  type DynamicModule,
+  type VelaApplication,
+  type VelaEnv,
+} from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
 import { StorageModule, StorageService, storageToken, type StorageModuleOptions } from '../index';
 import { memoryDriver } from '../drivers/memory';
@@ -259,6 +265,29 @@ describe('StorageModule', () => {
     expect(calls).toBe(2);
     await svc.download('x');
     expect(calls).toBe(2); // cached once it succeeds
+  });
+
+  it('builds a static driver factory from each application ENV on first use', async () => {
+    const seen: VelaEnv[] = [];
+    // One static module graph; each application passes its own ENV to the factory.
+    const storage = StorageModule.forRoot({
+      driver: (env: VelaEnv) => {
+        seen.push(env);
+        return memoryDriver({ initial: { origin: String(Reflect.get(env, 'REGION')) } });
+      },
+    });
+    @Module({ imports: [storage] })
+    class Root {}
+    const east = await VelaFactory.create(Root, { env: { REGION: 'east' } });
+    const west = await VelaFactory.create(Root, { env: { REGION: 'west' } });
+    expect(seen).toEqual([]);
+
+    const read = async (app: VelaApplication) =>
+      (await app.get(StorageService).download('origin')).text();
+    expect(await read(east)).toBe('east');
+    expect(await read(west)).toBe('west');
+    expect(seen.map((env) => Reflect.get(env, 'REGION'))).toEqual(['east', 'west']);
+    await Promise.all([east.close(), west.close()]);
   });
 
   it('supports multiple named buckets deduped by name', async () => {

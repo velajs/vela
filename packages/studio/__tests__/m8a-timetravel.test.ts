@@ -33,9 +33,9 @@ import type {
   StudioWriteContext,
   StudioWriteRowOutcome,
 } from '../src';
-import { AuditStoreChangeSource, StudioCrudModule } from '../src/crud';
-import { StudioTimeTravelModule } from '../src/timetravel';
-import type { StudioTimeTravelModuleOptions } from '../src/timetravel';
+import { AuditStoreChangeSource, crudPanel } from '../src/crud';
+import { timeTravelPanel } from '../src/timetravel';
+import type { TimeTravelPanelOptions } from '../src/timetravel';
 import type {
   AdminRpcResponse,
   ClearTableRequest,
@@ -552,7 +552,7 @@ function arm(bookmark: string, confirmToken: string): RestoreRequest {
 }
 
 // ===========================================================================
-// Integration: full HTTP dispatch through StudioModule + StudioTimeTravelModule
+// Integration: full HTTP dispatch through StudioModule + timeTravelPanel()
 // ===========================================================================
 
 const TOKEN = 'test-master-token-value';
@@ -676,7 +676,7 @@ type App = Awaited<ReturnType<typeof VelaFactory.create>>;
 
 async function makeApp(
   studio: Partial<StudioModuleOptions> = {},
-  tt: StudioTimeTravelModuleOptions | 'off' = {},
+  tt: TimeTravelPanelOptions | 'off' = {},
 ): Promise<App> {
   const db = new MemoryDb();
   db.table('widgets').set('w1', { id: 'w1', name: 'alpha', createdAt: 1, updatedAt: 1 });
@@ -691,10 +691,12 @@ async function makeApp(
     WidgetsController,
   );
 
-  const imports = [StudioModule.forRoot({ token: TOKEN, ...studio }), StudioCrudModule.forRoot({})];
-  if (tt !== 'off') imports.push(StudioTimeTravelModule.forRoot({ ...tt, imports: [...imports] }));
+  const plugins = tt === 'off' ? [crudPanel()] : [crudPanel(), timeTravelPanel(tt)];
 
-  @Module({ imports, controllers: [WidgetsController] })
+  @Module({
+    imports: [StudioModule.forRoot({ token: TOKEN, ...studio, plugins })],
+    controllers: [WidgetsController],
+  })
   class AppModule {}
   return VelaFactory.create(AppModule);
 }
@@ -842,7 +844,7 @@ describe('timeTravel ops — snapshot + restore round-trip through dispatch', ()
   });
 });
 
-describe('timeTravel ops — audit-backed CDC via StudioTimeTravelModule', () => {
+describe('timeTravel ops — audit-backed CDC via timeTravelPanel', () => {
   it('binds an AuditStoreChangeSource and reports snapshot+cdc', async () => {
     const auditStore = new MemoryAuditStore();
     const app = await makeApp(

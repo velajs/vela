@@ -1,4 +1,5 @@
 import { defineProvider } from '../container/types';
+import { RouteManager } from '../http/route.manager';
 import { defineModule } from '../module/define-module';
 import { APP_MIDDLEWARE } from '../pipeline/tokens';
 import type { DynamicModule } from '../registry/types';
@@ -12,8 +13,13 @@ const { ConfigurableModuleClass } = defineModule<SecurityModuleOptions>({
   setup: ({ OPTIONS }) => ({
     providers: [
       defineProvider(APP_MIDDLEWARE, {
-        useFactory: (options: SecurityModuleOptions) => buildSecurityMiddleware(options),
-        inject: [OPTIONS],
+        useFactory: (options: SecurityModuleOptions, routes: RouteManager) => {
+          // Its preflight policy runs after the framework's CORS middleware,
+          // which would answer first, so only one of them may serve CORS.
+          if (options.cors !== false) routes.reserveCors("SecurityModule's cors option");
+          return buildSecurityMiddleware(options);
+        },
+        inject: [OPTIONS, RouteManager],
       }),
     ],
     exports: [OPTIONS],

@@ -8,7 +8,6 @@
   "excludedModules": [
     "dist/cache/",
     "dist/config/",
-    "dist/cors/",
     "dist/crypto/",
     "dist/contract/",
     "dist/dispatch/abort-deadline.js",
@@ -43,7 +42,6 @@
     "dist/seeder/",
     "dist/serialization/",
     "dist/services/logger.js",
-    "dist/storage/",
     "dist/streaming/",
     "dist/throttler/",
     "dist/validation/",

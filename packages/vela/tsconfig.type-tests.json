@@ -24,7 +24,7 @@
     "src/__tests__/define-route.test.ts",
     "src/__tests__/body-static-schema.test.ts",
     "src/__tests__/observability.test.ts",
-    "src/__tests__/cache-value-safety.test.ts",
+    "src/__tests__/cache.test.ts",
     "src/__tests__/http-error-edge.test.ts",
     "src/__tests__/request-context.test.ts",
     "src/__tests__/json-body-media-type.test.ts",

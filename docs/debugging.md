@@ -89,23 +89,18 @@ The Node test runner and the Worker are separate debugging targets. See
 
 ## Capture structured logs in Studio
 
-Configure one logging module and one Studio module per application, then pass those
-same configured instances into the optional capture module:
+Configure one logging module per application and add the logs panel to Studio:
 
 ```ts
 import { Module } from '@velajs/vela';
 import { LoggingModule } from '@velajs/vela/logging';
 import { StudioModule } from '@velajs/studio';
-import { StudioLoggingModule } from '@velajs/studio/logging';
-
-const logging = LoggingModule.forRoot({ directive: 'debug' });
-const studio = StudioModule.forRoot({ logBufferSize: 1000 });
+import { logsPanel } from '@velajs/studio/logging';
 
 @Module({
   imports: [
-    logging,
-    studio,
-    StudioLoggingModule.forRoot({ imports: [logging, studio], timings: true }),
+    LoggingModule.forRoot({ directive: 'debug' }),
+    StudioModule.forRoot({ logBufferSize: 1000, plugins: [logsPanel({ timings: true })] }),
   ],
 })
 export class AppModule {}

@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { Body, Post } from '@velajs/vela';
 import { defineRoute, type ContractApp } from '@velajs/vela/contract';
 import {
-  ResponseCacheService,
-  type ResponseCacheOptions,
+  CacheService,
+  type CacheModuleOptions,
   type CacheInvalidationResult,
 } from '@velajs/vela/cache';
 import {
@@ -60,8 +60,8 @@ const counting: Promise<number> = contractClient.count
 // @ts-expect-error Form values are strings on the wire.
 void contractClient.count.$post({ form: { count: 1 } });
 
-declare const options: ResponseCacheOptions;
-const cache = new ResponseCacheService(options).scope({
+declare const options: CacheModuleOptions;
+const cache = new CacheService(options).scope({
   visibility: 'private',
   partition: 'verified-subject',
 });

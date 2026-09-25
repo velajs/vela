@@ -14,6 +14,9 @@ export const STUDIO_ADMIN_BASE_PATH = '/_vela/admin';
 
 // Module + config
 export { StudioModule, STUDIO_MODULE_OPTIONS } from './studio.module';
+// The one panel contract: StudioModule.forRoot({ plugins: [...] })
+export { defineStudioPlugin } from './plugin';
+export type { StudioPlugin } from './plugin';
 export { readStudioEnv, resolveStudioConfig } from './studio.config';
 export type { StudioEnv, StudioEnvConfig } from './studio.config';
 
@@ -82,11 +85,11 @@ export { StudioCapabilitiesOps } from './ops/studio.ops';
 // M5 data browser — the READ ops + the source port (the crud binding lives in
 // the optional `@velajs/studio/crud` subpath, never in this core `.` entry).
 export { StudioDataOps } from './data/data.ops';
-export { STUDIO_MODEL_SOURCE } from './data/model-source.port';
-export type { StudioModelSource } from './data/model-source.port';
+export { STUDIO_DATA_OPTIONS, STUDIO_MODEL_SOURCE } from './data/model-source.port';
+export type { StudioDataOptions, StudioModelSource } from './data/model-source.port';
 
 // M7a data browser — the WRITE ops provider + the write seam types. The provider
-// is crud-free (authored against the port) but registered by StudioCrudModule.
+// is crud-free (authored against the port) but registered by crudPanel().
 export { StudioDataWriteOps, MAX_GENERATE_ROWS } from './data/data.write.ops';
 export type {
   StudioWriteContext,
@@ -105,8 +108,7 @@ export {
   SNAPSHOT_STORE,
   InMemorySnapshotStore,
   CHANGE_SOURCE,
-  StudioTimeTravelModule,
-  STUDIO_TIMETRAVEL_MODULE_OPTIONS,
+  timeTravelPanel,
   NoopLiveInvalidator,
   ContainerLiveInvalidator,
   schemaHashForColumns,
@@ -117,7 +119,7 @@ export type {
   SnapshotAdapterDeps,
   ChangeSource,
   LiveInvalidatorPort,
-  StudioTimeTravelModuleOptions,
+  TimeTravelPanelOptions,
 } from './timetravel';
 
 // M9 auth panel — the READ/WRITE ops + the source port (the better-auth binding

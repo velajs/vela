@@ -4,8 +4,9 @@
  * `ScheduleRegistry` lives in the REQUIRED `@velajs/vela` barrel (not an
  * optional peer), but the schedule ops still ship as an opt-in subpath so the
  * `schedule` feature only advertises `schedule.*` handlers when an app actually
- * wants the panel. An app imports `StudioScheduleModule` ALONGSIDE `StudioModule`
- * (and `ScheduleModule`); registration lights the `schedule` feature by
+ * wants the panel. An app adds `schedulePanel()` to
+ * `StudioModule.forRoot({ plugins })` (with `ScheduleModule`); registration
+ * lights the `schedule` feature by
  * op-namespace (in UNION with the pre-existing `ScheduleRegistry`/
  * `SCHEDULE_DISPATCH` probe the M4 features service reads).
  *
@@ -26,7 +27,8 @@
  * `CLOUDFLARE_SCHEDULED_EVENT` whose `noRetry()` does nothing). Closing the
  * application aborts the signal of a run still in progress and waits for it.
  */
-import { Inject, Injectable, defineModule } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 import { Container, SCHEDULE_INVOCATION_SEED, invokeScheduledJob } from '@velajs/vela/module-kit';
 import { ScheduleRegistry } from '@velajs/vela/schedule';
 import type { BeforeApplicationShutdown } from '@velajs/vela';
@@ -36,8 +38,6 @@ import type { CronTriggerRow, ScheduleJobRow, StudioOpReq } from '@velajs/studio
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
 import { studioError, studioNotFound } from '../studio.errors';
-
-export const STUDIO_SCHEDULE_MODULE_ID = 'studio.schedule';
 
 @Injectable()
 export class StudioScheduleOps implements BeforeApplicationShutdown {
@@ -129,17 +129,11 @@ export class StudioScheduleOps implements BeforeApplicationShutdown {
   }
 }
 
-/** Options for {@link StudioScheduleModule}. Reserved for future schedule-panel wiring. */
-export type StudioScheduleModuleOptions = Record<string, never>;
-
-const { ConfigurableModuleClass } = defineModule<StudioScheduleModuleOptions>({
-  name: 'StudioSchedule',
-  setup: () => ({ providers: [StudioScheduleOps] }),
-});
-
 /**
- * Registers {@link StudioScheduleOps}. Import it with
- * `StudioScheduleModule.forRoot({})` ALONGSIDE `StudioModule` (and
- * `ScheduleModule`) in apps that want the schedule panel.
+ * The schedule panel: registers {@link StudioScheduleOps}, lighting the
+ * `schedule` feature in apps with `ScheduleModule`:
+ * `StudioModule.forRoot({ plugins: [schedulePanel()] })`.
  */
-export class StudioScheduleModule extends ConfigurableModuleClass {}
+export function schedulePanel(): StudioPlugin {
+  return defineStudioPlugin({ name: 'schedule', providers: [StudioScheduleOps] });
+}

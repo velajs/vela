@@ -412,7 +412,8 @@ describe('StudioModule — forRootAsync', () => {
     @Module({
       imports: [
         StudioModule.forRootAsync({
-          useFactory: (): StudioModuleOptions => ({ token: TOKEN }),
+          // Plugins are structural: the factory returns every other option.
+          useFactory: (): Omit<StudioModuleOptions, 'plugins'> => ({ token: TOKEN }),
         }),
       ],
     })
@@ -434,7 +435,7 @@ describe('StudioModule — forRootAsync', () => {
     @Module({
       imports: [
         StudioModule.forRootAsync({
-          useFactory: async (): Promise<StudioModuleOptions> => {
+          useFactory: async (): Promise<Omit<StudioModuleOptions, 'plugins'>> => {
             await Promise.resolve();
             return { token: TOKEN, editable: { data: true } };
           },

@@ -267,8 +267,15 @@ An exception filter's plain result takes the exception's status rather than
 
 ## Browser security
 
-Import `SecurityModule` for exact-origin CORS, credentialed unsafe-method Origin
-checks, and restrictive response headers:
+For plain CORS, enable it as in Nest: `app.enableCors(options?)`, or the `cors`
+create option (`VelaFactory.create(AppModule, { cors: { origin: ['https://app.example.com'] } })`,
+`createCloudflareWorker(AppModule, { cors })`). Hono's `cors` middleware answers
+preflights and stamps its headers ahead of body limits, routing and guards; a
+credentialed `'*'` origin is rejected. Without `allowMethods`, a preflight
+allows Nest's defaults: GET, HEAD, PUT, PATCH, POST and DELETE.
+
+Import `SecurityModule` for exact-origin CORS combined with credentialed
+unsafe-method Origin checks and restrictive response headers:
 
 ```ts
 @Module({
@@ -285,6 +292,12 @@ checks, and restrictive response headers:
 class AppModule {}
 ```
 
+`SecurityModule` serves CORS itself unless its `cors` option is `false`, so it
+cannot be combined with `app.enableCors()` or the `cors` create option: that
+middleware would answer every preflight before `SecurityModule`'s method and
+header checks run. Configuring both fails at bootstrap, or when
+`app.enableCors()` is called.
+
 Wildcard origins are rejected. Cookie-authenticated POST/PUT/PATCH/DELETE
 requests require a same-origin or allowlisted `Origin` by default. The module
 also emits `nosniff`, no-referrer, frame denial, HSTS on HTTPS, and an API-safe
@@ -292,16 +305,12 @@ CSP; customize or explicitly disable individual headers when serving HTML.
 
 ## Response caching
 
-Routes must opt in with `@Cacheable()`, even when `CacheInterceptor` is global.
-Credential-bearing requests bypass caching unless `CacheModule.forRoot` provides
-a stable `varyBy(request)` principal/tenant value. Vela hashes that value before
-keying. `@CacheKey` is a suffix beneath host + canonical path/query, and
-responses that set cookies are never stored.
-
-For asynchronous stores and explicit scoped invalidation, use
-[`ResponseCacheModule` and `@CacheResponse`](caching.md). Its scope resolver runs
-after guards, private scopes require trusted identity/tenant dimensions, and
-cache failures cannot turn committed writes into reported rollbacks.
+Routes opt in with `@CacheResponse()`; `CacheModule` registers its interceptor
+application-wide, and undecorated routes never cache. Its required `scope`
+resolver runs after guards: public scopes bypass requests carrying credentials
+or a trusted identity, private scopes need trusted identity/tenant dimensions,
+responses that set cookies are never stored, and cache failures cannot turn
+committed writes into reported rollbacks. See [the caching guide](caching.md).
 
 ## Signed URLs
 
@@ -324,8 +333,8 @@ considering any fallback, whatever the import order. Better Auth publishes this
 state automatically and uses its verified `activeOrganizationId` when present.
 Services read it through `REQUEST_CONTEXT` with the `TRUSTED_REQUEST_IDENTITY`
 key, a read-only view: writing it throws, so `setTrustedRequestIdentity` stays the
-only way to publish identity. The throttling decision is available under
-`RATE_LIMIT`.
+only way to publish identity. The throttling decisions are available under
+`RATE_LIMIT`, one per throttler name (`requestContext.get(RATE_LIMIT)?.default`).
 
 Without trusted identity, throttling uses `getTracker(request, context)` and then
 the runtime-attested client address; unknown callers share one fail-closed

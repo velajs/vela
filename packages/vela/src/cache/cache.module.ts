@@ -1,45 +1,62 @@
+import { Injectable } from '../container/decorators';
+import { DiscoveryService } from '../discovery/discovery.service';
+import { Reflector } from '../pipeline/reflector';
+import { MetadataRegistry } from '../registry/metadata.registry';
+import { CACHE_MODULE_OPTIONS, CACHE_RESPONSE_METADATA } from './cache.tokens';
 import { Module } from '../module/decorators';
-import { defineProvider } from '../container/types';
 import { defineModule } from '../module/define-module';
-import { APP_INTERCEPTOR } from '../pipeline/tokens';
 import { CacheInterceptor } from './cache.interceptor';
 import { CacheService } from './cache.service';
-import { MemoryCacheStore } from './cache.store';
-import { CACHE_MANAGER, CACHE_MODULE_OPTIONS } from './cache.tokens';
 import type { CacheModuleOptions } from './cache.types';
 
-// Reuse the public CACHE_MODULE_OPTIONS token so its identity (and the
-// index.ts export) is unchanged. `globalInterceptor` is structural: it decides
-// whether the module registers CacheInterceptor as an APP_INTERCEPTOR.
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
-  CacheModuleOptions,
-  'globalInterceptor'
->({
+const { ConfigurableModuleClass } = defineModule<CacheModuleOptions>({
   name: 'Cache',
   optionsToken: CACHE_MODULE_OPTIONS,
-  structural: ['globalInterceptor'],
-  defaults: { globalInterceptor: false },
-  setup: ({ options }) => ({
-    // CacheInterceptor itself is a provider of the @Module bag below.
-    providers: options.globalInterceptor
-      ? [defineProvider(APP_INTERCEPTOR, { useExisting: CacheInterceptor })]
-      : [],
-  }),
+  setup: () => ({ global: { interceptors: [CacheInterceptor] } }),
 });
 
+@Injectable()
+class CacheConfiguration {
+  constructor(
+    private readonly discovery: DiscoveryService,
+    private readonly cache: CacheService,
+    private readonly reflector: Reflector,
+  ) {}
+  onApplicationBootstrap(): void {
+    const registrations = this.discovery.getRegistrations({ metadataOnly: true, deferLazy: true });
+    if (registrations.filter((entry) => entry.metatype === CacheService).length > 1) {
+      throw new TypeError('Configure only one CacheModule per application.');
+    }
+    for (const { metatype } of registrations) {
+      for (const route of MetadataRegistry.getRoutes(metatype)) {
+        // Read as CacheInterceptor reads each request, inherited declarations
+        // included.
+        const context = { getClass: () => metatype, getHandlerName: () => route.handlerName };
+        const read = (key: string) => this.reflector.getAllAndOverride(key, context);
+        const config = read(CACHE_RESPONSE_METADATA);
+        if (typeof config !== 'object' || config === null) continue;
+        if (
+          'tags' in config &&
+          Array.isArray(config.tags) &&
+          config.tags.length &&
+          !this.cache.options.invalidation
+        ) {
+          throw new TypeError('Cache tags require an invalidation store.');
+        }
+      }
+    }
+  }
+}
+
+/**
+ * The one cache module, asynchronous end to end: a store (memory by default,
+ * or `kvCache({ binding })` on Cloudflare) feeds both `@CacheResponse()`
+ * routes and the injected `CacheService`. `namespace` and the trusted `scope`
+ * resolver are required; configure it once per application with `forRoot` or
+ * `forRootAsync`.
+ */
 @Module({
-  providers: [
-    CacheService,
-    CacheInterceptor,
-    // One options-injecting provider serves BOTH forRoot and forRootAsync.
-    // A custom synchronous store overrides the default memory store. Async
-    // stores belong to the separate ResponseCacheModule authoring path.
-    defineProvider(CACHE_MANAGER, {
-      useFactory: (options) =>
-        options.store ?? new MemoryCacheStore(options.ttl ?? 5, options.max ?? 100),
-      inject: [MODULE_OPTIONS_TOKEN],
-    }),
-  ],
-  exports: [CACHE_MANAGER, CACHE_MODULE_OPTIONS, CacheService, CacheInterceptor],
+  providers: [CacheService, CacheConfiguration],
+  exports: [CacheService, CacheInterceptor],
 })
 export class CacheModule extends ConfigurableModuleClass {}

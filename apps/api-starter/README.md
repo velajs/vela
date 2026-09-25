@@ -72,8 +72,8 @@ the live contract.
 `AppModule` is declared once at module scope, and `src/worker.ts` passes it to
 both `createCloudflareWorker` and `VelaWebSocketDurableObject`. Bindings reach
 the graph through dependency injection only: the `forRootAsync({ inject: [ENV] })`
-factories of Better Auth, CRUD and Studio's live source run for each native
-environment, so every environment builds its own auth instance and adapter.
+factories of Better Auth and CRUD run for each native environment, so every
+environment builds its own auth instance and adapter.
 `WebSocketModule.forRoot()` and `LiveModule.forRoot()` need no options: the
 Cloudflare adapter forwards gateway upgrades to the `LIVE_ROOM` Durable Object
 that `TodoGateway` names and routes live invalidations there, reading the
@@ -91,7 +91,7 @@ the types never depend on a build. `src/contracts.ts` declares the
 `TodoQueries` serves it with `@LiveQuery(todoList, { tags: [crudLiveTag('todos')] })`
 and returns its rows unparsed, since the engine validates each result, and the
 browser passes the same `queries` list to `createLiveClient`.
-`StudioLiveModule.forRoot({ rooms: ['default'] })` inspects the shared board's
+`livePanel({ rooms: ['default'] })` inspects the shared board's
 room in its Durable Object, reached through the gateway's `LIVE_ROOM` binding;
 Cloudflare has no global room enumeration API, so Studio names the room. Inspection excludes query arguments, results,
 authentication claims, and presence metadata. `connectedAt` describes when the

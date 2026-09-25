@@ -3,9 +3,9 @@
  * in `@velajs/studio-protocol` (the wire-shape source); the token lives here in
  * the server package (the protocol carries pure types, never DI identities).
  *
- * OPTIONAL injection: an app opts in by importing a module that binds this token
- * (the portable {@link import('./timetravel.module').StudioTimeTravelModule}, or
- * a CF-DO PITR module in M11). Unbound ⇒ `timeTravel.*` ops report
+ * OPTIONAL injection: an app opts in with a Studio plugin that binds this token
+ * (the portable `timeTravelPanel()`, or `cloudflareTimeTravelPanel()` for
+ * Durable Object PITR). Unbound ⇒ `timeTravel.*` ops report
  * `TIMETRAVEL_UNAVAILABLE` (409) and `studio.capabilities.timeTravel` is `null`.
  */
 import { InjectionToken } from '@velajs/vela';

@@ -54,8 +54,20 @@ parameters may omit it.
 The factory returns the module options. `name` (the bucket, default
 `'default'`) and `http` are structural: they decide the provided tokens and the
 mounted routes, so `forRootAsync` takes them next to the factory. The driver
-may be a function, `driver: () => r2Driver({ bucket: env.UPLOADS })`, which
-builds it on the first storage operation. Each bucket name is one module
+may be a function of the application's `ENV`, which builds it on the first
+storage operation of each application, so a static `forRoot` serves every
+environment without reading a binding at boot. On Cloudflare Workers, name the
+R2 bucket binding with `r2Storage` from `@velajs/cloudflare/storage`:
+
+```ts
+import { r2Storage } from '@velajs/cloudflare/storage';
+
+StorageModule.forRoot({ driver: r2Storage({ binding: 'UPLOADS' }) });
+// equivalent, by hand: StorageModule.forRoot({ driver: (env) => r2Driver({ bucket: env.UPLOADS }) })
+```
+
+A missing or mistyped binding fails that first operation with a message naming
+the binding and the `r2_buckets` key of the Wrangler configuration. Each bucket name is one module
 instance; registering a name again with another driver, `http` block or other
 options fails bootstrap, so two features that each need a bucket give them
 distinct names (`name: 'avatars'`).
@@ -91,7 +103,7 @@ The controller is marked `SkipGuardPhases(['tenant', 'authorize'])`: the authori
 |---|---|---|---|
 | Memory (tests) | `@velajs/storage/drivers/memory` | ✅ | ❌ |
 | S3 / S3-compatible | `@velajs/storage/drivers/s3` | ✅ | ✅ |
-| R2 (native binding) | `@velajs/storage/drivers/r2` | ✅ | via hybrid |
+| R2 (native binding) | `@velajs/storage/drivers/r2`, or `r2Storage({ binding })` from `@velajs/cloudflare/storage` | ✅ | via hybrid |
 | R2 (HTTP + hybrid) | `@velajs/storage/drivers/r2-http` | ✅ | ✅ |
 | storagesdk bridge | `@velajs/storage/storagesdk` | Node/Bun only | depends on adapter |
 
@@ -178,24 +190,28 @@ prefixes, readonly checks, middleware, and facade controls; use native keys ther
 Named module injection still exposes `StorageService<unknown>`; inject your typed
 `ENV` token when an injected consumer needs full native methods.
 
-## Portable storage and the Cloudflare proxy
+## Storage on Cloudflare Workers
 
-For new file/object storage, use `StorageModule` from `@velajs/storage` and choose
-a driver through its independent import. Keep native `env.CACHE`, `env.DB`, and
-Durable Object storage for KV, SQL and per-object transactions; these are separate
-capabilities, not file-storage backends.
+`StorageModule` from this package is the one file/object storage module; choose
+a driver through its independent import. On Workers, `r2Storage({ binding })`
+from `@velajs/cloudflare/storage` drives it from the native R2 binding. Keep
+native `env.CACHE`, `env.DB`, and Durable Object storage for KV, SQL and
+per-object transactions; these are separate capabilities, not file-storage
+backends.
 
-`@velajs/cloudflare` also exports an older `StorageModule` and `StorageService`.
-That API stays supported in 1.x and signs Worker proxy routes with an application
-HMAC secret. Its signed URLs are not interchangeable with S3/R2 provider-signed
-URLs from the portable package. Migration is explicit:
+The native R2 binding cannot presign. Serve its objects through `publicBaseUrl`,
+through the authorized HTTP controller with `http: { download: 'proxy' }`, or
+presign through the S3 or R2 HTTP/hybrid drivers.
 
-| Cloudflare proxy API | Portable package |
+`@velajs/cloudflare` no longer has a storage module of its own. An application
+that used its multi-disk `StorageModule` registers one `StorageModule` per former
+disk:
+
+| Removed Cloudflare API | This package |
 | --- | --- |
-| Configure `disks` with native buckets | Register a named `StorageModule` per driver |
+| `disks` with native buckets | One named `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })` per disk |
 | Driver `upload(body, path, { mimeType })` | `upload(key, body, { contentType })` |
 | `download(path).toStream()` | `(await download(key)).stream()` |
-| Worker HMAC `getPresignedUrl()` routes | Provider signing through S3 or R2 HTTP/hybrid drivers; optional authorized HTTP controller |
+| Worker HMAC `getPresignedUrl()` and the `GET /storage/:disk` proxy route | `publicBaseUrl`, the authorized `http: { download: 'proxy' }` controller, or provider-signed URLs from the S3 or R2 HTTP/hybrid drivers |
 
-Keep existing proxy routes and issued URL handling during a migration. Neither
-package requires migrating the other, and the legacy runtime/signatures are unchanged.
+URLs issued by the removed proxy route stop working once it is gone.

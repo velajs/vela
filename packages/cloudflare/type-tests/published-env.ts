@@ -65,6 +65,7 @@ export async function verifyPublishedEnvironment(
     globalPrefixOptions: true,
     versioning: true,
     security: true,
+    cors: true,
     adapters: true,
     configure: true,
   };
