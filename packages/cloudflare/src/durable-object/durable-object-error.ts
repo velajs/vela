@@ -26,9 +26,13 @@ export interface DurableObjectErrorInit {
  *
  * workerd rebuilds it on the caller's side as a plain `Error` with the same
  * `name`, `status`, `code`, `message` and `details`; read it with
- * {@link isDurableObjectError}. A host may throw one itself, for example to
- * pass on another object's failure: a 4xx one keeps its code, message and
- * details, a 5xx one only its status.
+ * {@link isDurableObjectError}. That needs a Worker `compatibility_date` of
+ * 2026-04-21 or later, or the `enhanced_error_serialization` compatibility
+ * flag: before it, workerd delivers only an `Error` whose message is
+ * `DurableObjectError: <message>`, without the status, code or details
+ * (`vela deploy check` warns about it). A host may throw one itself, for
+ * example to pass on another object's failure: a 4xx one keeps its code,
+ * message and details, a 5xx one only its status.
  */
 export class DurableObjectError extends Error implements DurableObjectErrorInit {
   override readonly name = NAME;
@@ -55,7 +59,9 @@ export class DurableObjectError extends Error implements DurableObjectErrorInit 
 
 /**
  * Whether `error` is a Durable Object RPC failure: a {@link DurableObjectError},
- * or the plain `Error` workerd delivers for one to the caller.
+ * or the plain `Error` workerd delivers for one to the caller. On a
+ * compatibility date before 2026-04-21 without `enhanced_error_serialization`,
+ * workerd drops the error's properties, so this is false.
  */
 export function isDurableObjectError(error: unknown): error is DurableObjectError {
   if (typeof error !== 'object' || error === null) return false;

@@ -86,11 +86,16 @@ When the snapshot is computed from the Worker entry, it also lists the
 `cf:durable-object` rows: each exported class by its export name (Wrangler's
 `class_name`), with what it serves (`host` and its host class, or `websocket`)
 and its RPC methods, and each class the app defines with `VelaDurableObject(app,
-Host)` or `VelaWebSocketDurableObject(app)` but the entry does not export, as
+Host, { rpc })` or `VelaWebSocketDurableObject(app)` but the entry does not export, as
 `(not exported) <Host>`. An exported class that no `durable_objects` binding of
 the selected environment names warns with `unbound-durable-object` (another
 Worker may bind it through `script_name`), and a class the entry does not export
-warns with `unexported-durable-object`: nothing can bind it.
+warns with `unexported-durable-object`: nothing can bind it. An exported host
+class with RPC methods warns with `durable-object-error-serialization` when the
+selected environment's `compatibility_date` predates 2026-04-21 without the
+`enhanced_error_serialization` flag (or sets `legacy_error_serialization`):
+workerd then drops a `DurableObjectError`'s `status`, `code` and `details` on the
+way to the caller.
 
 Queues registered with `QueueModule.registerQueue()` appear as
 `queue:registration` rows. Each registered `binding` must be a

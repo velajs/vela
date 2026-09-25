@@ -200,7 +200,8 @@ export const CLOUDFLARE_DURABLE_OBJECT: unique symbol = Symbol.for('vela.cloudfl
 /** What a Vela Durable Object class is built from, for tools such as `vela cf sync`. */
 export interface CloudflareDurableObjectDescriptor {
   /**
-   * `host`: `VelaDurableObject(root, Host)`, whose RPC methods are the host's.
+   * `host`: `VelaDurableObject(root, Host, { rpc })`, whose RPC methods are
+   * the host methods `rpc` names.
    * `websocket`: `VelaWebSocketDurableObject(root)`, a gateway room's sockets.
    */
   readonly kind: 'host' | 'websocket';
@@ -303,12 +304,16 @@ export function registerDurableObject(
  * import { VelaDurableObject } from '@velajs/cloudflare/durable-objects';
  *
  * const app = defineCloudflareApp(AppModule, { globalPrefix: '/api' });
- * export class Counter extends VelaDurableObject(app, CounterHost) {}
+ * export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
  * export default app.worker;
  * ```
  *
  * The Worker builds one application per environment identity; each Durable
- * Object instance boots its own application context. `createCloudflareWorker`
+ * Object instance boots its own application context. Declare the classes in
+ * the module that defines the app: a class file importing the app from the
+ * Worker entry would run before the entry defined it. Keep them in the entry,
+ * or define the app in a module of its own that the entry and the class files
+ * import. `createCloudflareWorker`
  * is `defineCloudflareApp(rootModule, options).worker`.
  */
 export function defineCloudflareApp(

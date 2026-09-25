@@ -440,9 +440,10 @@ loaded by Node tooling. Native classes belong to `/durable-objects`.
 `VelaDurableObject(app, Host)` from `/durable-objects` returns a Durable Object
 class whose instances each boot one application context from the app's root
 (`VelaFactory.createApplicationContext`, under `blockConcurrencyWhile`), with
-`Host`, an `@Injectable()`, added to the root module's providers. The host's
-public methods become the class's JS-RPC methods, typed on the binding, and its
-`fetch`, `alarm` and WebSocket handlers become the object's:
+`Host`, an `@Injectable()`, added to the root module's providers. The host
+methods the `rpc` option names become the class's JS-RPC methods, typed on the
+binding; no other method, TypeScript `private` helpers included, is reachable
+over RPC. Its `fetch`, `alarm` and WebSocket handlers become the object's:
 
 ```ts
 import { Inject, Injectable } from '@velajs/vela';
@@ -459,7 +460,7 @@ export class CounterHost {
   }
 }
 
-export class Counter extends VelaDurableObject(app, CounterHost) {}
+export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
 // Anywhere with the COUNTER binding: await env.COUNTER.getByName('orders').increment(1)
 ```
 
@@ -467,9 +468,11 @@ The context injects `ENV`, `DO_STATE`, `DO_STORAGE` and `DO_ID`. Each call and
 event runs in its own execution scope (request-scoped providers per call)
 through the host's scoped guards, pipes, interceptors and filters, with an
 `ExecutionContext` of type `rpc` (or `cf:do:fetch`, `cf:do:alarm`,
-`cf:do:websocket`). Failures are reported first; an RPC call rejects only with
-a `DurableObjectError` (`status`, `code`, `message`, and `details` for a client
-fault), which `isDurableObjectError()` recognizes on the caller's side. See
+`cf:do:websocket`); a streamed `fetch()` body keeps its scope open until it is
+sent. Failures are reported first; an RPC call rejects only with a
+`DurableObjectError` (`status`, `code`, `message`, and `details` for a client
+fault), which `isDurableObjectError()` recognizes on the caller's side from
+`compatibility_date` 2026-04-21 (or with `enhanced_error_serialization`). See
 [Durable Objects](../../docs/durable-objects.md).
 
 ## Bindings by name

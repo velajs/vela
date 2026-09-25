@@ -134,9 +134,15 @@ vela deploy check
   `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module only
   when no source file configures the driver yet. `durable-object` writes an
   `@Injectable()` host (`counter.host.ts`, injecting `DO_STORAGE`) and the
-  class the Worker entry exports,
-  `export class Counter extends VelaDurableObject(AppModule, CounterHost) {}`,
-  built from the root module the Worker entry names (see
+  class the Worker entry exports, whose `rpc` option lists the host's RPC
+  methods. When the entry binds its app (`const app = defineCloudflareApp(...)`),
+  the class is declared in the entry after it,
+  `export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}`,
+  so it shares the app's runtime adapters; when the entry imports the app from
+  its own module, `counter.durable-object.ts` imports it too. Otherwise the
+  class is built from the root module the entry names, in
+  `counter.durable-object.ts`, and the generator says so when the entry passes
+  options the class then does not share (see
   [Durable Objects](durable-objects.md)). `--skip-import` prints the
   registration instead.
   TypeScript 7 has no stable compiler API, which is why the CLI uses Oxc here.

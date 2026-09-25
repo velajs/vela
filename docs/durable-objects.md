@@ -2,9 +2,9 @@
 
 A Vela Durable Object is a class whose instances each boot one application
 context from your module graph. A host class, an ordinary `@Injectable()`,
-provides its behavior: its public methods become the class's JS-RPC methods,
-and `fetch`, `alarm` and the WebSocket hibernation handlers become its event
-handlers. Every call and event runs through the same guard, pipe, interceptor
+provides its behavior: the methods you list in `rpc` become the class's JS-RPC
+methods, and `fetch`, `alarm` and the WebSocket hibernation handlers become its
+event handlers. Every call and event runs through the same guard, pipe, interceptor
 and filter pipeline as the rest of the application, in its own execution
 scope.
 
@@ -22,7 +22,7 @@ import { CounterHost } from './counter/counter.host.js';
 
 const app = defineCloudflareApp(AppModule, { globalPrefix: '/api' });
 
-export class Counter extends VelaDurableObject(app, CounterHost) {}
+export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment', 'reset'] }) {}
 export class ChatRoom extends VelaWebSocketDurableObject(app) {}
 export default app.worker;
 ```
@@ -37,9 +37,29 @@ export default app.worker;
   same root, configured by the app's runtime `adapters` (their
   `configureContainer`, as in the Worker). The HTTP options (`globalPrefix`,
   `security`, `configure`) apply to the Worker only.
-- `VelaDurableObject(AppModule, CounterHost)` and
+- `VelaDurableObject(AppModule, CounterHost, { rpc })` and
   `VelaWebSocketDurableObject(AppModule)` take a bare root instead: the same
   class, without the app's adapters.
+- A Durable Object class uses the app when it is defined, so declare it in the
+  module that defines the app, as above. A class in its own file cannot import
+  the app from the Worker entry: the entry imports that file first, so the app
+  is not defined yet when the class is. To keep classes in their own files,
+  define the app in a module of its own and import it from the Worker entry and
+  from each class's file:
+
+  ```ts
+  // src/app.ts
+  export const app = defineCloudflareApp(AppModule, { adapters: [reporting] });
+
+  // src/counter/counter.durable-object.ts
+  import { app } from '../app.js';
+  export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
+
+  // src/worker.ts
+  import { app } from './app.js';
+  export { Counter } from './counter/counter.durable-object.js';
+  export default app.worker;
+  ```
 - The Worker's descriptor lists the Durable Object classes defined from the app,
   and each class carries its own descriptor, so `vela cf sync` and
   `vela deploy check` know what each exported class serves.
@@ -97,12 +117,19 @@ export class OrdersService {
 }
 ```
 
-- **RPC methods.** Every string-keyed function on the host's prototype chain,
-  its own and inherited ones. Lifecycle hooks (`onModuleInit`, ...) and
-  accessors are not, and TypeScript `private` is compile-time only: keep
-  helpers in `#private` methods or in other providers. A method named `ctx`,
-  `env`, `connect` or `dup` would shadow the class or its stubs, so the class
-  definition rejects it.
+- **RPC methods.** Exactly the host methods the `rpc` option names, and the
+  stub type exposes exactly those. Nothing else is reachable over RPC, even
+  from plain JavaScript that names another method on a stub: not an unlisted
+  public method, a TypeScript `private` or `protected` helper (which is an
+  ordinary prototype method at runtime), a lifecycle hook or `dispose()`.
+  Without `rpc`, the object serves only its event handlers. The list is typed:
+  it accepts the host's public methods only. When the class is defined, each
+  name must be a method declared in the host's class body or inherited;
+  accessors and instance fields (such as `increment = async () => ...`) are
+  not on the prototype and are rejected. Hooks (`onModuleInit`, ...,
+  `dispose`, `collectEntrypoints`), the event handlers, and `ctx`, `env`,
+  `connect`, `dup`, `id` and `name`, which the class or its stubs own, are
+  rejected too.
 - **Handlers.** When the host defines `fetch(request)`, `alarm(info)`,
   `webSocketMessage`, `webSocketClose` or `webSocketError`, the class delegates
   that event to it. A host without `alarm` gets no alarm handler, so
@@ -130,8 +157,11 @@ then: keep durable state in `DO_STORAGE`.
 Each RPC call and event runs in a fresh execution scope, like an HTTP request:
 request-scoped providers (and a host that depends on one) are built for that
 invocation, and `EXECUTION_LIFETIME` work (`defer`, `waitUntil`) settles before
-the call returns. A failure of that work is reported; it fails an alarm, so the
-platform retries it, but not an RPC call that already succeeded.
+the call returns. A `fetch()` response with a streamed body keeps its scope open,
+as the HTTP edge does, until the body is read, fails or is cancelled; the scope
+then finishes under the object's `waitUntil`. A failure of that work is
+reported; it fails an alarm, so the platform retries it, but not an RPC call
+that already succeeded.
 
 ## The pipeline
 
@@ -160,7 +190,12 @@ A failure is reported first, through the application's `ExceptionHandler`
   `500 internal "Internal Server Error"`. Its stack names only itself, so no
   frame, cause or property of the original error crosses the RPC boundary.
   workerd rebuilds it for the caller as a plain `Error` with those properties;
-  test it with `isDurableObjectError(error)`. A host may throw a
+  test it with `isDurableObjectError(error)`. workerd keeps an error's own
+  properties across RPC only from `compatibility_date` 2026-04-21, or with the
+  `enhanced_error_serialization` compatibility flag. On an older date the
+  caller receives an `Error` whose message is `DurableObjectError: <message>`,
+  with no `status`, `code` or `details`, and `isDurableObjectError()` is false;
+  `vela deploy check` warns about it. A host may throw a
   `DurableObjectError` itself, for example to pass another object's failure
   on: a client fault (4xx) keeps its code, message and details, and a server
   fault keeps only its status.
@@ -204,16 +239,24 @@ await context.close();
 ```
 
 `get()` looks a token up across the application, `{ strict: true }` as the
-selected module sees it. `resolve()` awaits async factories, constructs
+selected module sees it: its own providers, its imports' exports and global
+tokens, the visibility `ModuleRef` uses. This differs from Nest, where strict
+lookup finds only the providers the selected module declares itself. `resolve()` awaits async factories, constructs
 transient providers anew and resolves request-scoped ones in the execution
 scope you pass. `init()` is idempotent; `close()` runs the shutdown hooks and
 `dispose()` also releases the container. `VelaApplication` extends it.
 
 ## Wrangler, tooling and tests
 
-- `vela g durable-object counter` writes `counter.host.ts` and
-  `export class Counter extends VelaDurableObject(AppModule, CounterHost) {}`,
-  exported from the Worker entry.
+- `vela g durable-object counter` writes `counter.host.ts` and a class whose
+  `rpc` lists the host's `increment` method. When the Worker entry binds its
+  app (`const app = defineCloudflareApp(...)`), it declares
+  `export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}`
+  in the entry, after the app. When the entry imports the app from its own
+  module, it writes `counter.durable-object.ts` importing that app. Otherwise it
+  builds the class from the root module in `counter.durable-object.ts`, exported
+  from the entry, and says so when the entry passes options (such as runtime
+  adapters) that the class then does not share.
 - `vela cf sync --write` binds every exported class and adds it to a migration
   as a SQLite class. A gateway binding no class serves is bound to the one
   exported `VelaWebSocketDurableObject` class.
