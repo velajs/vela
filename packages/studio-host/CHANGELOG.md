@@ -1,5 +1,13 @@
 # @velajs/studio-host
 
+## 1.24.1
+
+### Patch Changes
+
+- Updated dependencies [3cc469d]
+  - @velajs/studio-protocol@1.26.0
+  - @velajs/studio-ui@1.25.1
+
 ## 1.24.0
 
 ### Minor Changes

@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.34.0
+
+### Minor Changes
+
+- 2c61e5b: Unify Wrangler binding discovery across resource addition, configuration sync and deployment checks. Cover current native binding shapes, detect cross-kind name collisions, respect environment inheritance exceptions, and preserve unknown configuration. Known malformed bindings now fail before resource creation or config edits.
+  
+  Add `vela add binding <kind> <BINDING> --options <JSON>` for native JSON/JSONC declarations without provisioning resources or adding modules. Selected-environment type generation now calls Wrangler with `--env` instead of running an unqualified types script.
+  
+  Expose `flagship({ binding })` and `secretsStoreSecret({ binding })` native references from `@velajs/cloudflare`, resolving the original handle separately for each environment without caching values.
+- 3cc469d: Preserve native Flagship evaluation reasons, variants and error codes through optional driver detail methods and Studio responses. Value-only providers now report UNKNOWN instead of STATIC; native context accepts only scalar attributes, and route guards deny all evaluation errors. Existing object-validation callback signatures are unchanged.
+  
+  Add the optional crypto/cloudflare SecretsStoreKeyProvider for immutable, versioned AES-KW key material, with explicit per-instance caching, refresh, retry and rotation using retained decryption keys. Secrets Store supplies material for local Web Crypto; it is not a remote KMS.
+- 9ebb189: Add the optional `@velajs/cloudflare/queue-events` subpath for Cloudflare platform event subscriptions inside existing `@QueueConsumer` handlers. Validate the documented versioned envelope, source/account/subscription expectations and Standard Schema payloads before awaiting explicit handlers. Acknowledge each success individually and request native retries for malformed, unmatched or failing messages while preserving partial-batch progress and DLQ behavior. Include a Worker build example, native delivery identity, idempotency and producer trust guidance, and workerd coverage separate from signed Vela job dispatch.
+- f1c7be8: Add the optional `@velajs/cloudflare/pipelines` writer with Standard Schema producer validation, schema transform inference, strict JSON snapshots, and UTF-8 ingestion payload limits. Validate the entire batch before awaiting one native stream send, preserving the configured binding and its ingestion-only guarantees.
+
+### Patch Changes
+
+- 5314b4e: Add the optional `/tracing` entrypoint with `CloudflareTracingInterceptor` for
+  native Workers spans around awaited HTTP and service RPC handler work. Span
+  names are fixed and labels contain only bounded class and method names.
+- Updated dependencies [3cc469d]
+  - @velajs/feature-flags@1.32.0
+
 ## 1.33.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # @velajs/studio-ui
 
+## 1.25.1
+
+### Patch Changes
+
+- Updated dependencies [3cc469d]
+  - @velajs/studio-protocol@1.26.0
+
 ## 1.25.0
 
 ### Minor Changes

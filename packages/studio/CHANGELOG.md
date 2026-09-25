@@ -1,5 +1,21 @@
 # @velajs/studio
 
+## 1.33.1
+
+### Patch Changes
+
+- 3cc469d: Preserve native Flagship evaluation reasons, variants and error codes through optional driver detail methods and Studio responses. Value-only providers now report UNKNOWN instead of STATIC; native context accepts only scalar attributes, and route guards deny all evaluation errors. Existing object-validation callback signatures are unchanged.
+  
+  Add the optional crypto/cloudflare SecretsStoreKeyProvider for immutable, versioned AES-KW key material, with explicit per-instance caching, refresh, retry and rotation using retained decryption keys. Secrets Store supplies material for local Web Crypto; it is not a remote KMS.
+- Updated dependencies [2c61e5b]
+- Updated dependencies [5314b4e]
+- Updated dependencies [3cc469d]
+- Updated dependencies [9ebb189]
+- Updated dependencies [f1c7be8]
+  - @velajs/cloudflare@1.34.0
+  - @velajs/feature-flags@1.32.0
+  - @velajs/studio-protocol@1.26.0
+
 ## 1.33.0
 
 ### Minor Changes
