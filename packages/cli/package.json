@@ -1,6 +1,6 @@
 {
   "name": "@velajs/cli",
-  "version": "1.32.0",
+  "version": "1.33.0",
   "description": "CLI for Vela apps — seeding and project tasks (Node-side; not bundled into the edge Worker)",
   "keywords": [
     "cli",
