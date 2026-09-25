@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/rag/index.ts'],
+  entry: ['src/index.ts', 'src/rag/index.ts', 'src/ai-search/index.ts'],
   format: ['esm'],
   dts: true,
   clean: true,

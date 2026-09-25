@@ -1,16 +1,18 @@
 # @velajs/ai
 
 Provider-neutral model selection and tenant-scoped retrieval for Vela applications.
-Both entrypoints also work independently of Vela and Cloudflare.
+The base and RAG entrypoints also work independently of Vela and Cloudflare.
 
 - **`@velajs/ai`** supplies `createAi` to configure model defaults once per application,
   while services accept either provider model IDs or existing SDK models.
 - **`@velajs/ai/rag`** supplies `defineRag` for ingestion, authorized retrieval,
   content re-sync, and request-bound AI SDK search tools over your vector store.
+- **`@velajs/ai/ai-search`** supplies `createAiSearch` for Cloudflare's managed
+  retrieval, validated citations, and request-bound tools with current source authorization.
 
 Use the [Vercel AI SDK](https://ai-sdk.dev) directly when your application already
 owns model selection and retrieval. Vela adds no inference protocol, agent loop,
-provider registry, or platform binding wrapper. `generateText`, `streamText`,
+provider registry, or ingestion wrapper. `generateText`, `streamText`,
 `embed`, `tool`, and `jsonSchema` are unchanged SDK re-exports; import other SDK
 features from `ai`.
 
@@ -24,7 +26,7 @@ The workspace tests AI SDK **7.0.26** with **Zod 4.4.3**, TypeScript 7 and Node 
 The supported SDK peer is `^7.0.26`. AI SDK 7.0.26 accepts Zod
 `^3.25.76 || ^4.1.8`; this package uses the SDK's JSON-schema validator for its
 RAG tool and does not import Zod itself. Install a compatible provider only when
-you use it. Neither entrypoint requires a specific provider, Vela, or Workers SDK.
+you use it. No entrypoint requires a specific provider, Vela, or Workers SDK dependency.
 The AI SDK's own transitive dependencies still apply. A type-only
 `@types/json-schema` dependency supplies declarations referenced by SDK 7.0.26.
 For strict SDK declaration checking, also install `@types/node` in your application
@@ -206,6 +208,27 @@ and 4 MiB of chunk output per document, 64 KiB source metadata, 32 KiB query,
 8,192 embedding dimensions, `topK <= 100`, 20 neighbors per side, and 2 MiB assembled
 context. External metadata must be bounded plain JSON. Malformed/oversized
 adapter records are dropped and excess query results are sliced before inspection.
+
+## Cloudflare managed retrieval
+
+`createAiSearch` from `@velajs/ai/ai-search` returns `{ retrieve, asTool }` for
+the native AI Search namespace binding. Construct it per verified request with
+server-authorized `instanceIds` and a required `authorizeSource` callback that
+checks current ACLs and publication state. The tool accepts only `{ query }`;
+results contain bounded `context`, `chunks`, and `citations`.
+
+Use immutable item keys for each content revision so current authority can reject
+stale indexed content. Keep native instance management, built-in storage uploads,
+indexing, and deletion on the binding. See the
+[Cloudflare retrieval guide](docs/cloudflare-retrieval.md) for the native ingestion
+recipe, authorization/publication requirements, limits, and why Vectorize cannot
+be connected by forwarding `RagVectors` methods.
+
+Run the credential-free publication and revocation example after building:
+
+```sh
+node packages/ai/examples/managed-search.mjs
+```
 
 ## Exports and migration from the standalone source
 
