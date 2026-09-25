@@ -301,6 +301,39 @@ describe('generateClientContract', () => {
     expect(() => generateClientContract(path)).toThrow('custom parameter serialization');
   });
 
+  it('types a query parameter documented as one value or repeated keys', () => {
+    const oneOrMany = (location: 'query' | 'header') => ({
+      ...clientDocument,
+      components: undefined,
+      paths: {
+        '/search': {
+          get: {
+            parameters: [
+              {
+                in: location,
+                name: 'role',
+                schema: {
+                  oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+                },
+                ...(location === 'query' ? { style: 'form' as const, explode: true } : {}),
+              },
+            ],
+            responses: { 200: { description: 'OK' } },
+          },
+        },
+      },
+    });
+    expect(generateClientContract(oneOrMany('query')).source).toContain(
+      'query?: { "role"?: string | Array<string>; }',
+    );
+    expect(() => generateClientContract(oneOrMany('header'))).toThrow(
+      'only query parameters support arrays',
+    );
+    const structured = oneOrMany('query');
+    structured.paths['/search'].get.parameters[0]!.schema.oneOf.push({ type: 'object' });
+    expect(() => generateClientContract(structured)).toThrow('structured parameters');
+  });
+
   it('rejects unsupported statuses and direction-dependent schemas', () => {
     const document = structuredClone(clientDocument);
     document.paths['/empty']!.delete!.responses = { 299: { description: 'Unofficial' } };

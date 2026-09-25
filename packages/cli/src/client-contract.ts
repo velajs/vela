@@ -272,9 +272,15 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
       rejectBinaryJson(child, at, seen);
   }
 
+  /**
+   * The type of a parameter value. `arrays` is the error an array raises
+   * where none is allowed: in a path or header parameter, or inside a query
+   * array.
+   */
   function wireType(
     value: ContractSchema | undefined,
     at: string,
+    arrays: string | undefined,
     seen = new Set<string>(),
   ): string {
     if (value === false) return 'never';
@@ -287,13 +293,26 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
         .slice('#/components/schemas/'.length)
         .replace(/~1/g, '/')
         .replace(/~0/g, '~');
-      return wireType(components[name], at, new Set(seen).add(schema.$ref));
+      return wireType(components[name], at, arrays, new Set(seen).add(schema.$ref));
     }
     if (schema?.type === 'array') {
-      const item = wireType(schema.items, at, seen);
-      if (item.startsWith('Array<')) throw new Error(`${at}: nested query arrays are unsupported.`);
-      return `Array<${item}>`;
+      if (arrays !== undefined) throw new Error(`${at}: ${arrays}`);
+      return `Array<${wireType(schema.items, at, 'nested query arrays are unsupported.', seen)}>`;
     }
+    // A union of values, such as one value or repeated keys, which Vela
+    // documents for a union or `unknown` named query parameter.
+    const members = schema?.oneOf ?? schema?.anyOf;
+    if (
+      members &&
+      !(schema?.oneOf && schema.anyOf) &&
+      !schema?.allOf &&
+      schema?.type === undefined &&
+      !schema?.properties
+    )
+      return (
+        [...new Set(members.map((member) => wireType(member, at, arrays, seen)))].join(' | ') ||
+        'never'
+      );
     if (
       schema?.type === 'object' ||
       schema?.properties ||
@@ -389,9 +408,11 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
       throw new Error(
         `${at}: custom parameter serialization/references are unsupported (${p.name}).`,
       );
-    const type = wireType(p.schema, `${at} parameter ${p.name}`);
-    if (location !== 'query' && type.startsWith('Array<'))
-      throw new Error(`${at}: only query parameters support arrays.`);
+    const type = wireType(
+      p.schema,
+      `${at} parameter ${p.name}`,
+      location === 'query' ? undefined : 'only query parameters support arrays.',
+    );
     return `${quote(p.name)}${location === 'path' || p.required ? '' : '?'}: ${type};`;
   }
 
