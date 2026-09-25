@@ -56,6 +56,11 @@ export interface OpenApiRequestBody {
       encoding?: Record<string, { style?: string; explode?: boolean }>;
     }
   >;
+  /**
+   * The limits the route declares. A default `maxBytes` is shown without the
+   * cap of a smaller `security.body.maxBytes` the application sets, which the
+   * route enforces: the document is built from the module alone.
+   */
   'x-vela-body-limits'?: {
     maxBytes?: number;
     maxFields?: number;

@@ -285,7 +285,10 @@ export const Body = /* @__PURE__ */ createBuiltinParamDecorator(
 export const Headers = /* @__PURE__ */ createBuiltinParamDecorator('headers');
 /**
  * Injects the platform `Request`, as Nest's `@Req()` injects the request
- * object. It is the exact request guards and middleware saw.
+ * object. It is the exact request guards and middleware saw, so its body can
+ * be read once: after the route or `@Body()` read it (a route that declares a
+ * body reads it before the handler), read it again with `@RawBody()` or
+ * `c.req`.
  *
  * @example
  * ```ts

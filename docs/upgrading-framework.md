@@ -228,7 +228,9 @@ are removed:
   declare `maxBytes` on an upload route that must accept more. A route that
   declares a body reads it after guards and before the handler, even when no
   parameter reads it, so a `body: { json }` route answers 415 for other media
-  types and 400 for malformed JSON also when only `@RawBody()` reads it.
+  types and 400 for malformed JSON also when only `@RawBody()` reads it. Read
+  such a body again through `@RawBody()` or `c.req`: the route has consumed the
+  stream of the platform `Request` that `@Req()` injects.
 - Replace `format: 'binary' | 'stream' | 'response'` endpoint definitions with
   the same `format` and `contentType` route options.
 - Replace `@Serialize(dto)` and `SerializerInterceptor` with
@@ -262,17 +264,22 @@ replayed to every request in the same cache scope. Make the cache `scope`
 partition by everything the handler or any interceptor varies the response on,
 or leave such routes uncached. `shouldCache` receives the body the route sends,
 JSON-decoded, instead of the handler's value, so it no longer sees fields the
-`response` schema strips. Only the response to a handler call that succeeded
-is stored: a fallback an interceptor outside the cache sends when the handler
-throws or has not settled is not cached. Route entries carry a new address and format version, so entries an
+`response` schema strips. A fallback an interceptor outside `CacheInterceptor`
+sends when the call inside it throws or has not settled is not cached; a
+fallback an interceptor inside it (a controller or method interceptor, or a
+global one registered after `CacheModule`'s) returns for a failed handler is
+that call's result, and is cached. Route entries carry a new address and format version, so entries an
 earlier release stored with the handler's raw result miss once after the
 upgrade, also while older isolates still write them. When you tighten a
 `response` schema, change the cache `namespace` (or invalidate the affected
 scopes) for it to apply to entries stored before their TTL expires.
 
 `@Query()` without a schema returns repeated keys (`?tag=a&tag=b`) as arrays
-instead of the first value, and keys a query schema declares as arrays arrive as
-arrays even when sent once; a repeated scalar fails its schema. A named
+instead of the first value, and keys a query schema declares as arrays in its
+JSON Schema arrive as arrays even when sent once, beside fields JSON Schema
+cannot express such as `z.coerce.date()`; a repeated scalar fails its schema. A
+schema without a JSON Schema converter (a Valibot schema, a `parse()` parser)
+receives an array only for a repeated key. A named
 parameter without a schema follows its declared type: `string`, `number` and
 `boolean` parameters still receive the first value, an array parameter without
 a pipe always receives an array, and an `unknown` or union parameter, or an
@@ -283,9 +290,10 @@ the parameters that receive one value or repeated keys as such, and
 `vela client generate` types them `string | Array<string>`. Declare a schema,
 or `ParseArrayPipe`, for values that may be one or many.
 
-`@Body()` with no schema validates a parameter class carrying a static Standard
-Schema even without a global pipe, so bodies such a class rejects now answer
-400; a named `@Body('item') item: Item` validates the `item` member. It
+`@Body()` with no schema validates a parameter class carrying a static schema
+(a Standard Schema, a `defineDto` descriptor or a `parse()` parser, as
+`ValidationPipe` reads it) even without a global pipe, so bodies such a class
+rejects now answer 400; a named `@Body('item') item: Item` validates the `item` member. It
 validates as the body is read, before any pipe, unless a `ValidationPipe` (or a
 subclass) applies to the parameter; then that pipe validates it in pipe order,
 as in Nest, and every `ValidationPipe` that applies validates. A validation
@@ -305,7 +313,11 @@ and before the handler, whether or not a parameter reads it, as `@Endpoint` did.
 `ValidationPipe` does not validate them again. The application fails to start
 when a `params` schema leaves out a path parameter the route serves, when a
 named parameter reads a key its group's schema does not return, and when a
-parameter declares its own schema for a declared group. The key checks need a
+parameter declares its own schema for a declared group or is typed with a class
+whose static schema is not the group's, which the route's schema replaces: type
+such a parameter with `ContractBody`, `ContractQuery` or `ContractParams`. A
+contract that declares a `body` schema without an encoding reads JSON within the
+application's limit, counted after guards. The key checks need a
 schema that lists its keys as JSON Schema without passing undeclared keys
 through, as a Zod object does. For any other, such as a Valibot schema, a
 `parse()` parser, a union or a transform that renames keys, a named parameter

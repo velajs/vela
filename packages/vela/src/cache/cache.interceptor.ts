@@ -11,8 +11,9 @@ import type { CacheResponseOptions, CacheScope } from './cache.types';
 import { validateEntryOptions, validateLabel, validateScope } from './cache.validation';
 
 /**
- * Cache the JSON or text response a GET route sends for a handler call that
- * succeeded — after interceptors and its `response` schema — in
+ * Cache the JSON or text response a GET route sends when the call
+ * `CacheInterceptor` makes (the handler and the interceptors inside it)
+ * succeeds — after interceptors and its `response` schema — in
  * `CacheModule`'s store, under the scope its resolver selects after guards; a
  * hit replays it without running the handler or parsing again. The entry
  * includes what every interceptor did for the request that stored it, those

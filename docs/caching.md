@@ -65,12 +65,14 @@ it without running the handler or parsing again; interceptors outside
 `CacheInterceptor` (global ones registered before `CacheModule`'s) receive the
 replayed `Response`, and a value they return instead of a `Response` is
 ignored, so a hit sends exactly what the miss that stored it sent. An
-interceptor outside it that reads the value must accept that `Response`. Only
-the response to a handler call that succeeded is stored: when the handler (or
-an interceptor inside `CacheInterceptor`) throws, or has not settled when the
-response is sent, a fallback an interceptor outside it sends instead (an
-error-recovery or timeout default) is not stored, and the next request runs the
-handler again.
+interceptor outside it that reads the value must accept that `Response`. What
+is stored is the result of the call `CacheInterceptor` makes: the handler and
+the interceptors inside it (controller and method interceptors, and global ones
+registered after `CacheModule`'s). When that call throws, or has not settled
+when the response is sent, a fallback an interceptor outside it sends instead
+(an error-recovery or timeout default) is not stored, and the next request runs
+the handler again. A fallback an interceptor inside it returns for a failed
+handler is that call's result, and is stored and replayed like any other.
 
 **Security:** an entry includes what every interceptor did for the request
 that stored it, including interceptors outside `CacheInterceptor`, which earlier

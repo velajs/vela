@@ -56,11 +56,22 @@ Middleware that reads such a body reads it when it runs, within the same limit.
 Every part is measured before schema validation. Size/count violations return 413 and a wrong media type returns 415.
 When a whole-body schema describes the form's fields (it converts to JSON
 Schema), unknown fields, duplicate scalar fields, and wrong text/file kinds
-return 400. Without one — `@Body()` without a schema, only named
+return 400; a field JSON Schema cannot express (`z.coerce.date()`,
+`z.instanceof(File)`) receives its text or file as sent, for its schema to
+check, without lifting those checks from the fields beside it. Without one —
+`@Body()` without a schema, only named
 `@Body('field', schema)` parameters, or a schema without a JSON Schema
 converter — the route accepts any field name (as an own property, never a
 prototype key) and a repeated name arrives as an array.
-`body: { json: { maxBytes } }` bounds a JSON route the same way. See
+`body: { json: { maxBytes } }` bounds a JSON route the same way, and a
+`defineRoute` contract that declares a `body` schema without an encoding counts
+its JSON body at the application's limit, after guards, as well. A body the
+route has read is consumed on the platform `Request` that `@Req()` injects;
+read it again through `@RawBody()` or `c.req`. OpenAPI's
+`x-vela-body-limits` shows the limits a route declares: a default `maxBytes`
+appears there without the cap of a smaller application `security.body.maxBytes`,
+which the route enforces, so declare `maxBytes` on upload routes whose
+documented limit clients rely on. See
 [form bodies](client/HTTP.md#form-bodies-and-uploads).
 
 ## Request execution order and parameters

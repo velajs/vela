@@ -117,8 +117,9 @@ same verb, and reads the parameters the ancestor declares on the method; an
 override uses only its own.
 
 `@Body()` without a schema validates a parameter class that carries a static
-Standard Schema (`class CreateUser { static schema = CreateUserSchema }`, or a
-class that is itself a Standard Schema), with no global pipe; a named
+schema — a Standard Schema, a `defineDto` descriptor or a `parse()` parser, as
+`ValidationPipe` reads it (`class CreateUser { static schema = CreateUserSchema }`)
+— or that is itself a Standard Schema, with no global pipe; a named
 `@Body('user') user: CreateUser` validates that member. It validates as the body
 is read, before any pipe, unless a `ValidationPipe` (or a subclass) applies to
 the parameter: its own, or a global, controller or method pipe. Then the body
@@ -141,10 +142,15 @@ Named descriptors work too: `const BodyDto = defineDto(schema, { name:
 component. Erased TypeScript interfaces cannot supply schemas.
 
 `@Query()` parses repeated keys (`?tag=a&tag=b`) and keys its schema declares as
-arrays (in any member of a union schema) to arrays, even when a key is sent
-once; every other key stays a string, so a repeated scalar reaches its schema
-as an array and fails validation. The schema is the route's, the parameter's
-own, or its class's static schema (which a global `ValidationPipe` validates).
+arrays in its JSON Schema (in any member of a union schema) to arrays, even when
+a key is sent once; every other key stays a string, so a repeated scalar
+reaches its schema as an array and fails validation. A field JSON Schema cannot
+express, such as `z.coerce.date()` or `z.custom()`, converts as any value and
+leaves the array fields beside it arrays. A schema that cannot describe itself
+as JSON Schema at all (a Valibot schema without a converter, a `parse()`
+parser) receives an array only for a repeated key. The schema is the route's,
+the parameter's own, or its class's static schema (which a global
+`ValidationPipe` validates).
 Without a schema, a named parameter follows its declared type:
 `@Query('sort') sort: string` (or `number`, `boolean`) receives the first
 value, `@Query('tags') tags: string[]` without a pipe always receives an array,
@@ -206,9 +212,11 @@ request, after guards and before the handler, whether or not a parameter reads
 it, and checks a declared body's media type and limits the same way.
 `@Body()`, `@Query()` and `@Param()` (whole or named) read the validated
 values. Pipes still run on them, but a `ValidationPipe` does not validate them
-again: the route is the validator for the groups it declares, also for a
-parameter class carrying a static schema. The application fails to start when
-a parameter declares its own schema for a declared group, when a named
+again: the route is the validator for the groups it declares. The application
+fails to start when a parameter declares its own schema for a declared group or
+is typed with a class whose static schema is not the group's (which would never
+run; type it with `ContractBody`, `ContractQuery` or `ContractParams`, or a
+class carrying the contract's own schema), when a named
 parameter reads a key the group's schema does not return, and when a `params`
 schema leaves out a path parameter the route serves (a controller prefix's
 included). The key checks need a schema that lists its keys as JSON Schema and
@@ -343,7 +351,10 @@ Missing fields stay absent. Required arrays need at least one entry on the wire;
 an empty client array sends no entries. Make fields optional in the schema, and
 make the body schema optional to allow an absent body. When a whole-body schema
 describes the form's fields (it converts to JSON Schema), duplicate scalar
-fields, unknown names, and the wrong text/file kind return 400. Without one —
+fields, unknown names, and the wrong text/file kind return 400. A field JSON
+Schema cannot express, such as `z.coerce.date()` or `z.instanceof(File)`,
+converts as any value: it receives its text or file as sent, for its schema to
+check, and the fields beside it keep these checks. Without one —
 `@Body()` without a schema, only named `@Body('field', schema)` parameters, or
 a schema without a JSON Schema converter — the route accepts any field and a
 repeated name arrives as an array; declare a whole-body schema to enforce the
@@ -361,7 +372,9 @@ positive safe integers; exceeding one returns 413: every entry is measured
 before any field is interpreted, so too many fields or files answer 413 before
 an unknown field answers 400. A route that declares a body reads it after
 guards and before the handler, whether or not a parameter reads it, so the media
-type and every limit apply to each request. A body whose `Content-Length`
+type and every limit apply to each request; a `defineRoute` contract that
+declares a `body` schema without an encoding reads JSON within the
+application's limit the same way. A body whose `Content-Length`
 exceeds `maxBytes` answers 413 before guards; any other body is read after
 guards, counting the bytes actually received and cancelling at `maxBytes`, also
 when a `security.body.streamingOverrides` entry matches the route (the entry's
@@ -374,8 +387,15 @@ so declare `maxBytes` on a route that must accept more. Parsing buffers a
 bounded body and creates native files; streaming storage is a separate concern.
 A JSON route can bound its body with `body: { json: { maxBytes: 4096 } }`; the
 route then parses it after guards (415 for other media types, 400 when
-malformed), and `@RawBody()` or `c.req` can still read the bytes. OpenAPI
-exports resolved limits as `requestBody['x-vela-body-limits']`.
+malformed), and `@RawBody()` or `c.req` can still read the bytes. The platform
+`Request` that `@Req()` injects cannot: the route has read its stream, and
+reading it again fails the request with a 500, so read a body the route
+declares through `@RawBody()` or `c.req`. OpenAPI exports the limits the route
+declares as `requestBody['x-vela-body-limits']`. The document is built from the
+module, without the application's options, so a default `maxBytes` appears
+without the cap of a smaller `security.body.maxBytes` (or `bodyLimit`) the
+application sets, which the route enforces; declare `maxBytes` on the route for
+the document to state the limit it enforces.
 
 URL-encoded forms carry text fields and text arrays; files require multipart.
 The CLI emits `formEncodings` for form routes, alongside the full `AppType`
