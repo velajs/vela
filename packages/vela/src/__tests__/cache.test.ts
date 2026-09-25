@@ -687,6 +687,82 @@ describe('response cache pipeline', () => {
     }
   });
 
+  it('stores no response an interceptor outside the cache sends for a failed or pending handler', async () => {
+    let calls = 0;
+    let fail = true;
+    let release = () => {};
+    // Answers a fallback when the call it wraps fails.
+    class Fallback implements NestInterceptor {
+      async intercept(context: ExecutionContext, next: CallHandler) {
+        if (context.getHandlerName() !== 'flaky') return next.handle();
+        try {
+          return await next.handle();
+        } catch {
+          return { id: 'fallback' };
+        }
+      }
+    }
+    // Answers a default when the call it wraps has not settled in time.
+    class Deadline implements NestInterceptor {
+      intercept(context: ExecutionContext, next: CallHandler) {
+        if (context.getHandlerName() !== 'slow') return next.handle();
+        return Promise.race([
+          next.handle(),
+          new Promise((resolve) => setTimeout(() => resolve({ id: 'default' }), 5)),
+        ]);
+      }
+    }
+    @Module({
+      providers: [
+        { provide: APP_INTERCEPTOR, useClass: Fallback },
+        { provide: APP_INTERCEPTOR, useClass: Deadline },
+      ],
+    })
+    class RecoveryModule {}
+    @Controller('/recovery')
+    class Recovery {
+      @Get('/flaky')
+      @CacheResponse({ ttl: 60 })
+      flaky() {
+        calls++;
+        if (fail) throw new Error('upstream unavailable');
+        return { id: 'real' };
+      }
+      @Get('/slow')
+      @CacheResponse({ ttl: 60 })
+      async slow() {
+        calls++;
+        if (fail) await new Promise<void>((resolve) => (release = resolve));
+        return { id: 'real' };
+      }
+    }
+    const store = new AsyncStore();
+    @Module({
+      imports: [
+        RecoveryModule,
+        CacheModule.forRoot({ namespace: 'recovery', store, scope: () => publicScope }),
+      ],
+      controllers: [Recovery],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      const request = (path: string) => app.getHonoApp().request(path);
+      expect(await (await request('/recovery/flaky')).json()).toEqual({ id: 'fallback' });
+      expect(await (await request('/recovery/slow')).json()).toEqual({ id: 'default' });
+      fail = false;
+      release();
+      expect(store.values.size).toBe(0);
+      for (let i = 0; i < 2; i++) {
+        expect(await (await request('/recovery/flaky')).json()).toEqual({ id: 'real' });
+        expect(await (await request('/recovery/slow')).json()).toEqual({ id: 'real' });
+      }
+      expect(calls).toBe(4);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('bypasses failed scopes and unsafe HTTP output', async () => {
     let calls = 0;
     @Controller('/output')

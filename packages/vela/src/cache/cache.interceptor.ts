@@ -11,13 +11,13 @@ import type { CacheResponseOptions, CacheScope } from './cache.types';
 import { validateEntryOptions, validateLabel, validateScope } from './cache.validation';
 
 /**
- * Cache the JSON or text response a GET route sends — after interceptors and
- * its `response` schema — in `CacheModule`'s store, under the scope its
- * resolver selects after guards; a hit replays it without running the
- * handler or parsing again. The entry includes what every interceptor did for
- * the request that stored it, those outside `CacheInterceptor` included, so
- * the scope must partition by everything they vary the response on. Routes
- * without it never cache.
+ * Cache the JSON or text response a GET route sends for a handler call that
+ * succeeded — after interceptors and its `response` schema — in
+ * `CacheModule`'s store, under the scope its resolver selects after guards; a
+ * hit replays it without running the handler or parsing again. The entry
+ * includes what every interceptor did for the request that stored it, those
+ * outside `CacheInterceptor` included, so the scope must partition by
+ * everything they vary the response on. Routes without it never cache.
  */
 export function CacheResponse(options: CacheResponseOptions = {}) {
   validateEntryOptions(options);
@@ -96,12 +96,15 @@ export class CacheInterceptor implements NestInterceptor {
         new Response(body, { status: code, headers: { 'content-type': type } }),
       );
     }
-    // Store the response the route sends, unless it turns out private. A
-    // cache failure never fails the response.
+    // Store the response the route sends, unless it turns out private or
+    // answers for a handler call that failed or had not settled (a fallback an
+    // interceptor outside the cache sent instead). A cache failure never fails
+    // the response.
+    let settled = false;
     if (lookup)
       onResponseSent(c, async (sent) => {
         const type = sent.headers.get('content-type');
-        if (unsafe(c.res) || unsafe(sent) || type === null) return;
+        if (!settled || unsafe(c.res) || unsafe(sent) || type === null) return;
         let body: string;
         try {
           body = await sent.clone().text();
@@ -111,6 +114,8 @@ export class CacheInterceptor implements NestInterceptor {
         }
         await lookup.store({ status: sent.status, type, body });
       });
-    return next.handle();
+    const value = await next.handle();
+    settled = true;
+    return value;
   }
 }
