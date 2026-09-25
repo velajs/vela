@@ -10,16 +10,33 @@ import { DurableObjectError } from './durable-object-error';
 import { createDurableObjectHost, type DurableObjectHostDispatcher } from './host-dispatch';
 import { durableObjectHostMembers, type DurableObjectHandlerName } from './host-methods';
 
-/** Host members that are not RPC methods: lifecycle hooks and the object's event handlers. */
+/**
+ * Host members that are never RPC methods: lifecycle, disposal and entrypoint
+ * hooks the application context calls, the object's event handlers, and the
+ * names the Durable Object class or its stubs own (`ctx`, `env`, `connect`,
+ * `dup`, `id`, `name`).
+ */
 type NotRpcMethod =
   | 'onModuleInit'
   | 'onApplicationBootstrap'
   | 'onModuleDestroy'
   | 'beforeApplicationShutdown'
   | 'onApplicationShutdown'
-  | DurableObjectHandlerName;
+  | 'dispose'
+  | 'collectEntrypoints'
+  | DurableObjectHandlerName
+  | 'ctx'
+  | 'env'
+  | 'connect'
+  | 'dup'
+  | 'id'
+  | 'name';
 
-/** The names of a host's public methods that become RPC methods. */
+/**
+ * The names a host's `rpc` list may take: its public methods, less hooks,
+ * event handlers and names the Durable Object or its stubs own. TypeScript
+ * `private` and `protected` methods are not among them.
+ */
 export type DurableObjectRpcMethod<Host> = {
   [K in keyof Host]: K extends string
     ? K extends NotRpcMethod
@@ -31,25 +48,40 @@ export type DurableObjectRpcMethod<Host> = {
 }[keyof Host];
 
 /**
- * The RPC methods a `VelaDurableObject(root, Host)` class exposes: each public
- * method of the host, asynchronous. A stub of the class
+ * The RPC methods a `VelaDurableObject(root, Host, { rpc })` class exposes:
+ * the host methods `Method` names, asynchronous. A stub of the class
  * (`env.COUNTER.getByName(name)`) calls them with these signatures.
  */
-export type DurableObjectRpc<Host> = {
-  [K in DurableObjectRpcMethod<Host>]: Host[K] extends (...args: infer Args) => infer Result
+export type DurableObjectRpc<Host, Method extends DurableObjectRpcMethod<Host>> = {
+  [K in Method]: Host[K] extends (...args: infer Args) => infer Result
     ? (...args: Args) => Promise<Awaited<Result>>
     : never;
 };
 
+/** Options of {@link VelaDurableObject}. */
+export interface VelaDurableObjectOptions<Method extends string = string> {
+  /**
+   * The host methods callers may invoke over JS-RPC, such as
+   * `['increment', 'reset']`: public methods declared in the host's class
+   * body (or inherited). Nothing else is an RPC method, so TypeScript
+   * `private` helpers, hooks and unlisted methods stay unreachable. Without
+   * it the object serves only its event handlers.
+   */
+  readonly rpc?: readonly Method[];
+}
+
 /**
- * The class `VelaDurableObject(root, Host)` returns: export a named subclass
- * of it. It also carries its `CloudflareDurableObjectDescriptor` under the
- * static `CLOUDFLARE_DURABLE_OBJECT` key, for tools.
+ * The class `VelaDurableObject(root, Host, { rpc })` returns: export a named
+ * subclass of it. It also carries its `CloudflareDurableObjectDescriptor`
+ * under the static `CLOUDFLARE_DURABLE_OBJECT` key, for tools.
  */
-export type VelaDurableObjectClass<Host> = new (
+export type VelaDurableObjectClass<
+  Host,
+  Method extends DurableObjectRpcMethod<Host> = never,
+> = new (
   ctx: DurableObjectState,
   env: VelaEnv,
-) => DurableObject<VelaEnv> & DurableObjectRpc<Host>;
+) => DurableObject<VelaEnv> & DurableObjectRpc<Host, Method>;
 
 /** The dispatcher each instance boots, readable by the methods defined outside the class body. */
 const dispatchers = new WeakMap<object, Promise<DurableObjectHostDispatcher>>();
@@ -90,13 +122,15 @@ async function startedDispatcher(instance: object): Promise<DurableObjectHostDis
  *     return value;
  *   }
  * }
- * export class Counter extends VelaDurableObject(AppModule, CounterHost) {}
+ * export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
  * // In the Worker: await env.COUNTER.getByName('orders').increment(1)
  * ```
  *
- * - The host's public prototype methods become the class's JS-RPC methods,
- *   typed so `DurableObjectNamespace<Counter>` stubs expose their signatures;
- *   keep helpers in `#private` methods or other providers. `fetch`, `alarm`,
+ * - The host methods the `rpc` option names are the class's JS-RPC methods,
+ *   typed so `DurableObjectNamespace<Counter>` stubs expose exactly their
+ *   signatures. No other method is reachable over RPC: not an unlisted public
+ *   method, a TypeScript `private` helper or a hook. A listed name that is not
+ *   a prototype method of the host throws here. `fetch`, `alarm`,
  *   `webSocketMessage`, `webSocketClose` and `webSocketError`, when the host
  *   defines them, become the object's handlers.
  * - The context boots in the constructor under `blockConcurrencyWhile`, so no
@@ -108,12 +142,16 @@ async function startedDispatcher(instance: object): Promise<DurableObjectHostDis
  *   `cf:do:fetch`, `cf:do:alarm`, `cf:do:websocket`). Failures are reported;
  *   an RPC call rejects with a {@link DurableObjectError} and nothing else.
  */
-export function VelaDurableObject<Host extends object>(
+export function VelaDurableObject<
+  Host extends object,
+  const Method extends DurableObjectRpcMethod<Host> = never,
+>(
   root: DurableObjectRoot,
   host: Type<Host>,
-): VelaDurableObjectClass<Host> {
+  options: VelaDurableObjectOptions<Method> = {},
+): VelaDurableObjectClass<Host, Method> {
   const definition = durableObjectDefinition(root);
-  const members = durableObjectHostMembers(host);
+  const members = durableObjectHostMembers(host, options.rpc);
 
   class VelaHostDurableObject extends DurableObject<VelaEnv> {
     constructor(ctx: DurableObjectState, env: VelaEnv) {
@@ -176,6 +214,6 @@ export function VelaDurableObject<Host extends object>(
   Object.defineProperty(VelaHostDurableObject, 'name', { value: `${host.name}DurableObject` });
   if (definition.app) registerDurableObject(definition.app, descriptor);
   Object.defineProperty(VelaHostDurableObject, CLOUDFLARE_DURABLE_OBJECT, { value: descriptor });
-  // The RPC methods are defined on the prototype above, at runtime, from the host's.
-  return VelaHostDurableObject as unknown as VelaDurableObjectClass<Host>;
+  // The RPC methods are defined on the prototype above, at runtime, from the rpc list.
+  return VelaHostDurableObject as unknown as VelaDurableObjectClass<Host, Method>;
 }

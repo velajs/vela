@@ -65,7 +65,7 @@ class AuditHost { record() {} }
 Injectable()(AuditHost);
 
 const app = defineCloudflareApp(AppModule);
-export class Counter extends VelaDurableObject(app, CounterHost) {}
+export class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
 export class Lobby extends VelaWebSocketDurableObject(app) {}
 // Defined from the app, but no export serves it.
 VelaDurableObject(app, AuditHost);

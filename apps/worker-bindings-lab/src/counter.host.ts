@@ -10,8 +10,9 @@ export interface CounterStatus {
 
 /**
  * The Counter Durable Object's host: one instance per name, with its own
- * storage. Its public methods are the object's RPC methods, typed on the
- * `COUNTER_DO` binding: `await env.COUNTER_DO.getByName('main').status()`.
+ * storage. The methods the Counter class lists in `rpc` are the object's RPC
+ * methods, typed on the `COUNTER_DO` binding:
+ * `await env.COUNTER_DO.getByName('main').status()`.
  */
 @Injectable()
 export class CounterHost {

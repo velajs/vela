@@ -79,6 +79,22 @@ describe('VelaDurableObject under workerd', () => {
     expect(await response.json()).toEqual({ path: '/status', name: 'handlers' });
   });
 
+  it('exposes only the listed methods over RPC', async () => {
+    const stub = counter('rpc-surface');
+    // @ts-expect-error a method the rpc list leaves out is not on the stub
+    void stub.audit;
+    for (const method of ['audit', 'wipe', 'dispose', 'onModuleInit']) {
+      // Plain JavaScript can still name any method on a stub.
+      const call: unknown = Reflect.get(stub, method);
+      if (typeof call !== 'function') throw new Error(`stub.${method} is not callable`);
+      // eslint-disable-next-line no-await-in-loop -- One call at a time.
+      const error = await rejection(Promise.resolve(Reflect.apply(call, stub, [])));
+      expect(String(error)).toContain('does not implement');
+      expect(String(error)).toContain(method);
+    }
+    expect(await stub.increment(1)).toBe(1);
+  });
+
   it('runs guards on RPC methods', async () => {
     const error = await rejection(counter('guarded').denied());
     expect(isDurableObjectError(error)).toBe(true);

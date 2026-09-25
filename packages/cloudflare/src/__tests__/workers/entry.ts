@@ -216,7 +216,7 @@ class DenyGuard implements CanActivate {
   }
 }
 
-/** The Counter Durable Object's host: its public methods are the object's RPC methods. */
+/** The Counter Durable Object's host: the methods its rpc list names are the object's RPC methods. */
 @Injectable()
 export class CounterHost {
   constructor(
@@ -276,6 +276,19 @@ export class CounterHost {
     return [...this.reports];
   }
 
+  /** Public, but left out of the rpc list. */
+  audit(): string {
+    return 'audit';
+  }
+
+  /** A TypeScript-private helper: never on the RPC surface. */
+  private async wipe(): Promise<void> {
+    await this.storage.deleteAll();
+  }
+
+  /** The container's disposal hook; the scope calls it, callers never can. */
+  dispose(): void {}
+
   fetch(request: Request): Response {
     return Response.json({ path: new URL(request.url).pathname, name: this.id.name ?? null });
   }
@@ -305,7 +318,9 @@ const app = defineCloudflareApp(TestModule, { adapters: [reportingAdapter] });
 
 export class TestRoom extends VelaWebSocketDurableObject(app) {}
 
-export class Counter extends VelaDurableObject(app, CounterHost) {}
+export class Counter extends VelaDurableObject(app, CounterHost, {
+  rpc: ['increment', 'snapshot', 'scheduleAlarm', 'alarms', 'leak', 'denied', 'reported'],
+}) {}
 
 /** Its context fails to start: callers learn nothing about why. */
 @Injectable()
@@ -325,7 +340,7 @@ class BrokenHost {
 @Module({ providers: [BrokenStart] })
 class BrokenModule {}
 
-export class BrokenCounter extends VelaDurableObject(BrokenModule, BrokenHost) {}
+export class BrokenCounter extends VelaDurableObject(BrokenModule, BrokenHost, { rpc: ['ping'] }) {}
 
 // Every Durable Object instance in this isolate constructs from one static
 // DynamicModule root declared at module scope.

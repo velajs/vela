@@ -34,6 +34,7 @@ import {
   createDurableObjectHost,
   type DurableObjectHostDispatcher,
 } from '../durable-object/host-dispatch';
+import type { DurableObjectRpcMethod } from '../durable-objects';
 
 const REPORTS = new InjectionToken<unknown[]>('test reports');
 const CALLS = new InjectionToken<string[]>('test calls');
@@ -50,15 +51,22 @@ function recordReports(container: Container): void {
   );
 }
 
+/** Boot a host whose RPC methods are `rpc`, as `VelaDurableObject(root, Host, { rpc })` does. */
 async function host<H extends object>(
   root: Parameters<typeof createDurableObjectHost>[0],
   hostClass: new (...args: never[]) => H,
-  env: VelaEnv = {},
+  rpc: readonly DurableObjectRpcMethod<H>[] = [],
+  options: { env?: VelaEnv } = {},
 ): Promise<{ dispatcher: DurableObjectHostDispatcher; reports: unknown[] }> {
-  const dispatcher = await createDurableObjectHost(root, hostClass, {
-    env,
-    adapters: [{ name: 'reports', configureContainer: recordReports }],
-  });
+  const dispatcher = await createDurableObjectHost(
+    root,
+    hostClass,
+    {
+      env: options.env ?? {},
+      adapters: [{ name: 'reports', configureContainer: recordReports }],
+    },
+    durableObjectHostMembers(hostClass, rpc),
+  );
   return { dispatcher, reports: dispatcher.context.get(REPORTS) };
 }
 
@@ -79,7 +87,7 @@ async function rpcFailure(promise: Promise<unknown>): Promise<DurableObjectError
 }
 
 describe('Durable Object host methods', () => {
-  it('lists the public prototype methods a host exposes over RPC', () => {
+  it('exposes only the prototype methods the rpc list names', () => {
     class Base {
       inherited(): string {
         return 'base';
@@ -91,7 +99,15 @@ describe('Durable Object host methods', () => {
         return this.#hidden;
       }
       increment(): number {
+        return this.helper();
+      }
+      // TypeScript-private: an ordinary prototype method at runtime.
+      private helper(): number {
         return ++this.#hidden;
+      }
+      // A method named like a stub member is harmless while it is not listed.
+      name(): string {
+        return 'counter';
       }
       onModuleInit(): void {}
       onApplicationShutdown(): void {}
@@ -101,17 +117,50 @@ describe('Durable Object host methods', () => {
       alarm(): void {}
       webSocketMessage(): void {}
     }
-    expect(durableObjectHostMembers(CounterHost)).toEqual({
+    const handlers = ['fetch', 'alarm', 'webSocketMessage'];
+    expect(durableObjectHostMembers(CounterHost, ['increment', 'inherited'])).toEqual({
       methods: ['increment', 'inherited'],
-      handlers: ['fetch', 'alarm', 'webSocketMessage'],
+      handlers,
     });
+    // Without a list, the object has no RPC methods: only its event handlers.
+    expect(durableObjectHostMembers(CounterHost)).toEqual({ methods: [], handlers });
   });
 
-  it('rejects hosts whose methods would shadow the Durable Object or its stubs', () => {
-    for (const name of ['ctx', 'env', 'connect', 'dup']) {
+  it('rejects rpc names that would shadow the Durable Object or its stubs', () => {
+    for (const name of ['ctx', 'env', 'connect', 'dup', 'id', 'name']) {
       class Clashing {}
       Object.defineProperty(Clashing.prototype, name, { value: () => undefined });
-      expect(() => durableObjectHostMembers(Clashing)).toThrow(name);
+      expect(() => durableObjectHostMembers(Clashing, [name])).toThrow(`'${name}' is reserved`);
+    }
+  });
+
+  it('rejects rpc names that are hooks, handlers or not prototype methods', () => {
+    class Hooks {
+      arrow = (): number => 1;
+      get value(): number {
+        return 1;
+      }
+      onModuleInit(): void {}
+      dispose(): void {}
+      collectEntrypoints(): unknown[] {
+        return [];
+      }
+      fetch(): Response {
+        return new Response('ok');
+      }
+    }
+    for (const name of ['onModuleInit', 'dispose', 'collectEntrypoints', 'constructor']) {
+      expect(() => durableObjectHostMembers(Hooks, [name])).toThrow(
+        `Hooks.${name}() cannot be a Durable Object RPC method`,
+      );
+    }
+    expect(() => durableObjectHostMembers(Hooks, ['fetch'])).toThrow(
+      'fetch() is the Durable Object fetch handler',
+    );
+    for (const name of ['arrow', 'value', 'missing']) {
+      expect(() => durableObjectHostMembers(Hooks, [name])).toThrow(
+        `Hooks has no prototype method ${name}()`,
+      );
     }
   });
 });
@@ -150,12 +199,12 @@ describe('Durable Object host dispatch', () => {
     class AppModule {}
 
     const env = { REGION: 'eu' };
-    const { dispatcher } = await host(AppModule, CounterHost, env);
+    const { dispatcher } = await host(AppModule, CounterHost, ['increment'], { env });
     expect(await dispatcher.call('increment', [2])).toEqual({ count: 2, trace: 1, region: 'eu' });
     expect(await dispatcher.call('increment', [3])).toEqual({ count: 5, trace: 2, region: 'eu' });
 
     // Another instance (another object) has its own singletons.
-    const other = await host(AppModule, CounterHost, env);
+    const other = await host(AppModule, CounterHost, ['increment'], { env });
     expect(await other.dispatcher.call('increment', [1])).toMatchObject({ count: 1 });
     await dispatcher.context.dispose();
     await other.dispatcher.context.dispose();
@@ -209,7 +258,7 @@ describe('Durable Object host dispatch', () => {
     @Module({ providers: [Observe, Deny, Wrap] })
     class AppModule {}
 
-    const { dispatcher } = await host(AppModule, GuardedHost);
+    const { dispatcher } = await host(AppModule, GuardedHost, ['double', 'secret', 'missing']);
     expect(await dispatcher.call('double', ['21'])).toEqual({ wrapped: 42 });
     const [context] = seen;
     expect(context?.getType()).toBe('rpc');
@@ -256,7 +305,13 @@ describe('Durable Object host dispatch', () => {
     }
     @Module({})
     class AppModule {}
-    const { dispatcher, reports } = await host(AppModule, FailingHost);
+    const { dispatcher, reports } = await host(AppModule, FailingHost, [
+      'leak',
+      'missing',
+      'invalid',
+      'nested',
+      'nestedServerFault',
+    ]);
 
     const leaked = await rpcFailure(dispatcher.call('leak', []));
     expect(isDurableObjectError(leaked)).toBe(true);
@@ -315,25 +370,30 @@ describe('Durable Object host dispatch', () => {
     class AppModule {}
     // A logger the error reporter itself cannot build: the invocation fails
     // before its pipeline starts.
-    const dispatcher = await createDurableObjectHost(AppModule, PlainHost, {
-      env: {},
-      adapters: [
-        {
-          name: 'broken-logger',
-          configureContainer(container) {
-            container.register(
-              defineProvider(APP_LOGGER, {
-                scope: Scope.REQUEST,
-                useFactory: () => {
-                  throw new Error('logger secret');
-                },
-              }),
-            );
-            container.markGlobalToken(APP_LOGGER);
+    const dispatcher = await createDurableObjectHost(
+      AppModule,
+      PlainHost,
+      {
+        env: {},
+        adapters: [
+          {
+            name: 'broken-logger',
+            configureContainer(container) {
+              container.register(
+                defineProvider(APP_LOGGER, {
+                  scope: Scope.REQUEST,
+                  useFactory: () => {
+                    throw new Error('logger secret');
+                  },
+                }),
+              );
+              container.markGlobalToken(APP_LOGGER);
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+      durableObjectHostMembers(PlainHost, ['ping']),
+    );
     const failure = await rpcFailure(dispatcher.call('ping', []));
     expect({ ...failure, message: failure.message }).toEqual({
       name: 'DurableObjectError',
@@ -460,7 +520,7 @@ describe('Durable Object host dispatch', () => {
     }
     @Module({ providers: [defineProvider(APP_GUARD, { useClass: HttpOnly })] })
     class AppModule {}
-    const { dispatcher } = await host(AppModule, OpenHost);
+    const { dispatcher } = await host(AppModule, OpenHost, ['ping']);
     expect(await dispatcher.call('ping', [])).toBe('pong');
     await dispatcher.context.dispose();
   });
@@ -478,9 +538,57 @@ describe('Durable Object host dispatch', () => {
     }
     @Module({})
     class AppModule {}
-    const { dispatcher, reports } = await host(AppModule, DeferringHost);
+    const { dispatcher, reports } = await host(AppModule, DeferringHost, ['schedule']);
     expect(await dispatcher.call('schedule', [])).toBe('scheduled');
     expect(reports.map(String)).toEqual(['Error: background failed']);
+    await dispatcher.context.dispose();
+  });
+
+  it('leaves every method the rpc list does not name off the RPC surface', async () => {
+    const recorded: string[] = [];
+    @Injectable()
+    class LedgerHost {
+      constructor(@Inject(CALLS) private readonly calls: string[]) {}
+      async reset(): Promise<string> {
+        await this.wipe();
+        return 'reset';
+      }
+      // A TypeScript-private helper: callable over RPC only if it were listed.
+      private async wipe(): Promise<void> {
+        this.calls.push('wiped');
+      }
+      protected secretHelper(): string {
+        return 'secret';
+      }
+      audit(): string {
+        return 'audit';
+      }
+      // The container's disposal hook.
+      dispose(): void {
+        this.calls.push('disposed');
+      }
+    }
+    @Module({ providers: [defineProvider(CALLS, { useValue: recorded })] })
+    class AppModule {}
+
+    const { dispatcher } = await host(AppModule, LedgerHost, ['reset']);
+    expect(await dispatcher.call('reset', [])).toBe('reset');
+    for (const method of ['wipe', 'secretHelper', 'audit', 'dispose']) {
+      // eslint-disable-next-line no-await-in-loop -- One call at a time.
+      expect(await rpcFailure(dispatcher.call(method, []))).toMatchObject({
+        status: 404,
+        code: 'not_found',
+      });
+    }
+    expect(recorded).toEqual(['wiped']);
+    // Only public, non-hook methods can be listed.
+    const typed = (): void => {
+      // @ts-expect-error a TypeScript-private helper is never an RPC method
+      void host(AppModule, LedgerHost, ['wipe']);
+      // @ts-expect-error dispose() is the container's disposal hook
+      void host(AppModule, LedgerHost, ['dispose']);
+    };
+    void typed;
     await dispatcher.context.dispose();
   });
 });

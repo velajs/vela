@@ -135,6 +135,10 @@ describe('Worker descriptor', () => {
       increment(by: number): number {
         return by;
       }
+      // Public, but not listed: not an RPC method.
+      audit(): string {
+        return 'audit';
+      }
       alarm(): void {}
       onModuleInit(): void {}
     }
@@ -148,7 +152,7 @@ describe('Worker descriptor', () => {
     expect(app.worker[CLOUDFLARE_WORKER].options).toBe(options);
     expect(app.worker[CLOUDFLARE_WORKER].durableObjects).toEqual([]);
 
-    class Counter extends VelaDurableObject(app, CounterHost) {}
+    class Counter extends VelaDurableObject(app, CounterHost, { rpc: ['increment'] }) {}
     class Room extends VelaWebSocketDurableObject(app) {}
     // A class built from a bare root belongs to no app.
     class Standalone extends VelaDurableObject(AppModule, CounterHost) {}
@@ -175,14 +179,18 @@ describe('Worker descriptor', () => {
     // The exported subclass carries its descriptor statically, for tools.
     expect(Reflect.get(Counter, CLOUDFLARE_DURABLE_OBJECT)).toBe(described[0]);
     expect(Reflect.get(Room, CLOUDFLARE_DURABLE_OBJECT)).toBe(described[1]);
+    // Without an rpc list, a host class has only its event handlers.
     expect(Reflect.get(Standalone, CLOUDFLARE_DURABLE_OBJECT)).toMatchObject({
       kind: 'host',
       rootModule: AppModule,
+      methods: [],
     });
+    expect(Reflect.get(Standalone.prototype, 'increment')).toBeUndefined();
     expect(described[0]?.durableObject.isPrototypeOf(Counter)).toBe(true);
     // The RPC methods and handlers are the class's prototype members.
     expect(typeof Reflect.get(Counter.prototype, 'increment')).toBe('function');
     expect(typeof Reflect.get(Counter.prototype, 'alarm')).toBe('function');
+    expect(Reflect.get(Counter.prototype, 'audit')).toBeUndefined();
     expect(Reflect.get(Counter.prototype, 'fetch')).toBeUndefined();
     expect(Reflect.get(Counter.prototype, 'onModuleInit')).toBeUndefined();
   });

@@ -5,6 +5,7 @@ export type {
   DurableObjectRpc,
   DurableObjectRpcMethod,
   VelaDurableObjectClass,
+  VelaDurableObjectOptions,
 } from './durable-object/vela-durable-object';
 export type { DurableObjectRoot } from './durable-object/boot';
 export type {

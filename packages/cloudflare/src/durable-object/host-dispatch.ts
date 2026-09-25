@@ -29,7 +29,7 @@ import {
   withDurableObjectHost,
   type DurableObjectContextOptions,
 } from './boot';
-import { durableObjectHostMembers, type DurableObjectHostMembers } from './host-methods';
+import type { DurableObjectHostMembers } from './host-methods';
 
 /**
  * The `ExecutionContext.getType()` of a Durable Object invocation: `rpc` for
@@ -355,13 +355,14 @@ export type DurableObjectHostOptions = DurableObjectContextOptions;
 
 /**
  * Boot one Durable Object instance's application context from `root` with
- * `host` added to the root module's providers, and return its dispatcher.
+ * `host` added to the root module's providers, and return its dispatcher,
+ * which serves `members`.
  */
 export async function createDurableObjectHost(
   root: CloudflareRoot,
   host: Type,
   options: DurableObjectHostOptions,
-  members: DurableObjectHostMembers = durableObjectHostMembers(host),
+  members: DurableObjectHostMembers,
 ): Promise<DurableObjectHostDispatcher> {
   const context = await createDurableObjectContext(withDurableObjectHost(root, host), options);
   const container = context.getContainer();

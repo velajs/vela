@@ -99,6 +99,17 @@ class CounterHost {
   label(): string {
     return 'counter';
   }
+  // Public, but left out of the rpc list: not on the stub.
+  audit(): string {
+    return 'audit';
+  }
+  private wipe(): Promise<void> {
+    return this.storage.deleteAll();
+  }
+  name(): string {
+    return 'counter';
+  }
+  dispose(): void {}
   onModuleInit(): void {}
 }
 
@@ -117,6 +128,10 @@ export async function verifyPublishedDurableObjects(
   void stub.increment('one');
   // @ts-expect-error lifecycle hooks are not RPC methods
   void stub.onModuleInit;
+  // @ts-expect-error a public method the rpc list leaves out is not an RPC method
+  void stub.audit;
+  // @ts-expect-error neither is a TypeScript-private helper
+  void stub.wipe;
   try {
     await stub.increment(1);
   } catch (error) {
@@ -128,4 +143,15 @@ export async function verifyPublishedDurableObjects(
 }
 
 declare const counterApp: CloudflareApp;
-class Counter extends VelaDurableObject(counterApp, CounterHost) {}
+class Counter extends VelaDurableObject(counterApp, CounterHost, { rpc: ['increment', 'label'] }) {}
+
+// The rpc list names public host methods only: never a private helper, a
+// disposal or lifecycle hook, or a name the Durable Object stub owns.
+// @ts-expect-error a TypeScript-private helper cannot be listed
+void VelaDurableObject(counterApp, CounterHost, { rpc: ['wipe'] });
+// @ts-expect-error dispose() is the container's disposal hook
+void VelaDurableObject(counterApp, CounterHost, { rpc: ['dispose'] });
+// @ts-expect-error a stub's name property shadows a method of that name
+void VelaDurableObject(counterApp, CounterHost, { rpc: ['name'] });
+// @ts-expect-error lifecycle hooks are not RPC methods
+void VelaDurableObject(counterApp, CounterHost, { rpc: ['onModuleInit'] });
