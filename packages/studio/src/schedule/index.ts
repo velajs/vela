@@ -29,7 +29,12 @@
  */
 import { Inject, Injectable } from '@velajs/vela';
 import { defineStudioPlugin, type StudioPlugin } from '../plugin';
-import { Container, SCHEDULE_INVOCATION_SEED, invokeScheduledJob } from '@velajs/vela/module-kit';
+import {
+  SCHEDULE_INVOCATION_SEED,
+  invokeScheduledJob,
+  type Container,
+} from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import { ScheduleRegistry } from '@velajs/vela/schedule';
 import type { BeforeApplicationShutdown } from '@velajs/vela';
 import type { CronMetadata, IntervalMetadata, ScheduleInvocation } from '@velajs/vela/schedule';
@@ -44,7 +49,7 @@ export class StudioScheduleOps implements BeforeApplicationShutdown {
   /** Runs in progress; shutdown aborts their signals and waits for them. */
   readonly #running = new Map<Promise<void>, AbortController>();
 
-  constructor(@Inject(Container) private readonly container: Container) {}
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container) {}
 
   @AdminRpc({ op: 'schedule.jobs' })
   jobs(_ctx: AdminOpContext): ScheduleJobRow[] {

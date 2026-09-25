@@ -208,7 +208,7 @@ function importedAs(specifier: ImportDeclarationSpecifier): string {
  * name the file declares itself, imports from another module, or imports
  * from that module as another export (`{ Other as B }`, a default or
  * namespace import) would be a different binding, so the edit fails instead
- * of treating it as imported. With `listed`, the entry is in the list
+ * of treating it as imported. With `keepAliased`, the entry is in the list
  * already and nothing is added: a name imported through a path alias or a
  * package, which only the project's build resolves, is left as the file has
  * it, since it may well name the same module.
@@ -218,7 +218,7 @@ function assertImportable(
   entry: string,
   program: Program,
   wanted: readonly NamedImport[],
-  listed: boolean,
+  keepAliased: boolean,
 ): void {
   const bindings = new Map<
     string,
@@ -238,7 +238,7 @@ function assertImportable(
       }
       continue;
     }
-    if (listed && !current.from.startsWith('.')) continue;
+    if (keepAliased && !current.from.startsWith('.')) continue;
     if (!sameModule(current.from, from)) {
       throw new SourceEditError(
         `${file} imports ${name} from '${current.from}', not from '${from}'; register ${entry} yourself.`,
@@ -591,6 +591,23 @@ function assertOwnsKey(
   }
 }
 
+/** How {@link addToModule} edits a module. */
+export interface AddToModuleOptions {
+  /** The imports `entry` needs. */
+  readonly imports?: readonly NamedImport[];
+  /** Leave the file unchanged when an element of the list matches. */
+  readonly unless?: RegExp;
+  /** The module class to edit, by its declared or exported name. */
+  readonly module?: string;
+  /**
+   * Leave an entry the list has already as it is when a path alias or package
+   * import binds its name, which may name the same module (the bindings module
+   * `vela add` registers). Otherwise such an entry is another class, and the
+   * edit fails as for any name the file binds elsewhere.
+   */
+  readonly keepAliased?: boolean;
+}
+
 /**
  * Add `entry` (source text such as `NotesController` or
  * `QueueModule.registerQueue({ name: 'emails' })`) to the `key` list of the
@@ -602,12 +619,7 @@ export function addToModule(
   source: string,
   key: 'imports' | 'controllers' | 'providers' | 'exports',
   entry: string,
-  options: {
-    imports?: readonly NamedImport[];
-    unless?: RegExp;
-    /** The module class to edit, by its declared or exported name. */
-    module?: string;
-  } = {},
+  options: AddToModuleOptions = {},
 ): SourceEdit {
   return keepingLineEnds(source, (text) => addToModuleText(file, text, key, entry, options));
 }
@@ -617,7 +629,7 @@ function addToModuleText(
   source: string,
   key: 'imports' | 'controllers' | 'providers' | 'exports',
   entry: string,
-  options: { imports?: readonly NamedImport[]; unless?: RegExp; module?: string },
+  options: AddToModuleOptions,
 ): SourceEdit {
   const { program, comments } = parseModule(file, source);
   const wanted = options.imports ?? [];
@@ -648,7 +660,7 @@ function addToModuleText(
       const texts = elements.map((element) => source.slice(element.start, element.end));
       if (texts.includes(entry) || texts.some((text) => options.unless?.test(text))) {
         // Listed under a name the file binds to another module, it is not this entry.
-        assertImportable(file, entry, program, wanted, true);
+        assertImportable(file, entry, program, wanted, options.keepAliased === true);
         return { source, changed: false };
       }
       const lineStart = source.lastIndexOf('\n', array.start) + 1;
@@ -734,31 +746,38 @@ export function topLevelNames(file: string, source: string): Set<string> {
 }
 
 /**
- * Whether the module declares `name` as the injection token `vela add`
- * writes for a binding of that name,
- * `export const NAME = new InjectionToken<T>('NAME')`, and nothing else.
+ * The type argument of the injection token `vela add` writes for a binding
+ * named `name`, `export const NAME = new InjectionToken<T>('NAME')`, as the
+ * module spells `T`: `''` for a token without one, and undefined when the
+ * module declares `name` otherwise or not at all.
  */
-export function declaresBindingToken(file: string, source: string, name: string): boolean {
+export function bindingTokenType(file: string, source: string, name: string): string | undefined {
   const program = parse(file, source);
-  return program.body.some((statement) => {
-    if (statement.type !== 'ExportNamedDeclaration') return false;
+  for (const statement of program.body) {
+    if (statement.type !== 'ExportNamedDeclaration') continue;
     const declaration = statement.declaration;
-    if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') return false;
+    if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') continue;
     const [declarator, ...others] = declaration.declarations;
     const init = declarator?.init;
-    const [argument, ...rest] = init?.type === 'NewExpression' ? init.arguments : [];
-    return (
+    if (init?.type !== 'NewExpression') continue;
+    const [argument, ...rest] = init.arguments;
+    if (
       others.length === 0 &&
       declarator?.id.type === 'Identifier' &&
       declarator.id.name === name &&
-      init?.type === 'NewExpression' &&
       init.callee.type === 'Identifier' &&
       init.callee.name === 'InjectionToken' &&
       rest.length === 0 &&
       argument?.type === 'Literal' &&
       argument.value === name
-    );
-  });
+    ) {
+      const params = init.typeArguments?.params ?? [];
+      const first = params[0];
+      const last = params.at(-1);
+      return first === undefined || last === undefined ? '' : source.slice(first.start, last.end);
+    }
+  }
+  return undefined;
 }
 
 /** Add `export { name } from 'from';` to a module (the Worker entry), unless it exports `name`. */

@@ -4,7 +4,7 @@ import {
   addDeclaration,
   addExport,
   addToModule,
-  declaresBindingToken,
+  bindingTokenType,
   moduleExport,
   topLevelNames,
   workerRootImport,
@@ -602,15 +602,20 @@ describe('the binding a registration needs', () => {
     }
   });
 
-  it('leaves an entry already listed through an alias or package import as it is', () => {
+  it('leaves an entry listed through an alias or package import as it is when told to', () => {
     // Where the specifier resolves is the project's build configuration's
-    // business: the listed registration stands.
+    // business: with keepAliased (the bindings module vela add registers),
+    // the listed registration stands.
     for (const from of ['@/b', '~/modules/b', '#b', 'shared-modules/b']) {
       const listed = `import { Module } from '@velajs/vela';\nimport { B } from '${from}';\n\n@Module({ imports: [B] })\nexport class AppModule {}\n`;
-      expect(addToModule('app.module.ts', listed, 'imports', 'B', wanted)).toEqual({
-        source: listed,
-        changed: false,
-      });
+      expect(
+        addToModule('app.module.ts', listed, 'imports', 'B', { ...wanted, keepAliased: true }),
+      ).toEqual({ source: listed, changed: false });
+      // Otherwise the listed class is another one than the entry: a generator's
+      // new file would be left unregistered, so the edit fails instead.
+      expect(() => addToModule('app.module.ts', listed, 'imports', 'B', wanted)).toThrow(
+        `app.module.ts imports B from '${from}', not from './b.js'; register B yourself.`,
+      );
     }
   });
 
@@ -667,15 +672,24 @@ export class BindingsModule {}
     );
   });
 
-  it('finds the injection token vela add declares for a binding, and only that declaration', () => {
+  it('finds the type of the injection token vela add declares for a binding, and only that declaration', () => {
     const token = (declaration: string) =>
-      declaresBindingToken('bindings.module.ts', `${BINDINGS}\n${declaration}\n`, 'CACHE');
-    expect(token("export const CACHE = new InjectionToken<KVNamespace>('CACHE');")).toBe(true);
-    expect(token("export const CACHE = new InjectionToken('CACHE');")).toBe(true);
-    expect(token("const CACHE = new InjectionToken<KVNamespace>('CACHE');")).toBe(false);
-    expect(token("export const CACHE = new InjectionToken<KVNamespace>('OTHER');")).toBe(false);
-    expect(token("export let CACHE = new InjectionToken<KVNamespace>('CACHE');")).toBe(false);
-    expect(token("export const CACHE = 'not-a-token';")).toBe(false);
-    expect(token('')).toBe(false);
+      bindingTokenType('bindings.module.ts', `${BINDINGS}\n${declaration}\n`, 'CACHE');
+    expect(token("export const CACHE = new InjectionToken<KVNamespace>('CACHE');")).toBe(
+      'KVNamespace',
+    );
+    expect(token("export const CACHE = new InjectionToken< D1Database >('CACHE');")).toBe(
+      'D1Database',
+    );
+    expect(token("export const CACHE = new InjectionToken<KVNamespace | null>('CACHE');")).toBe(
+      'KVNamespace | null',
+    );
+    // A token without a type argument injects unknown, not the resource.
+    expect(token("export const CACHE = new InjectionToken('CACHE');")).toBe('');
+    expect(token("const CACHE = new InjectionToken<KVNamespace>('CACHE');")).toBeUndefined();
+    expect(token("export const CACHE = new InjectionToken<KVNamespace>('OTHER');")).toBeUndefined();
+    expect(token("export let CACHE = new InjectionToken<KVNamespace>('CACHE');")).toBeUndefined();
+    expect(token("export const CACHE = 'not-a-token';")).toBeUndefined();
+    expect(token('')).toBeUndefined();
   });
 });

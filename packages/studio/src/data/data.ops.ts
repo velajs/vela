@@ -13,7 +13,8 @@
  * intentionally have no handler here.
  */
 import { Inject, Injectable } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import type {
   CascadePreviewRequest,
   CascadePreviewResponse,
@@ -33,7 +34,7 @@ import type { StudioModelSource } from './model-source.port';
 
 @Injectable()
 export class StudioDataOps {
-  constructor(@Inject(Container) private readonly container: Container) {}
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container) {}
 
   // Admin-bypass read posture: the master token sees all managed models; no
   // policy/tenant scoping is applied (policy/tenant-aware reads land with

@@ -21,7 +21,7 @@
  * The NDJSON streaming helpers here are shared with the `/export` route.
  */
 import { Inject, Injectable } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
 import type {
   StudioOpReq,
   TransferExportResult,
@@ -31,7 +31,7 @@ import { STUDIO_EXPORT_SUFFIX } from '@velajs/studio-protocol';
 import { AdminConfirmSummary, AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext, ResolvedStudioConfig } from '../studio.types';
 import { studioError } from '../studio.errors';
-import { STUDIO_RESOLVED_CONFIG } from '../tokens';
+import { STUDIO_APPLICATION_CONTAINER, STUDIO_RESOLVED_CONFIG } from '../tokens';
 import { StudioAppHolder } from '../introspect/app-holder';
 import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
 import type { StudioModelSource, StudioWriteContext } from '../data/model-source.port';
@@ -143,7 +143,7 @@ export function streamAllModelsNdjson(source: StudioModelSource): ReadableStream
 @Injectable()
 export class StudioTransferOps {
   constructor(
-    @Inject(Container) private readonly container: Container,
+    @Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container,
     @Inject(STUDIO_RESOLVED_CONFIG) private readonly config: ResolvedStudioConfig,
     @Inject(StudioAppHolder) private readonly holder: StudioAppHolder,
   ) {}

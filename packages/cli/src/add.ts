@@ -9,7 +9,7 @@ import {
   SourceEditError,
   addDeclaration,
   addToModule,
-  declaresBindingToken,
+  bindingTokenType,
   importBinding,
   moduleClassExport,
   topLevelNames,
@@ -372,9 +372,22 @@ async function planRegistration(
   // The bindings module may carry another name; the root imports it by that one.
   const bindingsClass =
     current === undefined ? 'BindingsModule' : moduleClassExport(bindingsFile, current);
-  // The token an earlier run declared for this binding is reused; any other
-  // name the module binds would be taken for the token.
-  const reused = current !== undefined && declaresBindingToken(bindingsFile, current, binding);
+  // The token an earlier run declared for this binding is reused when it has
+  // this resource's type; any other name the module binds would be taken for
+  // the token.
+  const tokenType =
+    current === undefined ? undefined : bindingTokenType(bindingsFile, current, binding);
+  if (tokenType !== undefined && tokenType !== type) {
+    const declared =
+      tokenType === ''
+        ? 'an InjectionToken without a type argument'
+        : `InjectionToken<${tokenType}>`;
+    throw new Error(
+      `${bindingsLabel} declares ${binding} as ${declared}, not InjectionToken<${type}>; ` +
+        'choose another binding name, or change or remove that token.',
+    );
+  }
+  const reused = tokenType === type;
   if (
     BINDINGS_MODULE_IMPORTS.includes(binding) ||
     binding === bindingsClass ||
@@ -414,6 +427,9 @@ async function planRegistration(
   const imported = addToModule(root.from, root.source, 'imports', bindingsClass, {
     imports: [await bindingsImport(root, bindingsClass, bindingsFile)],
     module: root.name,
+    // A root listing the bindings module through a path alias or package
+    // import may well name this file: only the project's build resolves it.
+    keepAliased: true,
   });
   if (imported.changed) writes.push({ path: root.from, content: imported.source });
   notes.push(

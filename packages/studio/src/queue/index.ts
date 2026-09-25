@@ -25,7 +25,8 @@
  * so the payload routes to the queue's wildcard `@Process()` handler.
  */
 import { Inject, Injectable } from '@velajs/vela';
-import { Container, EntrypointRegistry } from '@velajs/vela/module-kit';
+import { EntrypointRegistry, type Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import { QUEUE_DRIVER, QueueRegistry, queueToken } from '@velajs/vela/queue';
 import type { QueueRow, StudioOpReq } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
@@ -43,7 +44,7 @@ export const STUDIO_QUEUE_JOB_NAME = 'studio.send';
 
 @Injectable()
 export class StudioQueueOps {
-  constructor(@Inject(Container) private readonly container: Container) {}
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container) {}
 
   @AdminRpc({ op: 'queue.list' })
   list(_ctx: AdminOpContext): QueueRow[] {

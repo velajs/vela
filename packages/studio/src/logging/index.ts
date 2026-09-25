@@ -1,7 +1,8 @@
 /** Optional, application-owned structured log capture. No console patching or ambient state. */
 import { APP_INTERCEPTOR, defineProvider } from '@velajs/vela';
 import { APP_LOGGER } from '@velajs/vela/logging';
-import { Container, describeToken, getExecutionLifetime } from '@velajs/vela/module-kit';
+import { describeToken, getExecutionLifetime, type Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import type {
   CallHandler,
   ExecutionContext,
@@ -129,12 +130,12 @@ export function logsPanel(options: LogsPanelOptions = {}): StudioPlugin {
     name: 'logs',
     providers: [
       defineProvider(StudioLogCapture, {
-        inject: [Container, AdminLogBuffer],
+        inject: [STUDIO_APPLICATION_CONTAINER, AdminLogBuffer],
         useFactory: (container, buffer) =>
           new StudioLogCapture(applicationLogger(container), buffer),
       }),
       defineProvider(StudioTimingInterceptor, {
-        inject: [Container],
+        inject: [STUDIO_APPLICATION_CONTAINER],
         useFactory: (container) =>
           new StudioTimingInterceptor(applicationLogger(container), timings),
       }),

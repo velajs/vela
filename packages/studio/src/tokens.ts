@@ -3,8 +3,25 @@
  * providers, the route contributor, and tests share a single identity per token.
  */
 import { InjectionToken } from '@velajs/vela';
+import type { Container } from '@velajs/vela/module-kit';
 import type { ResolvedStudioConfig } from './studio.types';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
+
+/**
+ * The application's own container, as `app.get(Container)` returns it. Studio
+ * and its panels inject it instead of `Container` and read the framework
+ * tokens (`ENV`, `APP_LOGGER`, `ROOT_MODULE`, `DiscoveryService`,
+ * `EntrypointRegistry`) through it, application-wide as `app.get()` does: an
+ * explicit application registration, such as a seeded `ENV`, answers first,
+ * then the `@Global()` module exporting the token, which overrides a framework
+ * default such as `ROOT_MODULE` for `app.get()` and Studio alike. In
+ * StudioModule's scope a module a plugin imports would answer first instead.
+ * StudioModule provides this token itself, and fails bootstrap when a
+ * `@Global()` module exports another `Container`.
+ */
+export const STUDIO_APPLICATION_CONTAINER = new InjectionToken<Container>(
+  'STUDIO_APPLICATION_CONTAINER',
+);
 
 /** The resolved (env + options) Studio config. */
 export const STUDIO_RESOLVED_CONFIG = new InjectionToken<ResolvedStudioConfig>(

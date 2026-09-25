@@ -102,7 +102,9 @@ yet. Module files are edited with `oxc-parser` and `magic-string`, so comments
 and formatting stay as they are (a comment trailing the last entry stays on
 it); a name imported with `import type` becomes a value import when the
 registration needs it. A module whose metadata is computed, or spreads or
-computes a key that may set the list, is refused with nothing written.
+computes a key that may set the list, is refused with nothing written, as is
+one that binds the new class's name to another class, listed already or not
+(`import { BillingModule } from '@acme/billing'`).
 Generated code uses the application kit, feature subpaths
 (`@velajs/vela/queue`, `@velajs/vela/schedule`), `ENV`, and plain decorator
 routes; a resource validates bodies with zod when the project depends
@@ -136,7 +138,9 @@ created; a failed type refresh only warns. A D1, KV or R2 `BINDING` that is a
 JavaScript reserved word, or a name `bindings.module.ts` declares (a class,
 function, variable or enum) or imports (`ENV`, `Global`, `InjectionToken`,
 `Module`, `defineProvider` or its module class), is refused first; the
-`InjectionToken` an earlier `vela add` declared for that binding is reused. An
+`InjectionToken` an earlier `vela add` declared for that binding is reused when
+its type argument is the resource's type (`InjectionToken<D1Database>` for
+`d1`), and one of another type, or without one, is refused. An
 existing `bindings.module.ts` keeps its class name, and a root module that
 already lists it through a path alias or a barrel is left as it is. Wrangler
 and the CLI edit `wrangler.json` and `wrangler.jsonc` only: with a

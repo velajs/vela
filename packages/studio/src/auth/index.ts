@@ -45,7 +45,8 @@ import { defineStudioPlugin, type StudioPlugin } from '../plugin';
  * organization membership list is not enumerated server-side here, so
  * `userDetail.organizations` is `[]`.
  */
-import { Container } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import { BetterAuthService } from '@velajs/better-auth';
 import { isVelaError } from '@velajs/errors';
 import type { VelaError } from '@velajs/errors';
@@ -309,7 +310,7 @@ export function authPanel(): StudioPlugin {
       defineProvider(STUDIO_AUTH_SOURCE, {
         useFactory: (container: Container) =>
           new BetterAuthStudioSource(container.resolve(BetterAuthService)),
-        inject: [Container],
+        inject: [STUDIO_APPLICATION_CONTAINER],
       }),
     ],
   });

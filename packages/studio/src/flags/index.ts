@@ -23,7 +23,8 @@
  */
 import { Inject, Injectable } from '@velajs/vela';
 import { defineStudioPlugin, type StudioPlugin } from '../plugin';
-import { Container } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import { FEATURE_FLAG_TOKENS } from '@velajs/feature-flags';
 import type {
   FeatureFlagsOptions,
@@ -38,7 +39,7 @@ import { studioError } from '../studio.errors';
 
 @Injectable()
 export class StudioFlagsOps {
-  constructor(@Inject(Container) private readonly container: Container) {}
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container) {}
 
   @AdminRpc({ op: 'flags.list' })
   async list(_ctx: AdminOpContext): Promise<FlagRow[]> {

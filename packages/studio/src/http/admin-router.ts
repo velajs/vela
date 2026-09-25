@@ -27,6 +27,7 @@ import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
 import { TIME_TRAVEL_PORT } from '../timetravel/port.token';
 import { streamAllModelsNdjson, streamModelNdjson } from '../transfer/transfer.ops';
 import { FixedWindowCounter, RateLimiter } from './middleware/rate-limit';
+import { declaringModuleId } from './studio-scope';
 
 /**
  * Stable pseudo-op identifier stamped onto the `/ws-token` endpoint's
@@ -100,7 +101,10 @@ async function readBody(c: Context, op: string): Promise<Record<string, unknown>
 /** Register the admin routes. Called by the route contributor's `buildRoutes`. */
 export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void {
   const container = ctx.container;
-  const config = container.resolve(STUDIO_RESOLVED_CONFIG);
+  // Studio's own tokens, read in the scope of the StudioModule declaring the
+  // claimed controller, never another module's registration of them.
+  const studio = declaringModuleId(container, ctx.controller);
+  const config = container.resolve(STUDIO_RESOLVED_CONFIG, studio);
   const base = config.absolute ? config.path : ctx.joinPaths(ctx.globalPrefix, config.path);
 
   const healthPath = ctx.joinPaths(base, STUDIO_HEALTH_SUFFIX);
@@ -151,7 +155,7 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
     const body = await readBody(c, op);
     if (body instanceof Response) return body;
     const request: AdminRpcRequest = { args: body.args };
-    const registry = container.resolve(StudioDispatchRegistry);
+    const registry = container.resolve(StudioDispatchRegistry, studio);
     const opCtx = buildOpContext(c, gated.principal, config, container);
     const result = await registry.dispatch(op, request, opCtx);
     return jsonResponse(result, result.ok ? 200 : result.status);
@@ -164,7 +168,7 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
     const body = await readBody(c, WS_TOKEN_PSEUDO_OP);
     if (body instanceof Response) return body;
     const room = typeof body.room === 'string' ? body.room : undefined;
-    const signer = container.resolve(AdminSubTokenSigner);
+    const signer = container.resolve(AdminSubTokenSigner, studio);
     const { token, exp } = await signer.mint({
       scope: 'live',
       ...(room !== undefined ? { room } : {}),

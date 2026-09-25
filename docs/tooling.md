@@ -134,7 +134,10 @@ vela deploy check
   is the one the file exports. Metadata with a computed argument, or with a
   spread or computed key that may set the list being extended, is refused with
   nothing written: an entry added there would replace the spread list or be
-  replaced by it. `queue` adds
+  replaced by it. So is a name the module binds to another class, listed
+  already or not: a root that imports `BillingModule` from a package or path
+  alias makes `vela g module billing` fail instead of creating a second,
+  unregistered `BillingModule`. `queue` adds
   `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module only
   when no source file configures the driver yet. `durable-object` writes an
   `@Injectable()` host (`counter.host.ts`, injecting `DO_STORAGE`) and the
@@ -169,7 +172,9 @@ vela deploy check
   variable or enum) or imports (`ENV`, `Global`, `InjectionToken`, `Module`,
   `defineProvider`, its module class), is refused before anything is created;
   the `InjectionToken` an earlier `vela add` declared for that binding is
-  reused. An existing `bindings.module.ts` keeps its class name, which the
+  reused when its type argument is the resource's type (`D1Database`,
+  `KVNamespace` or `R2Bucket`); one of another type, or without one, is
+  refused before anything is created. An existing `bindings.module.ts` keeps its class name, which the
   root module imports; a root module that already lists it, imported through a
   path alias or a barrel, is left as it is. A queue's producer and consumer
   are planned before `wrangler queues create`. Wrangler and the CLI edit

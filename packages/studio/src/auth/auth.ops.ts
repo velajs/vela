@@ -11,7 +11,8 @@
  * so a read-only Studio 403s it before it reaches the handler.
  */
 import { Inject, Injectable } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import type {
   AuthOrgRow,
   AuthSessionRow,
@@ -27,7 +28,7 @@ import type { StudioAuthSource } from './auth.port';
 
 @Injectable()
 export class StudioAuthOps {
-  constructor(@Inject(Container) private readonly container: Container) {}
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container) {}
 
   @AdminRpc({ op: 'auth.users' })
   async users(

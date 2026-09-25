@@ -20,7 +20,7 @@ import { defineProvider } from '@velajs/vela';
  * All of `@velajs/crud` is consumed through its PUBLIC entry points (`.`,
  * `./adapter`, `./model`) — no deep imports.
  */
-import { Container, DiscoveryService, METADATA_KEYS } from '@velajs/vela/module-kit';
+import { DiscoveryService, METADATA_KEYS, type Container } from '@velajs/vela/module-kit';
 import { getCrudConfig, resolveCrudDatabaseSync } from '@velajs/crud';
 import type { CrudConfig } from '@velajs/crud';
 import type { AuditStore } from '@velajs/crud/audit';
@@ -55,6 +55,7 @@ import type {
 import { STUDIO_DATA_OPTIONS, STUDIO_MODEL_SOURCE } from '../data/model-source.port';
 import type { StudioDataOptions } from '../data/model-source.port';
 import { defineStudioPlugin, type StudioPlugin } from '../plugin';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import type {
   StudioDeleteRowsOutcome,
   StudioGenerateRowsOutcome,
@@ -879,9 +880,9 @@ export function crudPanel(options: StudioDataOptions = {}): StudioPlugin {
     providers: [
       defineProvider(STUDIO_DATA_OPTIONS, { useValue: settings }),
       defineProvider(STUDIO_MODEL_SOURCE, {
-        useFactory: (discovery: DiscoveryService, container: Container) =>
-          new CrudStudioModelSource(discovery, container),
-        inject: [DiscoveryService, Container],
+        useFactory: (application: Container) =>
+          new CrudStudioModelSource(application.resolve(DiscoveryService), application),
+        inject: [STUDIO_APPLICATION_CONTAINER],
       }),
       // The data WRITE ops. Registered with the source (not on core StudioModule)
       // because a write is meaningless without one; the dispatch registry

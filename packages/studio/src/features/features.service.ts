@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
 import { STUDIO_OPS, STUDIO_OP_META } from '@velajs/studio-protocol';
 import type { StudioCapabilities, StudioFeatureKey } from '@velajs/studio-protocol';
 import type { TimeTravelCapabilities } from '@velajs/studio-protocol';
-import { STUDIO_RESOLVED_CONFIG } from '../tokens';
+import { STUDIO_APPLICATION_CONTAINER, STUDIO_RESOLVED_CONFIG } from '../tokens';
 import { deriveWriteGates } from '../studio.types';
 import type { ResolvedStudioConfig } from '../studio.types';
 import { StudioDispatchRegistry } from '../rpc/dispatch.registry';
@@ -17,7 +17,7 @@ import { STUDIO_LIVE_SOURCE } from '../live/live.port';
 export class StudioFeaturesService {
   constructor(
     @Inject(STUDIO_RESOLVED_CONFIG) private readonly config: ResolvedStudioConfig,
-    @Inject(Container) private readonly container: Container,
+    @Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container,
     @Inject(StudioDispatchRegistry) private readonly registry: StudioDispatchRegistry,
   ) {}
 

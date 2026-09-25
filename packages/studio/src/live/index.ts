@@ -1,5 +1,6 @@
 import { Inject, Injectable, defineProvider } from '@velajs/vela';
-import { Container, readEnv, type EnvFactory } from '@velajs/vela/module-kit';
+import { readEnv, type EnvFactory, type Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import { LiveInspector } from '@velajs/vela/live';
 import type { LiveSubscriptionRow, PresenceRoomRow } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
@@ -14,7 +15,7 @@ export type { StudioLiveSource } from './live.port';
 
 @Injectable()
 export class StudioLiveOps {
-  constructor(@Inject(Container) private readonly container: Container) {}
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container) {}
 
   @AdminRpc({ op: 'live.subscriptions' })
   async subscriptions(_ctx: AdminOpContext): Promise<LiveSubscriptionRow[]> {
@@ -93,7 +94,7 @@ export function livePanel(options: LivePanelOptions = {}): StudioPlugin {
     name: 'live',
     providers: [
       defineProvider(STUDIO_LIVE_SOURCE, {
-        inject: [Container],
+        inject: [STUDIO_APPLICATION_CONTAINER],
         useFactory: (container: Container) => {
           if (rooms !== undefined) return liveRoomsSource(container, rooms);
           return typeof source === 'function' ? source(readEnv(container)) : source;

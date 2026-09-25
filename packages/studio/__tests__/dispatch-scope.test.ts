@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Context } from 'hono';
 import { Inject, Injectable, InjectionToken, Scope, defineProvider } from '@velajs/vela';
-import { Container, DiscoveryService } from '@velajs/vela/module-kit';
+import { Container } from '@velajs/vela/module-kit';
 import { AdminRpc, AdminConfirmSummary } from '../src/rpc/admin-rpc.decorator';
 import { StudioDispatchRegistry } from '../src/rpc/dispatch.registry';
 import { ConfirmTokenSigner } from '../src/security/confirm-token';
@@ -26,7 +26,6 @@ function registry(container: Container): StudioDispatchRegistry {
   }
   const result = new StudioDispatchRegistry(
     container,
-    new DiscoveryService(container),
     new ConfirmTokenSigner('test-token'),
     new AdminAuditLog(20),
   );

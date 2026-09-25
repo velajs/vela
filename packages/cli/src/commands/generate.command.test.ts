@@ -284,6 +284,38 @@ export class AppModule {}
     await expect(readdir(join(project, 'src/billing'))).rejects.toThrow();
   });
 
+  it('refuses to generate a class the module lists already from a package or alias', async () => {
+    // The listed BillingModule is another class than the file a generator
+    // creates: it used to create that file, leave it unregistered and exit 0.
+    await scaffold('minimal');
+    for (const from of ['@acme/billing', '@/billing/billing.module']) {
+      const app = `import { Module } from '@velajs/vela';
+import { BillingModule } from '${from}';
+import { AppController } from './app.controller.js';
+import { AppService } from './app.service.js';
+
+@Module({ imports: [BillingModule], controllers: [AppController], providers: [AppService] })
+export class AppModule {}
+`;
+      await writeFile(join(project, 'src/app.module.ts'), app);
+      const result = await generate('g', 'module', 'billing');
+      expect(result.code, result.output).toBe(1);
+      expect(result.output).toContain(
+        `src/app.module.ts imports BillingModule from '${from}', not from ` +
+          "'./billing/billing.module.js'; register BillingModule yourself.",
+      );
+      expect(await read('src/app.module.ts')).toBe(app);
+      await expect(readdir(join(project, 'src/billing'))).rejects.toThrow();
+    }
+    // --skip-import creates the files and prints the registration to make.
+    const skipped = await generate('g', 'module', 'billing', '--skip-import');
+    expect(skipped.code, skipped.output).toBe(0);
+    expect(skipped.output).toContain('CREATE src/billing/billing.module.ts');
+    expect(skipped.output).toContain(
+      'Register it in src/app.module.ts: add BillingModule to @Module({ imports })',
+    );
+  });
+
   it('adds a cron job with a validated Cloudflare schedule', async () => {
     await scaffold('minimal');
     const result = await generate('g', 'cron', 'digest', '--schedule', '30 6 * * MON');

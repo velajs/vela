@@ -17,7 +17,8 @@
  * fresh undo mark — so undo is reversible too.
  */
 import { Inject, Injectable } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import type {
   RestoreOutcome,
   RestorePreview,
@@ -35,7 +36,7 @@ import type { TimeTravelPort } from '@velajs/studio-protocol';
 
 @Injectable()
 export class StudioTimeTravelOps {
-  constructor(@Inject(Container) private readonly container: Container) {}
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container) {}
 
   // -- reads -----------------------------------------------------------------
 

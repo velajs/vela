@@ -1,5 +1,6 @@
 import { defineProvider } from '@velajs/vela';
-import { Container, readEnv, resolveBinding, type BindingKind } from '@velajs/vela/module-kit';
+import { readEnv, resolveBinding, type BindingKind, type Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 /**
  * `@velajs/studio/cloudflare` — the CF-NATIVE time-travel tier: a
  * {@link CloudflareDoTimeTravelPort} that binds `TIME_TRAVEL_PORT` to a SQLite
@@ -304,7 +305,7 @@ export function cloudflareTimeTravelPanel(options: CloudflareTimeTravelPanelOpti
             confirm,
             ...(shardKey !== undefined ? { shardKey } : {}),
           }),
-        inject: [ConfirmTokenSigner, Container],
+        inject: [ConfirmTokenSigner, STUDIO_APPLICATION_CONTAINER],
       }),
     ],
   });
