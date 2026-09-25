@@ -13,7 +13,7 @@ import {
 } from '../index';
 import { MetadataRegistry, ParamType } from '../module-kit';
 import { createOpenApiDocument } from '../openapi/index';
-import { ValidationPipe, type StandardSchemaV1 } from '../validation/index';
+import { defineDto, ValidationPipe, type StandardSchemaV1 } from '../validation/index';
 
 let transforms = 0;
 
@@ -480,6 +480,65 @@ describe('@Body() with a schema-carrying parameter class', () => {
         }),
       );
       expect(await accepted.json()).toEqual({ body: { name: 'Bolt', qty: 2 } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('validates a static defineDto descriptor or parse() parser without a global pipe', async () => {
+    // Static schemas ValidationPipe also reads from a parameter class.
+    class Legacy {
+      static schema = defineDto(z.object({ name: z.string() }).strict(), { name: 'Legacy' });
+      declare name: string;
+    }
+    class Parsed {
+      static schema = {
+        parse(value: unknown) {
+          const name = Reflect.get(Object(value), 'name');
+          if (typeof name !== 'string')
+            throw Object.assign(new Error('Invalid'), {
+              issues: [{ message: 'name is required', path: ['name'] }],
+            });
+          return { name };
+        },
+      };
+      declare name: string;
+    }
+    @Controller('/legacy')
+    class LegacyController {
+      @Post()
+      legacy(@Body() body: Legacy) {
+        return body;
+      }
+
+      @Post('/parsed')
+      parsed(@Body() body: Parsed) {
+        return body;
+      }
+    }
+    @Module({ controllers: [LegacyController] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    const send = (path: string, body: unknown) =>
+      app.fetch(
+        new Request(`https://example.test/legacy${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      );
+    try {
+      expect((await send('', { name: 5 })).status).toBe(400);
+      expect((await send('', { name: 'Ada', isAdmin: true })).status).toBe(400);
+      const created = await send('', { name: 'Ada' });
+      expect(created.status).toBe(201);
+      expect(await created.json()).toEqual({ name: 'Ada' });
+      const invalid = await send('/parsed', { name: 5 });
+      expect(invalid.status).toBe(400);
+      expect((await invalid.json()).error.details.issues[0].path).toEqual(['name']);
+      const parsed = await send('/parsed', { name: 'Ada', isAdmin: true });
+      expect(parsed.status).toBe(201);
+      expect(await parsed.json()).toEqual({ name: 'Ada' });
     } finally {
       await app.close();
     }

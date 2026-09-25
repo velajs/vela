@@ -8,13 +8,10 @@ import type { PipeTransform } from '../pipeline/types';
 import {
   isValidationSchema,
   parseSchemaAsync,
+  staticSchema,
   type ValidationSchema,
 } from '../validation/parse-schema';
-import {
-  SchemaValidationError,
-  standardJsonSchema,
-  staticStandardSchema,
-} from '../validation/standard-schema';
+import { SchemaValidationError, standardJsonSchema } from '../validation/standard-schema';
 import { ValidationPipe } from '../validation/validation.pipe';
 import { readBoundedBody, readJsonBody } from './json-body';
 import type { ResolvedRouteBody } from './route-contract';
@@ -413,17 +410,18 @@ function readDeclared(
  * `@Body()`: JSON by default (415 for other media types), or the form or
  * multipart body the route opts into, bounded by its limits. A body schema the
  * route declares validates it before the pipes. A parameter class carrying a
- * static Standard Schema, when the parameter names no schema of its own, is
- * validated as the body is read unless a `ValidationPipe` applies to the
- * parameter (its own, or a global, controller or method pipe); then that pipe
- * validates it, in pipe order.
+ * static schema (a Standard Schema, a `defineDto` descriptor or a `parse()`
+ * parser), when the parameter names no schema of its own, is validated as the
+ * body is read unless a `ValidationPipe` applies to the parameter (its own, or
+ * a global, controller or method pipe); then that pipe validates it, in pipe
+ * order.
  */
 export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => {
   const contract = route.contract;
   if (contract?.bodySchema) return readDeclared(route, param, 'body', contract.bodySchema);
   const body = contract?.body;
   const own = parameterSchema(param);
-  const auto = own === undefined ? staticStandardSchema(metatype) : undefined;
+  const auto = own === undefined ? staticSchema(metatype) : undefined;
   // A whole-body schema declares the form's fields; a named parameter's own
   // schema describes only its member.
   const fields =
