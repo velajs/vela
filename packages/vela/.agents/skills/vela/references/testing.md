@@ -25,7 +25,7 @@ const session = await moduleRef.resolveInRequest(SessionState, { url: 'http://lo
 | `overrideInterceptor(Interceptor)` | an interceptor class |
 | `overrideFilter(Filter)` | an exception-filter class |
 | `overrideModule(Module).useModule(Replacement)` | every import of a module class (or of that exact `DynamicModule`), replaced by a class or `DynamicModule`; the metadata is untouched |
-| `useMocker((token) => mock)` | every non-optional dependency no provider satisfies, called once per token before anything is constructed; a falsy result leaves the dependency unresolved, so `compile()` rejects with `UnresolvedDependencyError` |
+| `useMocker((token) => mock)` | every non-optional dependency no provider satisfies (a `NestModule` class's constructor dependencies included, before its `configure()` runs), called once per token before anything is constructed; a falsy result leaves the dependency unresolved, so `compile()` rejects with `UnresolvedDependencyError` |
 
 Overrides infer their value/class/result contract from the token. A factory override types its parameters from its `inject` tuple, which a factory without parameters may omit (`useFactory({ factory: () => fake })`); erased runtime identities cannot authorize typed replacements.
 

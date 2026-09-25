@@ -233,9 +233,10 @@ An application serves its OpenAPI 3.1 document by importing `OpenApiModule` from
 export class AppModule {}
 ```
 
-The document covers the application root (`ROOT_MODULE`), including routes that
-route contributors such as `@Crud()` document, under the application's global
-prefix. It does not read the application's `globalPrefixOptions` or `versioning`:
+The document covers the controllers the application serves, in the order the
+root module declares them, including routes that route contributors such as
+`@Crud()` document, under the application's global prefix; a module a testing
+module replaced with `overrideModule()` is documented as its replacement. It does not read the application's `globalPrefixOptions` or `versioning`:
 when the application excludes routes from the prefix or sets `versioning.prefix`,
 pass the same `globalPrefixOptions` and `versioning` to `OpenApiModule.forRoot()`
 so the document's paths match the served routes. The document is built on the

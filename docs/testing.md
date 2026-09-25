@@ -120,7 +120,11 @@ const worker = await createTestingWorker(AppModule, {
   defaults and provided or overridden tokens never reach it.
 
 Overrides apply after the graph loads and before construction, so replaced
-providers are never built and effective request scopes are recomputed.
+providers are never built and effective request scopes are recomputed. They
+reach module classes too: a module that implements `NestModule` is built with
+the overridden and mocked providers before its `configure(consumer)` runs. An
+`OpenApiModule` document describes the controllers the testing module serves,
+so a module replaced with `overrideModule()` is documented as its replacement.
 
 ## Modules without a Worker
 

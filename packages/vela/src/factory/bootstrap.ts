@@ -42,6 +42,12 @@ export interface BootstrapOptions extends RouteManagerOptions {
 export interface BootstrapInternals {
   /** Load each replacement wherever the graph imports the overridden module. */
   moduleOverrides?: ModuleOverrides;
+  /**
+   * Change the registered graph before any module class is built: the
+   * testing module's provider overrides and `useMocker` run here, so a
+   * `NestModule` is constructed (and configures its middleware) with them.
+   */
+  prepareGraph?(container: Container): void;
 }
 
 export interface BootstrapResult {
@@ -160,11 +166,10 @@ export async function bootstrap(
   await options.configureContainer?.(container);
 
   const loader = new ModuleLoader(container, routeManager, internals.moduleOverrides);
-  // loader.load() also arms the deferred-init seam (LazyModuleManager) — kept
-  // inside the loader so hand-rolled bootstrap paths that never call this
-  // function (@velajs/testing's TestingModuleBuilder.compile) get identical
-  // lazy semantics.
-  loader.load(rootModule);
+  // loader.load() also calls each NestModule.configure() and arms the
+  // deferred-init seam (LazyModuleManager).
+  const { prepareGraph } = internals;
+  loader.load(rootModule, prepareGraph && (() => prepareGraph(container)));
 
   bindAppProviders(routeManager, container, loader);
   routeManager.registerConsumerMiddleware(loader.getConsumerMiddlewareDefinitions());
