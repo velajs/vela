@@ -295,7 +295,13 @@ export class DurableObjectHostDispatcher {
     } catch (error) {
       outcome = { ok: false, error };
     }
-    const transmission = outcome.ok ? transmit?.(outcome.value) : undefined;
+    let transmission: Transmission<T> | undefined;
+    try {
+      transmission = outcome.ok ? transmit?.(outcome.value) : undefined;
+    } catch (error) {
+      // Such as a body another reader locked: the scope still finishes.
+      outcome = { ok: false, error };
+    }
     if (transmission?.background) {
       // The scope outlives the invocation until its body is sent.
       this.#finishLater(scope, transmission.sent, report);

@@ -647,4 +647,35 @@ describe('Durable Object host dispatch', () => {
     expect(completions).toHaveLength(1);
     await dispatcher.context.dispose();
   });
+  it('finishes the scope when a fetch body cannot be sent', async () => {
+    const resources: Resource[] = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Resource {
+      closed = false;
+      constructor() {
+        resources.push(this);
+      }
+      dispose(): void {
+        this.closed = true;
+      }
+    }
+    @Injectable()
+    class LockedBodyHost {
+      constructor(@Inject(Resource) private readonly resource: Resource) {}
+      fetch(): Response {
+        const response = new Response(`resource ${this.resource.closed}`);
+        // Another reader holds the body: it can no longer be streamed.
+        void response.body?.getReader();
+        return response;
+      }
+    }
+    @Module({ providers: [Resource] })
+    class AppModule {}
+    const { dispatcher, reports } = await host(AppModule, LockedBodyHost);
+    const response = await dispatcher.fetch(new Request('https://do.test/'));
+    expect(response.status).toBe(500);
+    expect(reports).toHaveLength(1);
+    expect(resources.map((resource) => resource.closed)).toEqual([true]);
+    await dispatcher.context.dispose();
+  });
 });
