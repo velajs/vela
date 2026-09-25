@@ -284,8 +284,8 @@ interceptors. `@CacheResponse` stores the response the route sent — its status
 media type and body, after every interceptor and the schema — so a cache store
 never holds fields the schema strips, and a hit replays that response without
 running the handler or parsing again. Interceptors outside `CacheInterceptor`
-receive the replayed `Response` on a hit, and a value they return instead is
-ignored. This has a security consequence: an entry now includes what those
+receive the replayed `Response` on a hit; a value they return instead of a
+`Response` is ignored, and a `Response` they return is sent. This has a security consequence: an entry now includes what those
 interceptors did for the request that stored it, and they no longer redo it per
 request. An interceptor outside the cache that shapes the response per viewer
 (removing fields by role, localizing) has its output for the first viewer
