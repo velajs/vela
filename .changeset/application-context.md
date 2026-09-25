@@ -1,0 +1,10 @@
+---
+'@velajs/vela': minor
+---
+
+`VelaFactory.createApplicationContext(AppModule, options)` creates a standalone application context, as Nest's `NestFactory.createApplicationContext`: the module graph with its providers, lifecycle hooks and entrypoints, and no HTTP routes. It uses the production bootstrap, so the graph, `ENV` and `configureContainer` behave exactly as in `VelaFactory.create`. It is initialized (`onModuleInit`, `onApplicationBootstrap`) before it resolves, and a failure disposes what was built and rethrows. Use it for scripts, custom runtimes and platform objects, such as a Cloudflare Durable Object, that inject providers or dispatch entrypoints without serving HTTP. The options are `env`, `diagnostics` and `configureContainer` (`VelaApplicationContextOptions`).
+
+- The returned `VelaApplicationContext` has `get(token, { strict })`, which looks the token up across the application, or with `strict: true` as the selected module sees it. `resolve(token, scope?, { strict })` awaits async factories, constructs transient providers anew and resolves request-scoped ones in the execution scope passed. `select(Module | DynamicModule)` returns a context over one module instance that shares the application's lifecycle; a module imported under several keys is selected by its `DynamicModule`. `init()` is idempotent. `close()` runs the shutdown hooks, and `dispose()` also releases the container. `entrypoints`, `getContainer()` and `materializeLazyModules()` are available as on an application.
+- `VelaApplication` extends `VelaApplicationContext`, as Nest's `NestApplication` extends its context, so an application also has `select()`, `resolve()`, `init()` and `get(token, { strict })`. `finalizeApplicationContext` joins `finalizeApplication` on `@velajs/vela/internal`.
+- `ErrorReportContext.edge` accepts `'durable-object'`, the edge Cloudflare Durable Objects report failures on.
+- The minimal `VelaFactory.create()` Worker measures 131,217 bytes raw and 44,131 bytes gzipped, 903 and 474 bytes more than before, within its unchanged ceiling.
