@@ -227,6 +227,9 @@ function requestBodyFor(
   };
 }
 
+// Declared types an unvalidated named query parameter reads the first value for.
+const FIRST_VALUE_TYPES = new Set<unknown>([String, Number, Boolean]);
+
 /** A query parameter; an array is sent as repeated keys (`?tag=a&tag=b`). */
 function queryParameter(
   name: string,
@@ -234,12 +237,16 @@ function queryParameter(
   required: boolean,
   registry: ComponentsRegistry,
 ): OpenApiParameter {
+  const resolved = registry.resolve(schema);
+  const array = [resolved, ...(resolved.oneOf ?? []), ...(resolved.anyOf ?? [])].some(
+    (member) => registry.resolve(member).type === 'array',
+  );
   return {
     name,
     in: 'query',
     required,
     schema,
-    ...(registry.resolve(schema).type === 'array' ? { style: 'form', explode: true } : {}),
+    ...(array ? { style: 'form', explode: true } : {}),
   };
 }
 
@@ -289,12 +296,18 @@ function buildOperation(
       if (!contract?.params) pathParameter(param.name, getParamSchema(param, paramtypes, registry));
     } else if (param.type === ParamType.QUERY && param.name) {
       if (contract?.query) continue;
-      // Without a schema or pipe, a parameter declared as an array reads
-      // repeated keys.
+      // Without a schema, the declared type decides what the parameter reads:
+      // an array with no pipe reads repeated keys, a string, number or boolean
+      // (or an array a pipe such as `ParseArrayPipe` splits) the first value,
+      // and a union or `unknown` either one value or the repeated keys.
+      const declared = param.metatype ?? paramtypes?.[param.index];
+      const many: JsonSchema = { type: 'array', items: { type: 'string' } };
       const wire: JsonSchema =
-        (param.metatype ?? paramtypes?.[param.index]) === Array && !param.pipes?.length
-          ? { type: 'array', items: { type: 'string' } }
-          : { type: 'string' };
+        declared === Array && !param.pipes?.length
+          ? many
+          : declared === Array || FIRST_VALUE_TYPES.has(declared)
+            ? { type: 'string' }
+            : { oneOf: [{ type: 'string' }, many] };
       parameters.push(
         queryParameter(
           param.name,

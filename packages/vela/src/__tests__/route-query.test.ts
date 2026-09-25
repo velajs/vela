@@ -201,5 +201,25 @@ describe('array-aware @Query', () => {
     expect(document.paths['/search/role']!.get!.parameters).toEqual([
       { name: 'role', in: 'query', required: false, schema: { type: 'string' } },
     ]);
+    expect(document.paths['/search/optional']!.get!.parameters).toEqual([
+      { name: 'role', in: 'query', required: false, schema: { type: 'string' } },
+    ]);
+  });
+
+  it('documents a union or unknown parameter as one value or repeated keys', () => {
+    const document = createOpenApiDocument(App);
+    const oneOrMany = {
+      in: 'query',
+      required: false,
+      schema: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+      style: 'form',
+      explode: true,
+    };
+    expect(document.paths['/search/union']!.get!.parameters).toEqual([
+      { name: 'role', ...oneOrMany },
+    ]);
+    expect(document.paths['/search/named']!.get!.parameters).toEqual([
+      { name: 'tag', ...oneOrMany },
+    ]);
   });
 });
