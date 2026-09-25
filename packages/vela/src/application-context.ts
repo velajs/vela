@@ -23,7 +23,8 @@ export interface ApplicationContextLookupOptions {
    * `false` (default) looks the token up across the whole application.
    * `true` resolves only what the selected module can inject (the root module
    * for the application itself): its own providers, its imports' exports and
-   * global tokens.
+   * global tokens, the visibility `ModuleRef` uses. Nest's strict lookup finds
+   * only the providers the selected module declares itself.
    */
   readonly strict?: boolean;
 }

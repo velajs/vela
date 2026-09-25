@@ -154,12 +154,18 @@ export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024;
 // them. Core therefore has no default client identity.
 const defaultGetClientIp = (_c: Context): string | null => null;
 
-// Track the transmitted body without owning the invocation's deferred work.
-// Cancellation finishes only after the producer's cancellation settles, so it
-// can still use request-scoped resources while releasing its own handles.
-function trackResponseStream(
+/**
+ * Track the transmission of a response body without owning the invocation's
+ * deferred work: send `body` in place of the original, and `done` resolves once
+ * it was read to the end, failed, or was cancelled, reported to `onFinish`.
+ * Cancellation finishes only after the producer's cancellation settles, so it
+ * can still use request-scoped resources while releasing its own handles.
+ * Runtime adapters pass `done` to `ExecutionScope.finish()` to keep an
+ * invocation's scope open while its streamed response is sent.
+ */
+export function trackResponseStream(
   body: ReadableStream<Uint8Array>,
-  onFinish: (outcome: HttpRequestCompletion['outcome']) => void,
+  onFinish: (outcome: HttpRequestCompletion['outcome']) => void = () => {},
 ): {
   body: ReadableStream<Uint8Array>;
   done: Promise<void>;
