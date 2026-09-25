@@ -187,11 +187,16 @@ A failure is reported first, through the application's `ExceptionHandler`
 
 - An RPC call rejects with an `EntrypointError` (from `@velajs/cloudflare`)
   and nothing else, as a [service entrypoint](entrypoints.md#rpc-errors) call
-  does. It is rendered like an HTTP response (`renderHttpError`, server bodies
-  redacted): a 4xx `HttpException` or branded `VelaError` keeps its `status`,
-  `code`, `message` and `details`; anything else becomes
-  `500 internal "Internal Server Error"`. Its stack names only itself, so no
-  frame, cause or property of the original error crosses the RPC boundary.
+  does. It carries what HTTP sends for the error (`renderHttpError`, server
+  bodies redacted): its `status`, `code` and `message`, and its `details` below
+  500. A 4xx `HttpException` keeps its code, message and details, a branded
+  `VelaError` keeps its code and message at any status, and an unknown error
+  becomes `500 internal "Internal Server Error"`. Unlike HTTP, a branded
+  `VelaError` with a 5xx status loses its details, and a 4xx `HttpException`
+  constructed with an object response keeps only its status (code `error`)
+  unless that object is a canonical `{ error: { code, message, details } }`
+  body. Its stack names only itself, so no frame, cause or property of the
+  original error crosses the RPC boundary.
   workerd rebuilds it for the caller as a plain `Error` with those properties;
   test it with `isEntrypointError(error)`. workerd keeps an error's own
   properties across RPC only from `compatibility_date` 2026-04-21, or with the

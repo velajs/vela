@@ -94,11 +94,18 @@ type `never` on the stub.
 ## RPC errors
 
 Durable Object hosts and service entrypoints reject a failed RPC call with an
-`EntrypointError` from `@velajs/cloudflare`, rendered like an HTTP response
-with server errors redacted: a 4xx `HttpException` or branded `VelaError` keeps
-its `status`, `code`, `message` and `details`; anything else becomes
-`500 internal "Internal Server Error"`. Its stack names only itself: no frame,
-cause or other property of the original crosses the boundary.
+`EntrypointError` from `@velajs/cloudflare`. It carries what HTTP sends for the
+error, with server bodies redacted (`renderHttpError`): its `status`, `code` and
+`message`, and its `details` below 500. A 4xx `HttpException` keeps its code,
+message and details, a branded `VelaError` keeps its code and message at any
+status, as over HTTP, a 5xx `HttpException` becomes its status's code and title
+(`503 service_unavailable "Service Unavailable"`), and an unknown error becomes
+`500 internal "Internal Server Error"`. Unlike HTTP, a branded `VelaError` with a
+5xx status loses its details, and a 4xx `HttpException` constructed with an
+object response, which HTTP sends as it is, keeps only its status (code `error`,
+message `Entrypoint request failed`) unless that object is a canonical
+`{ error: { code, message, details } }` body. Its stack names only itself: no
+frame, cause or other property of the original crosses the boundary.
 
 ```ts
 import { isEntrypointError } from '@velajs/cloudflare';
