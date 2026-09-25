@@ -221,7 +221,7 @@ next event boots it again; every waiting caller receives only
 `VelaWebSocketDurableObject(app)` is the Durable Object that holds a gateway
 room's hibernatable sockets (see [WebSockets](websockets.md)). It boots its
 context the same way: it injects `DO_STATE`, `DO_STORAGE` and `DO_ID`, and the
-app's adapters configure it. Its platform differs: pushes to its own room and
+app's adapters configure its container (`configureContainer`). Its platform differs: pushes to its own room and
 live invalidations are delivered locally, and the live cursor log lives in its
 SQLite storage.
 

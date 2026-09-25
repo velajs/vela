@@ -494,7 +494,8 @@ root. The Worker and each Durable Object seed their native environment as the
 framework `ENV`; the gateway resolves its `binding` by name from it. The room
 object boots its application context like every Vela Durable Object (see
 [Durable Objects](durable-objects.md)): it injects `DO_STATE`, `DO_STORAGE`
-and `DO_ID`, and the app's runtime adapters configure it. Run
+and `DO_ID`, and the app's runtime adapters configure its container
+(`configureContainer`). Run
 `wrangler types --include-runtime=false` so `worker-configuration.d.ts` types
 `CHAT_ROOM` (and every other binding) on `VelaEnv` for code that injects `ENV`.
 

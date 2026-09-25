@@ -1066,9 +1066,14 @@ option. See [tooling](tooling.md) and [testing](testing.md).
   exits 2 instead of 0. Scripts that call it should treat 2 as "done, apart from
   the printed steps" (1 still means failure).
 - `vela g durable-object` writes an `@Injectable()` host and a
-  `VelaDurableObject` class built from the Worker entry's app instead of a
-  `DurableObject` subclass, and `vela cf sync` binds a gateway binding that no
-  class serves only to a `VelaWebSocketDurableObject` class.
+  `VelaDurableObject` class instead of a `DurableObject` subclass. The class is
+  built from the entry's app when the entry defines one
+  (`const app = defineCloudflareApp(...)`, or an app it imports from its own
+  module), and otherwise from the root module the entry names, in a separate
+  file: for `export default createCloudflareWorker(AppModule, options)` it does
+  not share those options, and the generator says so. `vela cf sync` binds a
+  gateway binding that no class serves only to a `VelaWebSocketDurableObject`
+  class.
 - A module class that implements `NestModule` is built, and its `configure()`
   called, after the whole graph is registered and, in `@velajs/testing` 1.32.0,
   after provider overrides and `useMocker` apply. That testing release requires

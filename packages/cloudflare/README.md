@@ -65,8 +65,8 @@ The root is static: a module class, or a `DynamicModule` such as
 `createCloudflareApp`, `VelaDurableObject` and `VelaWebSocketDurableObject` all
 take the same root. An entry that exports Durable Object classes defines the app
 once with `defineCloudflareApp(AppModule, options)`: its `worker` is the default
-export, and the classes built from the app share its root and runtime adapters
-(see [Durable Object hosts](#durable-object-hosts)); `createCloudflareWorker` is
+export, and the classes built from the app share its root, and its runtime
+adapters configure their containers (`configureContainer`) (see [Durable Object hosts](#durable-object-hosts)); `createCloudflareWorker` is
 `defineCloudflareApp(...).worker`.
 When module configuration needs bindings, read them where each application is
 built, from its own `ENV`:
