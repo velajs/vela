@@ -83,9 +83,10 @@ when a Studio lists both, as it does for any token two plugins provide
 plugin providing a token StudioModule provides itself, such as
 `STUDIO_RESOLVED_CONFIG` or `AdminAuditLog`, and for one providing a framework
 token StudioModule injects from the application (`ENV`, `APP_LOGGER`,
-`ROOT_MODULE`, `Container`, `DiscoveryService`, `EntrypointRegistry`,
-`ModuleRef` or `Reflector`), which would otherwise answer first inside Studio's
-scope. An async Studio factory with parameters supplies them
+`ROOT_MODULE`, `Container`, `DiscoveryService` or `EntrypointRegistry`), or
+importing a module that exports one (directly or by re-exporting a module it
+imports), which would otherwise answer first inside Studio's scope. A
+`forwardRef` import is checked when the application loads it. An async Studio factory with parameters supplies them
 through `inject`; one without parameters may omit it.
 
 ## Diagnostic snapshots
