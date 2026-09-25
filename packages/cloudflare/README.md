@@ -515,7 +515,9 @@ export class SignupWorkflow extends VelaWorkflow(app, SignupHost) {}
 their semantics. Each run gets its own execution scope (request-scoped
 providers per run) and runs the host's scoped guards, interceptors and filters
 (`getType()` `'cf:workflow'`). A failure is reported (`edge: 'workflow'`) and
-rethrown as it is, so the engine honors `NonRetryableError`. The typed
+rethrown as it is, so the engine honors `NonRetryableError`. The engine's own
+interruptions (`Aborting engine: ...` when an instance is paused, restarted or
+terminated) pass through unreported and unfiltered. The typed
 `workflow<Params>({ binding })` reference (root entry) creates and reads
 instances from module options and helpers; `WorkflowParams<T>` reads a
 Workflow's params from its class or host. See
@@ -558,7 +560,8 @@ Tail Workers handlers (entrypoint kinds `cf:email` and `cf:tail`); importing
 them gives `app.worker` its `email` and `tail` handlers. An email goes to the
 handlers whose `to` lists its envelope recipient, else to those without `to`,
 and a message no handler accepts is rejected with `setReject()`. Tail handler
-failures are reported and never thrown into the platform's loop. See
+failures are reported and never thrown into the platform's loop; an
+application that fails to start is logged to the console instead. See
 [Service entrypoints, email and tail](../../docs/entrypoints.md).
 
 ## Bindings by name
