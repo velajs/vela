@@ -14,7 +14,6 @@ import {
 import { APP_LOGGER, ApplicationLogger, LoggingModule } from '@velajs/vela/logging';
 import {
   Container,
-  DiscoveryService,
   buildEntrypointExecutionContext,
   createExecutionScope,
 } from '@velajs/vela/module-kit';
@@ -227,7 +226,6 @@ describe('Studio exception boundary', () => {
     container.register(defineProvider(APP_LOGGER, { useValue: logging }));
     const registry = new StudioDispatchRegistry(
       container,
-      new DiscoveryService(container),
       new ConfirmTokenSigner('token'),
       new AdminAuditLog(10),
     );

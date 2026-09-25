@@ -4,16 +4,11 @@
  * override these env values; the merge into {@link ResolvedStudioConfig}
  * lives in the module (env under options).
  */
-import {
-  Injectable,
-  InjectEnv,
-  Optional,
-  type DynamicModule,
-  type Type,
-  type VelaEnv,
-} from '@velajs/vela';
+import { Inject, Injectable, type DynamicModule, type Type, type VelaEnv } from '@velajs/vela';
+import { readEnv, type Container } from '@velajs/vela/module-kit';
 import { STUDIO_DEFAULT_PATH } from '@velajs/studio-protocol';
 import type { EditableFlags, ResolvedStudioConfig, StudioModuleOptions } from './studio.types';
+import { STUDIO_APPLICATION_CONTAINER } from './tokens';
 
 /** The `VELA_STUDIO_*` variables and secrets Studio reads from ENV. */
 export interface StudioEnv {
@@ -67,15 +62,17 @@ export function readStudioEnv(env: VelaEnv | undefined): StudioEnvConfig {
 }
 
 /**
- * The env slice of one application. ENV is optional: without a seeded
- * environment Studio keeps its option-only, default-closed configuration.
+ * The env slice of one application: its `ENV` as `app.get(ENV)` returns it,
+ * never one a plugin import makes visible in StudioModule's scope. ENV is
+ * optional: without a seeded environment Studio keeps its option-only,
+ * default-closed configuration.
  */
 @Injectable()
 export class StudioEnvReader {
   readonly config: StudioEnvConfig;
 
-  constructor(@Optional() @InjectEnv() env?: VelaEnv) {
-    this.config = readStudioEnv(env);
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) application: Container) {
+    this.config = readStudioEnv(readEnv(application));
   }
 }
 

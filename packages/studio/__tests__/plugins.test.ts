@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   APP_INTERCEPTOR,
   ENV,
+  Global,
   Inject,
   Injectable,
   Module,
@@ -201,9 +202,10 @@ describe('StudioModule plugins', () => {
   });
 
   it('rejects a panel that provides a framework token StudioModule injects, naming both', () => {
-    // Inside Studio's scope such a provider would answer before the
-    // application's own: Studio would read the panel's ENV (its admin token
-    // among it), log through the panel's logger, or document another root.
+    // Such a provider registers in Studio's own scope: it would answer first
+    // for the panels' providers, and where the application registers none (no
+    // seeded ENV, no LoggingModule) application-wide lookups, Studio's among
+    // them, would return the panel's ENV (its admin token among it) or logger.
     const cases: Array<[ProviderDefinition, string]> = [
       [
         defineProvider(ENV, {
@@ -245,67 +247,84 @@ describe('StudioModule plugins', () => {
     }
   });
 
-  it('rejects a panel importing a module that exports a framework token StudioModule injects', async () => {
-    // A panel's imports join Studio's scope too, where their exports answer
-    // before the application's own ENV: Studio would read the panel's admin token.
-    @Module({
-      providers: [defineProvider(ENV, { useValue: { VELA_STUDIO_TOKEN: 'p'.repeat(32) } })],
-      exports: [ENV],
-    })
-    class PanelEnvModule {}
-    const direct = defineStudioPlugin({ name: 'sneaky', imports: [PanelEnvModule] });
-    expect(() => StudioModule.forRoot({ plugins: [direct] })).toThrow(
-      "Studio plugin 'sneaky' imports PanelEnvModule, which exports InjectionToken(ENV); " +
-        'StudioModule injects it from the application, so a panel cannot replace it.',
-    );
+  it('reads framework tokens from the application whatever a plugin import exports', async () => {
+    // A panel's imports join Studio's scope, where their exports answer before
+    // the application's own. Studio reads ENV, ROOT_MODULE, Container and the
+    // others application-wide instead, as app.get() does, so however an import
+    // brings one in, Studio keeps the application's admin token and root.
+    const PANEL_TOKEN = 'p'.repeat(32);
+    const panelEnv = () => defineProvider(ENV, { useValue: { VELA_STUDIO_TOKEN: PANEL_TOKEN } });
+    class OtherRoot {}
 
-    // Through a module that re-exports it, and through a DynamicModule's own exports.
+    @Module({ providers: [panelEnv()], exports: [ENV] })
+    class PanelEnvModule {}
     @Module({ imports: [PanelEnvModule], exports: [PanelEnvModule] })
     class PanelBarrel {}
     @Module({})
-    class PanelHost {}
-    const cases: Array<[StudioPlugin, string]> = [
-      [defineStudioPlugin({ name: 'barrel', imports: [PanelBarrel] }), 'PanelBarrel'],
+    class PanelRootHost {}
+    const panelRoot = {
+      module: PanelRootHost,
+      providers: [defineProvider(ROOT_MODULE, { useValue: OtherRoot })],
+      exports: [ROOT_MODULE],
+    };
+    @Module({
+      providers: [defineProvider(Container, { useValue: new Container() })],
+      exports: [Container],
+    })
+    class PanelContainerModule {}
+
+    // The loader keeps one instance of a module class: a bare import of a class
+    // another plugin's import already loaded as a DynamicModule hands out that
+    // instance's exports, which the class's own metadata does not list.
+    @Module({})
+    class PanelShared {}
+    const sharedWithEnv = { module: PanelShared, providers: [panelEnv()], exports: [ENV] };
+    @Module({ imports: [sharedWithEnv] })
+    class PanelLoader {}
+
+    // A @Global() module nested inside an import exports ENV to every module.
+    @Global()
+    @Module({ providers: [panelEnv()], exports: [ENV] })
+    class PanelGlobalEnv {}
+    @Module({ imports: [PanelGlobalEnv] })
+    class PanelNested {}
+
+    const cases: Array<readonly StudioPlugin[]> = [
+      [defineStudioPlugin({ name: 'direct', imports: [PanelEnvModule] })],
+      [defineStudioPlugin({ name: 'barrel', imports: [PanelBarrel] })],
+      [defineStudioPlugin({ name: 'dynamic', imports: [panelRoot] })],
+      [defineStudioPlugin({ name: 'deferred', imports: [forwardRef(() => PanelEnvModule)] })],
+      [defineStudioPlugin({ name: 'container', imports: [PanelContainerModule] })],
       [
-        defineStudioPlugin({
-          name: 'dynamic',
-          imports: [
-            {
-              module: PanelHost,
-              providers: [defineProvider(ROOT_MODULE, { useValue: class Other {} })],
-              exports: [ROOT_MODULE],
-            },
-          ],
-        }),
-        'PanelHost',
+        defineStudioPlugin({ name: 'loads', imports: [PanelLoader] }),
+        defineStudioPlugin({ name: 'reuses', imports: [PanelShared] }),
       ],
+      [defineStudioPlugin({ name: 'nested', imports: [PanelNested] })],
     ];
-    for (const [plugin, module] of cases) {
-      expect(() => StudioModule.forRoot({ plugins: [plugin] })).toThrow(
-        `Studio plugin '${plugin.name}' imports ${module}, which exports `,
+    for (const plugins of cases) {
+      const label = plugins.map((plugin) => plugin.name).join('+');
+      @Module({ imports: [StudioModule.forRoot({ plugins: [...plugins] })] })
+      class App {}
+      const app = await VelaFactory.create(App, { env: { VELA_STUDIO_TOKEN: TOKEN } });
+      const config = app.get(STUDIO_RESOLVED_CONFIG);
+      expect(config.token, label).toBe(TOKEN);
+      expect(config.rootModule, label).toBe(App);
+      expect(ok(await rpc(app, 'studio.capabilities')).features.openapi, label).toBe(true);
+      const modules = ok(await rpc(app, 'app.modules')).map((node) => node.moduleId);
+      expect(modules, label).toEqual(
+        app
+          .get(Container)
+          .getModuleDescriptions()
+          .map((description) => description.moduleId),
       );
+      const panel = await app.getHonoApp().request('/_vela/admin/rpc/studio.capabilities', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${PANEL_TOKEN}`, 'content-type': 'application/json' },
+        body: '{}',
+      });
+      expect(panel.status, label).toBe(401);
+      await app.close();
     }
-
-    // A forwardRef import is checked when the module loader resolves it.
-    const deferred = defineStudioPlugin({
-      name: 'deferred',
-      imports: [forwardRef(() => PanelEnvModule)],
-    });
-    @Module({ imports: [StudioModule.forRoot({ token: TOKEN, plugins: [deferred] })] })
-    class DeferredApp {}
-    await expect(
-      VelaFactory.create(DeferredApp, { env: { VELA_STUDIO_TOKEN: TOKEN } }),
-    ).rejects.toThrow("Studio plugin 'deferred' imports PanelEnvModule, which exports");
-
-    // A module that imports ENV's provider without exporting it keeps it to itself.
-    @Module({ imports: [PanelEnvModule] })
-    class PanelConsumer {}
-    const quiet = defineStudioPlugin({ name: 'quiet', imports: [PanelConsumer] });
-    @Module({ imports: [StudioModule.forRoot({ plugins: [quiet] })] })
-    class App {}
-    const app = await VelaFactory.create(App, { env: { VELA_STUDIO_TOKEN: TOKEN } });
-    expect(app.get(STUDIO_RESOLVED_CONFIG).token).toBe(TOKEN);
-    await app.close();
   });
 
   it("rejects the data browser's settings on StudioModule, pointing to crudPanel()", async () => {

@@ -82,12 +82,15 @@ when a Studio lists both, as it does for any token two plugins provide
 (application-wide enhancers such as `APP_INTERCEPTOR` excepted), for a
 plugin providing a token StudioModule provides itself, such as
 `STUDIO_RESOLVED_CONFIG` or `AdminAuditLog`, and for one providing a framework
-token StudioModule injects from the application (`ENV`, `APP_LOGGER`,
-`ROOT_MODULE`, `Container`, `DiscoveryService` or `EntrypointRegistry`), or
-importing a module that exports one (directly or by re-exporting a module it
-imports), which would otherwise answer first inside Studio's scope. A
-`forwardRef` import is checked when the application loads it. An async Studio factory with parameters supplies them
-through `inject`; one without parameters may omit it.
+token Studio reads from the application (`ENV`, `APP_LOGGER`, `ROOT_MODULE`,
+`Container`, `DiscoveryService` or `EntrypointRegistry`). Studio and its panels
+read those tokens application-wide, as `app.get()` does, so whatever the modules
+a plugin imports export, `@Global()` ones among them, Studio keeps the
+application's registration. A custom panel's provider that injects one of them
+directly resolves it in Studio's scope, where every plugin's imports are visible;
+`moduleRef.get(TOKEN, { strict: false })` reads the application's. An async Studio
+factory with parameters supplies them through `inject`; one without parameters
+may omit it.
 
 ## Diagnostic snapshots
 

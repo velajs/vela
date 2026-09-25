@@ -2,7 +2,8 @@
  * `StudioDispatchRegistry` — builds the op→handler map at bootstrap and runs
  * the security-gated dispatch for `POST {p}/rpc/:op`.
  *
- * Bootstrap (OnApplicationBootstrap): scan `discovery.registeredMethodsWithMeta(AdminRpc)`,
+ * Bootstrap (OnApplicationBootstrap): scan the application's
+ * `DiscoveryService.registeredMethodsWithMeta(AdminRpc)`,
  * THROW on an op not in `STUDIO_OPS` (unless allowed via `STUDIO_TEST_ONLY_OPS`)
  * or a duplicate op.
  *
@@ -15,14 +16,13 @@
 import { Inject, Injectable } from '@velajs/vela';
 import { APP_LOGGER } from '@velajs/vela/logging';
 import {
-  Container,
   DiscoveryService,
   getRequestContainer,
   runInEntrypointScope,
   resolveErrorReporter,
 } from '@velajs/vela/module-kit';
 import type { OnApplicationBootstrap, Token, Type } from '@velajs/vela';
-import type { ErrorReporter } from '@velajs/vela/module-kit';
+import type { Container, ErrorReporter } from '@velajs/vela/module-kit';
 import { STUDIO_OP_META, STUDIO_OPS } from '@velajs/studio-protocol';
 import type { AdminRpcRequest, AdminRpcResponse, StudioOp } from '@velajs/studio-protocol';
 import { AdminConfirmSummary, AdminRpc } from './admin-rpc.decorator';
@@ -37,7 +37,7 @@ import type {
 import { studioError, toAdminErrorBody } from '../studio.errors';
 import { ConfirmTokenSigner } from '../security/confirm-token';
 import { AdminAuditLog } from '../audit/audit-log';
-import { STUDIO_TEST_ONLY_OPS } from '../tokens';
+import { STUDIO_APPLICATION_CONTAINER, STUDIO_TEST_ONLY_OPS } from '../tokens';
 
 interface HandlerEntry {
   token: Type;
@@ -55,8 +55,7 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
   private readonly summarizers = new Map<string, HandlerEntry>();
 
   constructor(
-    @Inject(Container) private readonly container: Container,
-    @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
+    @Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container,
     @Inject(ConfirmTokenSigner) private readonly confirm: ConfirmTokenSigner,
     @Inject(AdminAuditLog) private readonly auditLog: AdminAuditLog,
   ) {}
@@ -64,8 +63,12 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
   onApplicationBootstrap(): void {
     const allowed = new Set<string>(STUDIO_OPS as readonly string[]);
     for (const extra of this.testOnlyOps()) allowed.add(extra);
+    // The application's discovery, as app.get(DiscoveryService) returns it.
+    const discovery = this.container.has(DiscoveryService)
+      ? this.container.resolve(DiscoveryService)
+      : new DiscoveryService(this.container);
 
-    for (const found of this.discovery.registeredMethodsWithMeta<AdminRpcMeta>(AdminRpc, {
+    for (const found of discovery.registeredMethodsWithMeta<AdminRpcMeta>(AdminRpc, {
       metadataOnly: true,
     })) {
       const { op } = found.meta;
@@ -89,7 +92,7 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
       });
     }
 
-    for (const found of this.discovery.registeredMethodsWithMeta<AdminConfirmSummaryMeta>(
+    for (const found of discovery.registeredMethodsWithMeta<AdminConfirmSummaryMeta>(
       AdminConfirmSummary,
       { metadataOnly: true },
     )) {

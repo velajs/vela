@@ -13,7 +13,8 @@
  * — see `@velajs/studio/crud`'s `AuditStoreChangeSource`).
  */
 import { defineProvider, type ModuleImport } from '@velajs/vela';
-import { Container, readEnv, type EnvFactory } from '@velajs/vela/module-kit';
+import { readEnv, type Container, type EnvFactory } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import { ConfirmTokenSigner } from '../security/confirm-token';
 import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
 import type { StudioModelSource } from '../data/model-source.port';
@@ -56,7 +57,7 @@ export function timeTravelPanel(options: TimeTravelPanelOptions = {}): StudioPlu
           typeof store === 'function'
             ? store(readEnv(container))
             : (store ?? new InMemorySnapshotStore()),
-        inject: [Container],
+        inject: [STUDIO_APPLICATION_CONTAINER],
       }),
       defineProvider(TIME_TRAVEL_PORT, {
         useFactory: (
@@ -76,7 +77,12 @@ export function timeTravelPanel(options: TimeTravelPanelOptions = {}): StudioPlu
             ...(perPage !== undefined ? { perPage } : {}),
           });
         },
-        inject: [STUDIO_MODEL_SOURCE, ConfirmTokenSigner, Container, SNAPSHOT_STORE],
+        inject: [
+          STUDIO_MODEL_SOURCE,
+          ConfirmTokenSigner,
+          STUDIO_APPLICATION_CONTAINER,
+          SNAPSHOT_STORE,
+        ],
       }),
     ],
   });

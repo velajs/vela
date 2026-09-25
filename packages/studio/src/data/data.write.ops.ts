@@ -21,7 +21,8 @@
  * the M7a report ledger).
  */
 import { Inject, Injectable } from '@velajs/vela';
-import { Container } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
+import { STUDIO_APPLICATION_CONTAINER } from '../tokens';
 import type {
   ClearTableRequest,
   DeleteRowsRequest,
@@ -46,7 +47,7 @@ export const MAX_GENERATE_ROWS = 1000;
 
 @Injectable()
 export class StudioDataWriteOps {
-  constructor(@Inject(Container) private readonly container: Container) {}
+  constructor(@Inject(STUDIO_APPLICATION_CONTAINER) private readonly container: Container) {}
 
   // ---- writeRow (create | patch-update) -----------------------------------
 

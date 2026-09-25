@@ -1,4 +1,4 @@
-import { defineProvider, defineModule } from '@velajs/vela';
+import { ModuleRef, defineProvider, defineModule } from '@velajs/vela';
 /**
  * `StudioModule` — mounts the reserved `/_vela/admin` surface with its full
  * security chain, the `@AdminRpc` dispatch registry (empty catalog in M2), and
@@ -10,11 +10,11 @@ import { defineProvider, defineModule } from '@velajs/vela';
  * route contributor mounts routes at build time.
  */
 import { Container, ROOT_MODULE } from '@velajs/vela/module-kit';
-import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
+import type { ProviderDefinition, Type } from '@velajs/vela';
 import { resolveStudioConfig, StudioEnvReader } from './studio.config';
 import type { StudioModuleOptions } from './studio.types';
 import { collectStudioPlugins, providerToken } from './plugin';
-import { ADMIN_AUDIT_SINK, STUDIO_RESOLVED_CONFIG } from './tokens';
+import { ADMIN_AUDIT_SINK, STUDIO_APPLICATION_CONTAINER, STUDIO_RESOLVED_CONFIG } from './tokens';
 import type { AdminAuditSink } from './tokens';
 import { AdminSubTokenSigner } from './security/sub-token.signer';
 import { ConfirmTokenSigner } from './security/confirm-token';
@@ -52,17 +52,21 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
   key: () => 'application',
   setup: ({ OPTIONS, options }) => {
     const core: Array<Type | ProviderDefinition> = [
+      // The application's container, looked up application-wide as app.get()
+      // does: Studio and its panels read the framework tokens through it, so a
+      // module a plugin imports never answers for them inside this scope.
+      defineProvider(STUDIO_APPLICATION_CONTAINER, {
+        useFactory: (ref: ModuleRef) => ref.get(Container, { strict: false }),
+        inject: [ModuleRef],
+      }),
       // Env-derived config slice (reads VELA_STUDIO_* from the optional ENV).
       StudioEnvReader,
       // Resolved config = env UNDER module options; OpenAPI documents the
       // application's root unless the options name a narrower module.
       defineProvider(STUDIO_RESOLVED_CONFIG, {
-        useFactory: (
-          env: StudioEnvReader,
-          options: StudioModuleOptions,
-          root: Type | DynamicModule,
-        ) => resolveStudioConfig(env.config, options, root),
-        inject: [StudioEnvReader, OPTIONS, ROOT_MODULE],
+        useFactory: (env: StudioEnvReader, settings: StudioModuleOptions, application: Container) =>
+          resolveStudioConfig(env.config, settings, application.resolve(ROOT_MODULE)),
+        inject: [StudioEnvReader, OPTIONS, STUDIO_APPLICATION_CONTAINER],
       }),
       defineProvider(AdminSubTokenSigner, {
         useFactory: (config: ResolvedStudioConfig) =>
@@ -74,9 +78,9 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
         inject: [STUDIO_RESOLVED_CONFIG],
       }),
       defineProvider(AdminAuditLog, {
-        useFactory: (config: ResolvedStudioConfig, container: Container) =>
-          new AdminAuditLog(config.auditBufferSize, resolveSink(container)),
-        inject: [STUDIO_RESOLVED_CONFIG, Container],
+        useFactory: (config: ResolvedStudioConfig, application: Container) =>
+          new AdminAuditLog(config.auditBufferSize, resolveSink(application)),
+        inject: [STUDIO_RESOLVED_CONFIG, STUDIO_APPLICATION_CONTAINER],
       }),
       defineProvider(AdminLogBuffer, {
         useFactory: (config: ResolvedStudioConfig) => new AdminLogBuffer(config.logBufferSize),
