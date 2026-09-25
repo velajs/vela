@@ -120,7 +120,9 @@ StorageModule.forRootAsync({
 });
 ```
 
-`ConfigModule.forRootAsync` takes `load` next to its factory, and
+In the core modules, `forRootAsync` takes `ConfigModule`'s `load`, `ErrorsModule`'s
+`catalogs` and `handler`, `LiveModule`'s `presence`, `ScheduleModule`'s `dispatch`,
+`SeederModule`'s `seeders` and `WebSocketModule`'s `sync` next to its factory, and
 `RpcClientModule.forRootAsync` takes `name` and `binding`.
 
 A bare class import configures nothing. Importing a generated module class that
@@ -231,6 +233,28 @@ Integrations that map errors to another transport call `renderHttpError(error)`.
 `@Req()` injects the platform `Request`; inject the Hono context with the new
 `@Ctx()` (or `@Res()`). Replace `@Req() c: Context` with `@Ctx() c: Context`, or
 with `@Req() request: Request` when the handler only read `c.req.raw`.
+
+`@Sse()` streams what its handler returns: an iterable or async iterable of
+`MessageEvent`, or a `Response`. Another result, such as a JSON object, no longer
+compiles and fails the request with a redacted 500:
+
+```ts
+// Before (1.30.0): @Sse was a GET route, and the handler built the stream.
+@Sse('/events')
+events(@Req() c: Context) {
+  return streamSSE(c, async (stream) => {
+    await stream.writeSSE({ event: 'status', data: JSON.stringify({ ready: true }) });
+  });
+}
+```
+
+```ts
+// After: yield events (or return streamSSE(c, ...) with @Ctx() c).
+@Sse('/events')
+async *events(): AsyncIterable<MessageEvent> {
+  yield { type: 'status', data: { ready: true } };
+}
+```
 
 `ExecutionContext.getHandler()` returns the handler method, as in Nest, and the
 new `getHandlerName()` returns its name. Custom execution contexts implement both
