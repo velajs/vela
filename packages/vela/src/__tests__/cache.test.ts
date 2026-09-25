@@ -691,6 +691,7 @@ describe('response cache pipeline', () => {
     let calls = 0;
     let fail = true;
     let release = () => {};
+    let expire = () => {};
     // Answers a fallback when the call it wraps fails.
     class Fallback implements NestInterceptor {
       async intercept(context: ExecutionContext, next: CallHandler) {
@@ -702,13 +703,15 @@ describe('response cache pipeline', () => {
         }
       }
     }
-    // Answers a default when the call it wraps has not settled in time.
+    // Answers a default when the call it wraps has not settled by the time the
+    // test expires it: a signal rather than a timer, so a slow runner cannot
+    // turn a settled call into the default.
     class Deadline implements NestInterceptor {
       intercept(context: ExecutionContext, next: CallHandler) {
         if (context.getHandlerName() !== 'slow') return next.handle();
         return Promise.race([
           next.handle(),
-          new Promise((resolve) => setTimeout(() => resolve({ id: 'default' }), 5)),
+          new Promise((resolve) => (expire = () => resolve({ id: 'default' }))),
         ]);
       }
     }
@@ -749,7 +752,10 @@ describe('response cache pipeline', () => {
     try {
       const request = (path: string) => app.getHonoApp().request(path);
       expect(await (await request('/recovery/flaky')).json()).toEqual({ id: 'fallback' });
-      expect(await (await request('/recovery/slow')).json()).toEqual({ id: 'default' });
+      const pending = request('/recovery/slow');
+      await vi.waitFor(() => expect(calls).toBe(2));
+      expire();
+      expect(await (await pending).json()).toEqual({ id: 'default' });
       fail = false;
       release();
       expect(store.values.size).toBe(0);
