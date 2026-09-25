@@ -367,6 +367,15 @@ installing module, and `isGlobal` changes nothing. A route without `@RequireReso
 or `CedarGuard` in a module that cannot see its module denies. Opt a route out of one phase
 with its marker: `@Public(true)`, `@TenantIgnored()` or `@CedarPublic()`.
 
+These guards, like every global guard, also run on WebSocket gateway messages, on the
+check before each push to a socket, on the reserved `$live` frames of live queries and on
+RPC procedures. With default options `TenantGuard`, a deny-by-default `CedarGuard` and
+`CloudflareAccessGuard` reject socket contexts, and a rejected `$live` frame or push fails
+without a client-visible error. Mark gateway classes and RPC providers, admit socket
+tenants with `TenantModule`'s `resolve`, or pass `guard: 'none'`; the
+[upgrade guide](upgrading-framework.md#guards-on-websocket-live-query-and-rpc-entrypoints) lists
+each case.
+
 An integration package's own controller, which applications cannot annotate, declares the
 phases it enforces itself with `SkipGuardPhases([...])` from `@velajs/vela/module-kit`:
 the global guards integrations install in those phases (`tenant`, `authorize`) do not run
