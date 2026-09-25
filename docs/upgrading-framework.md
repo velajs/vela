@@ -313,13 +313,16 @@ cover every application route, including modules that do not import
 `@RequireResource()` or `@CedarPublic()`; set `undeclared: 'allow'` to keep
 the previous behavior. Declare the policy of generated CRUD controllers with the
 resource's `decorators` and `endpointDecorators`. Integration packages mark their own
-controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`, which skips only the
-guards integrations install (`static readonly skippable = true`); other global guards
-still run there. An application guard that extends an integration guard inherits
-`skippable`; declare `static override readonly skippable = false` on it to keep it
-running there. Import order no longer decides whether authentication runs before
-throttling. The RPC `authorize` policy runs after global authentication and tenant
-guards, so it can read the trusted identity.
+controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`. It skips the
+global guards in the named phases whose class declares
+`static readonly skippable = true` (`TenantGuard`, `PermissionGuard`, `RolesGuard`
+and `CedarGuard`), whoever registers them: an application's own
+`{ provide: APP_GUARD, useClass: TenantGuard }` is skipped there too. Other global
+guards still run there. An application guard that extends an integration guard
+inherits `skippable`; declare `static override readonly skippable = false` on it to
+keep it running there. Import order no longer decides whether authentication runs
+before throttling. The RPC `authorize` policy runs after global authentication and
+tenant guards, so it can read the trusted identity.
 
 `ThrottlerGuard` publishes its decisions under the `RATE_LIMIT` request-context
 key instead of the `rateLimit` Hono variable, one per throttler name: read
