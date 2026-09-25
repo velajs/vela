@@ -335,6 +335,14 @@ tracker callbacks remain security-sensitive and must never read forwarding
 headers. A custom global authentication guard declares
 `static readonly phase = 'authenticate'` so it establishes identity first.
 
+The default store, `ThrottlerStorage`, counts in the application's memory. Each
+key's counter lasts until its own window (`ttl`) ends, however long, and is then
+evicted. It tracks at most `maxKeys` open windows (default 50,000;
+`storage: new ThrottlerStorage({ maxKeys })`). When every tracked window is
+still open, a request with a new key is refused with 429 until one expires, and
+the first refusal logs a warning: the store never evicts a live counter, which
+would reset that client's limit early.
+
 HTTP and WebSocket `ExecutionContext` expose `getModuleId()` so authorization
 can resolve policy in the declaring module bucket rather than by class name.
 
