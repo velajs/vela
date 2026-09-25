@@ -109,6 +109,11 @@ function parameterParser(param: ParameterMetadata, paramtypes?: unknown[]): unkn
     : (param.metatype ?? paramtypes?.[param.index]);
 }
 
+// Request values document a field JSON Schema cannot express (a coerced date,
+// a custom check) as any value, for converters that take this option, so the
+// fields beside it are still listed.
+const REQUEST = { unrepresentable: 'any' };
+
 function describeSchema(
   parser: unknown,
   registry: ComponentsRegistry,
@@ -117,7 +122,7 @@ function describeSchema(
   if (isNamedSchema(parser)) return registry.ref(parser, direction);
   const schema = schemaOf(parser);
   if (isStandardSchema(schema) || (isRecord(schema) && typeof schema.toJSONSchema === 'function'))
-    return zodToJsonSchema(schema, direction);
+    return zodToJsonSchema(schema, direction, direction === 'input' ? REQUEST : undefined);
   return undefined;
 }
 
@@ -128,6 +133,9 @@ function getParamSchema(
 ): JsonSchema | undefined {
   return describeSchema(parameterParser(param, paramtypes), registry, 'input');
 }
+
+// Client generation lists query parameters from an object schema's properties.
+const UNLISTED_QUERY = 'Query parameters require an object schema.';
 
 function isSchemaOptional(parser: unknown): boolean {
   const schema = schemaOf(parser);
@@ -337,7 +345,7 @@ function buildOperation(
         for (const [name, property] of object.properties)
           parameters.push(queryParameter(name, property, object.required.includes(name), registry));
       } else {
-        clientUnsupported.push('Whole-query parameters require an object DTO schema.');
+        clientUnsupported.push(UNLISTED_QUERY);
       }
     } else if (param.type === ParamType.HEADERS && param.name) {
       parameters.push({
@@ -362,16 +370,20 @@ function buildOperation(
     }
   }
 
+  // A group JSON Schema cannot describe as an object (a Valibot schema, a
+  // union) is documented as the equivalent decorator options document it: the
+  // served path parameters as strings, and the query as unsupported by client
+  // generation.
   if (contract?.params) {
     const object = objectProperties(describeSchema(contract.params, registry, 'input'), registry);
-    if (!object) throw new Error('A route contract params schema must describe an object.');
-    for (const [name, property] of object.properties) pathParameter(name, property);
+    for (const [name, property] of object?.properties ?? []) pathParameter(name, property);
   }
   if (contract?.query) {
     const object = objectProperties(describeSchema(contract.query, registry, 'input'), registry);
-    if (!object) throw new Error('A route contract query schema must describe an object.');
-    for (const [name, property] of object.properties)
-      parameters.push(queryParameter(name, property, object.required.includes(name), registry));
+    if (!object) clientUnsupported.push(UNLISTED_QUERY);
+    else
+      for (const [name, property] of object.properties)
+        parameters.push(queryParameter(name, property, object.required.includes(name), registry));
   }
   if (contract?.bodySchema) {
     requestBody = requestBodyFor(

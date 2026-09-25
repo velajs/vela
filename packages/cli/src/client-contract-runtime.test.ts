@@ -16,7 +16,7 @@ import {
 } from '@velajs/vela';
 import { defineRoute, type ContractBody, type ContractQuery } from '@velajs/vela/contract';
 import { ApiResponse, createOpenApiDocument } from '@velajs/vela/openapi';
-import type { SchemaOutput } from '@velajs/vela/validation';
+import type { SchemaOutput, StandardSchemaV1 } from '@velajs/vela/validation';
 import { z } from 'zod';
 import { expect, it } from 'vitest';
 import { generateClientContract } from './client-contract';
@@ -272,4 +272,78 @@ it('generates one client for decorator options and defineRoute contracts, and ru
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Path parameters validated by a schema that cannot describe itself as JSON
+// Schema, as a Valibot schema without a converter.
+const OpaqueId: StandardSchemaV1<Record<string, string>, { id: string }> = {
+  '~standard': {
+    version: 1,
+    vendor: 'opaque',
+    validate: (value) => {
+      const id: unknown = Reflect.get(Object(value), 'id');
+      return typeof id === 'string' ? { value: { id } } : { issues: [{ message: 'Invalid id' }] };
+    },
+  },
+};
+const Since = z.object({
+  since: z.coerce.date().optional(),
+  tags: z.array(z.string()).optional(),
+});
+const Either = z.union([z.object({ a: z.string() }), z.object({ b: z.string() })]);
+const loose = {
+  read: defineRoute({ method: 'GET', path: '/api/loose/:id', params: OpaqueId, response: Created }),
+  since: defineRoute({ method: 'GET', path: '/api/loose', query: Since, response: Created }),
+  either: defineRoute({ method: 'GET', path: '/api/either', query: Either, response: Created }),
+};
+
+@Controller('/loose')
+class ContractLoose {
+  @Get('/:id', loose.read)
+  read(@Param('id') id: string) {
+    return { id, name: 'read' };
+  }
+  @Get(loose.since)
+  since(@Query() query: ContractQuery<typeof loose.since>) {
+    return { id: 'since', name: String(query.since?.getUTCFullYear()) };
+  }
+}
+@Controller('/loose')
+class DecoratedLoose {
+  @Get('/:id', { response: Created })
+  read(@Param('id') id: string) {
+    return { id, name: 'read' };
+  }
+  @Get({ response: Created })
+  since(@Query(Since) query: SchemaOutput<typeof Since>) {
+    return { id: 'since', name: String(query.since?.getUTCFullYear()) };
+  }
+}
+@Controller('/either')
+class ContractEither {
+  @Get(loose.either)
+  either(@Query() _query: ContractQuery<typeof loose.either>) {
+    return { id: 'either', name: 'either' };
+  }
+}
+@Controller('/either')
+class DecoratedEither {
+  @Get({ response: Created })
+  either(@Query(Either) _query: SchemaOutput<typeof Either>) {
+    return { id: 'either', name: 'either' };
+  }
+}
+
+it('generates the same client for contract groups JSON Schema cannot fully describe', () => {
+  const generate = (controller: Type) =>
+    generateClientContract(createOpenApiDocument(moduleFor(controller), { globalPrefix: '/api' }));
+  const fromContracts = generate(ContractLoose);
+  expect(fromContracts.source).toBe(generate(DecoratedLoose).source);
+  expect(fromContracts.source).toContain('param: { "id": string; }');
+  expect(fromContracts.source).toContain('query?: { "since"?: string; "tags"?: Array<string>; }');
+  // A union query cannot be listed as parameters, with either form.
+  for (const controller of [ContractEither, DecoratedEither])
+    expect(() => generate(controller)).toThrow(
+      'GET /api/either: Query parameters require an object schema.',
+    );
 });

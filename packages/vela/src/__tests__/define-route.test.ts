@@ -1,3 +1,4 @@
+import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -314,6 +315,96 @@ describe('defineRoute contracts', () => {
       });
       expect(fromContract.paths['/api/todos/{id}']!.delete!.responses).toEqual({
         '204': { description: 'No Content' },
+      });
+    } finally {
+      await contract.app.close();
+      await decorated.app.close();
+    }
+  });
+
+  it('documents groups JSON Schema cannot fully describe as the equivalent decorator options do', async () => {
+    const Since = z.object({
+      since: z.coerce.date().optional(),
+      tags: z.array(z.string()).optional(),
+    });
+    const Either = z.union([z.object({ a: z.string() }), z.object({ b: z.string() })]);
+    const loose = {
+      read: defineRoute({
+        method: 'GET',
+        path: '/api/loose/:id',
+        params: v.object({ id: v.string() }),
+        response: Todo,
+      }),
+      since: defineRoute({ method: 'GET', path: '/api/loose', query: Since, response: Todo }),
+      either: defineRoute({
+        method: 'GET',
+        path: '/api/loose/either',
+        query: Either,
+        response: Todo,
+      }),
+    };
+    const todo = { id: 't1', title: 'Loose', done: false };
+    @Controller('/loose')
+    class ContractLoose {
+      @Get('/:id', loose.read)
+      read(@Param('id') id: string) {
+        return { ...todo, id };
+      }
+      @Get(loose.since)
+      since(@Query() query: ContractQuery<typeof loose.since>) {
+        return { ...todo, title: String(query.since?.getUTCFullYear()) };
+      }
+      @Get('/either', loose.either)
+      either(@Query() _query: ContractQuery<typeof loose.either>) {
+        return todo;
+      }
+    }
+    @Controller('/loose')
+    class DecoratedLoose {
+      @Get('/:id', { response: Todo })
+      read(@Param('id') id: string) {
+        return { ...todo, id };
+      }
+      @Get({ response: Todo })
+      since(@Query(Since) query: SchemaOutput<typeof Since>) {
+        return { ...todo, title: String(query.since?.getUTCFullYear()) };
+      }
+      @Get('/either', { response: Todo })
+      either(@Query(Either) _query: SchemaOutput<typeof Either>) {
+        return todo;
+      }
+    }
+    const contract = await start(ContractLoose);
+    const decorated = await start(DecoratedLoose);
+    try {
+      expect(await (await send(contract.app, 'GET', '/loose/v1')).json()).toEqual({
+        ...todo,
+        id: 'v1',
+      });
+      expect(await (await send(contract.app, 'GET', '/loose?since=2024-05-01')).json()).toEqual({
+        ...todo,
+        title: '2024',
+      });
+      expect((await send(contract.app, 'GET', '/loose/either?b=1')).status).toBe(200);
+      const fromContract = createOpenApiDocument(contract.App, { globalPrefix: '/api' });
+      const fromDecorators = createOpenApiDocument(decorated.App, { globalPrefix: '/api' });
+      expect(fromContract).toEqual(fromDecorators);
+      expect(fromContract.paths['/api/loose/{id}']!.get!.parameters).toEqual([
+        { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+      ]);
+      expect(fromContract.paths['/api/loose']!.get!.parameters).toEqual([
+        { name: 'since', in: 'query', required: false, schema: {} },
+        {
+          name: 'tags',
+          in: 'query',
+          required: false,
+          schema: { type: 'array', items: { type: 'string' } },
+          style: 'form',
+          explode: true,
+        },
+      ]);
+      expect(fromContract.paths['/api/loose/either']!.get).toMatchObject({
+        'x-vela-client-unsupported': ['Query parameters require an object schema.'],
       });
     } finally {
       await contract.app.close();
