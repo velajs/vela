@@ -11,6 +11,7 @@ import {
   VelaFactory,
   type CanActivate,
   type VelaApplication,
+  type VelaBodyLimitOverride,
 } from '../index';
 import { createOpenApiDocument } from '../openapi/index';
 import type { SchemaOutput } from '../validation/index';
@@ -114,19 +115,24 @@ class Uploads {
     return Object.fromEntries(entries);
   }
 
+  @Post('/explicit', { body: { multipart: { maxFileBytes: 4 * MiB, maxBytes: 5 * MiB } } })
+  explicit(@Body('file', z.file()) file: File) {
+    return { bytes: file.size };
+  }
+
   @Post('/named', { body: { multipart: {} } })
   named(@Body('file', z.file()) file: File, @Body('title') title: unknown) {
     return { name: file.name, title };
   }
 }
 
-async function start(options: { maxBytes?: number } = {}) {
+async function start(
+  options: { maxBytes?: number; streamingOverrides?: VelaBodyLimitOverride[] } = {},
+) {
   @Module({ controllers: [Uploads], providers: [Deny] })
   class App {}
   return {
-    app: await VelaFactory.create(App, {
-      ...(options.maxBytes ? { security: { body: { maxBytes: options.maxBytes } } } : {}),
-    }),
+    app: await VelaFactory.create(App, { security: { body: options } }),
     App,
   };
 }
@@ -140,14 +146,17 @@ function upload(fields: Record<string, string>, file?: File): FormData {
 
 const owner = '2f1c2a4e-6f0b-4c1d-9d2e-8a7b6c5d4e3f';
 
-// A body of `size` bytes streamed in 16 KiB chunks, counting what was pulled.
-function streamed(size: number) {
+// A body of `size` bytes streamed in 16 KiB chunks, counting what was pulled:
+// zeros, or a JSON document (spaces, then an empty string).
+function streamed(size: number, json = false) {
   let pulled = 0;
   const body = new ReadableStream<Uint8Array>({
     pull(controller) {
-      const chunk = Math.min(16 * KiB, size - pulled);
-      pulled += chunk;
-      controller.enqueue(new Uint8Array(chunk));
+      const chunk = new Uint8Array(Math.min(16 * KiB, size - pulled));
+      pulled += chunk.byteLength;
+      if (json) chunk.fill(0x20);
+      if (json && pulled >= size) chunk.fill(0x22, -2);
+      controller.enqueue(chunk);
       if (pulled >= size) controller.close();
     },
   });
@@ -271,21 +280,46 @@ describe('per-route multipart bodies', () => {
     }
   });
 
-  it("uses the route's body limit instead of the application's", async () => {
+  it("uses a route's own maxBytes instead of the application's limit", async () => {
     const { app } = await start({ maxBytes: 64 * KiB });
     try {
-      const response = await post(
-        app,
-        '',
-        upload({ kind: 'avatar', ownerId: owner }, new File([new Uint8Array(2 * MiB)], 'a.bin')),
-      );
+      const file = new FormData();
+      file.append('file', new File([new Uint8Array(2 * MiB)], 'a.bin'));
+      const response = await post(app, '/explicit', file);
       expect(response.status).toBe(201);
+      expect(await response.json()).toEqual({ bytes: 2 * MiB });
       const json = await post(app, '/json', JSON.stringify({ text: 'x'.repeat(100) }), {
         'content-type': 'application/json',
       });
       expect(json.status).toBe(413);
     } finally {
       await app.close();
+    }
+  });
+
+  it('keeps a configured application limit on routes that set no maxBytes', async () => {
+    const { app } = await start({ maxBytes: 64 * KiB });
+    try {
+      // Encoded up front: Node cannot cancel a FormData body mid-stream cleanly.
+      const encoded = new Response(
+        upload({ kind: 'avatar', ownerId: owner }, new File([new Uint8Array(2 * MiB)], 'a.bin')),
+      );
+      const response = await post(app, '', await encoded.arrayBuffer(), {
+        'content-type': encoded.headers.get('content-type')!,
+      });
+      expect(response.status).toBe(413);
+    } finally {
+      await app.close();
+    }
+    const strict = await start({ maxBytes: 1024 });
+    try {
+      const form = new URLSearchParams([
+        ['email', `${'a'.repeat(2000)}@example.test`],
+        ['age', '1'],
+      ]);
+      expect((await post(strict.app, '/signup', form)).status).toBe(413);
+    } finally {
+      await strict.app.close();
     }
   });
 
@@ -337,21 +371,58 @@ describe('per-route multipart bodies', () => {
   it('bounds every reader of a body sent without Content-Length at the route limit', async () => {
     const { app } = await start();
     try {
-      const within = streamed(32 * KiB);
+      const within = streamed(32 * KiB, true);
       const accepted = await app.fetch(
         new Request('https://example.test/uploads/bytes', {
           method: 'POST',
           body: within.body,
+          headers: { 'content-type': 'application/json' },
           duplex: 'half',
         } as RequestInit),
       );
       expect(accepted.status).toBe(201);
       expect(await accepted.json()).toEqual({ bytes: 32 * KiB });
-      const beyond = streamed(20 * MiB);
+      const beyond = streamed(20 * MiB, true);
       const rejected = await app.fetch(
         new Request('https://example.test/uploads/bytes', {
           method: 'POST',
           body: beyond.body,
+          headers: { 'content-type': 'application/json' },
+          duplex: 'half',
+        } as RequestInit),
+      );
+      expect(rejected.status).toBe(413);
+      expect(beyond.pulled()).toBeLessThan(MiB);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('counts a body sent without Content-Length at a matching streaming override, after guards', async () => {
+    const { app } = await start({
+      streamingOverrides: [
+        { path: '/uploads/denied', methods: ['POST'], maxBytes: 30 * MiB },
+        { path: '/uploads', methods: ['POST'], maxBytes: 64 * KiB },
+      ],
+    });
+    try {
+      const denied = streamed(20 * MiB);
+      const forbidden = await app.fetch(
+        new Request('https://example.test/uploads/denied', {
+          method: 'POST',
+          body: denied.body,
+          headers: { 'content-type': 'multipart/form-data; boundary=x' },
+          duplex: 'half',
+        } as RequestInit),
+      );
+      expect(forbidden.status).toBe(403);
+      expect(denied.pulled()).toBeLessThan(MiB);
+      const beyond = streamed(20 * MiB);
+      const rejected = await app.fetch(
+        new Request('https://example.test/uploads', {
+          method: 'POST',
+          body: beyond.body,
+          headers: { 'content-type': 'multipart/form-data; boundary=x' },
           duplex: 'half',
         } as RequestInit),
       );

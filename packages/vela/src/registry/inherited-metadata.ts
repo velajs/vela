@@ -1,5 +1,11 @@
 import { MetadataRegistry } from './metadata.registry';
-import type { ComponentType, ComponentTypeMap, Constructor, RouteDefinition } from './types';
+import type {
+  ComponentType,
+  ComponentTypeMap,
+  Constructor,
+  ParameterMetadata,
+  RouteDefinition,
+} from './types';
 
 // Declarations on an ancestor class apply to the classes that extend it, as
 // reflect-metadata resolves them in Nest: class-level declarations along the
@@ -106,6 +112,33 @@ export function inheritedRoutes(type: Constructor): RouteDefinition[] {
     }
     return route;
   });
+}
+
+/**
+ * The parameter declarations of method `name` as `type` serves it: its own,
+ * else those of the nearest ancestor whose method it inherits unchanged.
+ */
+export function inheritedParameters(type: Constructor, name: string | symbol): ParameterMetadata[] {
+  for (const owner of methodLineage(type, name)) {
+    const parameters = MetadataRegistry.getParameters(owner).get(name);
+    if (parameters?.length) return parameters;
+  }
+  return [];
+}
+
+/**
+ * The emitted parameter types (`design:paramtypes`) of method `name` as
+ * `type` serves it, from the nearest class in its method lineage that has them.
+ */
+export function inheritedParamTypes(
+  type: Constructor,
+  name: string | symbol,
+): unknown[] | undefined {
+  for (const owner of methodLineage(type, name)) {
+    const types: unknown = Reflect.getMetadata('design:paramtypes', owner.prototype, name);
+    if (Array.isArray(types)) return types;
+  }
+  return undefined;
 }
 
 /** The class-level components of `type` and its ancestors, the root class's first. */

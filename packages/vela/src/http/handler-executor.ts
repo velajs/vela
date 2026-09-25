@@ -18,14 +18,13 @@ import type {
   NestInterceptor,
   PipeTransform,
 } from '../pipeline/types';
-import { inheritedClassMeta, inheritedHandlerMeta } from '../registry/inherited-metadata';
-import type {
-  FilterType,
-  GuardType,
-  InterceptorType,
-  ParameterMetadata,
-  PipeType,
-} from '../registry/types';
+import {
+  inheritedClassMeta,
+  inheritedHandlerMeta,
+  inheritedParameters,
+  inheritedParamTypes,
+} from '../registry/inherited-metadata';
+import type { FilterType, GuardType, InterceptorType, PipeType } from '../registry/types';
 import type { ArgumentResolver } from './argument-resolver';
 import { getHttpCode, getRedirect, getResponder, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
@@ -37,8 +36,16 @@ import {
   mapResponse,
   resolveSuccessStatus,
 } from './response-mapper';
-import { enterRoute, sendRouteResult, type ExecutingRoute } from './route-response';
-import type { ParamMetadata, RouteMetadata } from './types';
+import { readJsonBody } from './json-body';
+import { routeInputReader } from './route-input-registry';
+import {
+  enterRoute,
+  replayedResponse,
+  responseSent,
+  sendRouteResult,
+  type ExecutingRoute,
+} from './route-response';
+import type { ParamExtractionRoute, ParamMetadata, RouteMetadata } from './types';
 
 // The global guard phases an integration's route leaves to the integration
 // (`SkipGuardPhases`). Only tenant and authorize phases can be skipped.
@@ -91,20 +98,17 @@ export class HandlerExecutor {
     route: RouteMetadata,
     controller: Type,
     moduleId: string,
-    allParamMetadata: Map<string | symbol, ParameterMetadata[]>,
+    /** The paths the route serves, for checks of its declared path parameters. */
+    paths: readonly string[] = [],
   ): (c: Context) => Promise<Response> {
-    const paramMetadata = (allParamMetadata.get(route.handlerName) || []).sort(
+    // A method the controller inherits unchanged reads its ancestor's parameters.
+    const paramMetadata = inheritedParameters(controller, route.handlerName).toSorted(
       (a, b) => a.index - b.index,
     ) as ParamMetadata[];
 
-    // Read param types once at build time for metatype population.
-    // Routed via Reflect so the polyfill funnels both src-level and dist-level
-    // consumers to the same registry (matters in tests that import from dist).
-    const paramTypes = Reflect.getMetadata(
-      'design:paramtypes',
-      controller.prototype,
-      route.handlerName,
-    ) as unknown[] | undefined;
+    // Read param types once at build time for metatype population, from the
+    // class that declares the method, an ancestor's for an inherited one.
+    const paramTypes = inheritedParamTypes(controller, route.handlerName);
 
     const container = this.#container;
     const methodGuards = getScopedComponents(
@@ -142,7 +146,16 @@ export class HandlerExecutor {
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
     const redirect = getRedirect(controller, route.handlerName);
     const respond = getResponder(controller, route.handlerName);
-    if (contract && (redirect || respond)) {
+    // Options that declare only the request leave the response to @Redirect
+    // or @Sse; a shared contract types its clients with its own response.
+    if (
+      contract &&
+      (redirect || respond) &&
+      (contract.shared ||
+        contract.response !== undefined ||
+        contract.status !== undefined ||
+        contract.format !== undefined)
+    ) {
       throw new Error(
         `${source}: route response options cannot be combined with @Redirect or @Sse; the route declares how it responds`,
       );
@@ -160,12 +173,27 @@ export class HandlerExecutor {
     const successStatus = resolveSuccessStatus(controller, route);
     const executing: ExecutingRoute = { status: successStatus, contract, source };
     const skippedPhases = skippedGuardPhases(controller, route.handlerName);
+    // What the route declares is enforced once per request, after guards,
+    // whether or not a parameter reads it: its request schemas and its body.
+    const base: ParamExtractionRoute = { method: route.method, contract, source, paths };
+    const body = contract?.body;
+    // The reader the parameter decorators install checks request schemas and
+    // bodies. Without it, no parameter reads a body: a JSON body is read here.
+    const schemas = contract?.params || contract?.query || contract?.bodySchema;
+    const input = schemas || body ? routeInputReader()?.(base) : undefined;
+    if (!input && (schemas || (body && body.kind !== 'json')))
+      throw new Error(`${source}: its declared request needs @Body, @Query or @Param`);
     // Each parameter's reader is built once for this route; configuration
     // errors (a form schema with non-text fields, …) surface at startup.
-    const extractionRoute = { method: route.method, contract, source };
+    const extractionRoute = input ? { ...base, input } : base;
     const extractors = paramMetadata.map((param) =>
       param.extract?.(extractionRoute, param, param.metatype ?? paramTypes?.[param.index]),
     );
+    // A result the route serializes as JSON or text, which a response cache
+    // may store.
+    const format = contract?.format;
+    const serialized =
+      !redirect && !respond && (format === undefined || format === 'json' || format === 'text');
 
     return async (c: Context) => {
       // Combine global + method at request time so post-create registrations propagate.
@@ -207,8 +235,10 @@ export class HandlerExecutor {
           context: executionContext,
           guards,
           interceptors,
-          resolveArgs: () =>
-            this.#argumentResolver.extract(
+          resolveArgs: async () => {
+            if (input) await input(c);
+            else if (body) await readJsonBody(c, { maxBytes: body.maxBytes });
+            return this.#argumentResolver.extract(
               c,
               paramMetadata,
               pipes,
@@ -216,7 +246,8 @@ export class HandlerExecutor {
               paramTypes,
               moduleId,
               extractors,
-            ),
+            );
+          },
           invoke: async (args) => {
             // Singleton lifecycle is owned by bootstrap. Request-scoped
             // controllers need not exist when a guard/pipe/interceptor rejects.
@@ -240,9 +271,12 @@ export class HandlerExecutor {
           return mapRedirect(c, result, redirect);
         }
 
-        const response = contract
-          ? await sendRouteResult(c, contract, successStatus, result, source)
-          : respond
+        // A replayed response is sent as is, whatever interceptors outside
+        // the one replaying it returned instead of a Response.
+        const replay = result instanceof Response ? undefined : replayedResponse(c);
+        const response =
+          replay ??
+          (respond
             ? respond(c, result, (error) => {
                 resolveErrorReporter(requestContainer).report(error, {
                   edge: 'http',
@@ -250,8 +284,11 @@ export class HandlerExecutor {
                   note: 'response stream failed',
                 });
               })
-            : mapResponse(c, result, successStatus);
+            : contract
+              ? await sendRouteResult(c, contract, successStatus, result, source)
+              : mapResponse(c, result, successStatus));
         applyResponseHeaders(response, responseHeaders);
+        if (serialized && !replay && !(result instanceof Response)) await responseSent(c, response);
         return response;
       } catch (error) {
         const reporter = resolveErrorReporter(requestContainer);

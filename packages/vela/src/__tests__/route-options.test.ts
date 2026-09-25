@@ -12,9 +12,12 @@ import {
   Patch,
   Post,
   Put,
+  Redirect,
+  Sse,
   UseInterceptors,
   VelaFactory,
   type CallHandler,
+  type MessageEvent,
   type NestInterceptor,
   type VelaApplication,
 } from '../index';
@@ -393,5 +396,61 @@ describe('route response formats', () => {
       }
     }
     await expect(serve(Twice)).rejects.toThrow(/status once/);
+
+    @Controller('/moved')
+    class Moved {
+      @Post({ response: Todo })
+      @Redirect('/elsewhere')
+      create() {
+        return { id: 't1', title: 'x', done: false };
+      }
+    }
+    await expect(serve(Moved)).rejects.toThrow(/cannot be combined with @Redirect or @Sse/);
+  });
+
+  it('redirects and streams events from routes whose options declare only the request', async () => {
+    @Controller('/flow')
+    class Flow {
+      @Post('/go', { body: { json: { maxBytes: 64 } } })
+      @Redirect('/done', 303)
+      go(@Body() _body: unknown) {}
+
+      @Sse('/events')
+      @Post('/events', { body: { json: { maxBytes: 64 } } })
+      async *events(@Body() body: unknown): AsyncIterable<MessageEvent> {
+        yield { data: { body } };
+      }
+    }
+    const app = await serve(Flow);
+    try {
+      const moved = await call(app, 'POST', '/flow/go', { a: 1 });
+      expect(moved.status).toBe(303);
+      expect(moved.headers.get('location')).toBe('/done');
+      expect((await call(app, 'POST', '/flow/go', { text: 'x'.repeat(100) })).status).toBe(413);
+      const events = await call(app, 'POST', '/flow/events', { a: 1 });
+      expect(events.headers.get('content-type')).toMatch(/^text\/event-stream/);
+      expect(await events.text()).toContain('data: {"body":{"a":1}}');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('describes each success response with the reason phrase of its status', () => {
+    @Controller('/phrases')
+    class Phrases {
+      @Get() list() {}
+      @Post({ response: Todo }) create() {
+        return { id: 't1', title: 'x', done: false };
+      }
+      @Put('/:id', { status: 202 }) replace() {}
+      @Delete('/:id', { response: null }) remove() {}
+    }
+    @Module({ controllers: [Phrases] })
+    class App {}
+    const paths = createOpenApiDocument(App).paths;
+    expect(paths['/phrases']!.get!.responses['200']!.description).toBe('OK');
+    expect(paths['/phrases']!.post!.responses['201']!.description).toBe('Created');
+    expect(paths['/phrases/{id}']!.put!.responses['202']!.description).toBe('Accepted');
+    expect(paths['/phrases/{id}']!.delete!.responses['204']!.description).toBe('No Content');
   });
 });

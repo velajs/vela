@@ -313,7 +313,7 @@ describe('defineRoute contracts', () => {
         content: { 'application/json': { schema: { type: 'object' } } },
       });
       expect(fromContract.paths['/api/todos/{id}']!.delete!.responses).toEqual({
-        '204': { description: 'OK' },
+        '204': { description: 'No Content' },
       });
     } finally {
       await contract.app.close();

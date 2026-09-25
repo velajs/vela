@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+  BadRequestException,
   Body,
   Controller,
   Module,
   Post,
   VelaFactory,
+  type ArgumentMetadata,
   type PipeTransform,
   type VelaApplication,
 } from '../index';
@@ -262,20 +264,118 @@ describe('@Body() with a schema-carrying parameter class', () => {
     }
   });
 
-  it('validates after the global pipes when none of them is a ValidationPipe', async () => {
+  it('validates as it reads the body, before the pipes, when no ValidationPipe applies', async () => {
     @Module({ controllers: [Todos] })
     class App {}
     const app = await VelaFactory.create(App);
     app.useGlobalPipes(new TrimInPlacePipe());
     try {
+      expect((await post(app, '/notes', { text: '' })).status).toBe(400);
+      // The schema saw the untrimmed text; the pipe trimmed the valid value.
       const blank = await post(app, '/notes', { text: '   ' });
-      expect(blank.status).toBe(400);
-      const trimmed = await post(app, '/notes', { text: ' hi ' });
-      expect(await trimmed.json()).toEqual({ text: 'hi' });
+      expect(blank.status).toBe(201);
+      expect(await blank.json()).toEqual({ text: '' });
       transforms = 0;
       const created = await post(app, '', { title: ' Once ' });
       expect(await created.json()).toEqual({ title: 'Once' });
       expect(transforms).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('leaves the class to a ValidationPipe subclass, which validates once', async () => {
+    class StrictPipe extends ValidationPipe {}
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new StrictPipe());
+    try {
+      const stamp = await post(app, '/stamps', { at: 'abc' });
+      expect(stamp.status).toBe(201);
+      expect(await stamp.json()).toEqual({ at: 3 });
+      expect((await post(app, '/stamps', { at: 1 })).status).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('leaves the class to a ValidationPipe a parameter pipe class resolves to', async () => {
+    // A pipe class the module provides as a ValidationPipe.
+    class BodyValidator implements PipeTransform {
+      transform(value: unknown, _metadata: ArgumentMetadata): unknown {
+        return value;
+      }
+    }
+    @Controller('/resolved')
+    class Resolved {
+      @Post()
+      stamp(@Body(BodyValidator) body: Stamp) {
+        return body;
+      }
+    }
+    @Module({
+      controllers: [Resolved],
+      providers: [{ provide: BodyValidator, useClass: ValidationPipe }],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      const response = await app.fetch(
+        new Request('https://example.test/resolved', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ at: 'abc' }),
+        }),
+      );
+      expect(response.status).toBe(201);
+      expect(await response.json()).toEqual({ at: 3 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('runs a validation pipe that is not a ValidationPipe after the class validated the body', async () => {
+    // A pipe parsing the class schema itself receives the validated value.
+    class SchemaPipe implements PipeTransform {
+      transform(value: unknown, metadata: ArgumentMetadata) {
+        const schema: unknown =
+          typeof metadata.metatype === 'function'
+            ? Reflect.get(metadata.metatype, 'schema')
+            : undefined;
+        if (!(schema instanceof z.ZodType)) return value;
+        const result = schema.safeParse(value);
+        if (!result.success) throw new BadRequestException('Validation failed');
+        return result.data;
+      }
+    }
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new SchemaPipe());
+    try {
+      // The class schema's transform does not accept its own output.
+      const stamp = await post(app, '/stamps', { at: 'abc' });
+      expect(stamp.status).toBe(400);
+      const note = await post(app, '/notes', { text: 'hi' });
+      expect(await note.json()).toEqual({ text: 'hi' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("validates at each ValidationPipe, as Nest does: a global one and the parameter's own", async () => {
+    @Module({ controllers: [Todos] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    app.useGlobalPipes(new ValidationPipe());
+    try {
+      // The parameter's own pipe receives the Date the global pipe produced.
+      const event = await post(app, '/checked-events', {
+        title: 'Launch',
+        at: '2026-09-24T10:00:00Z',
+      });
+      expect(event.status).toBe(400);
     } finally {
       await app.close();
     }

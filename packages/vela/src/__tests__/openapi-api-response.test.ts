@@ -246,6 +246,6 @@ describe('@ApiResponse', () => {
 
     const responses = createOpenApiDocument(AppModule).paths['/accepted']!.post!.responses;
     expect(Object.keys(responses).toSorted()).toEqual(['202', '400']);
-    expect(responses['202']).toEqual({ description: 'OK' });
+    expect(responses['202']).toEqual({ description: 'Accepted' });
   });
 });

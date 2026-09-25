@@ -6,7 +6,11 @@ import type { ResolvedRouteBody, RouteContractMetadata } from '../http/route-con
 import { getRouteContributors } from '../http/route-contributor';
 import { getMetadata } from '../metadata';
 import { collectControllers } from '../module/graph';
-import { inheritedRoutes } from '../registry/inherited-metadata';
+import {
+  inheritedParameters,
+  inheritedParamTypes,
+  inheritedRoutes,
+} from '../registry/inherited-metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { joinPaths, toOpenApiPath } from '../registry/paths';
 import type { DynamicModule, ParameterMetadata, RouteDefinition } from '../registry/types';
@@ -156,13 +160,27 @@ function nativeSchema(format: string): JsonSchema {
   return format === 'response' ? {} : { type: 'string', format: 'binary' };
 }
 
+// Reason phrases of the success statuses a route can declare.
+const SUCCESS_PHRASES: Record<number, string> = {
+  200: 'OK',
+  201: 'Created',
+  202: 'Accepted',
+  203: 'Non-Authoritative Information',
+  204: 'No Content',
+  205: 'Reset Content',
+  206: 'Partial Content',
+  207: 'Multi-Status',
+  208: 'Already Reported',
+  226: 'IM Used',
+};
+
 /** The response the route itself declares for its success status. */
 function successResponse(
   contract: RouteContractMetadata | undefined,
   status: number,
   registry: ComponentsRegistry,
 ): OpenApiResponse {
-  const response: OpenApiResponse = { description: 'OK' };
+  const response: OpenApiResponse = { description: SUCCESS_PHRASES[status] ?? 'Success' };
   if (!contract || contract.response === null || [204, 205, 304].includes(status)) return response;
   if (contract.format !== undefined && NATIVE_FORMATS.has(contract.format)) {
     const format = contract.format as 'binary' | 'stream' | 'response';
@@ -182,7 +200,7 @@ function successResponse(
 function bodyLimits(
   body: ResolvedRouteBody,
 ): NonNullable<OpenApiRequestBody['x-vela-body-limits']> {
-  const { kind: _kind, ...limits } = body;
+  const { kind: _kind, explicitMaxBytes: _explicit, ...limits } = body;
   return body.kind === 'multipart'
     ? limits
     : body.kind === 'form'
@@ -268,15 +286,10 @@ function buildOperation(
 ): OpenApiOperation {
   const handlerName = route.handlerName;
   const contract = route.contract;
-  const paramMetadata = MetadataRegistry.getParameters(controller).get(handlerName) ?? [];
-  const reflectedParams: unknown = Reflect.getMetadata(
-    'design:paramtypes',
-    controller.prototype,
-    handlerName,
+  const paramMetadata = inheritedParameters(controller, handlerName).toSorted(
+    (a, b) => a.index - b.index,
   );
-  const paramtypes: unknown[] | undefined = Array.isArray(reflectedParams)
-    ? reflectedParams
-    : undefined;
+  const paramtypes = inheritedParamTypes(controller, handlerName);
 
   const parameters: OpenApiParameter[] = [];
   const clientUnsupported: string[] = [];
@@ -298,14 +311,15 @@ function buildOperation(
       if (contract?.query) continue;
       // Without a schema, the declared type decides what the parameter reads:
       // an array with no pipe reads repeated keys, a string, number or boolean
-      // (or an array a pipe such as `ParseArrayPipe` splits) the first value,
-      // and a union or `unknown` either one value or the repeated keys.
+      // the first value, and any other (an array a pipe such as
+      // `ParseArrayPipe` splits, a union, `unknown`) one value or the
+      // repeated keys.
       const declared = param.metatype ?? paramtypes?.[param.index];
       const many: JsonSchema = { type: 'array', items: { type: 'string' } };
       const wire: JsonSchema =
         declared === Array && !param.pipes?.length
           ? many
-          : declared === Array || FIRST_VALUE_TYPES.has(declared)
+          : FIRST_VALUE_TYPES.has(declared)
             ? { type: 'string' }
             : { oneOf: [{ type: 'string' }, many] };
       parameters.push(

@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   APP_GUARD,
+  Body,
   Controller,
   Get,
   Inject,
   Injectable,
   Module,
   Post,
+  Query,
   Reflector,
   UseGuards,
   UseInterceptors,
@@ -134,6 +136,42 @@ describe('declarations inherited from an ancestor method', () => {
       });
       expect(Object.keys(document.paths['/inherited']!.post!.responses)).toEqual(['202']);
       expect(document.paths['/loose']!.get!.responses['200']).not.toHaveProperty('content');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reads the parameters an ancestor declares on a routed inherited method', async () => {
+    class Note {
+      static schema = z.object({ text: z.string().min(1) });
+      declare text: string;
+    }
+    class Base {
+      create(@Body() body: Note, @Query('tag') tag: string) {
+        return { text: body.text, tag: tag ?? null };
+      }
+    }
+    @Controller('/notes')
+    class Notes extends Base {}
+    Post()(Notes.prototype, 'create', Object.getOwnPropertyDescriptor(Base.prototype, 'create')!);
+    @Module({ controllers: [Notes] })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule);
+    const post = (body: unknown) =>
+      app.getHonoApp().request('/notes?tag=a', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    try {
+      expect((await post({ text: '' })).status).toBe(400);
+      const created = await post({ text: 'hi' });
+      expect(created.status).toBe(201);
+      expect(await created.json()).toEqual({ text: 'hi', tag: 'a' });
+      const document = createOpenApiDocument(AppModule);
+      expect(document.paths['/notes']!.post!.parameters).toEqual([
+        { name: 'tag', in: 'query', required: false, schema: { type: 'string' } },
+      ]);
     } finally {
       await app.close();
     }

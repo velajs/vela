@@ -33,17 +33,15 @@ export class ValidationPipe implements PipeTransform {
     // Programmatic routes can document a schema while their handler/engine owns
     // validation. Explicit parameter pipes still validate at their chosen boundary.
     const metatype = metadata.metatype;
-    if (this.parser !== undefined) return resolveValidationSchema(this.parser);
     if (
+      this.parser === undefined &&
       metatype !== null &&
       typeof metatype === 'object' &&
       'validationOwner' in metatype &&
       metatype.validationOwner === 'handler'
     )
       return undefined;
-    // The route validated the value (a `defineRoute` group) before the pipes.
-    if (metadata.validated) return undefined;
-    return resolveValidationSchema(metatype);
+    return resolveValidationSchema(this.parser ?? metatype);
   }
 
   transform(value: unknown, metadata: ArgumentMetadata): unknown {

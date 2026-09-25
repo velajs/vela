@@ -40,8 +40,11 @@ export interface RouteMultipartBody extends RouteFormBody {
 /**
  * The body a route accepts. Routes read JSON by default (other media types
  * answer 415); `form` and `multipart` opt the route into those encodings
- * instead. The route's `maxBytes` replaces the application's body limit for
- * that route; `security.body.streamingOverrides` still take precedence.
+ * instead. A declared body is read and checked after guards, before the
+ * handler, whether or not a parameter reads it. The route's own `maxBytes`
+ * replaces the application's body limit for that route; a default `maxBytes`
+ * never exceeds a limit the application configures. A matching
+ * `security.body.streamingOverrides` entry still takes precedence.
  */
 export type RouteBodyOptions =
   | { readonly json: RouteJsonBody }
@@ -112,6 +115,11 @@ export interface ResolvedRouteBody {
   readonly kind: 'json' | 'form' | 'multipart';
   /** Undefined for JSON without its own limit: the application's limit applies. */
   readonly maxBytes?: number;
+  /**
+   * The route set `maxBytes` itself, so it replaces the application's limit;
+   * a default `maxBytes` never exceeds a limit the application configures.
+   */
+  readonly explicitMaxBytes: boolean;
   readonly maxFields: number;
   readonly maxFieldBytes: number;
   readonly maxFiles: number;
@@ -137,7 +145,10 @@ export interface RouteContractMetadata {
   /** Parse the handler's result through `response` before sending it. */
   readonly validate: boolean;
   readonly body?: ResolvedRouteBody;
-  /** Request schemas a `defineRoute` contract declares. */
+  /**
+   * Request schemas a `defineRoute` contract declares, validated once per
+   * request after guards, whether or not a parameter reads them.
+   */
   readonly params?: ValidationSchema;
   readonly query?: ValidationSchema;
   readonly bodySchema?: ValidationSchema;
@@ -181,6 +192,7 @@ function resolveBody(options?: Record<string, unknown>): ResolvedRouteBody | und
       kind === 'json' && given.maxBytes === undefined
         ? undefined
         : limit(given.maxBytes, maxFiles * maxFileBytes + MiB),
+    explicitMaxBytes: given.maxBytes !== undefined,
     maxFields: limit(given.maxFields, 100),
     maxFieldBytes: limit(given.maxFieldBytes, 64 * 1024),
     maxFiles,

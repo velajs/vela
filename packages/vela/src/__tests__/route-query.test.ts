@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { Controller, Get, Module, Query, VelaFactory, type VelaApplication } from '../index';
+import {
+  Controller,
+  Get,
+  Module,
+  ParseArrayPipe,
+  Query,
+  VelaFactory,
+  type VelaApplication,
+} from '../index';
 import { createOpenApiDocument } from '../openapi/index';
 import { ValidationPipe, type SchemaOutput } from '../validation/index';
 
@@ -9,6 +17,8 @@ const Search = z.object({
   tag: z.array(z.string()).optional(),
   page: z.coerce.number().int().min(1).optional(),
 });
+
+const Either = z.union([z.object({ q: z.string() }), z.object({ tag: z.array(z.string()) })]);
 
 // A query class carrying its schema, validated by a global ValidationPipe.
 class SearchDto {
@@ -64,6 +74,18 @@ class SearchController {
   @Get('/union')
   union(@Query('role') role: string | undefined) {
     return { role: role ?? null };
+  }
+
+  // A pipe that splits one value also receives repeated keys as an array.
+  @Get('/split')
+  split(@Query('ids', ParseArrayPipe) ids: string[]) {
+    return { ids };
+  }
+
+  // A key one member of a union schema declares as an array.
+  @Get('/either')
+  either(@Query(Either) query: SchemaOutput<typeof Either>) {
+    return query;
   }
 }
 
@@ -203,6 +225,38 @@ describe('array-aware @Query', () => {
     ]);
     expect(document.paths['/search/optional']!.get!.parameters).toEqual([
       { name: 'role', in: 'query', required: false, schema: { type: 'string' } },
+    ]);
+  });
+
+  it('reads a key any member of a union schema declares as an array as an array', async () => {
+    const app = await VelaFactory.create(App);
+    try {
+      const one = await get(app, '/either?tag=x');
+      expect(one.status).toBe(200);
+      expect(await one.json()).toEqual({ tag: ['x'] });
+      expect(await (await get(app, '/either?q=x')).json()).toEqual({ q: 'x' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('documents a piped array parameter as one value or repeated keys, as it receives them', async () => {
+    const app = await VelaFactory.create(App);
+    try {
+      expect(await (await get(app, '/split?ids=1&ids=2')).json()).toEqual({ ids: ['1', '2'] });
+      expect(await (await get(app, '/split?ids=1,2')).json()).toEqual({ ids: ['1', '2'] });
+    } finally {
+      await app.close();
+    }
+    expect(createOpenApiDocument(App).paths['/search/split']!.get!.parameters).toEqual([
+      {
+        name: 'ids',
+        in: 'query',
+        required: false,
+        schema: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+        style: 'form',
+        explode: true,
+      },
     ]);
   });
 

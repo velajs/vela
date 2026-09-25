@@ -3,7 +3,7 @@ import { Reflector, SetMetadata } from '../pipeline/reflector';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '../pipeline/types';
 import { sha256Base64Url } from '../crypto/hmac';
 import { getRedirect, getResponseHeaders } from '../http/decorators';
-import { executingRoute, markParsed, parseRouteResponse } from '../http/route-response';
+import { executingRoute, onResponseSent, replayResponse } from '../http/route-response';
 import { getTrustedRequestIdentity } from '../http/trusted-request-identity';
 import { CACHE_RESPONSE_METADATA } from './cache.tokens';
 import { CacheService } from './cache.service';
@@ -11,8 +11,10 @@ import type { CacheResponseOptions, CacheScope } from './cache.types';
 import { validateEntryOptions, validateLabel, validateScope } from './cache.validation';
 
 /**
- * Cache a GET route's JSON result in `CacheModule`'s store, under the scope
- * its resolver selects after guards. Routes without it never cache.
+ * Cache the JSON or text response a GET route sends — after interceptors and
+ * its `response` schema — in `CacheModule`'s store, under the scope its
+ * resolver selects after guards; a hit replays it without running the
+ * handler or parsing again. Routes without it never cache.
  */
 export function CacheResponse(options: CacheResponseOptions = {}) {
   validateEntryOptions(options);
@@ -41,31 +43,26 @@ export class CacheInterceptor implements NestInterceptor {
     if (!config || request.method !== 'GET') return next.handle();
     const target = context.getClass();
     const handler = context.getHandlerName();
-    const response = context.switchToHttp().getResponse();
-    // The route's `response` schema parses the result here, so the cache holds
-    // the value the route sends, never fields the schema strips, and
-    // interceptors around the cache see that value whether or not it is served
-    // from the cache.
-    const handle = async () => parseRouteResponse(response, await next.handle());
+    const c = context.switchToHttp().getResponse();
     // The status of the route this request executes; outside the HTTP route
     // pipeline, nothing is cached.
-    const status = executingRoute(response)?.status;
+    const status = executingRoute(c)?.status;
     const privateHeaders = getResponseHeaders(target, handler).some(
       ([name, value]) =>
         name.toLowerCase() === 'set-cookie' ||
         (name.toLowerCase() === 'cache-control' && /(?:^|,)\s*(?:private|no-store)\b/i.test(value)),
     );
-    if (status !== 200 || getRedirect(target, handler) || privateHeaders) return handle();
+    if (status !== 200 || getRedirect(target, handler) || privateHeaders) return next.handle();
     if (config.tags?.length && !this.cache.options.invalidation)
       throw new TypeError('Cache tags require an invalidation store.');
     let scope: CacheScope | undefined;
     try {
       scope = await this.cache.options.scope(context);
-      if (scope === undefined) return handle();
+      if (scope === undefined) return next.handle();
       validateScope(scope);
     } catch (error) {
       this.cache.report('scope', error);
-      return handle();
+      return next.handle();
     }
     if (
       scope.visibility === 'public' &&
@@ -73,12 +70,12 @@ export class CacheInterceptor implements NestInterceptor {
         request.headers.has('cookie') ||
         getTrustedRequestIdentity(request) !== undefined)
     )
-      return handle();
-    const unsafe = () =>
-      response.res.headers.has('set-cookie') ||
-      /(?:^|,)\s*(?:no-store|private)\b/i.test(response.res.headers.get('cache-control') ?? '') ||
-      response.res.status !== 200;
-    if (unsafe()) return handle();
+      return next.handle();
+    const unsafe = (response: Response) =>
+      response.headers.has('set-cookie') ||
+      /(?:^|,)\s*(?:no-store|private)\b/i.test(response.headers.get('cache-control') ?? '') ||
+      response.status !== 200;
+    if (unsafe(c.res)) return next.handle();
     const url = new URL(request.url);
     const query = new URLSearchParams(url.search);
     query.sort();
@@ -88,18 +85,21 @@ export class CacheInterceptor implements NestInterceptor {
         JSON.stringify([url.origin, url.pathname, query.toString(), config.key ?? '']),
       ),
     );
-    const scoped = this.cache.scoped(scope, 'http');
-    let result: unknown;
-    let bypass = false;
-    const value = await scoped.remember(
-      key,
-      async () => {
-        result = await handle();
-        bypass = unsafe() || result instanceof Response;
-        return bypass ? undefined : result;
-      },
-      config,
-    );
-    return bypass ? result : markParsed(response, value);
+    const lookup = await this.cache.lookupResponse(scope, key, config);
+    if (lookup && 'hit' in lookup) {
+      const { status: code, type, body } = lookup.hit;
+      return replayResponse(
+        c,
+        new Response(body, { status: code, headers: { 'content-type': type } }),
+      );
+    }
+    // Store the response the route sends, unless it turns out private.
+    if (lookup)
+      onResponseSent(c, async (sent) => {
+        const type = sent.headers.get('content-type');
+        if (unsafe(c.res) || unsafe(sent) || type === null) return;
+        await lookup.store({ status: sent.status, type, body: await sent.clone().text() });
+      });
+    return next.handle();
   }
 }

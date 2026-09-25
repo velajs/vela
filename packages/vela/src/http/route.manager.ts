@@ -307,13 +307,15 @@ export class RouteManager {
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
   // The Hono handler that ends each controller route, with its controller and
   // method, for forRoutes(Controller), and the body limit the route declares.
-  private readonly routeOwners = new Map<unknown, [Constructor, string, number?]>();
+  private readonly routeOwners = new Map<unknown, [Constructor, string, (number | false)?]>();
   private routeDescriptions: RouteDescription[] = [];
   private readonly requestObservers = new Set<HttpRequestObserver>();
 
   private readonly handlerExecutor: HandlerExecutor;
   private readonly ambientContainer: boolean;
   private readonly bodyLimit: number | false;
+  // A body limit the application configures caps a route's default limit.
+  private readonly bodyLimitCap: number;
   private readonly bodyLimitOverrides: VelaBodyLimitOverride[];
   private readonly queryMaxParameters: number | false;
   private readonly queryMaxDepth: number | false;
@@ -333,8 +335,9 @@ export class RouteManager {
     if (options.bodyLimit !== undefined && options.security?.body?.maxBytes !== undefined) {
       throw new Error('Configure either bodyLimit or security.body.maxBytes, not both');
     }
-    this.bodyLimit =
-      options.security?.body?.maxBytes ?? options.bodyLimit ?? DEFAULT_BODY_LIMIT_BYTES;
+    const configuredBodyLimit = options.security?.body?.maxBytes ?? options.bodyLimit;
+    this.bodyLimit = configuredBodyLimit ?? DEFAULT_BODY_LIMIT_BYTES;
+    this.bodyLimitCap = configuredBodyLimit || Infinity;
     validatePositiveLimit('bodyLimit', this.bodyLimit);
     this.bodyLimitOverrides = (options.security?.body?.streamingOverrides ?? []).map(
       (override) => ({
@@ -452,10 +455,15 @@ export class RouteManager {
   }
 
   // A streaming override for the path, else the limit the matched controller
-  // route declares (`body` options, flagged `true`), else the application's.
-  private resolveBodyLimit(c: Context): [maxBytes: number | false, declared?: true] {
+  // route declares (`body` options), else the application's; flagged `true`
+  // when the matched route declares a body, whose readers count it.
+  private resolveBodyLimit(c: Context): [maxBytes: number | false, declared?: boolean] {
     const path = c.req.path;
     const method = c.req.method;
+    let owner: [Constructor, string, (number | false)?] | undefined;
+    for (const route of matchedRoutes(c).slice(c.req.routeIndex + 1))
+      if ((owner = findOwner(this.routeOwners, route.handler))) break;
+    const declared = owner?.[2] !== undefined;
     for (const override of this.bodyLimitOverrides) {
       if (override.methods && !override.methods.includes(method.toUpperCase())) continue;
       const matches =
@@ -463,13 +471,9 @@ export class RouteManager {
         (override.path.endsWith('*')
           ? path.startsWith(override.path.slice(0, -1))
           : path === override.path);
-      if (matches) return [override.maxBytes];
+      if (matches) return [override.maxBytes, declared];
     }
-    for (const route of matchedRoutes(c).slice(c.req.routeIndex + 1)) {
-      const owner = findOwner(this.routeOwners, route.handler);
-      if (owner) return owner[2] === undefined ? [this.bodyLimit] : [owner[2], true];
-    }
-    return [this.bodyLimit];
+    return declared ? [owner![2]!, true] : [this.bodyLimit];
   }
 
   registerConsumerMiddleware(definitions: MiddlewareRouteDefinition[]): this {
@@ -918,8 +922,8 @@ export class RouteManager {
         const [maxSize, declared] = this.resolveBodyLimit(c);
         if (maxSize === false) return await normalizedNext();
         const raw = c.req.raw;
-        // A route's own limit counts a body without Content-Length as it is
-        // read, after guards; Hono would buffer all of it before them.
+        // A route that declares a body counts one sent without Content-Length
+        // as it is read, after guards; Hono would buffer all of it before them.
         if (
           declared &&
           raw.body &&
@@ -1033,8 +1037,6 @@ export class RouteManager {
     // First pass: register all custom routes (must come before CRUD /:id routes).
     for (const { controller, moduleId, metadata, routes } of this.controllers) {
       if (routes.length > 0) {
-        const allParamMetadata = MetadataRegistry.getParameters(controller);
-
         for (const route of routes) {
           // Scoped (controller/handler) middleware only — global middleware is
           // applied once by this manager's own global pass, never re-read here.
@@ -1045,13 +1047,6 @@ export class RouteManager {
             this.container,
             moduleId,
           );
-          const handler = this.handlerExecutor.create(
-            route,
-            controller,
-            moduleId,
-            allParamMetadata,
-          );
-
           const middleware = middlewareItems.map((middlewareItem) =>
             this.wrapMiddlewareWithFilters(async (c, next) => {
               const requestContainer = this.getRequestContainer(c);
@@ -1065,26 +1060,32 @@ export class RouteManager {
           );
 
           const served = composeRoutePaths(metadata.prefix, route, metadata.version);
+          const paths = served.map(({ path }) => path || '/');
           // A shared contract names the path its clients call; it must be one
           // this route serves.
           const contractPath = route.contract?.path;
-          if (
-            contractPath !== undefined &&
-            !served.some(({ path }) => (path || '/') === contractPath)
-          ) {
+          if (contractPath !== undefined && !paths.includes(contractPath)) {
             throw new Error(
-              `${controller.name}.${String(route.handlerName)} serves ${served.map(({ path }) => path || '/').join(', ')}, not its contract path ${contractPath}`,
+              `${controller.name}.${String(route.handlerName)} serves ${paths.join(', ')}, not its contract path ${contractPath}`,
             );
           }
+          const handler = this.handlerExecutor.create(route, controller, moduleId, paths);
+          // A route declaring a body enforces its own `maxBytes`, or its
+          // default capped at a limit the application configures; a JSON
+          // route without its own keeps the application's.
+          const body = route.contract?.body;
+          const bodyLimit =
+            body &&
+            (body.maxBytes === undefined
+              ? this.bodyLimit
+              : body.explicitMaxBytes
+                ? body.maxBytes
+                : Math.min(body.maxBytes, this.bodyLimitCap));
           for (const { path: fullPath, version } of served) {
             // Register the onion with its method and terminal handler. A
             // path-only app.use() also matches sibling methods/controllers.
             this.registerRoute(app, route.method, fullPath, ...middleware, handler);
-            this.routeOwners.set(app.routes.at(-1)!.handler, [
-              controller,
-              route.method,
-              route.contract?.body?.maxBytes,
-            ]);
+            this.routeOwners.set(app.routes.at(-1)!.handler, [controller, route.method, bodyLimit]);
             this.routeDescriptions.push({
               method: String(route.method),
               path: fullPath || '/',

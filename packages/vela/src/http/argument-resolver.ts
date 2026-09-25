@@ -29,8 +29,9 @@ const PARAM_EXTRACTORS = new Map<ParamType, ParamExtractor>([
   [ParamType.RAW_BODY, async (c) => new Uint8Array(await c.req.arrayBuffer())],
 ]);
 
-// Pulls handler arguments from the request, applies shared pipes (global +
-// controller + method), the reader's own check and then per-param pipes.
+// Pulls handler arguments from the request, then applies shared pipes (global
+// + controller + method) and per-param pipes. A route-built reader receives
+// every pipe that applies, and names the pipes that do not run on its value.
 // Empty paramMetadata returns `[c]` to match the old direct-Hono-handler
 // shape — a back-compat behavior the framework's tests rely on.
 export class ArgumentResolver {
@@ -54,34 +55,29 @@ export class ArgumentResolver {
     const args: unknown[] = new Array(maxIndex + 1).fill(undefined);
 
     for (const [position, param] of paramMetadata.entries()) {
-      const extract = extractors[position];
-      let value = await (extract ? extract(c) : this.extractParam(c, param));
+      let applied = pipes;
+      if (param.pipes && param.pipes.length > 0) {
+        applied = [...pipes];
+        for (const paramPipe of param.pipes)
+          applied.push(
+            await instantiateAsync<PipeTransform>(paramPipe, requestContainer, moduleId),
+          );
+      }
+
+      const read = extractors[position];
+      let value = await (read ? read(c, applied) : this.extractParam(c, param));
 
       const metadata: ArgumentMetadata = {
         type: param.type,
         data: param.name,
         metatype: param.metatype ?? paramTypes?.[param.index],
       };
-      if (extract?.validated) metadata.validated = true;
 
-      for (const pipe of pipes) {
+      for (const pipe of applied) {
+        if (read?.skips?.(pipe)) continue;
         value = await (pipe.transformAsync
           ? pipe.transformAsync(value, metadata)
           : pipe.transform(value, metadata));
-      }
-      if (extract?.validate) value = await extract.validate(value, pipes);
-
-      if (param.pipes && param.pipes.length > 0) {
-        for (const paramPipe of param.pipes) {
-          const pipeInstance = await instantiateAsync<PipeTransform>(
-            paramPipe,
-            requestContainer,
-            moduleId,
-          );
-          value = await (pipeInstance.transformAsync
-            ? pipeInstance.transformAsync(value, metadata)
-            : pipeInstance.transform(value, metadata));
-        }
       }
 
       args[param.index] = value;

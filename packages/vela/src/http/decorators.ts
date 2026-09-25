@@ -12,7 +12,8 @@ import {
   type RouteHandlerResult,
   type RouteResponseOptions,
 } from './route-contract';
-import { readBodyParam, readPathParam, readQueryParam } from './route-input';
+import { installRouteInput, type RouteInputReader } from './route-input-registry';
+import { readBodyParam, readPathParam, readQueryParam, readRouteInput } from './route-input';
 import type { ExecutionContext } from '../pipeline/types';
 import { isValidationSchema, type ValidationSchema } from '../validation/parse-schema';
 import { isStandardSchema } from '../validation/standard-schema';
@@ -227,7 +228,10 @@ function isParamSchema(value: PipeType | ValidationSchema): value is ValidationS
 function createBuiltinParamDecorator(
   type: ParamType,
   extract?: ParamExtractorFactory,
+  input?: RouteInputReader,
 ): SchemaParamDecorator {
+  // The readers ship the validation of the request schemas routes declare.
+  if (input) installRouteInput(input);
   return (
     nameOrPipe?: string | PipeType | ValidationSchema,
     ...pipes: Array<PipeType | ValidationSchema>
@@ -256,15 +260,28 @@ function createBuiltinParamDecorator(
 }
 
 // Pure, with literal arguments, for the same reason as the method decorators.
-export const Param = /* @__PURE__ */ createBuiltinParamDecorator('param', readPathParam);
-export const Query = /* @__PURE__ */ createBuiltinParamDecorator('query', readQueryParam);
+export const Param = /* @__PURE__ */ createBuiltinParamDecorator(
+  'param',
+  readPathParam,
+  readRouteInput,
+);
+export const Query = /* @__PURE__ */ createBuiltinParamDecorator(
+  'query',
+  readQueryParam,
+  readRouteInput,
+);
 /**
  * Injects the request body: JSON unless the route opts into a form or multipart
  * body. With no schema argument, a parameter whose class carries a static
  * Standard Schema (`static schema = z.object(…)`, or a class that is itself a
- * Standard Schema) is validated against it.
+ * Standard Schema) is validated against it as the body is read, unless a
+ * `ValidationPipe` applies to the parameter; that pipe then validates it.
  */
-export const Body = /* @__PURE__ */ createBuiltinParamDecorator('body', readBodyParam);
+export const Body = /* @__PURE__ */ createBuiltinParamDecorator(
+  'body',
+  readBodyParam,
+  readRouteInput,
+);
 export const Headers = /* @__PURE__ */ createBuiltinParamDecorator('headers');
 /**
  * Injects the platform `Request`, as Nest's `@Req()` injects the request

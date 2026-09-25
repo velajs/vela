@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
+  APP_INTERCEPTOR,
   Controller,
   defineSerializer,
   Get,
@@ -12,8 +13,10 @@ import {
   Module,
   UseGuards,
   VelaFactory,
+  type CallHandler,
   type ErrorReportContext,
   type ExecutionContext,
+  type NestInterceptor,
   type Type,
   type VelaEnv,
 } from '../index';
@@ -556,6 +559,129 @@ describe('response cache pipeline', () => {
       }
       // The earlier entry missed; the second request hits the parsed entry.
       expect(calls).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('misses route entries stored without the current response format', async () => {
+    let calls = 0;
+    const handlerResult = { id: '1', ownerEmail: 'private@example.test' };
+    @Controller('/users')
+    class Users {
+      @Get('/me', { response: z.object({ id: z.string() }) })
+      @CacheResponse({ ttl: 300 })
+      me() {
+        calls++;
+        return handlerResult;
+      }
+    }
+    const hash = (parts: readonly string[]) =>
+      sha256Base64Url(new TextEncoder().encode(JSON.stringify(parts)));
+    const url = new URL('/users/me', 'http://localhost');
+    const key = await hash([url.origin, url.pathname, '', '']);
+    const prefix = await hash(['profiles', publicScope.visibility, publicScope.partition]);
+    const address = `vela:response:v2:${prefix}:${await hash(['http', key])}`;
+    const store = new AsyncStore();
+    // A value entry, as a service entry stores it, at the route's address.
+    store.values.set(address, {
+      version: 1,
+      expiresAt: Date.now() + 300_000,
+      payload: JSON.stringify(handlerResult),
+      tags: [],
+      generations: [],
+    });
+    @Module({
+      imports: [CacheModule.forRoot({ namespace: 'profiles', store, scope: () => publicScope })],
+      controllers: [Users],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      for (let i = 0; i < 2; i++) {
+        const response = await app.getHonoApp().request('/users/me');
+        expect(await response.json()).toEqual({ id: '1' });
+      }
+      expect(calls).toBe(1);
+      expect(JSON.stringify([...store.values.values()])).not.toContain('private@example.test');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('stores the response the route sent, after interceptors outside the cache', async () => {
+    let calls = 0;
+    // Adds a field in place to what it receives, then returns it.
+    class Stamp implements NestInterceptor {
+      async intercept(_context: ExecutionContext, next: CallHandler) {
+        const value = await next.handle();
+        if (value !== null && typeof value === 'object')
+          Reflect.set(value, 'debugOwner', 'internal@example.test');
+        return value;
+      }
+    }
+    // Returns a new value built from what it receives.
+    class Upper implements NestInterceptor {
+      async intercept(context: ExecutionContext, next: CallHandler) {
+        const value = await next.handle();
+        if (context.getHandlerName() !== 'upper') return value;
+        return { id: String(Reflect.get(Object(value), 'id')).toUpperCase(), note: 'dropped' };
+      }
+    }
+    @Module({
+      providers: [
+        { provide: APP_INTERCEPTOR, useClass: Stamp },
+        { provide: APP_INTERCEPTOR, useClass: Upper },
+      ],
+    })
+    class OuterModule {}
+    @Controller('/outer')
+    class Outer {
+      @Get('/stamped', { response: z.object({ id: z.string() }) })
+      @CacheResponse({ ttl: 60 })
+      stamped() {
+        calls++;
+        return { id: '1' };
+      }
+      @Get('/upper', { response: z.object({ id: z.string() }) })
+      @CacheResponse({ ttl: 60 })
+      upper() {
+        calls++;
+        return { id: 'a2' };
+      }
+      @Get('/text')
+      @CacheResponse({ ttl: 60 })
+      text() {
+        calls++;
+        return `text ${calls}`;
+      }
+    }
+    const store = new AsyncStore();
+    @Module({
+      imports: [
+        OuterModule,
+        CacheModule.forRoot({ namespace: 'outer', store, scope: () => publicScope }),
+      ],
+      controllers: [Outer],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      for (let i = 0; i < 2; i++) {
+        const stamped = await app.getHonoApp().request('/outer/stamped');
+        expect(stamped.status).toBe(200);
+        expect(await stamped.json()).toEqual({ id: '1' });
+        // On a hit, the interceptor receives the replayed Response; the value
+        // it returns instead is ignored.
+        const upper = await app.getHonoApp().request('/outer/upper');
+        expect(upper.status).toBe(200);
+        expect(await upper.json()).toEqual({ id: 'A2' });
+        const text = await app.getHonoApp().request('/outer/text');
+        expect(text.headers.get('content-type')).toMatch(/^text\/plain/);
+        expect(await text.text()).toBe('text 3');
+      }
+      expect(calls).toBe(3);
+      expect(JSON.stringify([...store.values.values()])).not.toContain('internal@example.test');
     } finally {
       await app.close();
     }

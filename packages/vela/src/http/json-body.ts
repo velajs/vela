@@ -16,7 +16,8 @@ const JSON_MEDIA_TYPE = /^(?:application\/json|[\w!#$&^.+-]+\/[\w!#$&^.+-]+\+jso
 /**
  * Read at most `maxBytes` of the request body, after the route's guards.
  * Oversized bodies answer 413 as soon as the count passes the limit; the rest
- * of the stream is cancelled, never buffered.
+ * of the stream is cancelled, never buffered. The bytes read stay available to
+ * later readers (`c.req.json()`, `@RawBody()`).
  */
 export async function readBoundedBody(c: Context, maxBytes: number): Promise<ArrayBuffer> {
   const request = c.req;
@@ -54,6 +55,8 @@ export async function readBoundedBody(c: Context, maxBytes: number): Promise<Arr
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  // Hono's body cache holds promises; its type names the resolved values.
+  Reflect.set(request.bodyCache, 'arrayBuffer', Promise.resolve(bytes.buffer));
   return bytes.buffer;
 }
 

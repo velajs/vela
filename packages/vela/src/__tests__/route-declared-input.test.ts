@@ -1,0 +1,216 @@
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Module,
+  Param,
+  Post,
+  Query,
+  RawBody,
+  VelaFactory,
+  type VelaApplication,
+} from '../index';
+import { defineRoute, type ContractBody } from '../contract/index';
+
+// Declared means enforced: a route validates every request group it declares
+// once, after guards, whether or not a parameter reads it.
+
+const id = '2f1c2a4e-6f0b-4c1d-9d2e-8a7b6c5d4e3f';
+let calls = 0;
+
+const archive = defineRoute({
+  method: 'POST',
+  path: '/tasks/:id/archive',
+  params: z.object({ id: z.uuid() }),
+  query: z.object({ confirm: z.literal('yes') }),
+  body: z.object({ reason: z.string().min(3) }),
+  response: z.object({ ok: z.boolean() }),
+});
+
+const purge = defineRoute({
+  method: 'DELETE',
+  path: '/tasks/:id',
+  params: z.object({ id: z.uuid() }),
+  query: z.object({ confirm: z.literal('yes') }),
+  response: null,
+});
+
+@Controller('/tasks')
+class Tasks {
+  // Reads only the path parameter.
+  @Post('/:id/archive', archive)
+  archiveIt(@Param('id') _id: string) {
+    calls++;
+    return { ok: true };
+  }
+
+  // Reads nothing.
+  @Delete('/:id', purge)
+  purgeIt() {
+    calls++;
+  }
+
+  // Declares an upload it never reads with @Body().
+  @Post('/import', { body: { multipart: { maxFiles: 1, maxFileBytes: 64 } } })
+  importIt() {
+    calls++;
+    return { ok: true };
+  }
+
+  // Bounds a JSON body it reads twice: parsed, then as raw bytes.
+  @Post('/notes', { body: { json: { maxBytes: 64 } } })
+  note(@Body() body: unknown, @RawBody() raw: Uint8Array) {
+    return { body, bytes: raw.byteLength };
+  }
+}
+
+async function start(controller: new () => object = Tasks) {
+  @Module({ controllers: [controller] })
+  class App {}
+  return VelaFactory.create(App);
+}
+
+function send(app: VelaApplication, method: string, path: string, init: RequestInit = {}) {
+  return app.fetch(new Request(`https://example.test${path}`, { method, ...init }));
+}
+
+const json = (body: unknown): RequestInit => ({
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+describe('declared request groups', () => {
+  it('validates every group a contract declares when a parameter reads only one', async () => {
+    const app = await start();
+    try {
+      calls = 0;
+      const path = `/tasks/${id}/archive`;
+      const plain = await send(app, 'POST', `${path}?confirm=yes`, {
+        headers: { 'content-type': 'text/plain' },
+        body: 'x',
+      });
+      expect(plain.status).toBe(415);
+      expect((await send(app, 'POST', path, json({ reason: 'done' }))).status).toBe(400);
+      expect((await send(app, 'POST', `${path}?confirm=yes`, json({ reason: 'x' }))).status).toBe(
+        400,
+      );
+      expect(
+        (await send(app, 'POST', `/tasks/nope/archive?confirm=yes`, json({ reason: 'done' })))
+          .status,
+      ).toBe(400);
+      expect(calls).toBe(0);
+      const archived = await send(app, 'POST', `${path}?confirm=yes`, json({ reason: 'done' }));
+      expect(archived.status).toBe(201);
+      expect(await archived.json()).toEqual({ ok: true });
+      expect(calls).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('validates the groups of a contract whose handler reads nothing', async () => {
+    const app = await start();
+    try {
+      calls = 0;
+      expect((await send(app, 'DELETE', `/tasks/${id}`)).status).toBe(400);
+      expect((await send(app, 'DELETE', '/tasks/nope?confirm=yes')).status).toBe(400);
+      expect(calls).toBe(0);
+      expect((await send(app, 'DELETE', `/tasks/${id}?confirm=yes`)).status).toBe(204);
+      expect(calls).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('enforces a declared form encoding and its limits when no parameter reads the body', async () => {
+    const app = await start();
+    try {
+      calls = 0;
+      expect((await send(app, 'POST', '/tasks/import', json({ file: 'x' }))).status).toBe(415);
+      const files = new FormData();
+      files.append('a', new File(['a'], 'a.txt'));
+      files.append('b', new File(['b'], 'b.txt'));
+      expect((await send(app, 'POST', '/tasks/import', { body: files })).status).toBe(413);
+      const large = new FormData();
+      large.append('a', new File([new Uint8Array(65)], 'a.bin'));
+      expect((await send(app, 'POST', '/tasks/import', { body: large })).status).toBe(413);
+      expect(calls).toBe(0);
+      const one = new FormData();
+      one.append('a', new File(['a'], 'a.txt'));
+      expect((await send(app, 'POST', '/tasks/import', { body: one })).status).toBe(201);
+      expect(calls).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lets a later parameter read a bounded body again', async () => {
+    const app = await start();
+    try {
+      const response = await send(app, 'POST', '/tasks/notes', json({ a: 1 }));
+      expect(response.status).toBe(201);
+      expect(await response.json()).toEqual({ body: { a: 1 }, bytes: 7 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('fails to start when a params schema leaves out a path parameter', async () => {
+    const read = defineRoute({
+      method: 'GET',
+      path: '/orgs/:org/tasks/:id',
+      params: z.object({ id: z.string() }),
+      response: z.object({ org: z.string(), id: z.string() }),
+    });
+    @Controller('/orgs/:org/tasks')
+    class OrgTasks {
+      @Get('/:id', read)
+      read(@Param('org') org: string, @Param('id') taskId: string) {
+        return { org, id: taskId };
+      }
+    }
+    await expect(start(OrgTasks)).rejects.toThrow(
+      /OrgTasks\.read: its params schema does not declare the path parameter org/,
+    );
+  });
+
+  it('fails to start when a named parameter reads a key its group does not declare', async () => {
+    const list = defineRoute({
+      method: 'GET',
+      path: '/reports',
+      query: z.object({ page: z.string().optional() }),
+      response: z.object({ tenant: z.string().nullable() }),
+    });
+    @Controller('/reports')
+    class Reports {
+      @Get(list)
+      list(@Query('tenant') tenant: string | undefined) {
+        return { tenant: tenant ?? null };
+      }
+    }
+    await expect(start(Reports)).rejects.toThrow(
+      /Reports\.list: @Query\('tenant'\) reads a key the route's query schema does not declare/,
+    );
+  });
+
+  it('fails to start when a parameter declares a schema for a group the contract declares', async () => {
+    const create = defineRoute({
+      method: 'POST',
+      path: '/drafts',
+      body: z.object({ title: z.string() }),
+    });
+    @Controller('/drafts')
+    class Drafts {
+      @Post(create)
+      create(@Body(z.object({ title: z.string().min(1) })) body: ContractBody<typeof create>) {
+        return body;
+      }
+    }
+    await expect(start(Drafts)).rejects.toThrow(
+      /Drafts\.create: the route declares the body schema; remove the schema from @Body\(\)/,
+    );
+  });
+});

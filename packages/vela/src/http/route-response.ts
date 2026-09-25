@@ -13,8 +13,9 @@ export interface ExecutingRoute {
 }
 
 const executing = new WeakMap<Context, ExecutingRoute>();
-// The value a request's response schema already produced, sent as is.
-const parsed = new WeakMap<Context, unknown>();
+// A stored response a request replays, and what receives the one it sends.
+const replays = new WeakMap<Context, Response>();
+const senders = new WeakMap<Context, (response: Response) => Promise<void>>();
 
 /** Record the route a request executes, for interceptors such as the response cache. */
 export function enterRoute(c: Context, route: ExecutingRoute): void {
@@ -24,6 +25,35 @@ export function enterRoute(c: Context, route: ExecutingRoute): void {
 /** The route the request is executing through the HTTP pipeline, if any. */
 export function executingRoute(c: Context): ExecutingRoute | undefined {
   return executing.get(c);
+}
+
+/**
+ * Replay a stored response: the route sends it as is. Interceptors outside
+ * the one replaying it receive it; a value they return instead of a
+ * `Response` is ignored.
+ */
+export function replayResponse(c: Context, response: Response): Response {
+  replays.set(c, response);
+  return response;
+}
+
+/** The response a request replays, if an interceptor replayed one. */
+export function replayedResponse(c: Context): Response | undefined {
+  return replays.get(c);
+}
+
+/**
+ * Receive the response the route sends from its handler's result, with its
+ * headers applied, before it leaves the route. Not called for a returned
+ * `Response`, a redirect, an event stream or a native body.
+ */
+export function onResponseSent(c: Context, receive: (response: Response) => Promise<void>): void {
+  senders.set(c, receive);
+}
+
+/** Hand the response the route sends to the receiver `onResponseSent` recorded. */
+export async function responseSent(c: Context, response: Response): Promise<void> {
+  await senders.get(c)?.(response);
 }
 
 // Parse a result through a response schema: a Standard Schema, a `parse()`
@@ -57,24 +87,6 @@ async function parseChecked(schema: ValidationSchema, value: unknown, source: st
 }
 
 /**
- * Parse a result through the executing route's `response` schema, as the
- * route would before sending it. The route sends the returned value — or the
- * value later marked with `markParsed` — without parsing it again.
- */
-export async function parseRouteResponse(c: Context, result: unknown): Promise<unknown> {
-  const route = executing.get(c);
-  const schema = route?.contract?.validate ? route.contract.response : undefined;
-  if (!route || !schema || result instanceof Response || !hasBody(route.status)) return result;
-  return markParsed(c, await parseChecked(schema, result, route.source));
-}
-
-/** Mark a value the route's response schema produced (a cached copy of one) as ready to send. */
-export function markParsed<T>(c: Context, value: T): T {
-  parsed.set(c, value);
-  return value;
-}
-
-/**
  * Send the final result of a route that declares a contract: the status the
  * route resolved, the body its `response` schema parsed, in its format. A
  * ready `Response` is sent as is; without `response` or `format`, the result
@@ -89,9 +101,8 @@ export async function sendRouteResult(
 ): Promise<Response> {
   if (result instanceof Response) return result;
   if (contract.response === null || !hasBody(status)) return c.body(null, status);
-  const ready = parsed.has(c) && Object.is(parsed.get(c), result);
   const value =
-    contract.response && contract.validate && !ready
+    contract.response && contract.validate
       ? await parseChecked(contract.response, result, source)
       : result;
   const format = contract.format;

@@ -18,40 +18,42 @@ import {
 import { ValidationPipe } from '../validation/validation.pipe';
 import { readBoundedBody, readJsonBody } from './json-body';
 import type { ResolvedRouteBody } from './route-contract';
-import type { ParamExtractorFactory, ParamMetadata, ParamReader } from './types';
+import type { RouteInputReader } from './route-input-registry';
+import type {
+  ParamExtractorFactory,
+  ParamMetadata,
+  ParamReader,
+  RouteInputValues,
+} from './types';
 
-// Request values for `@Body()`, `@Query()` and `@Param()`. These readers ship
-// with the parameter decorators, so an application that declares none of
-// them never bundles form parsing or schema introspection.
+// Request values for `@Body()`, `@Query()` and `@Param()`, and the validation
+// of the request schemas a route declares. These readers ship with the
+// parameter decorators, so an application that declares none of them never
+// bundles form parsing or schema introspection.
 
 type JsonObject = Record<string, unknown>;
 type FormValue = string | File;
 type FormRecord = Record<string, FormValue | FormValue[]>;
+type Group = keyof RouteInputValues;
 
 interface FormField {
   readonly multiple: boolean;
   readonly file: boolean;
 }
 
-// One read per request and value source, shared by every parameter reading it,
-// so a transforming schema runs once and a body stream is consumed once.
-const reads = new WeakMap<Context, Map<object, Promise<unknown>>>();
-const RAW_BODY = {};
-const groupKeys = new WeakMap<object, Record<'body' | 'query' | 'params', object>>();
+const DECORATOR: Record<Group, string> = { params: 'Param', query: 'Query', body: 'Body' };
 
-function once(c: Context, key: object, read: () => Promise<unknown>): Promise<unknown> {
+// One read per request and key, shared by the route and every parameter
+// reading it, so a body stream is consumed once and a schema runs once.
+const reads = new WeakMap<Context, Map<object, Promise<unknown>>>();
+const BODY = {};
+
+function readOnce<T>(c: Context, key: object, read: () => Promise<T>): Promise<T> {
   let cached = reads.get(c);
   if (!cached) reads.set(c, (cached = new Map()));
   let value = cached.get(key);
   if (!value) cached.set(key, (value = read()));
-  return value;
-}
-
-// A stable key per route contract and request group.
-function groupKey(contract: object, group: 'body' | 'query' | 'params'): object {
-  let keys = groupKeys.get(contract);
-  if (!keys) groupKeys.set(contract, (keys = { body: {}, query: {}, params: {} }));
-  return keys[group];
+  return value as Promise<T>;
 }
 
 function isObject(value: unknown): value is JsonObject {
@@ -65,19 +67,15 @@ function pick(value: unknown, name: string | undefined): unknown {
     : value;
 }
 
+function isValidationPipe(pipe: PipeTransform): boolean {
+  return pipe instanceof ValidationPipe;
+}
+
 /** The schema a `@Body(schema)`-style parameter validates with. */
 function parameterSchema(param: ParamMetadata): ValidationSchema | undefined {
   for (const pipe of param.pipes ?? [])
     if (pipe instanceof ValidationPipe && pipe.parser !== undefined) return pipe.parser;
   return undefined;
-}
-
-/** A `ValidationPipe` without a schema of its own, which validates the parameter's class. */
-function validatesClass(pipe: unknown): boolean {
-  return pipe instanceof ValidationPipe
-    ? pipe.parser === undefined
-    : pipe === ValidationPipe ||
-        (typeof pipe === 'function' && pipe.prototype instanceof ValidationPipe);
 }
 
 /** The input JSON Schema of a schema that can describe itself; undefined otherwise. */
@@ -103,10 +101,15 @@ function properties(json: JsonObject | undefined): [string, JsonObject][] {
     : [];
 }
 
-// A reader returning values the route validated, which `ValidationPipe` then
-// leaves as is whatever the pipes before it return.
-function validated(read: (c: Context) => Promise<unknown>): ParamReader {
-  return Object.assign(read, { validated: true });
+/**
+ * The keys an object schema declares, or undefined when it cannot say: it
+ * describes no object properties, or passes undeclared keys through.
+ */
+function declaredKeys(schema: ValidationSchema): Set<string> | undefined {
+  const json = describe(schema);
+  if (!isObject(json?.properties) || (json.additionalProperties ?? false) !== false)
+    return undefined;
+  return new Set(Object.keys(json.properties));
 }
 
 async function validate(schema: ValidationSchema, value: unknown): Promise<unknown> {
@@ -149,9 +152,9 @@ function formFields(
   return fields;
 }
 
-// Parse a form body within the route's limits: every entry is measured (413)
-// before any field is interpreted.
-async function readFormData(c: Context, body: ResolvedRouteBody): Promise<FormData | undefined> {
+// A form body within the route's limits: every entry is measured (413) before
+// any field is interpreted.
+async function readFormBody(c: Context, body: ResolvedRouteBody): Promise<FormData | undefined> {
   if (c.req.raw.body === null) return undefined;
   const media =
     body.kind === 'multipart' ? 'multipart/form-data' : 'application/x-www-form-urlencoded';
@@ -184,11 +187,27 @@ async function readFormData(c: Context, body: ResolvedRouteBody): Promise<FormDa
   return form;
 }
 
-// Named entries; with declared fields, unknown, repeated and mistyped entries
-// answer 400 and a declared array keeps a single entry as an array.
-function formRecord(form: FormData, fields: Map<string, FormField> | undefined): FormRecord {
+/**
+ * The request body in the encoding a route declares, read once per request
+ * after guards: parsed JSON (the default, 415 for other media types), or the
+ * `FormData` of a form or multipart route, within its limits (413).
+ * `undefined` when the request has no body.
+ */
+function readRouteBody(c: Context, body: ResolvedRouteBody | undefined): Promise<unknown> {
+  return readOnce(c, BODY, () =>
+    body && body.kind !== 'json'
+      ? readFormBody(c, body)
+      : readJsonBody(c, body?.maxBytes === undefined ? {} : { maxBytes: body.maxBytes }),
+  );
+}
+
+// Named entries of a form body; with declared fields, unknown, repeated and
+// mistyped entries answer 400 and a declared array keeps a single entry as an
+// array. A JSON body is returned as is.
+function formRecord(body: unknown, fields: Map<string, FormField> | undefined): unknown {
+  if (!(body instanceof FormData)) return body;
   const result: FormRecord = {};
-  for (const [name, value] of form) {
+  for (const [name, value] of body) {
     const file = typeof value !== 'string';
     const field = fields?.get(name);
     if (fields && !field) throw new BadRequestException(`Unknown form field: ${name}`);
@@ -213,69 +232,17 @@ function formRecord(form: FormData, fields: Map<string, FormField> | undefined):
   return result;
 }
 
-/**
- * `@Body()`: JSON by default (415 for other media types), or the form or
- * multipart body the route opts into, bounded by its limits. A `defineRoute`
- * body schema validates here, before the pipes. A parameter class carrying a
- * static Standard Schema, when the parameter names no schema of its own, is
- * validated where a `ValidationPipe` sits (the parameter's own, or one among
- * the global, controller and method pipes), else right after those pipes.
- */
-export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => {
-  const contract = route.contract;
-  const body = contract?.body;
-  const group = contract?.bodySchema;
-  const own = parameterSchema(param);
-  const auto =
-    group === undefined && own === undefined ? staticStandardSchema(metatype) : undefined;
-  // A whole-body schema declares the form's fields; a named parameter's own
-  // schema describes only its member.
-  const fields =
-    body && body.kind !== 'json'
-      ? formFields(
-          group ?? (param.name === undefined ? (own ?? auto) : undefined),
-          body,
-          route.source,
-        )
-      : undefined;
-  const form = body && body.kind !== 'json' ? body : undefined;
-  const raw = async (c: Context): Promise<unknown> => {
-    if (!form)
-      return once(c, RAW_BODY, () =>
-        readJsonBody(c, body?.maxBytes === undefined ? {} : { maxBytes: body.maxBytes }),
-      );
-    const data = await once(c, RAW_BODY, () => readFormData(c, form));
-    return data instanceof FormData ? formRecord(data, fields) : undefined;
+// Query keys a schema declares as arrays, in any member of a union.
+function arrayKeys(json: JsonObject | undefined): Set<string> {
+  const keys = new Set<string>();
+  const collect = (node: unknown): void => {
+    if (!isObject(node)) return;
+    for (const [key, field] of properties(node)) if (field.type === 'array') keys.add(key);
+    for (const member of ['anyOf', 'oneOf', 'allOf'])
+      if (Array.isArray(node[member])) for (const item of node[member]) collect(item);
   };
-  if (contract && group) {
-    const key = groupKey(contract, 'body');
-    return validated(async (c) =>
-      pick(await once(c, key, async () => validate(group, await raw(c))), param.name),
-    );
-  }
-  const read = async (c: Context): Promise<unknown> => pick(await raw(c), param.name);
-  if (!auto || param.pipes?.some(validatesClass)) return read;
-  // The class describes the value the parameter receives: the whole body, or
-  // the member a named parameter reads.
-  return Object.assign(read, {
-    validate: (value: unknown, pipes: readonly PipeTransform[]) =>
-      pipes.some(validatesClass) ? value : validate(auto, value),
-  });
-};
-
-// Query keys a schema declares as arrays; `true` when a named parameter's own
-// schema is an array.
-function arrayKeys(
-  schema: ValidationSchema | undefined,
-  name: string | undefined,
-): Set<string> | true {
-  const json = describe(schema);
-  if (name !== undefined && !json?.properties) return json?.type === 'array' ? true : new Set();
-  return new Set(
-    properties(json)
-      .filter(([, field]) => field.type === 'array')
-      .map(([key]) => key),
-  );
+  collect(json);
+  return keys;
 }
 
 function wireQuery(c: Context, arrays: Set<string>): Record<string, string | string[]> {
@@ -292,30 +259,125 @@ function wireQuery(c: Context, arrays: Set<string>): Record<string, string | str
   return query;
 }
 
+// Path parameter names of a served path (`/:id`, `/:id{[0-9]+}`, `/:id?`).
+function pathParameters(path: string): string[] {
+  return [...path.matchAll(/\/:([^/{}?]+)/g)].map((match) => match[1]!);
+}
+
+/**
+ * Validates what a route declares — its `params`, `query` and `body` schemas,
+ * and its body encoding with its limits — once per request, after guards,
+ * before the handler, whether or not a parameter reads them. The application
+ * fails to start when a `params` schema that describes its keys leaves out a
+ * path parameter the route serves.
+ */
+export const readRouteInput: RouteInputReader = (route) => {
+  const contract = route.contract!;
+  const { params, query, bodySchema } = contract;
+  const declared = params && declaredKeys(params);
+  if (declared) {
+    const missing = [...new Set(route.paths.flatMap(pathParameters))].filter(
+      (name) => !declared.has(name),
+    );
+    if (missing.length)
+      throw new Error(
+        `${route.source}: its params schema does not declare the path parameter${missing.length > 1 ? 's' : ''} ${missing.join(', ')}`,
+      );
+  }
+  const arrays = arrayKeys(describe(query));
+  const body = contract.body;
+  const fields =
+    body && body.kind !== 'json' ? formFields(bodySchema, body, route.source) : undefined;
+  return (c) =>
+    readOnce(c, contract, async () => {
+      const values = {
+        params: params && (await validate(params, c.req.param())),
+        query: query && (await validate(query, wireQuery(c, arrays))),
+      };
+      const raw = body || bodySchema ? await readRouteBody(c, body) : undefined;
+      return {
+        ...values,
+        body: bodySchema && (await validate(bodySchema, formRecord(raw, fields))),
+      };
+    });
+};
+
+// A parameter reading a group the route declares: the validated value, whole
+// or one key, left alone by `ValidationPipe`s. Its own schema would validate
+// the value twice, and a key the schema does not declare would read nothing.
+function readDeclared(
+  route: Parameters<ParamExtractorFactory>[0],
+  param: ParamMetadata,
+  group: Group,
+  schema: ValidationSchema,
+): ParamReader {
+  const decorator = `@${DECORATOR[group]}(${param.name === undefined ? '' : `'${param.name}'`})`;
+  if (parameterSchema(param) !== undefined)
+    throw new Error(
+      `${route.source}: the route declares the ${group} schema; remove the schema from @${DECORATOR[group]}()`,
+    );
+  const keys = param.name === undefined ? undefined : declaredKeys(schema);
+  if (keys && !keys.has(param.name!))
+    throw new Error(
+      `${route.source}: ${decorator} reads a key the route's ${group} schema does not declare`,
+    );
+  const input = route.input!;
+  return Object.assign(async (c: Context) => pick((await input(c))[group], param.name), {
+    skips: isValidationPipe,
+  });
+}
+
+/**
+ * `@Body()`: JSON by default (415 for other media types), or the form or
+ * multipart body the route opts into, bounded by its limits. A body schema the
+ * route declares validates it before the pipes. A parameter class carrying a
+ * static Standard Schema, when the parameter names no schema of its own, is
+ * validated as the body is read unless a `ValidationPipe` applies to the
+ * parameter (its own, or a global, controller or method pipe); then that pipe
+ * validates it, in pipe order.
+ */
+export const readBodyParam: ParamExtractorFactory = (route, param, metatype) => {
+  const contract = route.contract;
+  if (contract?.bodySchema) return readDeclared(route, param, 'body', contract.bodySchema);
+  const body = contract?.body;
+  const own = parameterSchema(param);
+  const auto = own === undefined ? staticStandardSchema(metatype) : undefined;
+  // A whole-body schema declares the form's fields; a named parameter's own
+  // schema describes only its member.
+  const fields =
+    body && body.kind !== 'json'
+      ? formFields(param.name === undefined ? (own ?? auto) : undefined, body, route.source)
+      : undefined;
+  return async (c, pipes) => {
+    const value = pick(formRecord(await readRouteBody(c, body), fields), param.name);
+    // The class describes the value the parameter receives: the whole body,
+    // or the member a named parameter reads.
+    return auto && !pipes.some(isValidationPipe) ? validate(auto, value) : value;
+  };
+};
+
 /**
  * `@Query()`: repeated keys (`?tag=a&tag=b`) and keys the schema declares as
- * arrays arrive as arrays; every other key stays a string. The schema is the
- * route's, the parameter's own, or its class's (validated by a global pipe).
- * Without a schema, a named parameter declared as a string, number or boolean
- * receives the first value, and one declared as an array with no pipe (such as
- * `ParseArrayPipe`, which splits one value) always receives an array.
+ * arrays (in any member of a union) arrive as arrays; every other key stays a
+ * string. The schema is the route's, the parameter's own, or its class's
+ * (validated by a global pipe). Without a schema, a named parameter declared
+ * as a string, number or boolean receives the first value, one declared as an
+ * array with no pipe always receives an array, and any other (an array a pipe
+ * such as `ParseArrayPipe` splits, a union, `unknown`) receives one value or
+ * the repeated keys.
  */
 export const readQueryParam: ParamExtractorFactory = (route, param, metatype) => {
-  const contract = route.contract;
-  const group = contract?.query;
-  const schema =
-    group ?? parameterSchema(param) ?? (isValidationSchema(metatype) ? metatype : undefined);
-  const arrays = arrayKeys(schema, group ? undefined : param.name);
-  const keys = arrays === true ? new Set<string>() : arrays;
-  if (contract && group) {
-    const key = groupKey(contract, 'query');
-    return validated(async (c) =>
-      pick(await once(c, key, () => validate(group, wireQuery(c, keys))), param.name),
-    );
-  }
+  const group = route.contract?.query;
+  if (group) return readDeclared(route, param, 'query', group);
+  const schema = parameterSchema(param) ?? (isValidationSchema(metatype) ? metatype : undefined);
+  const json = describe(schema);
   const name = param.name;
-  if (name === undefined) return (c) => wireQuery(c, keys);
-  const always = arrays === true || (!schema && metatype === Array && !param.pipes?.length);
+  if (name === undefined) {
+    const arrays = arrayKeys(json);
+    return (c) => wireQuery(c, arrays);
+  }
+  // A named parameter's own schema describes its value.
+  const always = json?.type === 'array' || (!schema && metatype === Array && !param.pipes?.length);
   const first = !schema && (metatype === String || metatype === Number || metatype === Boolean);
   return (c) => {
     const values = c.req.queries(name);
@@ -323,14 +385,9 @@ export const readQueryParam: ParamExtractorFactory = (route, param, metatype) =>
   };
 };
 
-/** `@Param()`: a `defineRoute` params schema validates the path parameters once. */
+/** `@Param()`: path parameters, or the values the route's params schema validated. */
 export const readPathParam: ParamExtractorFactory = (route, param) => {
-  const contract = route.contract;
-  const group = contract?.params;
-  if (!contract || !group)
-    return (c) => (param.name === undefined ? c.req.param() : c.req.param(param.name));
-  const key = groupKey(contract, 'params');
-  return validated(async (c) =>
-    pick(await once(c, key, () => validate(group, c.req.param())), param.name),
-  );
+  const group = route.contract?.params;
+  if (group) return readDeclared(route, param, 'params', group);
+  return (c) => (param.name === undefined ? c.req.param() : c.req.param(param.name));
 };

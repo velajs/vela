@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { Body, Controller, Module, Post, VelaFactory } from '../../index';
+import {
+  APP_INTERCEPTOR,
+  Body,
+  Controller,
+  Get,
+  Module,
+  Post,
+  RawBody,
+  VelaFactory,
+  type CallHandler,
+  type ExecutionContext,
+  type NestInterceptor,
+} from '../../index';
+import { CacheModule, CacheResponse } from '../../cache/index';
 import { defineRoute, type ContractBody } from '../../contract/index';
 import { createOpenApiDocument } from '../../openapi/index';
 import type { SchemaOutput } from '../../validation/index';
@@ -43,7 +56,59 @@ class Greetings {
     return { kind: form.kind, bytes: (await form.file.arrayBuffer()).byteLength };
   }
 }
-@Module({ controllers: [Greetings] })
+const archive = defineRoute({
+  method: 'POST',
+  path: '/tasks/:id/archive',
+  params: z.object({ id: z.uuid() }),
+  query: z.object({ confirm: z.literal('yes') }),
+  body: z.object({ reason: z.string().min(3) }),
+  response: z.object({ ok: z.boolean() }),
+});
+
+let reads = 0;
+
+// Adds a field in place to what the cached route returns, outside the cache.
+class Stamp implements NestInterceptor {
+  async intercept(context: ExecutionContext, next: CallHandler) {
+    const value = await next.handle();
+    if (context.getHandlerName() === 'cached' && value !== null && typeof value === 'object')
+      Reflect.set(value, 'internal', true);
+    return value;
+  }
+}
+
+@Controller('/tasks')
+class Tasks {
+  @Post('/:id/archive', archive)
+  archiveIt() {
+    return { ok: true };
+  }
+
+  @Post('/notes', { body: { json: { maxBytes: 64 } } })
+  note(@Body() body: unknown, @RawBody() raw: Uint8Array) {
+    return { body, bytes: raw.byteLength };
+  }
+
+  @Get('/cached', { response: z.object({ reads: z.number() }) })
+  @CacheResponse({ ttl: 60 })
+  cached() {
+    return { reads: ++reads };
+  }
+}
+
+@Module({ providers: [{ provide: APP_INTERCEPTOR, useClass: Stamp }] })
+class StampModule {}
+
+@Module({
+  imports: [
+    StampModule,
+    CacheModule.forRoot({
+      namespace: 'workers',
+      scope: () => ({ visibility: 'public', partition: 'tasks' }),
+    }),
+  ],
+  controllers: [Greetings, Tasks],
+})
 class App {}
 
 function json(path: string, body: unknown): Request {
@@ -100,6 +165,40 @@ describe('route contracts inside bare workerd', () => {
 
       const wrongMedia = await app.fetch(json('/greetings/upload', { kind: 'avatar' }));
       expect(wrongMedia.status).toBe(415);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('validates every group a contract declares and lets a later reader read a bounded body', async () => {
+    const app = await VelaFactory.create(App);
+    try {
+      const path = '/tasks/2f1c2a4e-6f0b-4c1d-9d2e-8a7b6c5d4e3f/archive';
+      const plain = await app.fetch(
+        new Request(`http://example.test${path}?confirm=yes`, {
+          method: 'POST',
+          headers: { 'content-type': 'text/plain' },
+          body: 'x',
+        }),
+      );
+      expect(plain.status).toBe(415);
+      expect((await app.fetch(json(path, { reason: 'done' }))).status).toBe(400);
+      expect((await app.fetch(json(`${path}?confirm=yes`, { reason: 'done' }))).status).toBe(201);
+      const note = await app.fetch(json('/tasks/notes', { a: 1 }));
+      expect(await note.json()).toEqual({ body: { a: 1 }, bytes: 7 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('replays the response a cached route sent, after interceptors outside the cache', async () => {
+    const app = await VelaFactory.create(App);
+    try {
+      for (let i = 0; i < 2; i++) {
+        const response = await app.fetch(new Request('http://example.test/tasks/cached'));
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ reads: 1 });
+      }
     } finally {
       await app.close();
     }

@@ -17,25 +17,38 @@ export interface RouteMetadata {
   contract?: RouteContractMetadata;
 }
 
+/** What a route's declared request schemas produced for one request. */
+export interface RouteInputValues {
+  readonly params?: unknown;
+  readonly query?: unknown;
+  readonly body?: unknown;
+}
+
 /** The route a parameter reader is built for, once, when the application starts. */
 export interface ParamExtractionRoute {
   readonly method: string;
   readonly contract?: RouteContractMetadata;
   /** `Controller.handler`, for configuration errors. */
   readonly source: string;
+  /** The paths the route serves, with the global prefix, version and `:params`. */
+  readonly paths: readonly string[];
+  /**
+   * The request groups the route's schemas validated, read once per request
+   * after guards. Present when the route declares `params`, `query` or `body`
+   * schemas; a parameter reading a declared group reads its value here.
+   */
+  readonly input?: (c: Context) => Promise<RouteInputValues>;
 }
 
 /**
- * A parameter's request reader, built once per route. `validated` marks a
- * reader whose value the route validated (a `defineRoute` group), so pipes
- * receive it as `ArgumentMetadata.validated`. `validate` runs after the
- * global, controller and method pipes, which it receives, and before the
- * parameter's own pipes: `@Body()` checks its class's static schema there
- * when none of those pipes is a `ValidationPipe`.
+ * A parameter's request reader, built once per route. It runs after guards
+ * and receives the pipes that apply to the parameter: the global, controller
+ * and method pipes, then its own, instantiated. `skips` names the pipes that
+ * do not run on what it returns: a `ValidationPipe`, on a value the route's
+ * declared schema validated.
  */
-export type ParamReader = ((c: Context) => unknown) & {
-  readonly validated?: boolean;
-  readonly validate?: (value: unknown, pipes: readonly PipeTransform[]) => unknown;
+export type ParamReader = ((c: Context, pipes: readonly PipeTransform[]) => unknown) & {
+  readonly skips?: (pipe: PipeTransform) => boolean;
 };
 
 /**

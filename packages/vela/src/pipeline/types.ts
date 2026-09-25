@@ -92,12 +92,6 @@ export interface ArgumentMetadata {
   /** Reflected runtime metadata or an explicit schema descriptor; consumers must narrow it. */
   metatype?: unknown;
   data?: string;
-  /**
-   * The route validated the value before the pipes: a `defineRoute` body,
-   * query or params group. `ValidationPipe` leaves such a value as is, unless
-   * it was built with a schema of its own, whatever earlier pipes returned.
-   */
-  validated?: boolean;
 }
 
 export interface PipeTransform<T = unknown, R = unknown> {

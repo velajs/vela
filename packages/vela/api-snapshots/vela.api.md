@@ -234,7 +234,21 @@ declare const ConfigurableModuleClass: ConfigurableModuleClassType<CacheModuleOp
 
 export declare class CacheModule extends ConfigurableModuleClass {}
 
+interface CachedResponse {
+  readonly status: number;
+
+  readonly type: string;
+  readonly body: string;
+}
+
+type CachedResponseLookup = {
+  readonly hit: CachedResponse;
+} | {
+  readonly store: (response: CachedResponse) => Promise<void>;
+};
+
 export declare class CacheService {
+  #private;
   private readonly container?;
   readonly options: Readonly<ResolvedCacheOptions>;
   constructor(options: CacheModuleOptions, env?: VelaEnv, container?: Container | undefined);
@@ -243,7 +257,10 @@ export declare class CacheService {
   /** @internal */
   scoped(scope: CacheScope, domain: 'service' | 'http'): ScopedCache;
   /** @internal */
+  lookupResponse(scope: CacheScope, key: string, options: CacheEntryOptions): Promise<CachedResponseLookup | undefined>;
+  /** @internal */
   report(operation: 'read' | 'write' | 'invalidate' | 'scope', error: unknown): void;
+  private acceptResponse;
   private accept;
 }
 
@@ -4311,6 +4328,8 @@ interface ResolvedRouteBody {
   readonly kind: 'json' | 'form' | 'multipart';
 
   readonly maxBytes?: number;
+
+  readonly explicitMaxBytes: boolean;
   readonly maxFields: number;
   readonly maxFieldBytes: number;
   readonly maxFiles: number;
@@ -5189,8 +5208,6 @@ interface ArgumentMetadata {
 
   metatype?: unknown;
   data?: string;
-
-  validated?: boolean;
 }
 interface PipeTransform<T = unknown, R = unknown> {
   transform(value: T, metadata: ArgumentMetadata): R | Promise<R>;
@@ -5232,16 +5249,25 @@ interface RouteMetadata {
   contract?: RouteContractMetadata;
 }
 
+interface RouteInputValues {
+  readonly params?: unknown;
+  readonly query?: unknown;
+  readonly body?: unknown;
+}
+
 interface ParamExtractionRoute {
   readonly method: string;
   readonly contract?: RouteContractMetadata;
 
   readonly source: string;
+
+  readonly paths: readonly string[];
+
+  readonly input?: (c: Context) => Promise<RouteInputValues>;
 }
 
-type ParamReader = ((c: Context) => unknown) & {
-  readonly validated?: boolean;
-  readonly validate?: (value: unknown, pipes: readonly PipeTransform[]) => unknown;
+type ParamReader = ((c: Context, pipes: readonly PipeTransform[]) => unknown) & {
+  readonly skips?: (pipe: PipeTransform) => boolean;
 };
 
 type ParamExtractorFactory = (route: ParamExtractionRoute, param: ParamMetadata, metatype: unknown) => ParamReader;
@@ -5523,6 +5549,7 @@ declare class RouteManager {
   private readonly handlerExecutor;
   private readonly ambientContainer;
   private readonly bodyLimit;
+  private readonly bodyLimitCap;
   private readonly bodyLimitOverrides;
   private readonly queryMaxParameters;
   private readonly queryMaxDepth;
