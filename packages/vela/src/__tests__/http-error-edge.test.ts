@@ -283,6 +283,47 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
     expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['a fractional 4xx', 404.5],
+    ['NaN', Number.NaN],
+    ['a status above 599', 700],
+  ])(
+    'hono HTTPException with %s status → rendered as a redacted 500 AND reported',
+    async (_label, status) => {
+      @Controller('/ok')
+      class OkController {
+        @Get()
+        handle() {
+          return { ok: true };
+        }
+      }
+
+      @Module({ controllers: [OkController] })
+      class AppModule {}
+
+      const reported: unknown[] = [];
+      const app = await VelaFactory.create(AppModule);
+      const failure = new HTTPException(404, { message: 'odd status secret' });
+      // A JavaScript caller can construct one with any status.
+      Object.defineProperty(failure, 'status', { value: status });
+      app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+        throw failure;
+      });
+
+      const res = await app.getHonoApp().request('/boom');
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body).toEqual({ error: { code: 'internal', message: 'Internal Server Error' } });
+      // The default reporter logs it: a status it cannot answer is no client fault.
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+
+      // A custom reporter receives it from the raw edge too.
+      app.useGlobalExceptionHandler({ report: (error) => reported.push(error) });
+      await app.getHonoApp().request('/boom');
+      expect(reported).toEqual([failure]);
+    },
+  );
+
   it('hono HTTPException status<500 (429) → its message as JSON, NOT reported', async () => {
     @Controller('/ok')
     class OkController {
