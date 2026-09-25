@@ -14,7 +14,7 @@ Routes read JSON by default (415 for other media types). A route opts into a for
 
 `defineSerializer` returns a Standard Schema from the domain input to the wire output, so it serves as a route's `response` and documents its output schema. `standardJsonSchema` and `zodToJsonSchema` take `libraryOptions` for the schema library's converter.
 
-With route contracts, a minimal `VelaFactory.create()` Worker (one controller, bundled by Wrangler with `--minify`) measures 136,350 bytes raw and 46,040 bytes gzipped, against 130,315 and 43,658 for 1.31.0, and a minimal `createCloudflareWorker()` Worker 161,677 bytes raw and 54,741 bytes gzipped, against 155,636 and 52,363, within their unchanged size budgets.
+With route contracts, a minimal `VelaFactory.create()` Worker (one controller, bundled by Wrangler with `--minify`) measures 136,386 bytes raw and 46,054 bytes gzipped, against 130,315 and 43,658 for 1.31.0, and a minimal `createCloudflareWorker()` Worker 161,713 bytes raw and 54,752 bytes gzipped, against 155,636 and 52,363, within their unchanged size budgets.
 
 **Behavior change:** a routed inherited method now receives the parameters its ancestor declares on the method, and serves the ancestor route's options when it declares none, instead of receiving the Hono context and sending its result without them.
 
