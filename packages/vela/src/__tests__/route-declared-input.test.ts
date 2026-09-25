@@ -16,7 +16,7 @@ import {
   VelaFactory,
   type VelaApplication,
 } from '../index';
-import { defineRoute, type ContractBody } from '../contract/index';
+import { defineRoute, type ContractBody, type ContractParams } from '../contract/index';
 
 // Declared means enforced: a route validates every request group it declares
 // once, after guards, whether or not a parameter reads it.
@@ -236,7 +236,7 @@ async function serve(controller: new () => object) {
 const messages = (reported: unknown[]) =>
   reported.map((error) => (error instanceof Error ? error.message : String(error)));
 
-describe('named parameters on schemas that cannot list their keys', () => {
+describe('parameters on schemas that cannot list their keys', () => {
   it('checks path parameters against a schema with fields JSON Schema cannot express', async () => {
     const read = defineRoute({
       method: 'GET',
@@ -292,6 +292,62 @@ describe('named parameters on schemas that cannot list their keys', () => {
       expect(messages(reported)).toEqual([
         "Items.read: @Param('org') reads a key the route's params schema does not return",
         "Items.parsed: @Param('org') reads a key the route's params schema does not return",
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('answers 500 when a whole @Param() reads params its schema dropped a path parameter from', async () => {
+    const read = defineRoute({
+      method: 'GET',
+      path: '/teams/:org/members/:id',
+      params: v.object({ id: v.string() }),
+      response: z.object({ org: z.string(), id: z.string() }),
+    });
+    const parsed = defineRoute({
+      method: 'GET',
+      path: '/teams/:org/parsed/:id',
+      params: { parse: (value: unknown) => ({ id: String(Reflect.get(Object(value), 'id')) }) },
+      response: z.object({ org: z.string(), id: z.string() }),
+    });
+    const kept = defineRoute({
+      method: 'GET',
+      path: '/teams/:org/kept/:id',
+      params: v.object({ org: v.string(), id: v.string() }),
+      response: z.object({ org: z.string(), id: z.string() }),
+    });
+    calls = 0;
+    @Controller('/teams/:org')
+    class Members {
+      @Get('/members/:id', read)
+      read(@Param() params: Record<string, string | undefined>) {
+        calls++;
+        return { org: params.org ?? 'none', id: params.id ?? 'none' };
+      }
+
+      @Get('/parsed/:id', parsed)
+      parsed(@Param() params: Record<string, string | undefined>) {
+        calls++;
+        return { org: params.org ?? 'none', id: params.id ?? 'none' };
+      }
+
+      @Get('/kept/:id', kept)
+      kept(@Param() params: ContractParams<typeof kept>) {
+        return params;
+      }
+    }
+    const { app, reported } = await serve(Members);
+    try {
+      expect((await send(app, 'GET', '/teams/acme/members/1')).status).toBe(500);
+      expect((await send(app, 'GET', '/teams/acme/parsed/1')).status).toBe(500);
+      expect(calls).toBe(0);
+      const response = await send(app, 'GET', '/teams/acme/kept/1');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ org: 'acme', id: '1' });
+      expect(messages(reported)).toEqual([
+        "Members.read: @Param() reads params without the path parameter org; the route's params schema does not return it",
+        "Members.parsed: @Param() reads params without the path parameter org; the route's params schema does not return it",
       ]);
     } finally {
       await app.close();

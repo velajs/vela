@@ -323,12 +323,19 @@ async function carries(
   return raw instanceof FormData ? raw.has(name) : isObject(raw) && Object.hasOwn(raw, name);
 }
 
+// Whether a validated value lacks a key: nothing, or an object without it.
+function lacks(value: unknown, name: string): boolean {
+  return value === null || value === undefined || (typeof value === 'object' && !(name in value));
+}
+
 // A parameter reading a group the route declares: the validated value, whole
 // or one key, left alone by `ValidationPipe`s. Its own schema would validate
 // the value twice, and a key the schema does not return would read nothing:
 // the application fails to start when the schema lists the keys it returns,
 // and otherwise the request fails (500) when it carries a key the validated
-// value lacks.
+// value lacks. A whole `@Param()` on a params schema that cannot list the keys
+// it accepts (which the route checks at startup) fails the request when the
+// validated params lack a path parameter the request carries.
 function readDeclared(
   route: Parameters<ParamExtractorFactory>[0],
   param: ParamMetadata,
@@ -346,14 +353,23 @@ function readDeclared(
     throw new Error(
       `${route.source}: ${decorator} reads a key the route's ${group} schema does not declare`,
     );
+  const unchecked =
+    name === undefined && group === 'params' && declaredKeys(schema, 'input') === undefined;
   const input = route.input!;
   const body = route.contract?.body;
   return Object.assign(
     async (c: Context) => {
       const value = (await input(c))[group];
-      if (name === undefined) return value;
-      const lacks = value == null || (typeof value === 'object' && !(name in value));
-      if (lacks && (await carries(c, group, name, body)))
+      if (name === undefined) {
+        if (unchecked)
+          for (const [key, raw] of Object.entries(c.req.param()))
+            if (raw !== undefined && lacks(value, key))
+              throw new Error(
+                `${route.source}: ${decorator} reads params without the path parameter ${key}; the route's params schema does not return it`,
+              );
+        return value;
+      }
+      if (lacks(value, name) && (await carries(c, group, name, body)))
         throw new Error(
           `${route.source}: ${decorator} reads a key the route's ${group} schema does not return`,
         );
