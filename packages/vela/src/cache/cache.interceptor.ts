@@ -14,7 +14,10 @@ import { validateEntryOptions, validateLabel, validateScope } from './cache.vali
  * Cache the JSON or text response a GET route sends — after interceptors and
  * its `response` schema — in `CacheModule`'s store, under the scope its
  * resolver selects after guards; a hit replays it without running the
- * handler or parsing again. Routes without it never cache.
+ * handler or parsing again. The entry includes what every interceptor did for
+ * the request that stored it, those outside `CacheInterceptor` included, so
+ * the scope must partition by everything they vary the response on. Routes
+ * without it never cache.
  */
 export function CacheResponse(options: CacheResponseOptions = {}) {
   validateEntryOptions(options);

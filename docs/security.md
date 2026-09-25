@@ -316,7 +316,10 @@ application-wide, and undecorated routes never cache. Its required `scope`
 resolver runs after guards: public scopes bypass requests carrying credentials
 or a trusted identity, private scopes need trusted identity/tenant dimensions,
 responses that set cookies are never stored, and cache failures cannot turn
-committed writes into reported rollbacks. See [the caching guide](caching.md).
+committed writes into reported rollbacks. An entry is the response a route
+sent, after every interceptor, replayed to every request in its scope, so the
+scope must partition by everything the handler or any interceptor varies the
+response on, such as role, locale or viewer. See [the caching guide](caching.md).
 
 ## Signed URLs
 

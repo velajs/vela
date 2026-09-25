@@ -64,7 +64,19 @@ body, after every interceptor and the route's `response` schema. A hit replays
 it without running the handler or parsing again; interceptors outside
 `CacheInterceptor` (global ones registered before `CacheModule`'s) receive the
 replayed `Response`, and a value they return instead of a `Response` is
-ignored, so a hit sends exactly what the miss that stored it sent. Entries carry
+ignored, so a hit sends exactly what the miss that stored it sent. An
+interceptor outside it that reads the value must accept that `Response`.
+
+**Security:** an entry includes what every interceptor did for the request
+that stored it, including interceptors outside `CacheInterceptor`, which earlier
+releases ran again on each hit. Every request in the same scope receives it.
+An interceptor that shapes the response per request — removing fields by role,
+localizing, adding viewer data — has its output for the first viewer replayed to
+the others. The scope must partition by everything the handler or any
+interceptor varies the response on (role, locale, viewer); otherwise leave the
+route uncached.
+
+Entries carry
 a format version: an entry in another format, such as the handler's raw result
 earlier releases stored, is a miss. Change `namespace` (or invalidate the
 affected scopes) when deploying a tightened or incompatible response schema or
@@ -117,9 +129,12 @@ Only bounded bodies are stored: a route's JSON or text response of at most
 64 KiB by default (configurable `maxBytes`, hard maximum 1 MiB), whose JSON
 value has at most 32 levels and 10,000 visited values; programmatic values have
 the same bounds. Cached hits are independent snapshots. A handler (or an
-interceptor) returning a `Response`, streams, events, native bodies, class
-instances, accessors, cycles, nonfinite numbers and function-bearing objects are
-bypassed. Cookie-setting output, `Cache-Control: private/no-store`, declared
+interceptor) returning a `Response`, streams, events and native bodies are
+bypassed. A route entry stores the body as the route serialized it, so a class
+instance is stored with the fields its JSON has (not its getters or methods)
+and a nonfinite number as `null`. Programmatic values that are class instances,
+or hold accessors, cycles, nonfinite numbers or functions, are not stored.
+Cookie-setting output, `Cache-Control: private/no-store`, declared
 redirects and non-200 responses are bypassed. This includes response-header
 decorators. A hit replays the status, `Content-Type` and body; the route's
 `@Header` decorators apply again, but headers the skipped handler set per
@@ -129,9 +144,10 @@ pipeline still runs and must keep cookie/session work outside cacheable handlers
 Never cache passwords, credentials, session secrets or other private
 authentication material, even in a private partition. Common secret field names
 are rejected defensively; no generic cache can recognize every application
-secret. Use `shouldCache(value)` for an additional domain allowlist (a route
-entry passes the body it sends, JSON-decoded), or omit `@CacheResponse`
-entirely from sensitive routes. The same checks run on reads.
+secret. Use `shouldCache(value)` for an additional domain allowlist, or omit
+`@CacheResponse` entirely from sensitive routes. For a route entry it receives
+the body the route sends, JSON-decoded (or its text), after every interceptor
+and the `response` schema, so fields the schema strips are absent. The same checks run on reads.
 
 Store or generation-read failure means a miss; a read failure bypasses filling
 for that request. Cache write failure still sends the route's response. Loader

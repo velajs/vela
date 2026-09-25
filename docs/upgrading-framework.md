@@ -129,7 +129,15 @@ media type and body, after every interceptor and the schema — so a cache store
 never holds fields the schema strips, and a hit replays that response without
 running the handler or parsing again. Interceptors outside `CacheInterceptor`
 receive the replayed `Response` on a hit, and a value they return instead is
-ignored. Route entries carry a new address and format version, so entries an
+ignored. This has a security consequence: an entry now includes what those
+interceptors did for the request that stored it, and they no longer redo it per
+request. An interceptor outside the cache that shapes the response per viewer
+(removing fields by role, localizing) has its output for the first viewer
+replayed to every request in the same cache scope. Make the cache `scope`
+partition by everything the handler or any interceptor varies the response on,
+or leave such routes uncached. `shouldCache` receives the body the route sends,
+JSON-decoded, instead of the handler's value, so it no longer sees fields the
+`response` schema strips. Route entries carry a new address and format version, so entries an
 earlier release stored with the handler's raw result miss once after the
 upgrade, also while older isolates still write them. When you tighten a
 `response` schema, change the cache `namespace` (or invalidate the affected
@@ -166,8 +174,16 @@ and before the handler, whether or not a parameter reads it, as `@Endpoint` did.
 `@Body()`, `@Query()` and `@Param()` read the validated values, and a
 `ValidationPipe` does not validate them again. The application fails to start
 when a `params` schema leaves out a path parameter the route serves, when a
-named parameter reads a key its group's schema does not declare, and when a
-parameter declares its own schema for a declared group.
+named parameter reads a key its group's schema does not return, and when a
+parameter declares its own schema for a declared group. The key checks need a
+schema that lists its keys as JSON Schema without passing undeclared keys
+through, as a Zod object does. For any other, such as a Valibot schema, a
+`parse()` parser, a union or a transform that renames keys, a named parameter
+that reads a key the request carries but the validated value lacks fails that
+request with a 500 whose reported error names the key. The validation ships
+with `@Body`, `@Query` and `@Param`: a Worker bundle that uses none of them
+leaves it out, and a route declaring request groups or a form body then fails
+to start with an error saying so.
 
 Method decorators with `response` or `format` are `RouteMethodDecorator<Result>`
 values that check the handler's result; they are no longer assignable to

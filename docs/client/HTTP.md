@@ -202,10 +202,18 @@ values. Pipes still run on them, but a `ValidationPipe` does not validate them
 again: the route is the validator for the groups it declares, also for a
 parameter class carrying a static schema. The application fails to start when
 a parameter declares its own schema for a declared group, when a named
-parameter reads a key the group's schema does not declare, and when a `params`
+parameter reads a key the group's schema does not return, and when a `params`
 schema leaves out a path parameter the route serves (a controller prefix's
-included); a schema that cannot describe its keys as JSON Schema, or that
-passes undeclared keys through, is not checked. The decorator's method must
+included). The key checks need a schema that lists its keys as JSON Schema and
+does not pass undeclared keys through: a Zod object does, even with fields
+JSON Schema cannot express such as `z.coerce.date()`. For any other (a Valibot
+schema, a `parse()` parser, a union, a transform that renames keys), a named
+parameter that reads a key the request carries but the validated value lacks
+fails that request with a 500 whose reported error names the key. The
+validation ships with `@Body`, `@Query` and `@Param`, so a Worker bundle that
+uses none of them leaves it out; a route that declares request groups or a
+form body then fails to start with an error saying so, and reading the
+declared input with one of them fixes it. The decorator's method must
 match the contract's, and the application fails to start when the contract's
 `path` is not the path the route serves (global prefix and version included),
 or when the route adds `@HttpCode`: `ContractApp` clients are typed with the
