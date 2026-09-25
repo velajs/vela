@@ -119,7 +119,12 @@ where clients expect 204, and `@HttpCode(200)` on POST routes that must keep 200
 Without `response` or `format`, a route still sends strings as text and other
 values as JSON. The route parses its result through `response` after
 interceptors, and `@CacheResponse` stores that parsed value, so a cache store
-never holds fields the schema strips.
+never holds fields the schema strips. Route entries move to a new store address,
+so entries an earlier release stored with the handler's raw result miss once
+after the upgrade, also while older isolates still write them. A hit is sent
+without parsing again: when you tighten a `response` schema, change the cache
+`namespace` (or invalidate the affected scopes) for it to apply to entries
+stored before their TTL expires.
 
 `@Query()` without a schema returns repeated keys (`?tag=a&tag=b`) as arrays
 instead of the first value, and keys a query schema declares as arrays arrive as
@@ -129,8 +134,9 @@ parameter without a schema follows its declared type: `string`, `number` and
 a pipe always receives an array, and an `unknown` or union parameter receives
 an array for a repeated key. `string | undefined` and `string | null` are
 unions: declare such a parameter optional (`role?: string`) to keep the first
-value. Declare a schema, or `ParseArrayPipe`, for values that may be one or
-many.
+value. OpenAPI documents an `unknown` or union parameter as one value or
+repeated keys, and `vela client generate` types it `string | Array<string>`.
+Declare a schema, or `ParseArrayPipe`, for values that may be one or many.
 
 `@Body()` with no schema validates a parameter class carrying a static Standard
 Schema even without a global pipe, so bodies such a class rejects now answer

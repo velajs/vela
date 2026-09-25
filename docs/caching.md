@@ -59,7 +59,11 @@ explicitly. Namespace, visibility, partition, origin, path, canonical query, and
 optional decorator `key` are hashed with unambiguous boundaries. A custom key
 cannot replace the route or partition. Programmatic values have a separate key
 space; their tags and whole-scope invalidation still reach routes in that scope.
-Change `namespace` when deploying an incompatible response schema or cache policy.
+A route entry holds the value the route sent, already parsed by its `response`
+schema, and a hit is sent without parsing it again. Change `namespace` (or
+invalidate the affected scopes) when deploying a tightened or incompatible
+response schema or cache policy; otherwise entries stored under the earlier
+schema are served until they expire.
 
 `ttl` is seconds, default 30; zero bypasses caching. Labels/partitions are nonempty
 strings of at most 2048 UTF-8 bytes; at most 32 tags are allowed per entry. Invalid

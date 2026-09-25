@@ -91,7 +91,7 @@ The options are `response`, `status`, `format`, `contentType`, `validate` and
 `response` fails to compile. The route parses the final result, after
 interceptors, through `response`: a stripping schema removes undeclared fields,
 and a result the schema rejects answers 500; `@CacheResponse` stores the
-parsed value. With `response`, JSON is the default format, including strings
+parsed value and sends a hit without parsing it again. With `response`, JSON is the default format, including strings
 and `null`; `format: 'text'` sends a string. Without `response` or `format`, the
 route sends strings as text and other values as JSON, like a route without
 options. A handler may always return a ready `Response`. Invalid input returns
@@ -133,8 +133,11 @@ follows its declared type: `@Query('sort') sort: string` (or `number`,
 pipe always receives an array, and a parameter typed `unknown` or a union
 receives an array for a repeated key. `string | undefined` and `string | null`
 are unions too; declare the parameter optional (`sort?: string`) to receive the
-first value. Declare a schema for security-relevant query values. OpenAPI documents array query parameters with `style: form` and
-`explode: true`.
+first value. Declare a schema for security-relevant query values. OpenAPI
+documents array query parameters with `style: form` and `explode: true`, and an
+`unknown` or union parameter without a schema as one value or repeated keys
+(`oneOf` a string or a string array), which `vela client generate` types
+`string | Array<string>`.
 
 ### Shared `defineRoute` contracts
 

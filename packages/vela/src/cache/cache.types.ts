@@ -55,7 +55,12 @@ export interface CacheResponseOptions extends CacheEntryOptions {
 }
 
 export interface CacheModuleOptions {
-  /** Stable application/deployment namespace; use a different namespace for incompatible schemas. */
+  /**
+   * Stable application/deployment namespace. A `@CacheResponse` hit is sent
+   * without parsing again, so use a different namespace when a route's
+   * `response` schema is tightened or becomes incompatible, or entries stored
+   * under the earlier schema are served until they expire.
+   */
   namespace: string;
   /** Runs after guards. Undefined or a failed resolver bypasses caching. */
   scope: (context: ExecutionContext) => Awaitable<CacheScope | undefined>;

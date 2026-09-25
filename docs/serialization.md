@@ -6,7 +6,9 @@ that strips unknown fields removes a stored password from the public
 representation. The same schema documents the response in OpenAPI and types
 the generated client, and a handler whose return type does not match it fails
 to compile. `@CacheResponse` stores the parsed value, so a cache store never
-holds fields the schema strips, and a cache hit is sent without parsing again.
+holds fields the schema strips, and a cache hit is sent without parsing again:
+change the cache `namespace` when you tighten a response schema, or entries
+stored before it keep their fields until they expire.
 
 ```ts
 import { Controller, Get } from '@velajs/vela';

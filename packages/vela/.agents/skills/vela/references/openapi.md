@@ -54,7 +54,7 @@ class CatalogController {
 - `@ApiDoc({ summary?, description?, operationId?, deprecated?, tags? })` — class or method.
 - `@ApiResponse({ status, description, schema? })` — Nest's shape; method; stackable for multiple statuses (`status` may be a number, `'4XX'` or `'default'`). `schema` is a Standard Schema (Zod, Valibot, …) or a `defineDto` descriptor; raw JSON Schema is rejected when the decorator runs.
 - The success response comes from the route: its status (POST 201, `response: null` 204, otherwise 200, or `status`/`@HttpCode`) and its `response` schema (output direction). An `@ApiResponse` for that status only describes it; one for another 2xx is listed beside it.
-- Request schemas come from parameter decorators (`@Body(schema)`, `@Query(schema)`, `@Param('id', schema)`, `@Headers('x', schema)`) or a `defineRoute` contract's `params`/`query`/`body`. Array query parameters get `style: form`, `explode: true`; form routes document their media type, field `encoding` and `x-vela-body-limits`.
+- Request schemas come from parameter decorators (`@Body(schema)`, `@Query(schema)`, `@Param('id', schema)`, `@Headers('x', schema)`) or a `defineRoute` contract's `params`/`query`/`body`. Array query parameters get `style: form`, `explode: true`, and a named query parameter without a schema typed `unknown` or a union is documented as a string or string array; form routes document their media type, field `encoding` and `x-vela-body-limits`.
 
 ### operationId from the route name
 
