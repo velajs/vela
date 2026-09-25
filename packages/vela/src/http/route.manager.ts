@@ -899,7 +899,8 @@ export class RouteManager {
 
     // Security boundary: reject oversized input before any user middleware,
     // argument extraction, validation pipe, guard, or signed-body capture can
-    // buffer/hash it. Hono also counts streaming bodies without Content-Length.
+    // buffer/hash it. Hono buffers a body without Content-Length up to the
+    // application's limit; a route's own limit counts it as it is read.
     app.use('*', async (c, next) => {
       let seeded = false;
       const seedContext = (): void => {
@@ -908,8 +909,8 @@ export class RouteManager {
         seeded = true;
       };
       const normalizedNext = async (): Promise<void> => {
-        // Hono replaces bodyful requests without Content-Length. Guards,
-        // middleware, and injected context must share that exact Request.
+        // A body without Content-Length arrives on a replacement Request.
+        // Guards, middleware, and injected context must share that exact one.
         seedContext();
         await next();
       };
