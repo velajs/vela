@@ -69,10 +69,13 @@ describe('gateway upgrade routes', () => {
     class RoomsGateway {}
     @WebSocketGateway({ path: '/local/ws' })
     class LocalGateway {}
-    @Module({
-      imports: [WebSocketModule.forRoot(), WebSocketModule.forRoot({ key: 'second' })],
-      providers: [RoomsGateway, LocalGateway],
-    })
+    // The gateways' module sees one server; each WebSocketModule instance's
+    // dispatcher discovers the gateways application-wide.
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomsGateway, LocalGateway] })
+    class Gateways {}
+    @Module({ imports: [WebSocketModule.forRoot({ key: 'second' })] })
+    class Other {}
+    @Module({ imports: [Gateways, Other] })
     class App {}
 
     const app = await createCloudflareApp(App, { env: {} });
