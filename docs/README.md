@@ -50,7 +50,10 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 
 - [Native Cloudflare composition](../apps/cloudflare-composition/README.md): tested Browser Run,
   Workers AI / AI Gateway, VPC and Images recipes with authorization and bounded I/O.
-
+- [Hyperdrive CRUD](../apps/hyperdrive-crud/README.md): invocation-owned PostgreSQL
+  connections through the existing Drizzle adapter.
+- [Vectorize retrieval](../packages/ai/docs/vectorize.md): candidate search with
+  authoritative publication storage, revisions and reconciliation.
 - [Cloudflare security](cloudflare-security.md): platform identity, signed R2
   URLs, and Durable Object WebSockets.
 - [Cloudflare service acceptance](cloudflare-live-validation.md): opt-in service
