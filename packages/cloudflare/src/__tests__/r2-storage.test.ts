@@ -44,7 +44,7 @@ function bucket(objects = new Map<string, string>()) {
 }
 
 describe('r2Storage({ binding })', () => {
-  const storage = StorageModule.forRoot({ driver: r2Storage({ binding: 'UPLOADS' }) });
+  const storage = StorageModule.register({ driver: r2Storage({ binding: 'UPLOADS' }) });
   @Module({ imports: [storage] })
   class App {}
 

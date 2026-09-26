@@ -75,6 +75,7 @@ export class ConfigurableModuleBuilder<Opts> extends ConfiguredModuleBuilder<
   constructor(options: ConfigurableModuleBuilderOptions<Opts> = {}) {
     super({
       name: options.moduleName ?? 'ConfigurableModule',
+      identity: options.identity ?? 'registration',
       optionsToken: options.optionsInjectionToken,
       methodName: 'register',
       factoryMethodName: 'create',

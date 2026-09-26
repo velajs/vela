@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Controller, Get, Module, VelaFactory } from '../index.js';
-import { ThrottlerModule, ThrottlerStorage } from '../throttler/index.js';
+import { APP_GUARD, Controller, Get, Module, VelaFactory } from '../index.js';
+import { ThrottlerGuard, ThrottlerModule, ThrottlerStorage } from '../throttler/index.js';
 
 const MINUTE = 60_000;
 const TEN_MINUTES = 10 * MINUTE;
@@ -104,6 +104,7 @@ describe('ThrottlerStorage (in-memory)', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: TEN_MINUTES, limit: 2 }] })],
       controllers: [Limited],
     })

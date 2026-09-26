@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  defineProvider,
+  APP_GUARD,
   Controller,
   Get,
   Inject,
@@ -62,6 +64,7 @@ describe('Vela tenant admission', () => {
     TenantIgnored()(Routes.prototype, 'open', open);
     class App {}
     Module({
+      providers: [{ provide: APP_GUARD, useExisting: TenantGuard }],
       imports: [
         TenantModule.forRoot({ lookup: new MemoryTenantRegistryStore([]), authorize: () => false }),
       ],
@@ -113,6 +116,7 @@ describe('Vela tenant admission', () => {
     );
     class App {}
     Module({
+      providers: [{ provide: APP_GUARD, useExisting: TenantGuard }],
       imports: [
         TenantModule.forRoot({
           lookup: store,
@@ -184,6 +188,7 @@ describe('Vela tenant admission', () => {
   it('creates disposable queue, scheduled and WebSocket operation scopes without HTTP context', async () => {
     class App {}
     Module({
+      providers: [{ provide: APP_GUARD, useExisting: TenantGuard }],
       imports: [
         TenantModule.forRoot({
           lookup: new MemoryTenantRegistryStore([tenant('a'), tenant('b')]),
@@ -235,9 +240,12 @@ describe('Vela tenant admission', () => {
     SkipGuardPhases(['tenant'])(Integration);
     class Outside {}
     Module({ controllers: [Elsewhere, Declared, Integration] })(Outside);
-    const build = (options: { guard?: 'global' | 'none'; isGlobal?: boolean }) => {
+    const build = (options: { isGlobal?: boolean }, installGuard = true) => {
       class App {}
       Module({
+        providers: [
+          ...(installGuard ? [defineProvider(APP_GUARD, { useExisting: TenantGuard })] : []),
+        ],
         imports: [
           TenantModule.forRoot({
             lookup: new MemoryTenantRegistryStore([tenant('a')]),
@@ -262,7 +270,7 @@ describe('Vela tenant admission', () => {
         await app.close();
       }
     }
-    const opted = await build({ guard: 'none' });
+    const opted = await build({}, false);
     try {
       expect((await opted.getHonoApp().request('/tenanted')).status).toBe(200);
       expect((await opted.getHonoApp().request('/elsewhere')).status).toBe(200);
@@ -271,22 +279,23 @@ describe('Vela tenant admission', () => {
     }
   });
 
-  it('takes guard beside a forRootAsync factory, defaulting to one global install', async () => {
-    const options = () => ({
-      lookup: new MemoryTenantRegistryStore([tenant('a')]),
-      authorize: () => true,
-    });
-    // A spelled-out default is the same instance as leaving it out.
-    const configured = options();
-    expect(TenantModule.forRoot({ ...configured, guard: 'global' }).key).toBe(
-      TenantModule.forRoot(configured).key,
-    );
+  it('installs an async-configured tenant guard only through an explicit alias', async () => {
     const Tenanted = route(reply('tenanted'), '/tenanted');
     const statuses: number[] = [];
-    for (const guard of [undefined, 'global', 'none'] as const) {
+    for (const installGuard of [true, false]) {
       class App {}
       Module({
-        imports: [TenantModule.forRootAsync({ ...(guard ? { guard } : {}), useFactory: options })],
+        providers: [
+          ...(installGuard ? [defineProvider(APP_GUARD, { useExisting: TenantGuard })] : []),
+        ],
+        imports: [
+          TenantModule.forRootAsync({
+            useFactory: () => ({
+              lookup: new MemoryTenantRegistryStore([tenant('a')]),
+              authorize: () => true,
+            }),
+          }),
+        ],
         controllers: [Tenanted],
       })(App);
       const app = await VelaFactory.create(App);
@@ -296,7 +305,7 @@ describe('Vela tenant admission', () => {
         await app.close();
       }
     }
-    expect(statuses).toEqual([400, 400, 200]);
+    expect(statuses).toEqual([400, 200]);
   });
 
   it('admits the tenant for routes in modules that do not import TenantModule', async () => {
@@ -328,7 +337,10 @@ describe('Vela tenant admission', () => {
     class Feature {}
     Module({ imports: [Shared], controllers: [Routes] })(Feature);
     class App {}
-    Module({ imports: [tenancy, Feature] })(App);
+    Module({
+      imports: [tenancy, Feature],
+      providers: [{ provide: APP_GUARD, useExisting: TenantGuard }],
+    })(App);
     const app = await VelaFactory.create(App, {
       middleware: [
         async (c, next) => {
@@ -362,7 +374,11 @@ describe('Vela tenant admission', () => {
       TenantModule.forRoot({ lookup: new MemoryTenantRegistryStore([]), authorize: () => false }),
     ];
     const real = await (
-      await Test.createTestingModule({ imports, controllers: [Tenanted] }).compile()
+      await Test.createTestingModule({
+        imports,
+        controllers: [Tenanted],
+        providers: [{ provide: APP_GUARD, useExisting: TenantGuard }],
+      }).compile()
     ).createApplication();
     expect((await real.getHonoApp().request('/tenanted')).status).toBe(400);
     class AllowAll extends TenantGuard {
@@ -370,7 +386,11 @@ describe('Vela tenant admission', () => {
         return true;
       }
     }
-    const moduleRef = await Test.createTestingModule({ imports, controllers: [Tenanted] })
+    const moduleRef = await Test.createTestingModule({
+      imports,
+      controllers: [Tenanted],
+      providers: [{ provide: APP_GUARD, useExisting: TenantGuard }],
+    })
       .overrideGuard(TenantGuard)
       .useValue(new AllowAll(new Reflector()))
       .compile();
@@ -387,7 +407,6 @@ describe('Vela tenant admission', () => {
     Module({
       imports: [
         TenantModule.forRoot({
-          guard: 'none',
           lookup: new MemoryTenantRegistryStore([tenant('a')]),
           authorize: () => true,
         }),
@@ -417,6 +436,7 @@ describe('Vela tenant admission', () => {
     Get()(Routes.prototype, 'handle', Object.getOwnPropertyDescriptor(Routes.prototype, 'handle')!);
     class App {}
     Module({
+      providers: [{ provide: APP_GUARD, useExisting: TenantGuard }],
       controllers: [Routes],
       imports: [
         TenantModule.forRoot({

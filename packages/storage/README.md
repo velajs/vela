@@ -28,7 +28,7 @@ import { ENV, Module } from '@velajs/vela';
 
 @Module({
   imports: [
-    StorageModule.forRootAsync({
+    StorageModule.registerAsync({
       inject: [ENV],
       useFactory: (env) => ({
         driver: s3Driver({
@@ -52,18 +52,18 @@ tokens its factory's parameters receive in `inject`; a factory without
 parameters may omit it.
 
 The factory returns the module options. `name` (the bucket, default
-`'default'`) and `http` are structural: they decide the provided tokens and the
-mounted routes, so `forRootAsync` takes them next to the factory. The driver
+`'default'`) and `httpController` are structural: they decide the provided tokens and the
+mounted routes, so `registerAsync` takes them next to the factory. The driver
 may be a function of the application's `ENV`, which builds it on the first
-storage operation of each application, so a static `forRoot` serves every
+storage operation of each application, so a static `register` serves every
 environment without reading a binding at boot. On Cloudflare Workers, name the
 R2 bucket binding with `r2Storage` from `@velajs/cloudflare/storage`:
 
 ```ts
 import { r2Storage } from '@velajs/cloudflare/storage';
 
-StorageModule.forRoot({ driver: r2Storage({ binding: 'UPLOADS' }) });
-// equivalent, by hand: StorageModule.forRoot({ driver: (env) => r2Driver({ bucket: env.UPLOADS }) })
+StorageModule.register({ driver: r2Storage({ binding: 'UPLOADS' }) });
+// equivalent, by hand: StorageModule.register({ driver: (env) => r2Driver({ bucket: env.UPLOADS }) })
 ```
 
 A missing or mistyped binding fails that first operation with a message naming
@@ -74,28 +74,31 @@ distinct names (`name: 'avatars'`).
 
 ## Secure HTTP multipart uploads
 
-Browser-direct multipart uploads use a stateless HMAC grant bound to the authenticated actor, object key, provider upload ID, exact byte size, part count, and expiry. Configure a stable secret of at least 32 bytes and return a server-derived `actorId` from the authorizer. A secret from the runtime environment comes through DI: the `forRootAsync` factory returns it next to the driver.
+Browser-direct multipart uploads use a stateless HMAC grant bound to the authenticated actor, object key, provider upload ID, exact byte size, part count, and expiry. Configure a stable secret of at least 32 bytes and return a server-derived `actorId` from the authorizer. A secret from the runtime environment comes through DI: the `registerAsync` factory returns it inside the runtime `http` policy.
 
 ```ts
-StorageModule.forRootAsync({
+StorageModule.registerAsync({
   inject: [ENV],
   useFactory: (env) => ({
     driver: r2Driver({ bucket: env.UPLOADS }),
-    multipartGrantSecret: env.STORAGE_MULTIPART_GRANT_SECRET,
+    http: {
+      multipartGrantSecret: env.STORAGE_MULTIPART_GRANT_SECRET,
+      maxUploadSize: 100 * 1024 * 1024,
+      maxMultipartParts: 1000,
+      authorize: (_action, { ctx }) => ({ actorId: ctx.get('user').id }),
+    },
   }),
-  http: {
-    maxUploadSize: 100 * 1024 * 1024,
-    maxMultipartParts: 1000,
-    authorize: (_action, { ctx }) => ({ actorId: ctx.get('user').id }),
-  },
+  httpController: { path: '/api/storage' },
 });
 ```
 
-The factory runs once, while the application initializes; a driver function it returns runs on the first storage operation, or again on the next one until it succeeds. The top-level `multipartGrantSecret` takes precedence over `http.multipartGrantSecret`, which suits a secret known at module scope. Without a secret, the multipart endpoints refuse every request with 403. A secret shorter than 32 bytes is a configuration error, not a client error: `http.multipartGrantSecret` throws when the module is set up, and a short top-level secret fails every multipart request, which the controller answers with a redacted server error (502 `upstream_error`).
+The factory runs once during application initialization. All HTTP policy, including authorization, download mode, size limits and `http.multipartGrantSecret`, resolves through DI. A secret shorter than 32 bytes rejects initialization; without a secret, multipart endpoints refuse every request with 403. A driver function runs on the first storage operation and retries construction after a failure.
+
+Routes are opt-in: `httpController: {}` mounts `/api/storage`, and `{ path: '/uploads' }` changes the mount. Omitting `httpController` or passing `false` mounts nothing, even if runtime `http` policy is provided. The old `http.mountController`, `http.basePath` and top-level `multipartGrantSecret` options are removed. The low-level `createStorageController(path, serviceToken, optionsToken)` reads all `ResolvedHttpOptions` from its injected options token.
 
 The browser client sends the exact file size when creating an upload and echoes the returned grant for part signing, completion, and abort. Multipart data is completed into a reserved quarantine key, verified there, and only then promoted to the requested key. A mismatched, oversized, or unreadable result is never exposed at the requested key. HTTP downloads default to `attachment`; both `/download` redirects and `/sign-download` URLs bind an attachment `Content-Disposition`, proxy responses emit `X-Content-Type-Options: nosniff`, and HTML/SVG are never served inline.
 
-The controller is marked `SkipGuardPhases(['tenant', 'authorize'])`: the authorizer decides every action, so the tenant admission and authorization guards integrations install globally (`TenantModule`, `AuthzModule`, `CedarModule`) do not run on it, including one the application registers itself (`{ provide: APP_GUARD, useClass: TenantGuard }`), while global authentication and the other global guards still do. Check tenant membership in the authorizer. The HTTP control plane's POST endpoints accept only `application/json` or `+json` bodies, because browsers send `text/plain` and form-encoded POSTs cross-site without a CORS preflight. Any other media type is refused with 415 before the authorizer runs, and a malformed or non-object body is a 400 `invalid_request`. The `@velajs/storage/client` browser client already sends JSON.
+The controller is marked `SkipGuardPhases(['tenant', 'authorize'])`: the authorizer decides every action, so application-installed skippable tenant and authorization guards do not run on it, while global authentication and other global guards still do. Check tenant membership in the authorizer. The HTTP control plane's POST endpoints accept only `application/json` or `+json` bodies, because browsers send `text/plain` and form-encoded POSTs cross-site without a CORS preflight. Any other media type is refused with 415 before the authorizer runs, and a malformed or non-object body is a 400 `invalid_request`. The `@velajs/storage/client` browser client already sends JSON.
 
 ## Drivers
 
@@ -126,7 +129,7 @@ await assertCount(storage, 'avatars/', 1); // or assertCount(storage, 1) for the
 ```
 
 The helpers accept anything memory-backed — a `Storage` facade or an injected `StorageService`.
-For DI/integration tests, register the same driver instead: `StorageModule.forRoot({ driver: memoryDriver() })`.
+For DI/integration tests, register the same driver instead: `StorageModule.register({ driver: memoryDriver() })`.
 
 See the docs site for presigned uploads, the HTTP upload controller + browser client, middleware,
 multi-bucket, and the full capability matrix.
@@ -200,7 +203,7 @@ per-object transactions; these are separate capabilities, not file-storage
 backends.
 
 The native R2 binding cannot presign. Serve its objects through `publicBaseUrl`,
-through the authorized HTTP controller with `http: { download: 'proxy' }`, or
+through the authorized HTTP controller with `httpController: {}, http: { download: 'proxy' }`, or
 presign through the S3 or R2 HTTP/hybrid drivers.
 
 `@velajs/cloudflare` no longer has a storage module of its own. An application
@@ -209,10 +212,10 @@ disk:
 
 | Removed Cloudflare API | This package |
 | --- | --- |
-| `disks` with native buckets | One named `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })` per disk |
+| `disks` with native buckets | One named `StorageModule.register({ name, driver: r2Storage({ binding }) })` per disk |
 | Driver `upload(body, path, { mimeType })` | `upload(key, body, { contentType })` |
 | `download(path).toStream()` | `(await download(key)).stream()` |
-| Worker HMAC `getPresignedUrl()` and the `GET /storage/:disk` proxy route | `publicBaseUrl`, the authorized `http: { download: 'proxy' }` controller, or provider-signed URLs from the S3 or R2 HTTP/hybrid drivers |
+| Worker HMAC `getPresignedUrl()` and the `GET /storage/:disk` proxy route | `publicBaseUrl`, the authorized `httpController: {}, http: { download: 'proxy' }` controller, or provider-signed URLs from the S3 or R2 HTTP/hybrid drivers |
 
 URLs issued by the removed proxy route stop working once it is gone.
 

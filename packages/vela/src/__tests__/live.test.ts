@@ -247,11 +247,11 @@ describe('LiveModule (tag-based live queries)', () => {
   it('keys equivalent presence settings as one engine', async () => {
     const equivalent = [
       LiveModule.forRoot(),
-      LiveModule.forRoot({ presence: {} }),
-      LiveModule.forRoot({ presence: { ttlMs: undefined } }),
+      LiveModule.forRoot({ presence: true }),
+      LiveModule.forRoot({ presence: undefined }),
     ];
     expect(new Set(equivalent.map((definition) => definition.key)).size).toBe(1);
-    expect(LiveModule.forRoot({ presence: { ttlMs: 5_000 } }).key).not.toBe(equivalent[0]?.key);
+    expect(LiveModule.forRoot({ presenceOptions: { ttlMs: 5_000 } }).key).toBe(equivalent[0]?.key);
 
     @Module({ imports: [WebSocketModule.forRoot(), ...equivalent] })
     class Equivalent {}

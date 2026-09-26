@@ -90,6 +90,8 @@ export type ConfigurableModuleAsyncFactory<
     };
 
 export interface ConfigurableModuleBuilderOptions<Opts = unknown> {
+  /** Defaults to a fresh instance per registration call; independent of method naming. */
+  identity?: 'structural' | 'registration';
   /** Names the generated base class + the auto-minted options token, and feeds diagnostics. */
   moduleName?: string;
   /**

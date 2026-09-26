@@ -93,6 +93,7 @@ import {
 } from '../module-kit.js';
 import { defineDto, ValidationPipe } from '../validation/index.js';
 import {
+  CacheInterceptor,
   CacheModule,
   CacheResponse,
   CacheService,
@@ -2872,6 +2873,7 @@ describe('CacheModule / @CacheResponse', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [CacheModule.forRoot({ namespace: 'parity', scope: publicCacheScope })],
       controllers: [CacheController],
     })
@@ -2902,6 +2904,7 @@ describe('CacheModule / @CacheResponse', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [CacheModule.forRoot({ namespace: 'parity', scope: publicCacheScope })],
       controllers: [CacheKeyController],
     })
@@ -2929,6 +2932,7 @@ describe('CacheModule / @CacheResponse', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [CacheModule.forRoot({ namespace: 'parity', scope: publicCacheScope })],
       controllers: [CacheTTLController],
     })
@@ -3053,7 +3057,7 @@ describe('ScheduleModule / @Cron / @Interval', () => {
       }
     }
 
-    @Module({ imports: [ScheduleNodeModule.forRoot()], providers: [PulseService] })
+    @Module({ imports: [ScheduleNodeModule], providers: [PulseService] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -3074,7 +3078,7 @@ describe('ScheduleModule / @Cron / @Interval', () => {
       }
     }
 
-    @Module({ imports: [ScheduleNodeModule.forRoot()], providers: [StopService] })
+    @Module({ imports: [ScheduleNodeModule], providers: [StopService] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -3103,6 +3107,7 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }] })],
       controllers: [ThrottleController],
     })
@@ -3125,6 +3130,7 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 5, ttl: 60000 }] })],
       controllers: [ThrottleHdrsController],
     })
@@ -3151,6 +3157,7 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60000 }] })],
       controllers: [SkipController],
     })
@@ -3182,6 +3189,7 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 10, ttl: 60000 }] })],
       controllers: [OverrideController],
     })
@@ -3389,7 +3397,7 @@ describe('HttpModule / HttpService', () => {
     expect(await res.json()).toEqual({ id: 1, name: 'Alice' });
   });
 
-  it('HttpModule.forRoot() sets baseURL for all requests', async () => {
+  it('HttpModule.register() sets baseURL for all requests', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -3415,7 +3423,7 @@ describe('HttpModule / HttpService', () => {
     }
 
     @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://my-api.com' })],
+      imports: [HttpModule.register({ baseURL: 'https://my-api.com' })],
       providers: [ApiService],
       controllers: [PingController],
     })
@@ -3429,7 +3437,7 @@ describe('HttpModule / HttpService', () => {
     );
   });
 
-  it('HttpModule.forRootAsync() resolves config from injected factory', async () => {
+  it('HttpModule.registerAsync() resolves config from injected factory', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ async: true }), {
         status: 200,
@@ -3464,7 +3472,7 @@ describe('HttpModule / HttpService', () => {
 
     @Module({
       imports: [
-        HttpModule.forRootAsync({
+        HttpModule.registerAsync({
           imports: [BaseUrlModule],
           useFactory: (url: string) => ({ baseURL: url }),
           inject: [BASE_URL],
@@ -3784,7 +3792,7 @@ describe('useExisting provider alias', () => {
 // =============================================================================
 
 describe('forRootAsync() dynamic module pattern', () => {
-  it('HttpModule.forRootAsync() resolves config from ConfigService', async () => {
+  it('HttpModule.registerAsync() resolves config from ConfigService', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ data: 'async-config' }), {
         status: 200,
@@ -3811,7 +3819,7 @@ describe('forRootAsync() dynamic module pattern', () => {
     @Module({
       imports: [
         ConfigModule.forRoot({ config: { API_BASE: 'https://async-root.test' } }),
-        HttpModule.forRootAsync({
+        HttpModule.registerAsync({
           imports: [ConfigModule.forRoot({ config: { API_BASE: 'https://async-root.test' } })],
           useFactory: (config: ConfigService) => ({
             baseURL: config.get<string>('API_BASE') ?? '',
@@ -3861,7 +3869,7 @@ describe('forRootAsync() dynamic module pattern', () => {
 
     @Module({
       imports: [
-        HttpModule.forRootAsync({
+        HttpModule.registerAsync({
           imports: [FactoryConfigModule],
           useFactory: (val: string) => ({ baseURL: `https://${val}.test` }),
           inject: [CONFIG_VAL],
@@ -4131,7 +4139,7 @@ describe('CacheService direct injection', () => {
 
     @Module({
       imports: [CacheModule.forRoot({ namespace: 'parity', scope: () => scope })],
-      providers: [ItemService],
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }, ItemService],
       controllers: [CacheSvcController],
     })
     class AppModule {}
@@ -4187,7 +4195,7 @@ describe('CacheService direct injection', () => {
           invalidation: new MemoryCacheInvalidationStore(),
         }),
       ],
-      providers: [StoreService],
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }, StoreService],
       controllers: [DelCacheController],
     })
     class AppModule {}

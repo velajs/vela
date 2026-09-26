@@ -81,7 +81,7 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
             },
           },
         }),
-        ScheduleNodeModule.forRoot(),
+        ScheduleNodeModule,
       ],
       controllers: [TickController],
       providers: [Ticker],
@@ -112,7 +112,7 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Module({
-      imports: [ScheduleNodeModule.forRoot()],
+      imports: [ScheduleNodeModule],
       providers: [Ticker],
     })
     class AppModule {}
@@ -136,7 +136,7 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     class AppModule {}
 
     await expect(VelaFactory.create(AppModule)).rejects.toThrow(
-      /ScheduleModule\.forRoot\(\) is imported with different dispatch policies/,
+      /different dispatch policies|imported again with different options/,
     );
 
     // The same policy imported twice deduplicates into one owner.
@@ -172,7 +172,7 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     class AppModule {}
 
     await expect(VelaFactory.create(AppModule, { diagnostics: 'silent' })).rejects.toThrow(
-      /ScheduleModule\.forRoot\(\) is imported with different dispatch policies/,
+      /different dispatch policies|imported again with different options/,
     );
 
     // A signed policy that differs only in its request options conflicts too.
@@ -185,7 +185,7 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     })
     class TtlModule {}
     await expect(VelaFactory.create(TtlModule, { diagnostics: 'silent' })).rejects.toThrow(
-      /different dispatch policies/,
+      /different dispatch policies|imported again with different options/,
     );
   });
 
@@ -199,7 +199,7 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     class AppModule {}
 
     await expect(VelaFactory.create(AppModule, { diagnostics: 'silent' })).rejects.toThrow(
-      /ScheduleModule\.forRoot\(\) is imported with different dispatch policies/,
+      /different dispatch policies|imported again with different options/,
     );
 
     // One policy object imported again deduplicates into one owner.

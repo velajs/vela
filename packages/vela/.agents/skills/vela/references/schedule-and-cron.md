@@ -51,13 +51,13 @@ On Cloudflare Workers, `@velajs/cloudflare` runs every `@Cron` job whose express
 
 ## Node/Bun executor (`@velajs/vela/schedule-node`)
 
-For Node or Bun, import `ScheduleNodeModule` instead. It provides both `ScheduleRegistry` and `ScheduleExecutor`; the executor arms real timers on bootstrap and clears them on shutdown. It takes no options: `ScheduleNodeModule.forRoot()` and the bare `ScheduleNodeModule` are one instance, so a library importing one form and the app the other still run each job once:
+For Node or Bun, import `ScheduleNodeModule` instead. It provides both `ScheduleRegistry` and `ScheduleExecutor`; the executor arms real timers on bootstrap and clears them on shutdown. It takes no options. Repeated ordinary imports share one executor and run each job once:
 
 ```ts
 import { ScheduleNodeModule, ScheduleExecutor } from '@velajs/vela/schedule-node';
 
 @Module({
-  imports: [ScheduleNodeModule.forRoot()],
+  imports: [ScheduleNodeModule],
   providers: [MaintenanceJobs],
 })
 class AppModule {}

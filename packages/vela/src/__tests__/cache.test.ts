@@ -4,6 +4,7 @@ import {
   APP_INTERCEPTOR,
   Controller,
   defineSerializer,
+  defineProvider,
   Get,
   Post,
   Res,
@@ -21,6 +22,7 @@ import {
   type VelaEnv,
 } from '../index';
 import {
+  CacheInterceptor,
   CacheModule,
   CacheResponse,
   CacheService,
@@ -221,6 +223,7 @@ describe('scoped asynchronous cache', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: 'reported',
@@ -369,6 +372,7 @@ describe('response cache pipeline', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: 'routes',
@@ -414,6 +418,7 @@ describe('response cache pipeline', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: 'routes',
@@ -487,6 +492,7 @@ describe('response cache pipeline', () => {
     }
     const store = new AsyncStore();
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [CacheModule.forRoot({ namespace: 'profiles', store, scope: () => publicScope })],
       controllers: [Profiles],
     })
@@ -546,6 +552,7 @@ describe('response cache pipeline', () => {
       generations: [],
     });
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [CacheModule.forRoot({ namespace: 'profiles', store, scope: () => publicScope })],
       controllers: [Users],
     })
@@ -592,6 +599,7 @@ describe('response cache pipeline', () => {
       generations: [],
     });
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [CacheModule.forRoot({ namespace: 'profiles', store, scope: () => publicScope })],
       controllers: [Users],
     })
@@ -658,6 +666,7 @@ describe('response cache pipeline', () => {
     }
     const store = new AsyncStore();
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         OuterModule,
         CacheModule.forRoot({ namespace: 'outer', store, scope: () => publicScope }),
@@ -741,6 +750,7 @@ describe('response cache pipeline', () => {
     }
     const store = new AsyncStore();
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         RecoveryModule,
         CacheModule.forRoot({ namespace: 'recovery', store, scope: () => publicScope }),
@@ -786,6 +796,7 @@ describe('response cache pipeline', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRootAsync({
           inject: [],
@@ -829,6 +840,7 @@ describe('response cache pipeline', () => {
     }
     const store = new AsyncStore();
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [CacheModule.forRoot({ namespace: 'metadata', store, scope: () => publicScope })],
       controllers: [Routes],
     })
@@ -849,6 +861,7 @@ describe('response cache pipeline', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: 'tags',
@@ -861,6 +874,7 @@ describe('response cache pipeline', () => {
     class MissingTags {}
     await expect(VelaFactory.create(MissingTags)).rejects.toThrow('invalidation store');
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: 'first',
@@ -901,6 +915,7 @@ describe('response cache pipeline', () => {
   it('checks inherited @CacheResponse declarations at bootstrap as the interceptor reads them', async () => {
     const boot = (controller: Type) => {
       @Module({
+        providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
         imports: [
           CacheModule.forRoot({
             namespace: 'inherited',
@@ -974,6 +989,7 @@ describe('response cache pipeline', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: 'trusted',
@@ -1000,6 +1016,7 @@ describe('response cache pipeline', () => {
         }
       }
       @Module({
+        providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
         imports: [
           CacheModule.forRoot({
             namespace: 'same',
@@ -1030,6 +1047,7 @@ describe('one CacheModule', () => {
 
   it('caches in a per-application memory store when no store is given', async () => {
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [CacheModule.forRoot({ namespace: 'memory', scope: () => publicScope })],
       controllers: [Counter],
     })
@@ -1057,6 +1075,7 @@ describe('one CacheModule', () => {
     };
     const generations: VelaEnv[] = [];
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: 'env',
@@ -1106,3 +1125,44 @@ describe('one CacheModule', () => {
     expect([store.get('b'), store.get('c')]).toEqual([2, 3]);
   });
 });
+
+it.each([false, true])(
+  'cache provider visibility never installs its interceptor (isGlobal: %s)',
+  async (isGlobal) => {
+    for (const installInterceptor of [false, true]) {
+      let calls = 0;
+      @Controller('/explicit-cache')
+      class Routes {
+        @Get()
+        @CacheResponse()
+        read() {
+          return { calls: ++calls };
+        }
+      }
+      @Module({
+        imports: [
+          CacheModule.forRoot({ namespace: 'explicit', scope: () => publicScope, isGlobal }),
+        ],
+        controllers: [Routes],
+        providers: [
+          ...(installInterceptor
+            ? [defineProvider(APP_INTERCEPTOR, { useExisting: CacheInterceptor })]
+            : []),
+        ],
+      })
+      class App {}
+      const app = await VelaFactory.create(App);
+      try {
+        expect(app.get(CacheService)).toBeInstanceOf(CacheService);
+        expect(await (await app.getHonoApp().request('/explicit-cache')).json()).toEqual({
+          calls: 1,
+        });
+        expect(await (await app.getHonoApp().request('/explicit-cache')).json()).toEqual({
+          calls: installInterceptor ? 1 : 2,
+        });
+      } finally {
+        await app.close();
+      }
+    }
+  },
+);

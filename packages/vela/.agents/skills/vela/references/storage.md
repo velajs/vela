@@ -4,7 +4,7 @@ A full driver-based object-storage system for Vela: a `StorageService` with uplo
 
 > **One storage module.** `StorageModule` from `@velajs/storage` is the only one. On Cloudflare Workers, `r2Storage({ binding: 'UPLOADS' })` from `@velajs/cloudflare/storage` is its native R2 driver, resolved from each application's `ENV` by binding name. There is no `@velajs/vela/storage` subpath and no Cloudflare `StorageModule`.
 
-## Setup — `StorageModule.forRoot`
+## Setup — `StorageModule.register`
 
 You build a driver (from a `./drivers/*` subpath) and hand the instance to the module:
 
@@ -14,7 +14,7 @@ import { s3Driver } from '@velajs/storage/drivers/s3';
 
 @Module({
   imports: [
-    StorageModule.forRoot({
+    StorageModule.register({
       driver: s3Driver({ endpoint, region: 'auto', bucket: 'uploads', credentials: { accessKeyId, secretAccessKey } }),
       prefix: 'tenant-a/',   // optional key prefix
     }),
@@ -23,9 +23,9 @@ import { s3Driver } from '@velajs/storage/drivers/s3';
 class AppModule {}
 ```
 
-`StorageModuleOptions`: `driver` (a built `StorageDriver`, or a function `(env) => StorageDriver` that builds one from the application's `ENV` on its first operation; required), `name?` (default `'default'`), `prefix?`, `readonly?`, `hooks?`, `http?` (mounts the HTTP controller) and `multipartGrantSecret?`. `name` and `http` are structural: `forRootAsync({ inject?, imports, useFactory, name?, http?, key? })` takes them at the call site and its `useFactory` returns the rest, such as `{ driver: r2Storage({ binding: 'FILES' }), multipartGrantSecret: env.GRANT_SECRET }`; a factory without parameters may omit `inject`. One instance per bucket `name`: a second configuration of a name fails bootstrap in every diagnostics mode, so give each feature's bucket its own `name`. The `driver` is a value, not a string — there is no name-based selector.
+`StorageModuleOptions`: `driver` (instance or per-application factory), `name?` (default `'default'`), `prefix?`, `readonly?`, `hooks?`, structural `httpController?: { path?: string } | false`, and runtime `http?` settings. `registerAsync({ name, httpController, inject, useFactory })` keeps only name/mounting beside the factory; return driver and HTTP authorization, limits, download settings and `http.multipartGrantSecret` from it. Absent or false `httpController` mounts no routes. Named bucket uniqueness remains enforced, including registrations with explicit keys.
 
-`StorageHttpOptions` (when `http` is set): `basePath` (default `/api/storage`), `authorize` (routes deny without it), `download` (`'redirect'` default | `'proxy'`), `mountController`, `defaultExpiresIn`, `maxExpiresIn`, `maxUploadSize`, `multipartGrantSecret`, `maxMultipartParts`, `maxListLimit`, `deleteConcurrency`.
+`StorageHttpOptions` (when a controller is mounted): `authorize` (routes deny without it), `download` (`'redirect'` default | `'proxy'`), `defaultExpiresIn`, `maxExpiresIn`, `maxUploadSize`, `multipartGrantSecret`, `maxMultipartParts`, `maxListLimit`, `deleteConcurrency`.
 
 ## Drivers
 
@@ -34,7 +34,7 @@ class AppModule {}
 | `@velajs/storage/drivers/memory` | `memoryDriver(opts?)` | `{ initial? }` — in-memory; the test fake |
 | `@velajs/storage/drivers/s3` | `s3Driver(opts)` | `{ endpoint, region, bucket, credentials: { accessKeyId, secretAccessKey, sessionToken? }, forcePathStyle?, publicBaseUrl?, defaultUrlExpiresIn?, fetch?, name? }` |
 | `@velajs/storage/drivers/r2` | `r2Driver(opts)` | `{ bucket: R2BucketLike binding, publicBaseUrl?, includeMetadata?, name? }` — native binding (`R2BucketLike` is a structural subset type), zero deps |
-| `@velajs/cloudflare/storage` | `r2Storage(opts)` | `{ binding: 'UPLOADS', publicBaseUrl?, includeMetadata?, name? }` — `r2Driver` over the bucket named in the Wrangler `r2_buckets`, read from each application's `ENV` on first use; a static `StorageModule.forRoot({ driver: r2Storage({ binding }) })` |
+| `@velajs/cloudflare/storage` | `r2Storage(opts)` | `{ binding: 'UPLOADS', publicBaseUrl?, includeMetadata?, name? }` — `r2Driver` over the bucket named in the Wrangler `r2_buckets`, read from each application's `ENV` on first use; a static `StorageModule.register({ driver: r2Storage({ binding }) })` |
 | `@velajs/storage/drivers/r2-http` | `r2HttpDriver(opts)` / `r2HybridDriver(opts)` | `{ accountId, accessKeyId, secretAccessKey, bucket, endpoint?, publicBaseUrl?, … }` (hybrid adds `binding`) |
 
 `s3Driver` and the R2-HTTP drivers support presigned upload + download URLs; `r2Driver` (native binding) supports downloads via `publicBaseUrl` but not presigned uploads. Use `s3Driver({ region: 'auto', forcePathStyle: true })` (or `r2HttpDriver`) for R2 over the S3 API.

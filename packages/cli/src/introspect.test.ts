@@ -55,7 +55,7 @@ async function fixtureApp(): Promise<VelaApplication> {
       SharedMod,
       LazyMod,
       QueueModule.forRoot(),
-      QueueModule.registerQueue({ name: 'email' }),
+      QueueModule.forFeature([{ name: 'email' }]),
     ],
     controllers: [UsersController],
     providers: [EmailProcessor],

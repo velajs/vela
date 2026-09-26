@@ -3,6 +3,7 @@ import { drizzleAdapter as authAdapter } from '@better-auth/drizzle-adapter';
 import { drizzle } from 'drizzle-orm/d1';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import {
+  APP_GUARD,
   Controller,
   ENV,
   Get,
@@ -16,6 +17,7 @@ import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
 import { LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
 import {
   BETTER_AUTH_UPGRADE_TENANT,
+  AuthGuard,
   BetterAuthModule,
   BetterAuthUpgradeAuthenticator,
   CurrentUser,
@@ -149,6 +151,7 @@ class TodoGateway {}
   ],
   controllers: [TodosController, MeController, HealthController],
   providers: [
+    { provide: APP_GUARD, useExisting: AuthGuard },
     TodoGateway,
     TodoQueries,
     // BetterAuthUpgradeAuthenticator resolves from this module, so it sees this resolver.

@@ -218,7 +218,7 @@ class EmailProcessor {
 }
 
 @Module({
-  imports: [QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })],
+  imports: [QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }])],
   providers: [Signup, EmailProcessor],
 })
 class EmailModule {}
@@ -241,7 +241,7 @@ share one physical queue. Each job runs through the module's dispatch policy,
 including signed dispatch and its global guards. A message is acknowledged
 after its processors succeed; a message that is not a job envelope, belongs to
 an unregistered queue, or fails stays unacknowledged, so Cloudflare retries it
-and then dead-letters it. `registerQueue({ name, consumer: 'email-production' })`
+and then dead-letters it. `forFeature({ name, consumer: 'email-production' })`
 pins the queue to that physical queue: its jobs are accepted only from it, and
 it carries only the queues pinned to it. A physical queue cannot be both a
 `@QueueConsumer` queue and a pinned consumer. A `@QueueConsumer` owns its
@@ -523,6 +523,17 @@ instances from module options and helpers; `WorkflowParams<T>` reads a
 Workflow's params from its class or host. See
 [Workflows](../../docs/workflows.md).
 
+For portable `defineWorkflow(...)` and compiled `@velajs/agent` definitions,
+import `VelaWorkflowDefinition` from `@velajs/cloudflare/workflow-definitions`.
+This separate entrypoint requires the optional `@velajs/workflow` peer; importing
+`/workflows` does not load it. The helper accepts `{ params, inject, useFactory }`:
+validate trigger data with `params`, resolve the typed injection tuple per run,
+and return `{ definition, run }` from the factory. `run` is an explicit application
+dispatcher. Native steps preserve retries, checkpoints and compensation, including
+portable terminal-error conversion inside step/rollback callbacks. Export a named
+subclass and register it in Wrangler just as above. See the
+[portable bridge example](../workflow/README.md#cloudflare-and-dependency-injection).
+
 ## Service entrypoints, email and tail
 
 `VelaEntrypoint(app, Host, { rpc })` from `@velajs/cloudflare/entrypoints`
@@ -620,7 +631,7 @@ is the one file-storage module. Its native R2 driver comes from the
 import { StorageModule } from '@velajs/storage';
 import { r2Storage } from '@velajs/cloudflare/storage';
 
-StorageModule.forRoot({ driver: r2Storage({ binding: 'UPLOADS' }) });
+StorageModule.register({ driver: r2Storage({ binding: 'UPLOADS' }) });
 ```
 
 The bucket is read from each application's `ENV` on its first storage

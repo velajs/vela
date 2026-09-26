@@ -1,4 +1,4 @@
-import { Controller, Get, Reflector, UseGuards } from '@velajs/vela';
+import { APP_GUARD, Controller, Get, Reflector, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { FEATURE_FLAG_METADATA } from '../decorators/feature-flag.decorator';
@@ -34,12 +34,12 @@ function guardedController() {
 async function appWith(
   controller: ReturnType<typeof guardedController>,
   driver: FeatureFlagDriver,
-  moduleOpts: { guard?: 'global' | 'none'; manifest?: FlagManifest } = {},
+  moduleOpts: { manifest?: FlagManifest } = {},
 ) {
   // Per-route gating through the controller's @UseGuards, without the app-wide guard.
   const moduleRef = await Test.createTestingModule({
     controllers: [controller],
-    imports: [FeatureFlagsModule.forRoot({ drivers: [driver], guard: 'none', ...moduleOpts })],
+    imports: [FeatureFlagsModule.forRoot({ drivers: [driver], ...moduleOpts })],
   }).compile();
   const app = await moduleRef.createApplication();
   return app.getHonoApp();
@@ -48,6 +48,7 @@ async function appWith(
 describe('FeatureFlagGuard (integration)', () => {
   it('reads route metadata through the application Reflector', async () => {
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: FeatureFlagGuard }],
       controllers: [guardedController()],
       imports: [
         FeatureFlagsModule.forRoot({
@@ -130,7 +131,7 @@ describe('FeatureFlagGuard (integration)', () => {
     expect((await app.request('/checkout/v2')).status).toBe(404);
   });
 
-  it('gates app-wide by default (no @UseGuards, no guard option)', async () => {
+  it('gates app-wide only through an explicit alias', async () => {
     @Controller('/promo')
     class PromoController {
       @FeatureFlag('promo')
@@ -142,12 +143,11 @@ describe('FeatureFlagGuard (integration)', () => {
     const driver = memoryFlagDriver({ values: { promo: false } });
     for (const imports of [
       [FeatureFlagsModule.forRoot({ drivers: [driver] })],
-      [FeatureFlagsModule.forRoot({ drivers: [driver], guard: 'global' })],
+      [FeatureFlagsModule.forRoot({ drivers: [driver] })],
       [FeatureFlagsModule.forRoot({ drivers: [driver], isGlobal: true })],
       [FeatureFlagsModule.forRootAsync({ useFactory: () => ({ drivers: [driver] }) })],
       [
         FeatureFlagsModule.forRootAsync({
-          guard: 'global',
           useFactory: () => ({ drivers: [driver] }),
         }),
       ],
@@ -156,6 +156,7 @@ describe('FeatureFlagGuard (integration)', () => {
       const moduleRef = await Test.createTestingModule({
         controllers: [PromoController],
         imports,
+        providers: [{ provide: APP_GUARD, useExisting: FeatureFlagGuard }],
       }).compile();
       const app = await moduleRef.createApplication();
       const hono = app.getHonoApp();
@@ -167,7 +168,7 @@ describe('FeatureFlagGuard (integration)', () => {
     }
   });
 
-  it("leaves gating to @UseGuards with guard: 'none'", async () => {
+  it('does not gate decorated routes merely by importing the module', async () => {
     @Controller('/promo')
     class UngatedController {
       @FeatureFlag('promo')
@@ -179,7 +180,7 @@ describe('FeatureFlagGuard (integration)', () => {
     const driver = memoryFlagDriver({ values: { promo: false } });
     const moduleRef = await Test.createTestingModule({
       controllers: [UngatedController],
-      imports: [FeatureFlagsModule.forRoot({ drivers: [driver], guard: 'none' })],
+      imports: [FeatureFlagsModule.forRoot({ drivers: [driver] })],
     }).compile();
     const app = await moduleRef.createApplication();
     expect((await app.getHonoApp().request('/promo/show')).status).toBe(200);
@@ -189,7 +190,6 @@ describe('FeatureFlagGuard (integration)', () => {
       controllers: [UngatedController],
       imports: [
         FeatureFlagsModule.forRootAsync({
-          guard: 'none',
           useFactory: () => ({ drivers: [driver] }),
         }),
       ],
@@ -197,17 +197,5 @@ describe('FeatureFlagGuard (integration)', () => {
     const asyncApp = await asyncRef.createApplication();
     expect((await asyncApp.getHonoApp().request('/promo/show')).status).toBe(200);
     await asyncApp.close();
-  });
-
-  it("rejects a guard option other than 'global' or 'none'", () => {
-    const driver = memoryFlagDriver({ values: {} });
-    // As an untyped caller would pass the previous boolean option.
-    for (const guard of [true, false, 'app']) {
-      expect(() =>
-        Reflect.apply(FeatureFlagsModule.forRoot, FeatureFlagsModule, [
-          { drivers: [driver], guard },
-        ]),
-      ).toThrow("FeatureFlagsModule guard must be 'global' or 'none'");
-    }
   });
 });

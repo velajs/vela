@@ -12,7 +12,6 @@ import type { CacheModuleOptions } from './cache.types';
 const { ConfigurableModuleClass } = defineModule<CacheModuleOptions>({
   name: 'Cache',
   optionsToken: CACHE_MODULE_OPTIONS,
-  setup: () => ({ global: { interceptors: [CacheInterceptor] } }),
 });
 
 @Injectable()
@@ -53,10 +52,11 @@ class CacheConfiguration {
  * or `kvCache({ binding })` on Cloudflare) feeds both `@CacheResponse()`
  * routes and the injected `CacheService`. `namespace` and the trusted `scope`
  * resolver are required; configure it once per application with `forRoot` or
- * `forRootAsync`.
+ * `forRootAsync`. Install `CacheInterceptor` explicitly through
+ * `APP_INTERCEPTOR` with `useExisting`, or with `@UseInterceptors`.
  */
 @Module({
-  providers: [CacheService, CacheConfiguration],
+  providers: [CacheService, CacheInterceptor, CacheConfiguration],
   exports: [CacheService, CacheInterceptor],
 })
 export class CacheModule extends ConfigurableModuleClass {}

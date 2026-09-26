@@ -5,9 +5,9 @@ import { betterAuth } from 'better-auth';
 // handles that chain.
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { drizzle } from 'drizzle-orm/d1';
-import { Controller, ENV, Get, Module } from '@velajs/vela';
+import { APP_GUARD, Controller, ENV, Get, Module } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
-import { BetterAuthModule, CurrentUser, Public, type User } from '@velajs/better-auth';
+import { AuthGuard, BetterAuthModule, CurrentUser, Public, type User } from '@velajs/better-auth';
 import { schema } from './schema';
 
 @Controller('/me')
@@ -54,6 +54,7 @@ class HealthController {
     }),
   ],
   controllers: [MeController, HealthController],
+  providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
 })
 class AppModule {}
 

@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   Inject,
-  InjectionToken,
   Post,
   Ctx,
   UnsupportedMediaTypeException,
@@ -61,40 +60,26 @@ export interface ResolvedHttpOptions {
   deleteConcurrency: number;
 }
 
-/** Values each application resolves through DI and the controller reads per request. */
-export interface StorageControllerOptions {
-  /** The multipart grant secret, when it comes from a `forRootAsync` factory. */
-  multipartGrantSecret?: () => string | Uint8Array | undefined;
-}
-
-const NO_CONTROLLER_OPTIONS = new InjectionToken<StorageControllerOptions>(
-  '@velajs/storage:controller-options',
-  { factory: () => ({}) },
-);
-
 /**
  * Build a vela controller exposing presigned/multipart upload + download
  * endpoints for one bucket. Factory-decorated (like better-auth's catch-all)
  * so `basePath` bakes in at decoration time. Consumes the {@link StorageService}
  * facade so gating/retry/prefix apply uniformly on the HTTP path. `optionsToken`
- * supplies values resolved per application, such as a multipart grant secret
- * that takes precedence over `http.multipartGrantSecret`.
+ * supplies all HTTP behavior resolved through DI for this application.
  */
-export function createStorageController<Options extends StorageControllerOptions>(
+export function createStorageController(
   basePath: string,
   serviceToken: TypedToken<StorageService>,
-  http: ResolvedHttpOptions,
-  optionsToken?: TypedToken<Options>,
+  optionsToken: TypedToken<ResolvedHttpOptions>,
 ): Type {
-  // The storage authorizer (`http.authorize`) decides each action, so
+  // The storage authorizer (`this.http.authorize`) decides each action, so
   // application-wide tenant admission and authorization do not apply.
   @SkipGuardPhases(['tenant', 'authorize'])
   @Controller(basePath)
   class StorageController {
     constructor(
       @Inject(serviceToken) private readonly svc: StorageService,
-      @Inject(optionsToken ?? NO_CONTROLLER_OPTIONS)
-      private readonly options: StorageControllerOptions,
+      @Inject(optionsToken) private readonly http: ResolvedHttpOptions,
     ) {}
 
     private get storage() {
@@ -102,10 +87,14 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     private async authorize(c: Context, action: StorageAction): Promise<StorageAuthResult> {
-      if (!http.authorize) {
+      if (!this.http.authorize) {
         throw new StorageError('AccessDenied', 'storage: no authorizer configured (default deny)');
       }
-      const res = await http.authorize(action, { req: c.req.raw, ctx: c, driver: http.driverName });
+      const res = await this.http.authorize(action, {
+        req: c.req.raw,
+        ctx: c,
+        driver: this.http.driverName,
+      });
       if (res === false) throw new StorageError('AccessDenied', 'not allowed');
       if (res === true) return {};
       if (typeof res !== 'object' || res === null || Array.isArray(res)) {
@@ -151,7 +140,7 @@ export function createStorageController<Options extends StorageControllerOptions
     }
 
     private multipartSecret(): string | Uint8Array {
-      const secret = this.options.multipartGrantSecret?.() ?? http.multipartGrantSecret;
+      const secret = this.http.multipartGrantSecret;
       if (secret === undefined) {
         throw new StorageError(
           'AccessDenied',
@@ -234,10 +223,10 @@ export function createStorageController<Options extends StorageControllerOptions
       if (authorized !== undefined && (!Number.isSafeInteger(authorized) || authorized <= 0)) {
         throw new StorageError('InvalidRequest', 'authorized upload size limit is invalid');
       }
-      if (http.maxUploadSize === undefined) return authorized;
+      if (this.http.maxUploadSize === undefined) return authorized;
       return authorized === undefined
-        ? http.maxUploadSize
-        : Math.min(authorized, http.maxUploadSize);
+        ? this.http.maxUploadSize
+        : Math.min(authorized, this.http.maxUploadSize);
     }
 
     @Post('/sign-upload')
@@ -262,8 +251,8 @@ export function createStorageController<Options extends StorageControllerOptions
         const upload = await this.storage.signedUploadUrl(key, {
           expiresIn: clampExpiry(
             ov.expiresIn ?? b.expiresIn,
-            http.defaultExpiresIn,
-            http.maxExpiresIn,
+            this.http.defaultExpiresIn,
+            this.http.maxExpiresIn,
           ),
           contentType: b.contentType,
           maxSize,
@@ -303,8 +292,8 @@ export function createStorageController<Options extends StorageControllerOptions
         }
         const expiresIn = clampExpiry(
           ov.expiresIn ?? b.expiresIn,
-          http.defaultExpiresIn,
-          http.maxExpiresIn,
+          this.http.defaultExpiresIn,
+          this.http.maxExpiresIn,
         );
         const expiresAtMs = Date.now() + expiresIn * 1000;
         if (!Number.isSafeInteger(expiresAtMs)) {
@@ -332,7 +321,7 @@ export function createStorageController<Options extends StorageControllerOptions
           );
         }
         const partCount = Math.ceil(b.size / created.partSize);
-        if (partCount > http.maxMultipartParts) {
+        if (partCount > this.http.maxMultipartParts) {
           await sm.abort(stagingKey, created.uploadId).catch(() => {});
           throw new StorageError('InvalidRequest', 'multipart upload exceeds the part-count limit');
         }
@@ -397,7 +386,7 @@ export function createStorageController<Options extends StorageControllerOptions
         }
         const part = await sm.signPart(claims.stagingKey, b.uploadId, b.partNumber, {
           expiresIn: Math.min(
-            clampExpiry(ov.expiresIn, http.defaultExpiresIn, http.maxExpiresIn),
+            clampExpiry(ov.expiresIn, this.http.defaultExpiresIn, this.http.maxExpiresIn),
             remainingSeconds,
           ),
         });
@@ -452,7 +441,8 @@ export function createStorageController<Options extends StorageControllerOptions
         try {
           await sm.complete(claims.stagingKey, b.uploadId, b.parts);
           stored = await this.storage.head(claims.stagingKey);
-          const tooLarge = http.maxUploadSize !== undefined && stored.size > http.maxUploadSize;
+          const tooLarge =
+            this.http.maxUploadSize !== undefined && stored.size > this.http.maxUploadSize;
           if (tooLarge || stored.size !== claims.expectedBytes) {
             throw new StorageError(
               'InvalidRequest',
@@ -521,7 +511,8 @@ export function createStorageController<Options extends StorageControllerOptions
           prefix: this.userPrefix(ov.prefix ?? prefix),
           cursor: c.req.query('cursor'),
           delimiter: c.req.query('delimiter'),
-          limit: parsedLimit === undefined ? undefined : Math.min(parsedLimit, http.maxListLimit),
+          limit:
+            parsedLimit === undefined ? undefined : Math.min(parsedLimit, this.http.maxListLimit),
         });
         return c.json({
           items: res.items
@@ -558,7 +549,7 @@ export function createStorageController<Options extends StorageControllerOptions
         const ov = await this.authorize(c, { type: 'delete', keys });
         const effective = (ov.keys ?? keys).map((k) => this.userKey(k));
         return c.json(
-          await this.storage.delete(effective, { concurrency: http.deleteConcurrency }),
+          await this.storage.delete(effective, { concurrency: this.http.deleteConcurrency }),
         );
       } catch (e) {
         return this.fail(c, e);
@@ -575,12 +566,16 @@ export function createStorageController<Options extends StorageControllerOptions
         const name = ekey.slice(ekey.lastIndexOf('/') + 1);
 
         if (
-          http.download === 'redirect' &&
+          this.http.download === 'redirect' &&
           this.storage.capabilities.signedUrl.supported &&
           this.storage.capabilities.signedUrl.responseContentDisposition === true
         ) {
           const url = await this.storage.url(ekey, {
-            expiresIn: clampExpiry(ov.expiresIn, http.defaultExpiresIn, http.maxExpiresIn),
+            expiresIn: clampExpiry(
+              ov.expiresIn,
+              this.http.defaultExpiresIn,
+              this.http.maxExpiresIn,
+            ),
             responseContentDisposition: dispositionHeader(
               disp,
               name,
@@ -618,8 +613,8 @@ export function createStorageController<Options extends StorageControllerOptions
         const key = this.userKey(ov.key ?? b.key);
         const expiresIn = clampExpiry(
           ov.expiresIn ?? b.expiresIn,
-          http.defaultExpiresIn,
-          http.maxExpiresIn,
+          this.http.defaultExpiresIn,
+          this.http.maxExpiresIn,
         );
         if (this.storage.capabilities.signedUrl.responseContentDisposition !== true) {
           throw new StorageError(

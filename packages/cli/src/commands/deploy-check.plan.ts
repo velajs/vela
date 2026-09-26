@@ -87,7 +87,7 @@ const removedKinds: Readonly<Record<string, string>> = {
   'cf:scheduled': 'Workers cron jobs are core @Cron handlers (schedule:cron)',
   'cf:vela-cron': 'Workers cron jobs are core @Cron handlers (schedule:cron)',
   'cf:queue:producer':
-    'QueueModule.registerQueue({ name, binding }) publishes queue producers as queue:registration',
+    'QueueModule.forFeature([{ name, binding }]) publishes queue producers as queue:registration',
 };
 
 interface QueueRegistrationRow {
@@ -465,8 +465,8 @@ export function checkDeployment(
       if (!registration) {
         report(
           'unregistered-queue-processor',
-          `@Processor(${JSON.stringify(name)}) has no QueueModule.registerQueue({ name: ` +
-            `${JSON.stringify(name)} }) in the application, so native deliveries of its jobs ` +
+          `@Processor(${JSON.stringify(name)}) has no QueueModule.forFeature([{ name: ` +
+            `${JSON.stringify(name)} }]) in the application, so native deliveries of its jobs ` +
             'are rejected.',
         );
         continue;
@@ -512,8 +512,8 @@ export function checkDeployment(
           `${JSON.stringify(produced)}, which QueueModule pins to ` +
           `${owners.map((owner) => JSON.stringify(owner)).join(', ') || 'other queues'}: the ` +
           `consumer rejects ${JSON.stringify(name)} jobs there, so Cloudflare retries and then ` +
-          `dead-letters them. Pin it too with QueueModule.registerQueue({ name: ` +
-          `${JSON.stringify(name)}, consumer: ${JSON.stringify(produced)} }), or send it through ` +
+          `dead-letters them. Pin it too with QueueModule.forFeature([{ name: ` +
+          `${JSON.stringify(name)}, consumer: ${JSON.stringify(produced)} }]), or send it through ` +
           'another queue.',
       );
     }
@@ -524,15 +524,15 @@ export function checkDeployment(
       report(
         'queue-processor-without-consumer',
         `@Processor(${JSON.stringify(name)}) has no queue consumer in the selected environment. ` +
-          'Add a queues.consumers entry and pin it with QueueModule.registerQueue({ name: ' +
-          `${JSON.stringify(name)}, consumer }).`,
+          'Add a queues.consumers entry and pin it with QueueModule.forFeature([{ name: ' +
+          `${JSON.stringify(name)}, consumer }]).`,
       );
     else
       warnings.push({
         code: 'unverified-queue-consumer',
         message:
           `Queue ${JSON.stringify(name)} names no physical queue, so its consumer is not ` +
-          'verified. Pin it with QueueModule.registerQueue({ name, consumer }) or register a ' +
+          'verified. Pin it with QueueModule.forFeature([{ name, consumer }]) or register a ' +
           'binding whose Wrangler producer names its queue.',
       });
   }

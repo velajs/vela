@@ -4,8 +4,6 @@ import {
   ConfigService,
   ConfigurableModuleBuilder,
   Controller,
-  ERROR_CATALOG,
-  ErrorsModule,
   Get,
   Global,
   InjectionToken,
@@ -23,7 +21,15 @@ import { LoggingModule } from '../logging';
 import * as moduleKit from '../module-kit';
 import { referenceKey } from '../module-kit';
 import { ScheduleExecutor, ScheduleNodeModule } from '../schedule-node';
-import { SeederModule, SeederRegistry } from '../seeder';
+
+const { ConfigurableModuleClass: BareBase } = defineModule<Record<never, never>>({
+  name: 'BareFixture',
+  key: () => 'default',
+});
+@Module({ providers: [HealthCheckService], exports: [HealthCheckService] })
+class BareFixtureModule extends BareBase {}
+@Module({ lazy: true, providers: [EventEmitter], exports: [EventEmitter] })
+class LazyFixtureModule extends BareBase {}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -92,14 +98,14 @@ describe('module contract: keys come from structural fields only', () => {
     expect(PlainModule.forRoot({ ttl: 1, key: 'secondary' }).key).toBe('secondary');
   });
 
-  it('keeps one instance of each first-party module without options across both forms', async () => {
-    const cases: Array<[bare: Type, root: DynamicModule, token: Type]> = [
-      [ScheduleNodeModule, ScheduleNodeModule.forRoot(), ScheduleExecutor],
-      [EventEmitterModule, EventEmitterModule.forRoot(), EventEmitter],
-      [HealthModule, HealthModule.forRoot(), HealthCheckService],
+  it('keeps one instance of each first-party module without options across repeated imports', async () => {
+    const cases: Array<[bare: Type, root: Type, token: Type]> = [
+      [ScheduleNodeModule, ScheduleNodeModule, ScheduleExecutor],
+      [EventEmitterModule, EventEmitterModule, EventEmitter],
+      [HealthModule, HealthModule, HealthCheckService],
     ];
     for (const [bare, root, token] of cases) {
-      // A library imports the bare class; the application uses forRoot().
+      // A library and the application import the same ordinary module.
       @Module({ imports: [bare] })
       class LibraryModule {}
       @Module({ imports: [LibraryModule, root] })
@@ -595,10 +601,8 @@ describe('module contract: keys and repeats share one normalization', () => {
     await app.close();
   });
 
-  it('keeps one instance of each first-party module when a call spells out a default', async () => {
+  it('normalizes the structural Config namespace default when explicitly supplied', async () => {
     const cases: Array<[root: DynamicModule, spelled: DynamicModule, token: Token]> = [
-      [ErrorsModule.forRoot(), ErrorsModule.forRoot({ catalogs: [] }), ERROR_CATALOG],
-      [SeederModule.forRoot(), SeederModule.forRoot({ seeders: [] }), SeederRegistry],
       [
         ConfigModule.forRoot({ config: { region: 'eu' } }),
         ConfigModule.forRoot({ config: { region: 'eu' }, load: [] }),
@@ -637,17 +641,17 @@ describe('module contract: keys and repeats share one normalization', () => {
     expect(app.getContainer().getOwnerModuleIds(DEFERRED_OPTIONS)).toHaveLength(1);
     await app.close();
 
-    // EventEmitterModule's class is lazy, so asking for laziness again changes nothing.
+    // A class-level lazy default is equivalent to an explicit lazy option.
     for (const imports of [
-      [EventEmitterModule.forRoot(), EventEmitterModule.forRoot({ lazy: true })],
-      [EventEmitterModule, EventEmitterModule.forRoot({ lazy: true })],
-      [EventEmitterModule.forRoot({ lazy: true }), EventEmitterModule],
+      [LazyFixtureModule.forRoot(), LazyFixtureModule.forRoot({ lazy: true })],
+      [LazyFixtureModule, LazyFixtureModule.forRoot({ lazy: true })],
+      [LazyFixtureModule.forRoot({ lazy: true }), LazyFixtureModule],
     ]) {
       @Module({ imports })
       class ClassLazy {}
       const lazyApp = await VelaFactory.create(ClassLazy, { diagnostics: 'throw' });
       expect(lazyApp.getContainer().getOwnerModuleIds(EventEmitter)).toEqual([
-        'EventEmitterModule#default',
+        'LazyFixtureModule#default',
       ]);
       await lazyApp.close();
     }
@@ -667,10 +671,10 @@ describe('module contract: keys and repeats share one normalization', () => {
 
 describe('module contract: a bare import configures nothing', () => {
   it('fails bootstrap on a configured import under the bare key, in either order', async () => {
-    const configured = HealthModule.forRoot({ lazy: true });
+    const configured = BareFixtureModule.forRoot({ lazy: true });
     const cases: Array<Array<Type | DynamicModule>> = [
-      [HealthModule, configured],
-      [configured, HealthModule],
+      [BareFixtureModule, configured],
+      [configured, BareFixtureModule],
     ];
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     for (const imports of cases) {
@@ -678,7 +682,7 @@ describe('module contract: a bare import configures nothing', () => {
       class AppModule {}
       for (const diagnostics of ['throw', 'log', 'silent'] as const) {
         await expect(VelaFactory.create(AppModule, { diagnostics })).rejects.toThrow(
-          /HealthModule#default was imported again with different options: one import configures/,
+          /BareFixtureModule#default was imported again with different options: one import configures/,
         );
       }
     }
@@ -687,16 +691,16 @@ describe('module contract: a bare import configures nothing', () => {
 
   it('keeps an unconfigured forRoot and the bare class one instance in either order', async () => {
     const cases: Array<Array<Type | DynamicModule>> = [
-      [HealthModule, HealthModule.forRoot()],
-      [HealthModule.forRoot(), HealthModule],
-      [HealthModule, HealthModule.forRoot({ isGlobal: false, lazy: undefined })],
+      [BareFixtureModule, BareFixtureModule.forRoot()],
+      [BareFixtureModule.forRoot(), BareFixtureModule],
+      [BareFixtureModule, BareFixtureModule.forRoot({ isGlobal: false, lazy: undefined })],
     ];
     for (const imports of cases) {
       @Module({ imports })
       class AppModule {}
       const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
       expect(app.getContainer().getOwnerModuleIds(HealthCheckService)).toEqual([
-        'HealthModule#default',
+        'BareFixtureModule#default',
       ]);
       await app.close();
     }

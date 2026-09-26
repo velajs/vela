@@ -90,9 +90,9 @@ Global guards run in fixed phases whatever order modules register them in:
 with `static readonly phase`; a guard without one runs in `feature`, and guards
 keep registration order within a phase. Better Auth and Cloudflare Access
 authenticate, `TenantModule` admits the tenant, `AuthzModule` and `CedarModule`
-authorize, and throttling and feature flags run last. Each module installs its
-guard globally by default and accepts `guard: 'none'` to leave it to
-`@UseGuards`. Keep one pipeline's phases either all global or all route-level:
+authorize, and throttling and feature flags run last. Applications install the
+exported components with `{ provide: APP_GUARD, useExisting: AuthGuard }` and
+equivalent aliases, or attach them with `@UseGuards`. Keep one pipeline's phases either all global or all route-level:
 global guards run before route guards, so a global authorization guard would
 otherwise run before a route-level authentication guard.
 
@@ -383,7 +383,8 @@ who can mint tracker values (rotating addresses, say) can fill the table on
 purpose and lock out new clients for up to a window, so keep in-memory windows
 short and count long ones in a shared `ThrottlerStore`, such as one backed by a
 Durable Object. Build the store in a function so each application keeps its
-own, as the default does:
+own, as the default does. Attach `ThrottlerGuard` with an `APP_GUARD` alias or
+`@UseGuards(ThrottlerGuard)` to enforce these limits:
 
 ```ts
 ThrottlerModule.forRoot({
@@ -420,7 +421,7 @@ gateway path to Cloudflare broadcast/live helpers.
 ## Admitted tenants and authentication payload
 
 Global guards authenticate before `TenantGuard` runs in the `tenant` phase, then authorize
-and throttle. The guards `TenantModule` and `CedarModule` install cover every application
+and throttle. Application aliases for `TenantGuard` and `CedarGuard` cover every application
 route: a route in a module that does not import them is admitted or authorized through the
 installing module, and `isGlobal` changes nothing. A route without `@RequireResource()` or
 `@CedarPublic()` is denied unless `undeclared: 'allow'` is set. A route-level `TenantGuard`
@@ -432,13 +433,13 @@ check before each push to a socket, on the reserved `$live` frames of live queri
 presence and on RPC procedures. With default options `TenantGuard`, a deny-by-default
 `CedarGuard` and `CloudflareAccessGuard` reject socket contexts, and a rejected `$live`
 frame or push fails without a client-visible error. Mark gateway classes and RPC
-providers, admit socket tenants with `TenantModule`'s `resolve`, or pass `guard: 'none'`; the
+providers, admit socket tenants with `TenantModule`'s `resolve`, or attach guards only to selected routes; the
 [upgrade guide](upgrading-framework.md#guards-on-websocket-live-query-and-rpc-entrypoints) lists
 each case.
 
 An integration package's own controller, which applications cannot annotate, declares the
 phases it enforces itself with `SkipGuardPhases([...])` from `@velajs/vela/module-kit`:
-the global guards integrations install in those phases (`tenant`, `authorize`) do not run
+the global guards applications install in those phases (`tenant`, `authorize`) do not run
 for its routes. Only a guard that declares `static readonly skippable = true` is skipped,
 as `TenantGuard`, `PermissionGuard`, `RolesGuard` and `CedarGuard` do; other global guards
 run in every phase on these routes, as do authentication, feature and route guards.

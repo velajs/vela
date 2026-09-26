@@ -10,7 +10,7 @@
  * entrypoint-kind signal the M4 features service already reads).
  *
  * Queues are enumerated from the app's `QueueRegistry` (every
- * `QueueModule.registerQueue` name) in union with the per-app
+ * `QueueModule.forFeature` name) in union with the per-app
  * `EntrypointRegistry`'s `queue` kind (every `@Processor`) — the same app-scoped
  * sources the features service uses. Producing goes through the registered
  * queue's `QueueClient` (`queueToken(name)`).

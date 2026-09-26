@@ -11,6 +11,40 @@ work again. Database fences reject stale completion; they cannot make an
 external HTTP request, email or payment exactly once. Pass a stable downstream
 idempotency key when the destination supports one.
 
+## Vela dependency injection
+
+Keep the store and each configured feature as ordinary typed providers. This
+preserves the feature's payload and transaction types without a module facade:
+
+```ts
+import { defineProvider, Inject, Injectable, InjectionToken, Module } from '@velajs/vela';
+import { createOutbox, type ReliabilityStore } from '@velajs/reliability';
+
+const STORE = new InjectionToken<ReliabilityStore>('delivery store');
+function deliveryOutbox(store: ReliabilityStore) {
+  return createOutbox({ store, parsePayload: (value) => eventSchema.parse(value) });
+}
+const OUTBOX = new InjectionToken<ReturnType<typeof deliveryOutbox>>('delivery outbox');
+
+@Injectable()
+class Delivery {
+  constructor(@Inject(OUTBOX) readonly outbox: ReturnType<typeof deliveryOutbox>) {}
+}
+
+@Module({
+  imports: [DeliveryStoreModule], // Exports STORE; eventSchema validates application events.
+  providers: [defineProvider(OUTBOX, { inject: [STORE], useFactory: deliveryOutbox }), Delivery],
+  exports: [Delivery],
+})
+class DeliveryModule {}
+```
+
+Use `ReliabilityStore<YourTransaction>` when sharing a native transaction. Create
+the store through the application's environment-specific factory, and pass the
+trusted tenant/namespace scope to operations. Injecting a service does not infer
+that authority. The same composition applies to inboxes, idempotency and jobs;
+no background polling starts merely because the provider was registered.
+
 ## Storage and namespaces
 
 ```ts

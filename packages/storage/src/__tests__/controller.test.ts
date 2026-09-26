@@ -32,7 +32,7 @@ async function appWith(http: StorageHttpOptions, useMemory = false) {
 
 async function appWithDriver(http: StorageHttpOptions, driver: StorageDriver) {
   const moduleRef = await Test.createTestingModule({
-    imports: [StorageModule.forRoot({ driver, http })],
+    imports: [StorageModule.register({ driver, httpController: {}, http })],
   }).compile();
   const app = await moduleRef.createApplication();
   return app.getHonoApp();
@@ -109,7 +109,13 @@ describe('StorageController', () => {
       return defineProvider(APP_GUARD, { useValue: guard });
     };
     const moduleRef = await Test.createTestingModule({
-      imports: [StorageModule.forRoot({ driver: s3Mock(), http: { authorize: () => true } })],
+      imports: [
+        StorageModule.register({
+          driver: s3Mock(),
+          httpController: {},
+          http: { authorize: () => true },
+        }),
+      ],
       providers: [
         policy('tenant', 'integration'),
         policy('authorize', 'integration'),
@@ -170,7 +176,9 @@ describe('StorageController', () => {
         })) as unknown as typeof fetch,
     });
     const moduleRef = await Test.createTestingModule({
-      imports: [StorageModule.forRoot({ driver: s3, http: { authorize: () => true } })],
+      imports: [
+        StorageModule.register({ driver: s3, httpController: {}, http: { authorize: () => true } }),
+      ],
     }).compile();
     const app = (await moduleRef.createApplication()).getHonoApp();
     const res = await app.request('/api/storage/list?prefix=a');
@@ -344,7 +352,7 @@ describe('StorageController', () => {
     expect(missingActor.create).not.toHaveBeenCalled();
   });
 
-  it('reads the multipart grant secret from the forRootAsync factory, failing closed without one', async () => {
+  it('reads the multipart grant secret from the registerAsync factory, failing closed without one', async () => {
     const SECRET = new InjectionToken<string>('test.multipart-grant-secret');
 
     @Module({ providers: [defineProvider(SECRET, { useValue: GRANT_SECRET })], exports: [SECRET] })
@@ -353,7 +361,7 @@ describe('StorageController', () => {
     const withSecret = multipartDriver(10);
     const withoutSecret = multipartDriver(10);
     const build = async (
-      imported: ReturnType<typeof StorageModule.forRootAsync>,
+      imported: ReturnType<typeof StorageModule.registerAsync>,
     ): Promise<Awaited<ReturnType<typeof appWithDriver>>> => {
       const moduleRef = await Test.createTestingModule({ imports: [imported] }).compile();
       return (await moduleRef.createApplication()).getHonoApp();
@@ -361,11 +369,14 @@ describe('StorageController', () => {
     const http: StorageHttpOptions = { authorize: () => ({ actorId: 'actor-a' }) };
 
     const secured = await build(
-      StorageModule.forRootAsync({
+      StorageModule.registerAsync({
         imports: [SecretsModule],
         inject: [SECRET],
-        useFactory: (secret) => ({ driver: withSecret.driver, multipartGrantSecret: secret }),
-        http,
+        useFactory: (secret) => ({
+          driver: withSecret.driver,
+          http: { ...http, multipartGrantSecret: secret },
+        }),
+        httpController: {},
       }),
     );
     const created = await createMultipart(secured, 10);
@@ -373,7 +384,10 @@ describe('StorageController', () => {
     expect(typeof created.body.grant).toBe('string');
 
     const unsecured = await build(
-      StorageModule.forRootAsync({ useFactory: () => ({ driver: withoutSecret.driver }), http }),
+      StorageModule.registerAsync({
+        useFactory: () => ({ driver: withoutSecret.driver, http }),
+        httpController: {},
+      }),
     );
     expect((await createMultipart(unsecured, 10)).response.status).toBe(403);
     expect(withoutSecret.create).not.toHaveBeenCalled();
@@ -386,23 +400,21 @@ describe('StorageController', () => {
       appWithDriver({ ...http, multipartGrantSecret: 'short' }, multipartDriver(10).driver),
     ).rejects.toThrow(/multipartGrantSecret must contain at least 32 bytes/);
 
-    // A factory secret fails every use until the factory succeeds, as a redacted
-    // server error, never a client error that names the setting.
+    // Factory policy is validated during initialization, before any request.
     const fromFactory = multipartDriver(10);
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        StorageModule.forRootAsync({
-          useFactory: () => ({ driver: fromFactory.driver, multipartGrantSecret: 'short' }),
-          http,
-        }),
-      ],
-    }).compile();
-    const app = (await moduleRef.createApplication()).getHonoApp();
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { response, body } = await createMultipart(app, 10);
-      expect(response.status).toBe(502);
-      expect(body).toEqual({ error: { code: 'upstream_error', message: 'storage backend error' } });
-    }
+    await expect(
+      Test.createTestingModule({
+        imports: [
+          StorageModule.registerAsync({
+            useFactory: () => ({
+              driver: fromFactory.driver,
+              http: { ...http, multipartGrantSecret: 'short' },
+            }),
+            httpController: {},
+          }),
+        ],
+      }).compile(),
+    ).rejects.toThrow(/multipartGrantSecret must contain at least 32 bytes/);
     expect(fromFactory.create).not.toHaveBeenCalled();
   });
 

@@ -30,19 +30,12 @@ export interface BetterAuthRuntimeOptions {
   issuer?: string;
   /** Mount path of the catch-all handler (default `/api/auth`). Structural. */
   basePath?: string;
-  /**
-   * `'global'` (default) installs AuthGuard as a global guard in the
-   * `authenticate` phase, so it runs before tenant, authorization and feature
-   * guards whatever the import order. Use `'none'` only when the application
-   * installs an equivalent authentication guard itself. Structural.
-   */
-  guard?: 'global' | 'none';
   /** Mount the catch-all better-auth handler (default `true`). Structural. */
   mountHandler?: boolean;
 }
 
 /** The fields `forRootAsync` takes alongside its factory: they shape the module graph. */
-export type BetterAuthStructuralOption = 'basePath' | 'guard' | 'mountHandler';
+export type BetterAuthStructuralOption = 'basePath' | 'mountHandler';
 
 // Re-export the base User/Session shapes for ergonomic consumer typing.
 // Use BetterAuthService<typeof auth> to retain plugin API and result types.

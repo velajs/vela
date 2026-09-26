@@ -23,8 +23,8 @@ import { FEATURE_FLAG_TOKENS } from '../feature-flags.tokens';
  * error opens the route. Disabled, malformed, or failed evaluations throw
  * `NotFoundException` (route hidden) or `ForbiddenException` per the decorator.
  * Handlers with no `@FeatureFlag()` metadata pass through untouched, so
- * `FeatureFlagsModule` registers the guard app-wide by default; with
- * `guard: 'none'`, apply it per route via `@UseGuards(FeatureFlagGuard)`.
+ * an application can register the exported guard through `APP_GUARD` with
+ * `useExisting`, or per route via `@UseGuards(FeatureFlagGuard)`.
  *
  * It does NOT inject `REQUEST_CONTEXT` — that would make the guard request-
  * scoped and break lazy-module materialization (which constructs every provider

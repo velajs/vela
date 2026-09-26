@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
+  APP_INTERCEPTOR,
   APP_EXCEPTION_HANDLER,
   Controller,
   Get,
@@ -8,7 +9,7 @@ import {
   type ErrorReportContext,
   type ExceptionHandler,
 } from '@velajs/vela';
-import { CacheModule, CacheResponse, CacheService } from '@velajs/vela/cache';
+import { CacheInterceptor, CacheModule, CacheResponse, CacheService } from '@velajs/vela/cache';
 import { createCloudflareApp, kvCache, kvCacheInvalidation } from '../index';
 import { KVCacheStore, KVCacheInvalidationStore } from '../services/kv-cache.store';
 
@@ -131,6 +132,7 @@ describe('kvCache({ binding }) and kvCacheInvalidation({ binding })', () => {
     }
   }
   @Module({
+    providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
     imports: [
       CacheModule.forRoot({
         namespace: 'kv',

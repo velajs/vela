@@ -11,10 +11,11 @@ const shared: UserConfig = {
     'src/tail.ts',
     'src/testing.ts',
     'src/workflows.ts',
+    'src/workflow-definitions.ts',
   ],
   format: ['esm'],
   platform: 'neutral',
-  external: ['cloudflare:workers', 'cloudflare:test'],
+  external: ['cloudflare:workers', 'cloudflare:workflows', 'cloudflare:test'],
   target: 'es2024',
   fixedExtension: false,
 };

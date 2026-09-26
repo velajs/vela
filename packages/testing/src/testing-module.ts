@@ -232,7 +232,7 @@ export class TestingModule {
       if (!known.has(SeederClass)) {
         throw new Error(
           `Seeder "${SeederClass.name}" is not registered. Add it to a module's ` +
-            'providers or SeederModule.forRoot({ seeders: [...] }).',
+            'providers or SeederModule.forFeature([...]).',
         );
       }
       await this.runInRequestScope(async (child) => {

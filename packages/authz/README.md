@@ -129,10 +129,17 @@ authenticate/admit once at the outer HTTP boundary before running concurrent fie
 
 The permission guard resolves exactly one `AUTHZ` engine visible from the route module, then rechecks identity after asynchronous decisions to reject expiry or replacement during resolution. `can()` also rejects expired identities before and after invoking its resolver. Missing identity, missing/ambiguous engine, and resolver exceptions deny access.
 
-`AuthzModule` installs `PermissionGuard` and `RolesGuard` as global guards in the `authorize` phase. They run after global authentication (Better Auth, Cloudflare Access) and tenant admission whatever the import order, and pass routes without `@RequirePermission` or `@Roles`. Pass `guard: 'none'` (beside the factory for `forRootAsync`) to apply them with `@UseGuards` after route-level authentication instead. Each guard resolves the engine visible from the route's module, so one global installation serves every module: when several modules register their own engine, give each registration its own `key`, keep `guard: 'global'` on one and pass `guard: 'none'` on the others.
+`AuthzModule` provides and exports `PermissionGuard` and `RolesGuard`. Attach each
+needed guard through an `APP_GUARD` alias or `@UseGuards`. Their `authorize` phase
+runs after global authentication and tenant admission; undeclared routes pass.
+The permission guard selects the engine visible from the route's module. Multiple
+engine configurations need distinct keys and unambiguous visibility; one explicit
+global alias can serve them all.
 
 ```ts
-import { AuthzModule, RequirePermission } from '@velajs/authz/vela';
+import { APP_GUARD } from '@velajs/vela';
+import { AuthGuard } from '@velajs/better-auth';
+import { AuthzModule, PermissionGuard, RolesGuard, RequirePermission } from '@velajs/authz/vela';
 
 @Controller('/posts')
 class PostsController {
@@ -147,6 +154,11 @@ class PostsController {
     AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }), // authorize phase
   ],
   controllers: [PostsController],
+  providers: [
+    { provide: APP_GUARD, useExisting: AuthGuard },
+    { provide: APP_GUARD, useExisting: PermissionGuard },
+    { provide: APP_GUARD, useExisting: RolesGuard },
+  ],
 })
 class AppModule {}
 ```

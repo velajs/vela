@@ -21,7 +21,7 @@ import type { DeliveryResult, MailMessage, MailTransport } from './types';
  * The transport is preferred from the mailer options, then the `@Optional`
  * {@link MAIL_TRANSPORT} token a transport module provides. The queue client is
  * resolved lazily through the app container from the one module that owns the
- * queue's `QueueClient` (`QueueModule.registerQueue`, which the mailer imports
+ * queue's `QueueClient` (`QueueModule.forFeature`, which the mailer imports
  * when `queue` is configured), so a mailer without a queue fails with
  * `queue_required` at first use rather than at bootstrap.
  */
@@ -54,7 +54,7 @@ export class MailService {
       throw new MailError(
         'queue_required',
         '@velajs/mail: queueing requires a queue. Pass queue: { name?, binding? } to ' +
-          'MailModule.forRoot (the mailer registers that queue itself) and import ' +
+          'MailModule.register (the mailer registers that queue itself) and import ' +
           'QueueModule.forRoot({ driver }) once in the root module.',
       );
     }

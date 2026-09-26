@@ -29,6 +29,60 @@ function mockFetch(status: number, body: unknown, headers: Record<string, string
 // =============================================================================
 
 describe('HttpModule', () => {
+  it('uses separate URLs and credentials for independent local registrations', async () => {
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => Response.json({ ok: true }));
+    @Injectable()
+    class Catalog {
+      constructor(readonly http: HttpService) {}
+    }
+    @Injectable()
+    class Billing {
+      constructor(readonly http: HttpService) {}
+    }
+    @Module({
+      imports: [
+        HttpModule.register({
+          baseURL: 'https://catalog.example.com',
+          headers: { Authorization: 'Bearer catalog' },
+        }),
+      ],
+      providers: [Catalog],
+      exports: [Catalog],
+    })
+    class CatalogModule {}
+    @Module({
+      imports: [
+        HttpModule.registerAsync({
+          useFactory: () => ({
+            baseURL: 'https://billing.example.com',
+            headers: { Authorization: 'Bearer billing' },
+          }),
+        }),
+      ],
+      providers: [Billing],
+      exports: [Billing],
+    })
+    class BillingModule {}
+    @Module({ imports: [CatalogModule, BillingModule] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    await Promise.all([
+      app.get(Catalog).http.get('/items'),
+      app.get(Billing).http.get('/invoices'),
+    ]);
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      'https://catalog.example.com/items',
+      'https://billing.example.com/invoices',
+    ]);
+    expect(
+      fetcher.mock.calls.map(([, options]) => new Headers(options?.headers).get('Authorization')),
+    ).toEqual(['Bearer catalog', 'Bearer billing']);
+    expect(app.get(Catalog).http).not.toBe(app.get(Billing).http);
+    await app.close();
+  });
+
   it('should inject HttpService and perform a GET request', async () => {
     mockFetch(200, { id: 1, name: 'Alice' });
 
@@ -67,7 +121,7 @@ describe('HttpModule', () => {
     );
   });
 
-  it('should use baseURL from HttpModule.forRoot()', async () => {
+  it('should use baseURL from HttpModule.register()', async () => {
     mockFetch(200, { ok: true });
 
     @Injectable()
@@ -89,7 +143,7 @@ describe('HttpModule', () => {
     }
 
     @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://api.example.com' })],
+      imports: [HttpModule.register({ baseURL: 'https://api.example.com' })],
       providers: [ApiService],
       controllers: [TestController],
     })
@@ -238,7 +292,7 @@ describe('HttpModule', () => {
     }
 
     @Module({
-      imports: [HttpModule.forRoot({ headers: { Authorization: 'Bearer token' } })],
+      imports: [HttpModule.register({ headers: { Authorization: 'Bearer token' } })],
       providers: [AuthService],
       controllers: [AuthController],
     })
@@ -286,7 +340,7 @@ describe('HttpModule', () => {
 
     @Module({
       imports: [
-        HttpModule.forRootAsync({
+        HttpModule.registerAsync({
           imports: [ApiConfigModule],
           useFactory: (cfg: ApiConfigService) => ({ baseURL: cfg.getBaseUrl() }),
           inject: [ApiConfigService],

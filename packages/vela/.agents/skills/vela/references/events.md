@@ -1,7 +1,7 @@
 # Events (`EventEmitterModule`)
 
 Validated, scoped event listeners live on `@velajs/vela/events`. Import the lazy
-`EventEmitterModule` bare or with `forRoot()`; both forms share one application instance.
+`EventEmitterModule` directly; repeated imports share one application instance.
 
 ```ts
 import { z } from 'zod';

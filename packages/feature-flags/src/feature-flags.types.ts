@@ -80,12 +80,4 @@ export interface FeatureFlagsOptions {
    * Receives the current request context; skipped outside request scope.
    */
   context?: (ctx: RequestContext) => FlagContext | Promise<FlagContext>;
-  /**
-   * `'global'` (default) installs {@link FeatureFlagGuard} as a global guard
-   * (`APP_GUARD`), so every `@FeatureFlag()` route is gated without
-   * `@UseGuards`. `'none'` gates only the routes that declare
-   * `@UseGuards(FeatureFlagGuard)`. Structural: with `forRootAsync`, pass it
-   * beside the factory. Visibility is the separate `isGlobal`.
-   */
-  guard?: 'global' | 'none';
 }

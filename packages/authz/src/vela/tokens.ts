@@ -1,17 +1,8 @@
 import { InjectionToken } from '@velajs/vela';
 import type { Authz, CreateAuthzOptions } from '../authz';
 
-/** Options for {@link AuthzModule}: the engine options plus guard installation. */
-export interface AuthzModuleOptions extends CreateAuthzOptions {
-  /**
-   * `'global'` (default) installs `PermissionGuard` and `RolesGuard` as global
-   * guards in the `authorize` phase: after authentication and tenant
-   * admission, whatever the import order. Routes without `@RequirePermission`
-   * or `@Roles` pass. `'none'` leaves them to `@UseGuards`. With
-   * `forRootAsync`, pass it beside the factory.
-   */
-  guard?: 'global' | 'none';
-}
+/** Options for the authorization engine provided by {@link AuthzModule}. */
+export type AuthzModuleOptions = CreateAuthzOptions;
 
 /**
  * The auto-provided options bag passed to {@link AuthzModule}.forRoot. Distinct

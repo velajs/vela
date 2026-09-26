@@ -22,3 +22,16 @@ bindResolver(Resolver, 'wrong', { args });
 bindResolver(Resolver, 'missing', { args });
 const loader = new GraphqlLoader(() => new Map<string, number>());
 void [loader, exactOutput, yogaDriver, compareGraphqlSchema, printGraphqlSchema];
+
+// Every decorator is available from the package root in the packed declarations.
+import {
+  Resolver as ResolverDecorator,
+  Query,
+  Mutation,
+  ResolveField,
+  Args,
+  Parent,
+  Context,
+  Info,
+} from '@velajs/graphql';
+void [ResolverDecorator, Query, Mutation, ResolveField, Args, Parent, Context, Info];

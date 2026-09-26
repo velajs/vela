@@ -341,7 +341,7 @@ describe('deployment alignment', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
       ],
       providers: [EmailProcessor],
     })

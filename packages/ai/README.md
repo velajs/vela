@@ -85,6 +85,33 @@ cache a provider holding one environment's credentials in a process-global
 singleton. Request identity belongs in operation arguments, never mutable shared
 configuration. A separate `AiModule` would only duplicate Vela's existing DI API.
 
+Expose the checked provider through an ordinary feature module, then inject its
+typed token in services:
+
+```ts
+import { Inject, Injectable, Module } from '@velajs/vela';
+import { generateText, type Ai } from '@velajs/ai';
+
+@Injectable()
+class Answers {
+  constructor(@Inject(AI) private readonly models: Ai) {}
+  answer(prompt: string) {
+    return generateText({ model: this.models.model(), prompt });
+  }
+}
+
+@Module({
+  imports: [ModelProviderModule], // Exports the application-owned MODEL_PROVIDER.
+  providers: [aiProvider, Answers],
+  exports: [Answers],
+})
+class AnswersModule {}
+```
+
+The factory belongs to the importing application/environment. For retrieval,
+provide `defineRag(...)` the same way and pass admitted identity to each call;
+create `asTool(...)` inside the request that owns that identity.
+
 ## Retrieval
 
 `defineRag(config)` returns `{ sync, retrieve, remove, asTool }`. It owns chunking

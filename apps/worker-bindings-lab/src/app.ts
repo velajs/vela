@@ -225,7 +225,7 @@ class ReportProcessor {
 @Module({
   imports: [
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    QueueModule.registerQueue({ name: 'reports', binding: 'REPORT_QUEUE' }),
+    QueueModule.forFeature([{ name: 'reports', binding: 'REPORT_QUEUE' }]),
   ],
   providers: [WorkerBindingFacade, WorkerEvents, ReportProcessor],
   controllers: [WorkerBindingsController],

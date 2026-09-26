@@ -108,7 +108,7 @@ describe('cloudflareQueues() producers', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
       ],
       providers: [Signup],
     })
@@ -138,7 +138,7 @@ describe('cloudflareQueues() producers', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
       ],
     })
     class App {}
@@ -162,8 +162,8 @@ describe('cloudflareQueues() producers', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
-        QueueModule.registerQueue({ name: 'inbound', consumer: 'inbound-production' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
+        QueueModule.forFeature([{ name: 'inbound', consumer: 'inbound-production' }]),
       ],
     })
     class App {}
@@ -186,7 +186,7 @@ describe('cloudflareQueues() producers', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
       ],
     })
     class App {}
@@ -203,7 +203,7 @@ describe('cloudflareQueues() addBulk', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
       ],
     })
     class App {}
@@ -329,8 +329,8 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
-        QueueModule.registerQueue({ name: 'sms' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
+        QueueModule.forFeature([{ name: 'sms' }]),
       ],
       providers,
     })
@@ -381,8 +381,8 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', consumer: 'email-production' }),
-        QueueModule.registerQueue({ name: 'sms' }),
+        QueueModule.forFeature([{ name: 'email', consumer: 'email-production' }]),
+        QueueModule.forFeature([{ name: 'sms' }]),
       ],
       providers,
     })
@@ -432,7 +432,7 @@ describe('cloudflareQueues() native delivery', () => {
         QueueModule.forRootAsync({
           useFactory: async () => ({ driver: cloudflareQueues() }),
         }),
-        QueueModule.registerQueue({ name: 'tasks' }),
+        QueueModule.forFeature([{ name: 'tasks' }]),
       ],
       providers: [Tasks, Resource],
     })
@@ -479,7 +479,7 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', consumer: 'email-production' }),
+        QueueModule.forFeature([{ name: 'email', consumer: 'email-production' }]),
       ],
       providers: [Native],
     })
@@ -498,7 +498,7 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
       ],
       providers: [
         ...providers,
@@ -555,7 +555,7 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
       ],
       providers: [
         Email,
@@ -592,7 +592,7 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
       ],
       providers: [Native],
     })
@@ -635,9 +635,9 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', consumer: 'email-production' }),
-        QueueModule.registerQueue({ name: 'sms', consumer: 'email-production' }),
-        QueueModule.registerQueue({ name: 'push', binding: 'PUSH_QUEUE' }),
+        QueueModule.forFeature([{ name: 'email', consumer: 'email-production' }]),
+        QueueModule.forFeature([{ name: 'sms', consumer: 'email-production' }]),
+        QueueModule.forFeature([{ name: 'push', binding: 'PUSH_QUEUE' }]),
       ],
     })
     class App {}
@@ -721,7 +721,7 @@ describe('dynamic Worker roots', () => {
       module: Root,
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'sms' }),
+        QueueModule.forFeature([{ name: 'sms' }]),
       ],
       providers: [...providers, FlakyStartup],
     });

@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@velajs/vela';
+import { APP_GUARD, Controller, Get, UseGuards } from '@velajs/vela';
 import { getTrustedRequestIdentity, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
 import { betterAuth } from 'better-auth';
@@ -38,6 +38,7 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
   it('mints a signed session cookie a guarded route accepts', async () => {
     const auth = makeRealAuth();
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [MeController],
     }).compile();
@@ -60,6 +61,7 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
   it('rejects an unauthenticated request (no session headers)', async () => {
     const auth = makeRealAuth();
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [MeController],
     }).compile();
@@ -72,6 +74,7 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
   it('produces a real session validated by auth.api.getSession', async () => {
     const auth = makeRealAuth();
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
     }).compile();
 
@@ -86,6 +89,7 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
   it('reuses an existing user when the principal carries a matching id', async () => {
     const auth = makeRealAuth();
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
     }).compile();
 
@@ -107,6 +111,7 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
   it('throws a clear error when the principal cannot identify a user', async () => {
     const auth = makeRealAuth();
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
     }).compile();
 
@@ -118,6 +123,7 @@ describe('logout identity lifecycle', () => {
   it('the public sign-out handler clears request identity and invalidates the real session', async () => {
     const auth = makeRealAuth();
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [MeController],
     }).compile();

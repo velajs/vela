@@ -380,7 +380,7 @@ export class CloudflareApplication {
       throw new Error(
         `No consumer claims queue '${batch.queue}'. Add @QueueConsumer('${batch.queue}') to a ` +
           `provider, or deliver it through QueueModule.forRoot({ driver: cloudflareQueues() }) ` +
-          `with a QueueModule.registerQueue() for each queue it carries. The batch is rejected ` +
+          `with a QueueModule.forFeature([]) for each queue it carries. The batch is rejected ` +
           `unacknowledged, so Cloudflare retries it and then routes it to the configured ` +
           `dead-letter queue.`,
       );

@@ -414,7 +414,7 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
       registrations.push(
         {
           key: 'imports',
-          entry: `QueueModule.registerQueue({ name: ${constant}, binding: '${binding}' })`,
+          entry: `QueueModule.forFeature([{ name: ${constant}, binding: '${binding}' }])`,
           imports: [
             { name: 'QueueModule', from: '@velajs/vela/queue' },
             { name: constant, from: target },

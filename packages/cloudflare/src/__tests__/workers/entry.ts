@@ -580,3 +580,9 @@ export class SqliteLiveRoom extends VelaWebSocketDurableObject(LiveRoomModule) {
 export class KvLiveRoom extends VelaWebSocketDurableObject(LiveRoomModule) {}
 
 export default app.worker;
+
+export {
+  PortableExampleWorkflow,
+  PortableAgentWorkflow,
+  PortableProbe,
+} from './portable-workflow.fixture';

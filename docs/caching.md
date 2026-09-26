@@ -10,8 +10,9 @@ store serves both `@CacheResponse()` routes and the injected `CacheService`.
 ## Configure an explicit scope
 
 ```ts
-import { Controller, Get, Module } from '@velajs/vela';
+import { APP_INTERCEPTOR, Controller, Get, Module } from '@velajs/vela';
 import {
+  CacheInterceptor,
   CacheModule,
   CacheResponse,
   MemoryCacheInvalidationStore,
@@ -32,6 +33,7 @@ class CatalogController {
     scope: () => ({ visibility: 'public', partition: 'catalog' }),
   })],
   controllers: [CatalogController],
+  providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
 })
 class AppModule {}
 ```
@@ -40,8 +42,9 @@ Configure one `CacheModule` per application, with `forRoot` or `forRootAsync`.
 Without `store`, each application gets its own `MemoryCacheStore` of `max`
 entries (default 1000). A store or invalidation object in static options is
 shared by every application built from the module; pass a function to build one
-per application instead. The module registers its interceptor automatically, but only decorated GET
-routes participate. Guards run on **every request**, including hits. The scope
+per application instead. Attach the exported `CacheInterceptor` through the
+application alias above or `@UseInterceptors(CacheInterceptor)`; only decorated
+GET routes participate. Guards run on **every request**, including hits. The scope
 resolver receives `ExecutionContext` after authorization. For authenticated
 routes, return `{ visibility: 'private', partition: JSON.stringify([tenantId,
 actorId, permissionVersion]) }` using identifiers established by your guard or
@@ -62,14 +65,14 @@ space; their tags and whole-scope invalidation still reach routes in that scope.
 A route entry holds the response the route sent: its status, media type and
 body, after every interceptor and the route's `response` schema. A hit replays
 it without running the handler or parsing again; interceptors outside
-`CacheInterceptor` (global ones registered before `CacheModule`'s) receive the
+`CacheInterceptor` (global ones registered before the `CacheInterceptor` alias) receive the
 replayed `Response`, and a value they return instead of a `Response` is
 ignored, so a hit sends exactly what the miss that stored it sent unless one
 of them returns another `Response`, which is sent instead. An
 interceptor outside it that reads the value must accept that `Response`. What
 is stored is the result of the call `CacheInterceptor` makes: the handler and
 the interceptors inside it (controller and method interceptors, and global ones
-registered after `CacheModule`'s). When that call throws, or has not settled
+registered after the `CacheInterceptor` alias). When that call throws, or has not settled
 when the response is sent, a fallback an interceptor outside it sends instead
 (an error-recovery or timeout default) is not stored, and the next request runs
 the handler again. A fallback an interceptor inside it returns for a failed

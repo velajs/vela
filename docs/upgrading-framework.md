@@ -86,131 +86,33 @@ See [DI ownership](dependency-injection.md) and [module authoring](modules.md).
 
 ## Module contract
 
-`defineModule` is the one module engine, and every first-party module follows the
-same contract.
+Module methods now express ownership. Use `forRoot` / `forRootAsync` for shared
+facilities, `register` / `registerAsync` for Http, Mail, Crypto, Storage and
+RpcClient, and `forFeature` for contributions to Queue, I18n and Seeder.
+EventEmitter, Health and ScheduleNode are ordinary imports.
 
-A module's instance key comes from its structural options only: the options that
-shape its graph, such as a storage bucket's `name` or a GraphQL `path`. A module
-without structural options has one instance per class. A second configuration under
-the same key fails bootstrap under every diagnostics policy, instead of becoming
-another instance or being dropped with a warning. Give each additional
-configuration its own `key`:
+HTTP, Mail and Crypto registrations receive independent instance identities by
+default. Reuse a returned definition to share it within an application; a second
+application still constructs its own providers. `defineModule` retains structural
+identity by default; `ConfigurableModuleBuilder` defaults to registration identity.
+Explicit keys keep deduplication and conflicting-configuration diagnostics. Named
+Storage and RPC resources remain unique by name.
 
-```ts
-// Before (1.30.0): two instances, keyed by their options.
-@Module({ imports: [HttpModule.forRoot({ baseURL: 'https://billing.example.com' })] })
-class BillingModule {}
-@Module({ imports: [HttpModule.forRoot({ baseURL: 'https://catalog.example.com' })] })
-class CatalogModule {}
-```
+Async factories return runtime values, including Errors catalogs, WebSocket
+sync/registries, Live `presenceOptions`, Mail inbound gates, Cedar `undeclared`
+and Schedule dispatch policy. Declaration-time fields remain only where they
+shape the graph. Storage separates `httpController: { path }` from runtime `http`
+settings. An absent or false `httpController` mounts no routes.
 
-```ts
-// After: name each instance.
-@Module({ imports: [HttpModule.forRoot({ key: 'billing', baseURL: 'https://billing.example.com' })] })
-class BillingModule {}
-@Module({ imports: [HttpModule.forRoot({ key: 'catalog', baseURL: 'https://catalog.example.com' })] })
-class CatalogModule {}
-```
+Applications explicitly attach exported guards and interceptors. `isGlobal`
+controls provider visibility; the old guard installation options are removed.
+See the complete [module API migration](module-api-migration.md) for signatures,
+examples and moved options, and [module authoring](modules.md) for identity rules.
 
-The same applies to `ThrottlerModule`, `I18nModule`, `MailModule` (two mailers that
-differ only in `from`, `transport` or `render`) and `CryptoModule`. `CacheModule`
-allows one instance per application, whatever its `key`. `StorageModule`
-keys by bucket `name`, `GraphqlModule` by `path` and `RpcClientModule` by `name`
-and `binding`, so registering one of those again with other options fails too.
-`AuthzModule`, `TenantModule`, `CloudflareAccessModule` and `FeatureFlagsModule`
-key by `guard`, and `CedarModule` by `guard` and `undeclared`: a second
-registration with the same `guard` and other options, such as a feature module's
-own `AuthzModule` with other roles, fails bootstrap unless it has its own `key`.
-For several `AuthzModule`, `TenantModule` or `CedarModule` registrations, keep
-`guard: 'global'` on one and pass `guard: 'none'` on the others; the installed
-guard resolves the registration the route's module sees.
-`CrudModule.forFeature()` registrations that mount one path with different
-definitions fail bootstrap; register one shared `defineCrudFeature(...)` value
-wherever the path is mounted.
-
-`forRootAsync` takes structural options next to its factory, which returns the
-other options. A factory that returns a structural option no longer compiles and
-fails bootstrap, and any other call-site option besides `key`, `lazy`, an extra
-such as `isGlobal` and the factory wiring (`imports`, `inject`, `useFactory`,
-`useClass`, `useExisting`) throws. In 1.30.0 such an option (for example `baseURL`
-in `HttpModule.forRootAsync({ baseURL, useFactory })` or `roles` in
-`AuthzModule.forRootAsync({ roles, useFactory })`) was merged under the factory's
-result as a default; return it from the factory instead. Better
-Auth's factory returns the module options instead of the auth instance, and
-Storage's returns them instead of a bare driver or `{ driver, multipartGrantSecret }`;
-Storage's `prefix`, `readonly` and `hooks` move into the factory result:
-
-```ts
-// Before (1.30.0)
-BetterAuthModule.forRootAsync({
-  inject: [ENV],
-  useFactory: (env) => betterAuth({ secret: env.AUTH_SECRET, database }),
-});
-StorageModule.forRootAsync({
-  name: 'files',
-  prefix: 'uploads/',
-  inject: [ENV],
-  useFactory: (env) => ({ driver: r2Driver({ bucket: env.FILES }), multipartGrantSecret: env.SECRET }),
-});
-```
-
-```ts
-// After: `auth` and `driver` may be functions, built on first use.
-BetterAuthModule.forRootAsync({
-  inject: [ENV],
-  useFactory: (env) => ({ auth: () => betterAuth({ secret: env.AUTH_SECRET, database }) }),
-});
-StorageModule.forRootAsync({
-  name: 'files',
-  inject: [ENV],
-  useFactory: (env) => ({
-    driver: () => r2Driver({ bucket: env.FILES }),
-    prefix: 'uploads/',
-    multipartGrantSecret: env.SECRET,
-  }),
-});
-```
-
-In the core modules, `forRootAsync` takes `ConfigModule`'s `load`, `ErrorsModule`'s
-`catalogs` and `handler`, `LiveModule`'s `presence`, `ScheduleModule`'s `dispatch`,
-`SeederModule`'s `seeders` and `WebSocketModule`'s `sync` next to its factory, and
-`RpcClientModule.forRootAsync` takes `name` and `binding`.
-
-A bare class import configures nothing. Importing a generated module class that
-has no `@Module()` of its own, such as `imports: [CedarModule]`, fails bootstrap;
-import `CedarModule.forRoot(...)`. `@Module` no longer accepts `isGlobal`: decorate
-the class with `@Global()`, or pass the `isGlobal` extra to one `forRoot` call.
-`ModuleMetadata.isGlobal` is renamed `global`. The `isGlobal` extra only makes an
-instance's exports visible everywhere; options that install application-wide guards
-are named `guard` (see [guards](#http-errors-request-parameters-and-guards)).
-
-*1.32.0:* module descriptions use the same name. `ModuleDescription.isGlobal`
-(`Container.getModuleDescriptions()` from `@velajs/vela/module-kit`) and the
-internal `ModuleScope.isGlobal` are `global`, and `vela module graph --json` and the
-`vela mcp serve` `module_graph` and `token_describe` results report `global`. The
-Studio wire protocol moves to version 4, whose `app.modules` rows carry `global`:
-upgrade `@velajs/studio`, `@velajs/studio-host` and `@velajs/studio-ui` together,
-since a host or UI on protocol 3 refuses a protocol-4 application, and the reverse.
-
-Renamed and removed APIs, with no aliases:
-
-- `RpcClientModule.register`/`registerAsync` are `forRoot`/`forRootAsync`.
-- `ConfigurableModuleBuilder` generates Nest's `register`/`registerAsync`; call
-  `setClassMethodName('forRoot')` to keep `forRoot`.
-- `defineConfigurableModule` (use `defineModule`), `defineDynamicModule` (return a
-  `DynamicModule` literal), `moduleKey` (use `stableHash` or `referenceKey`),
-  `moduleToken` (use `new InjectionToken`), `provideGlobal` (use the `global:` slot
-  of `setup`, or `{ provide: APP_GUARD, useClass }`) and the plugin API
-  (`definePlugin`, `composePlugins`, `PluginRegistry`; compose modules with
-  `imports`).
-- `mountOpenApi`'s `path` and `uiPath` (use `specPath`, and `swaggerPath`,
-  `scalarPath` or `redocPath`), Storage's `http.defaultPolicy`, and the `userId`
-  identity alias (`Identity.userId`, `ResolvedIdentity.userId`, and the field
-  `identityFromUser` set): read `subject` with `issuer`.
-
-Module authors declare structural options with a second type argument and a
-`structural` list, `defineModule<Opts, 'name' | 'http'>({ structural: ['name', 'http'], defaults: { name: 'default' }, ... })`;
-`setup` and `key` receive only those fields. See [module authoring](modules.md).
+`ModuleDescription.isGlobal` and the internal `ModuleScope.isGlobal` remain
+`global`; `@Module` has no global flag. Use `@Global()` or the configured
+instance's `isGlobal` option. Integration metadata and Studio protocol version 4
+use the same `global` name.
 
 ## Invocation and cleanup
 
@@ -324,7 +226,7 @@ JSON-decoded, instead of the handler's value, so it no longer sees fields the
 `response` schema strips. A fallback an interceptor outside `CacheInterceptor`
 sends when the call inside it throws or has not settled is not cached; a
 fallback an interceptor inside it (a controller or method interceptor, or a
-global one registered after `CacheModule`'s) returns for a failed handler is
+global one registered after the `CacheInterceptor` alias) returns for a failed handler is
 that call's result, and is cached. Route entries carry a new address and format version, so entries an
 earlier release stored with the handler's raw result miss once after the
 upgrade, also while older isolates still write them. When you tighten a
@@ -516,33 +418,19 @@ the same verb and method (its `response`, `status` or `defineRoute` contract),
 and reads the parameters the ancestor declares on the method.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
-Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule`, `CedarModule` and
-`FeatureFlagsModule` install their guard globally by default; `guard: 'none'`
-opts out. Replace Better Auth's `isGlobal` with `guard` (`isGlobal: false`
-becomes `guard: 'none'`) and Cedar's `globalGuard: false` with `guard: 'none'`. On
-every module, `isGlobal` only makes exports global: `FeatureFlagsModule`'s
-`isGlobal: true` no longer registers `FeatureFlagGuard`, which the module
-registers by default. Remove `@UseGuards` for guards the modules now install (a
-redundant `@UseGuards(FeatureFlagGuard)` evaluates the flag twice), or pass
-`guard: 'none'` and keep a fully route-level pipeline. The installed guards
-cover every application route, including modules that do not import
-`TenantModule` or `CedarModule`. Cedar denies routes without
-`@RequireResource()` or `@CedarPublic()`; set `undeclared: 'allow'` to keep
-the previous behavior. Declare the policy of generated CRUD controllers with the
-resource's `decorators` and `endpointDecorators`. Integration packages mark their own
-controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`. It skips the
-global guards in the named phases whose class declares
-`static readonly skippable = true` (`TenantGuard`, `PermissionGuard`, `RolesGuard`
-and `CedarGuard`), whoever registers them: an application's own
-`{ provide: APP_GUARD, useClass: TenantGuard }` is skipped there too, where 1.30.0
-ran every global guard on the Better Auth handler, the storage controllers and the
-GraphQL endpoint. Check tenant membership for storage actions in the storage
-`http.authorize` callback. Other global guards still run there. An application
-guard that extends an integration guard inherits `skippable`; declare
-`static override readonly skippable = false` on it to keep it running there.
-`SkipGuardPhases` applies only to controller routes; see
-[guards on WebSocket, live-query and RPC entrypoints](#guards-on-websocket-live-query-and-rpc-entrypoints)
-for the entrypoints where the installed guards also run.
+Applications attach integration guards with `{ provide: APP_GUARD, useExisting:
+AuthGuard }` and equivalent aliases for TenantGuard, PermissionGuard, RolesGuard,
+CedarGuard, CloudflareAccessGuard, FeatureFlagGuard and ThrottlerGuard. Importing
+their modules only provides configured components. Remove `guard` options and
+choose either application aliases or route-level `@UseGuards` for each guard.
+
+Application aliases for TenantGuard and CedarGuard retain their module-owned
+configuration and cover routes outside their importing module. Cedar denies
+undeclared routes unless `undeclared: 'allow'` is configured. Integration routes
+retain their declared `SkipGuardPhases` exemptions: Better Auth and Storage skip
+tenant/authorization, while GraphQL skips transport authorization and authorizes
+fields. Only guards marked `skippable` honor these exemptions. Storage's
+`http.authorize` remains responsible for its own resource authorization.
 
 An application's own global guard runs in the phase its class declares with
 `static readonly phase`, else in `feature`; 1.30.0 ran every global guard in
@@ -579,8 +467,7 @@ on the check before each push to a socket (run with the gateway class), on the
 reserved `$live` frames that subscribe to and unsubscribe from live queries and
 send presence heartbeats (run with the framework's `LiveEngine` class) and on RPC
 procedures. `SkipGuardPhases` applies only to controller routes. The guards the
-integrations now install reach these entrypoints too, so with default options an
-upgraded application sees:
+application installs also reach these entrypoints, so with default guard options:
 
 - `CedarModule` rejects each gateway message without `@RequireResource()` or
   `@CedarPublic()` with an `exception` frame (`code: 'internal'`), drops pushes,
@@ -609,7 +496,7 @@ queries and RPC working:
   gateway's pushes.
 - No marker reaches `$live` frames, including one on the `@LiveResolver()` class.
   Admit their tenant with `TenantModule`'s `resolve` option, and set
-  `undeclared: 'allow'` on `CedarModule` or pass it `guard: 'none'`:
+  `undeclared: 'allow'` on `CedarModule`, or attach Cedar only to selected routes:
 
 ```ts
 import { normalizeWebSocketUpgradeIdentity } from '@velajs/vela/websocket';
@@ -634,13 +521,12 @@ TenantModule.forRoot({
 ```
 
 - `CloudflareAccessModule` has no socket option. With gateways or live queries,
-  pass `guard: 'none'`, authenticate sockets at upgrade with
+  authenticate sockets at upgrade with
   `CloudflareAccessUpgradeAuthenticator`, and apply `CloudflareAccessGuard` to HTTP
   controllers with `@UseGuards`. Global guards run before route guards, so apply
-  the tenant and authorization guards there too: pass `guard: 'none'` to their
-  modules and use `@UseGuards(CloudflareAccessGuard, TenantGuard, PermissionGuard)`.
-- With `guard: 'none'`, a module installs no global guard, so gateways, live
-  queries and RPC run only the guards you apply to them.
+  the tenant and authorization guards there too: use `@UseGuards(CloudflareAccessGuard, TenantGuard, PermissionGuard)`.
+- With no application guard aliases, gateways, live queries and RPC run only
+  the guards you apply to them.
 
 ## Cloudflare adapter
 
@@ -899,7 +785,7 @@ the commit headers. See [WebSockets](websockets.md) and
 ## Queues, events, schedules and storage
 
 Configure the queue driver once with `QueueModule.forRoot({ driver })` and register
-each queue with `QueueModule.registerQueue({ name, binding? })` in the module that
+each queue with `QueueModule.forFeature([{ name, binding? }])` in the module that
 uses it; inject clients with `@InjectQueue(name)`. On Workers use
 `cloudflareQueues()` from `@velajs/cloudflare/queues`. Use a queue driver factory
 when module declarations are reused across applications: `driver: () => inline()`.
@@ -951,7 +837,7 @@ bindings, so one static module serves every environment:
 
 ```ts
 // Before (1.30.0), in modules built from forRootAsync({ inject: [ENV], useFactory })
-StorageModule.forRoot({ disks: [{ disk: 'uploads', bucket: env.UPLOADS }], defaultDisk: 'uploads' }); // @velajs/cloudflare
+StorageModule.register({ disks: [{ disk: 'uploads', bucket: env.UPLOADS }], defaultDisk: 'uploads' }); // @velajs/cloudflare
 ResponseCacheModule.forRoot({ namespace: 'api-v1', scope, store: new KVCacheStore(env.CACHE) });
 ThrottlerModule.forRoot({
   limit: 100,
@@ -962,7 +848,7 @@ ThrottlerModule.forRoot({
 
 ```ts
 // After, declared once at module scope
-StorageModule.forRoot({ name: 'uploads', driver: r2Storage({ binding: 'UPLOADS' }) }); // @velajs/storage
+StorageModule.register({ name: 'uploads', driver: r2Storage({ binding: 'UPLOADS' }) }); // @velajs/storage
 CacheModule.forRoot({ namespace: 'api-v1', scope, store: kvCache({ binding: 'CACHE' }) });
 ThrottlerModule.forRoot({
   throttlers: [{ limit: 100, ttl: 60_000 }],
@@ -978,7 +864,7 @@ ThrottlerModule.forRoot({
   application calls for itself.
 - **Storage:** the Cloudflare `StorageModule` (with `StorageService`,
   `StorageManagerService`, `R2StorageDriver` and `STORAGE_OPTIONS`) and
-  `@velajs/vela/storage` are removed. Register a `StorageModule.forRoot({ name, driver: r2Storage({ binding }) })`
+  `@velajs/vela/storage` are removed. Register a `StorageModule.register({ name, driver: r2Storage({ binding }) })`
   from `@velajs/storage`, with `r2Storage` from `@velajs/cloudflare/storage`, per
   former disk, and inject its `StorageService` with `@InjectStorage(name)`. A disk's
   `root` becomes the static `prefix`; its `{date}`, `{year}`, `{month}`, `{day}` and
@@ -1107,8 +993,8 @@ option. See [tooling](tooling.md) and [testing](testing.md).
 ## Optional transports and multiple databases
 
 RPC and GraphQL remain separate, opt-in packages. RPC supplies typed HTTP/Fetcher
-procedures. GraphQL supplies executable schemas and single JSON POST queries and
-mutations. Socket RPC, GraphQL subscriptions, batching, uploads and incremental
+procedures. GraphQL supplies executable schemas or schema-first SDL with resolver decorators,
+and single JSON POST queries and mutations. Socket RPC, GraphQL subscriptions, batching, uploads and incremental
 responses are outside these adapters' current contracts. Configure explicit
 authentication, authorization and domain limits when mounting either transport.
 

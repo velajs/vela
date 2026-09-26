@@ -75,7 +75,15 @@ function recordingDriver(): QueueDriver & { sent: QueueJob[] } {
   };
 }
 
-describe('QueueModule.registerQueue', () => {
+describe('QueueModule.forFeature', () => {
+  it('accepts empty readonly features without requiring queue infrastructure', async () => {
+    @Module({ imports: [QueueModule.forFeature([] as const)] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    expect(app.getContainer().has(QUEUE_DRIVER)).toBe(false);
+    await app.close();
+  });
+
   it('provides @InjectQueue clients in a feature module that does not import forRoot', async () => {
     const seen: string[] = [];
     const driver = inline({ mode: 'manual' });
@@ -94,7 +102,7 @@ describe('QueueModule.registerQueue', () => {
     }
 
     @Module({
-      imports: [QueueModule.registerQueue({ name: 'email' })],
+      imports: [QueueModule.forFeature([{ name: 'email' }])],
       providers: [Signup, EmailProcessor],
     })
     class SignupModule {}
@@ -123,7 +131,7 @@ describe('QueueModule.registerQueue', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: recordingDriver() }),
-        QueueModule.registerQueue({ name: 'email' }, { name: 'sms' }),
+        QueueModule.forFeature([{ name: 'email' }, { name: 'sms' }]),
       ],
       providers: [Producers],
     })
@@ -139,14 +147,14 @@ describe('QueueModule.registerQueue', () => {
       constructor(@InjectQueue('email') readonly email: QueueClient) {}
     }
     @Module({
-      imports: [QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })],
+      imports: [QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }])],
       providers: [Producer],
     })
     class Producers {}
     @Module({
       imports: [
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
-        QueueModule.registerQueue({ name: 'email', consumer: 'email-production' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
+        QueueModule.forFeature([{ name: 'email', consumer: 'email-production' }]),
       ],
     })
     class Consumers {}
@@ -171,8 +179,8 @@ describe('QueueModule.registerQueue', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: recordingDriver() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
-        QueueModule.registerQueue({ name: 'email', binding: 'OTHER_QUEUE' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }]),
+        QueueModule.forFeature([{ name: 'email', binding: 'OTHER_QUEUE' }]),
       ],
     })
     class App {}
@@ -184,9 +192,9 @@ describe('QueueModule.registerQueue', () => {
   it('declares no class per registration, however many queues or calls', async () => {
     const before = countRegisteredClasses();
     const registrations = [0, 1, 2].map((index) =>
-      QueueModule.registerQueue({ name: `bulk-${index}` }, { name: 'shared' }),
+      QueueModule.forFeature([{ name: `bulk-${index}` }, { name: 'shared' }]),
     );
-    registrations.push(QueueModule.registerQueue({ name: 'bulk-0', consumer: 'bulk-worker' }));
+    registrations.push(QueueModule.forFeature([{ name: 'bulk-0', consumer: 'bulk-worker' }]));
     expect(countRegisteredClasses()).toBe(before);
 
     @Module({ imports: [QueueModule.forRoot({ driver: recordingDriver() }), ...registrations] })
@@ -203,15 +211,15 @@ describe('QueueModule.registerQueue', () => {
   });
 
   it('validates registrations when they are declared', () => {
-    expect(() => QueueModule.registerQueue({ name: ' ' })).toThrow(TypeError);
-    expect(() => QueueModule.registerQueue({ name: 'email', binding: 'not a binding' })).toThrow(
+    expect(() => QueueModule.forFeature([{ name: ' ' }])).toThrow(TypeError);
+    expect(() => QueueModule.forFeature([{ name: 'email', binding: 'not a binding' }])).toThrow(
       /binding/,
     );
-    expect(() => QueueModule.registerQueue({ name: 'email', consumer: '' })).toThrow(/consumer/);
+    expect(() => QueueModule.forFeature([{ name: 'email', consumer: '' }])).toThrow(/consumer/);
   });
 
   it('requires QueueModule.forRoot before a registered client resolves', async () => {
-    @Module({ imports: [QueueModule.registerQueue({ name: 'orphan' })] })
+    @Module({ imports: [QueueModule.forFeature([{ name: 'orphan' }])] })
     class App {}
     await expect(VelaFactory.create(App)).rejects.toThrow(/QueueModule\.forRoot/);
   });
@@ -221,7 +229,7 @@ describe('QueueModule.registerQueue', () => {
       imports: [
         QueueModule.forRoot({ driver: recordingDriver() }),
         QueueModule.forRoot({ driver: recordingDriver() }),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
       ],
     })
     class App {}
@@ -243,7 +251,7 @@ describe('QueueModule.registerQueue', () => {
           imports: [
             QueueModule.forRoot({ driver, dispatch: policy }),
             QueueModule.forRoot({ driver, dispatch: other }),
-            QueueModule.registerQueue({ name: 'email' }),
+            QueueModule.forFeature([{ name: 'email' }]),
           ],
         })
         class App {}
@@ -258,7 +266,7 @@ describe('QueueModule.registerQueue', () => {
       imports: [
         QueueModule.forRoot({ driver, dispatch: policy }),
         QueueModule.forRoot({ driver, dispatch: policy }),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
       ],
     })
     class Same {}
@@ -277,7 +285,7 @@ describe('QueueModule.registerQueue', () => {
           imports: [
             QueueModule.forRootAsync(factory),
             other,
-            QueueModule.registerQueue({ name: 'email' }),
+            QueueModule.forFeature([{ name: 'email' }]),
           ],
         })
         class App {}
@@ -292,7 +300,7 @@ describe('QueueModule.registerQueue', () => {
       imports: [
         QueueModule.forRootAsync(factory),
         QueueModule.forRootAsync(factory),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
       ],
     })
     class Same {}
@@ -318,7 +326,7 @@ describe('QueueModule.registerQueue', () => {
       imports: [
         QueueModule.forRootAsync(direct),
         QueueModule.forRootAsync(signed),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
       ],
     })
     class App {}
@@ -331,7 +339,7 @@ describe('QueueModule.registerQueue', () => {
       imports: [
         QueueModule.forRootAsync(signed),
         QueueModule.forRootAsync(signed),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
       ],
     })
     class Same {}
@@ -350,7 +358,7 @@ describe('driver factories', () => {
         return recordingDriver();
       },
     });
-    @Module({ imports: [root, QueueModule.registerQueue({ name: 'jobs', binding: 'JOBS' })] })
+    @Module({ imports: [root, QueueModule.forFeature([{ name: 'jobs', binding: 'JOBS' }])] })
     class App {}
 
     const env: VelaEnv = { region: 'test' };
@@ -368,7 +376,7 @@ describe('driver factories', () => {
 
 describe('module dispatch', () => {
   it('rejects platform delivery for a queue this application did not register', async () => {
-    @Module({ imports: [QueueModule.forRoot({}), QueueModule.registerQueue({ name: 'known' })] })
+    @Module({ imports: [QueueModule.forRoot({}), QueueModule.forFeature([{ name: 'known' }])] })
     class App {}
     const app = await VelaFactory.create(App);
     const binding = app.get(QueueDispatchBinding);
@@ -379,7 +387,7 @@ describe('module dispatch', () => {
   });
 
   it('rejects an unhandled job unless the caller explicitly ignores it', async () => {
-    @Module({ imports: [QueueModule.forRoot({}), QueueModule.registerQueue({ name: 'known' })] })
+    @Module({ imports: [QueueModule.forRoot({}), QueueModule.forFeature([{ name: 'known' }])] })
     class App {}
     const app = await VelaFactory.create(App, { diagnostics: 'silent' });
     const binding = app.get(QueueDispatchBinding);
@@ -406,7 +414,7 @@ describe('module dispatch', () => {
       welcome() {}
     }
     @Module({
-      imports: [QueueModule.forRoot({}), QueueModule.registerQueue({ name: 'known' })],
+      imports: [QueueModule.forRoot({}), QueueModule.forFeature([{ name: 'known' }])],
       providers: [Known],
     })
     class App {}
@@ -452,7 +460,7 @@ describe('module dispatch', () => {
           driver,
           dispatch: { kind: 'signed', target: () => ({ route: 'jobs.run' }) },
         }),
-        QueueModule.registerQueue({ name: 'remote' }),
+        QueueModule.forFeature([{ name: 'remote' }]),
       ],
       controllers: [Jobs],
     })
@@ -545,7 +553,7 @@ describe('QueueClient.addBulk', () => {
     }
     const driver = inline({ mode: 'manual' });
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'jobs' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'jobs' }])],
       providers: [Consumer],
     })
     class App {}

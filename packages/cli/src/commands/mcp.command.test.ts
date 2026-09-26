@@ -38,7 +38,7 @@ class EmailProcessor { @Process('welcome') welcome() {} }
 @Module({ providers: [defineProvider(SHARED, { useValue: 'x' })], exports: [SHARED] }) class SharedMod {}
 
 @Module({
-  imports: [SharedMod, LazyMod, QueueModule.forRoot(), QueueModule.registerQueue({ name: 'email' })],
+  imports: [SharedMod, LazyMod, QueueModule.forRoot(), QueueModule.forFeature([{ name: 'email' }])],
   controllers: [UsersController],
   providers: [EmailProcessor],
 })

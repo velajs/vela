@@ -14,7 +14,7 @@
 //   await assertCount(storage, 'avatars/', 1);
 //
 // For DI/integration tests, register the same driver on the module instead —
-// `StorageModule.forRoot({ driver: memoryDriver() })` — then inject the
+// `StorageModule.register({ driver: memoryDriver() })` — then inject the
 // `StorageService` and pass it to these helpers. Both a `Storage` facade and a
 // `StorageService` satisfy the {@link StorageTarget} surface below.
 //

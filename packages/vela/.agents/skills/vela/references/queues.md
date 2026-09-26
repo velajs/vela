@@ -2,7 +2,7 @@
 
 Job queues live on the **subpath** `@velajs/vela/queue` (deliberately off the main barrel to avoid colliding with `@velajs/cloudflare`'s own queue types). Registration is Nest/BullMQ-shaped: one driver per application, queues registered where they are used. Transport configuration materializes at bootstrap, so registrations are validated before any event arrives.
 
-## Setup — `forRoot` once, `registerQueue` per feature
+## Setup — `forRoot` once, `forFeature` per feature
 
 ```ts
 import { QueueModule } from '@velajs/vela/queue';
@@ -14,7 +14,7 @@ class AppModule {}
 
 // feature module: the queue it produces/processes
 @Module({
-  imports: [QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })],
+  imports: [QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }])],
   providers: [SignupService, EmailProcessor],
 })
 class EmailModule {}
@@ -22,13 +22,13 @@ class EmailModule {}
 
 - `QueueModule.forRoot({ driver?, dispatch? })` is global and imported **once** per application. The driver and a signed dispatch policy compare by reference: re-importing the same objects deduplicates; a different driver instance or another signed policy object (a different target, method or TTL, even one a helper builds from the same source) fails bootstrap. `driver` defaults to `inline()`. `forRootAsync({ inject, useFactory })` resolves the same options; its options object is the configuration, even with an explicit `key`, so a different one, or a `forRoot` next to it, fails bootstrap.
 - A driver may be an instance or a factory `(context: QueueDriverContext) => QueueDriver`; the factory receives the application's `ENV` (when a runtime seeded one) and its `QueueRegistry`, and builds a fresh driver per application. Use `driver: () => inline()` when reusing module declarations across applications; one bound driver instance belongs to one application.
-- `QueueModule.registerQueue({ name, binding?, consumer? }, ...more)` provides each queue's `QueueClient`. Registering one queue in several modules is fine (merged by name, one shared client); two different `binding`s for one name fail bootstrap. A registration without `forRoot` in the app fails bootstrap.
+- `QueueModule.forFeature([{ name, binding?, consumer? }, ...more])` provides each queue's `QueueClient`. Registering one queue in several modules is fine (merged by name, one shared client); two different `binding`s for one name fail bootstrap. A registration without `forRoot` in the app fails bootstrap.
   - `name` — logical queue: `@InjectQueue(name)`, `@Processor(name)` and every job's `queue`.
   - `binding` — the transport binding the driver sends through (Workers: a Wrangler `queues.producers[].binding`, read from `ENV` when a job is added). Omit it where a module only consumes.
   - `consumer` — optional physical queue pin (Workers): the queue's jobs are accepted only from it, and it carries only the queues pinned to it.
 - `QueueRegistry` (exported by `forRoot`) lists the merged registrations; each is also published as a `queue:registration` entrypoint for `vela deploy check`.
 
-There is no `queues` list on `forRoot`; that API was removed in favor of `registerQueue`.
+There is no `queues` list on `forRoot`; that API was removed in favor of `forFeature`.
 
 ## Processors — `@Processor` / `@Process`
 
@@ -80,7 +80,7 @@ The default `inline()` driver runs in-process — edge-pure, no timers. Modes: `
 import { inline } from '@velajs/vela/queue';
 
 const driver = inline({ mode: 'manual' });
-// ... QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'email' })
+// ... QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'email' }])
 await driver.flush();   // deliver all buffered jobs; returns the count
 ```
 

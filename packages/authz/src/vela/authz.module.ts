@@ -1,8 +1,15 @@
-import { defineModule, defineProvider } from '@velajs/vela';
+import { Module, defineModule, defineProvider } from '@velajs/vela';
 import { createAuthz } from '../authz';
 import { PermissionGuard } from './permission.guard';
 import { RolesGuard } from './roles.guard';
 import { AUTHZ, AUTHZ_OPTIONS, type AuthzModuleOptions } from './tokens';
+
+// Guards select the engine visible to each route. One shared provider owner
+// keeps the guard itself unambiguous when a module imports multiple engines.
+class AuthorizationGuardsModule {}
+Module({ providers: [PermissionGuard, RolesGuard], exports: [PermissionGuard, RolesGuard] })(
+  AuthorizationGuardsModule,
+);
 
 /**
  * Built on `@velajs/vela`'s `defineModule` engine (the same pattern as vela's
@@ -11,20 +18,14 @@ import { AUTHZ, AUTHZ_OPTIONS, type AuthzModuleOptions } from './tokens';
  * authorization provider consumes the resolved bag so both entry points use
  * the same construction path, including DI-driven async options.
  */
-const { ConfigurableModuleClass } = defineModule<AuthzModuleOptions, 'guard'>({
+const { ConfigurableModuleClass } = defineModule<AuthzModuleOptions>({
   name: 'Authz',
   // Reuse the public AUTHZ_OPTIONS token for the auto-provided options bag,
   // kept DISTINCT from the AUTHZ instance token below.
   optionsToken: AUTHZ_OPTIONS,
-  // `guard` shapes the module graph: `forRootAsync` takes it beside the factory.
-  structural: ['guard'],
-  defaults: { guard: 'global' },
-  setup: ({ OPTIONS, options }) => {
-    const guard = options.guard;
-    if (guard !== 'global' && guard !== 'none') {
-      throw new TypeError("AuthzModule guard must be 'global' or 'none'");
-    }
+  setup: ({ OPTIONS }) => {
     return {
+      imports: [AuthorizationGuardsModule],
       providers: [
         defineProvider(AUTHZ, {
           useFactory: ({ roles, permissions, resolver }: AuthzModuleOptions) =>
@@ -36,8 +37,7 @@ const { ConfigurableModuleClass } = defineModule<AuthzModuleOptions, 'guard'>({
           inject: [OPTIONS],
         }),
       ],
-      exports: [AUTHZ],
-      global: guard === 'global' ? { guards: [PermissionGuard, RolesGuard] } : {},
+      exports: [AUTHZ, PermissionGuard, RolesGuard],
     };
   },
 });

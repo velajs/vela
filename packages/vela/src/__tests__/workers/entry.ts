@@ -209,7 +209,7 @@ class SignedUrlDemoController {
   imports: [
     SigningModule,
     I18nModule.forRoot({ defaultLocale: 'en', locales: ['en', 'fr'] }),
-    I18nModule.registerMessages({
+    I18nModule.forFeature({
       en: { greeting: 'Hello, {name}!' },
       fr: { greeting: 'Bonjour, {name} !' },
     }),

@@ -69,7 +69,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
           driver,
           dispatch: { kind: 'signed', target: () => ({ route: 'inv.run' }) },
         }),
-        QueueModule.registerQueue({ name: 'signed-q' }),
+        QueueModule.forFeature([{ name: 'signed-q' }]),
       ],
       controllers: [QInvController],
       providers: [SignedProcessor, Producer],
@@ -106,7 +106,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'direct-q' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'direct-q' }])],
       providers: [DirectProcessor, Producer],
     })
     class AppModule {}
@@ -142,7 +142,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
           driver,
           dispatch: { kind: 'direct' },
         }),
-        QueueModule.registerQueue({ name: 'explicit-direct-q' }),
+        QueueModule.forFeature([{ name: 'explicit-direct-q' }]),
       ],
       providers: [DirectProcessor, Producer],
     })
@@ -200,7 +200,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
           driver,
           dispatch: { kind: 'signed', target: () => ({ route: 'native.run' }) },
         }),
-        QueueModule.registerQueue({ name: 'native-q' }),
+        QueueModule.forFeature([{ name: 'native-q' }]),
       ],
       controllers: [NativeController],
       providers: [NativeProcessor],
@@ -258,7 +258,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
           driver: inline({ mode: 'manual' }),
           dispatch: { kind: 'signed', target: () => ({ route: 'custom.run' }) },
         }),
-        QueueModule.registerQueue({ name: 'custom-q' }),
+        QueueModule.forFeature([{ name: 'custom-q' }]),
       ],
       controllers: [CustomController],
       providers: [CustomProcessor, defineProvider(APP_GUARD, { useClass: Deny })],
@@ -307,7 +307,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
           driver: inline({ mode: 'manual' }),
           dispatch: { kind: 'signed', target: () => ({ route: 'allowed.run' }) },
         }),
-        QueueModule.registerQueue({ name: 'allowed-q' }),
+        QueueModule.forFeature([{ name: 'allowed-q' }]),
       ],
       controllers: [AllowedController],
     })

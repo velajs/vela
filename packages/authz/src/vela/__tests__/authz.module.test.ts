@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { Module, VelaFactory } from '@velajs/vela';
+import { APP_GUARD, Module, VelaFactory } from '@velajs/vela';
 import { definePermission, defineRole } from '../../roles';
-import { AUTHZ, AuthzModule } from '../index';
+import { PermissionGuard, RolesGuard, AUTHZ, AuthzModule } from '../index';
 
 describe('AuthzModule.forRoot', () => {
   it('provides an Authz instance resolvable by the AUTHZ token', async () => {
@@ -11,6 +11,10 @@ describe('AuthzModule.forRoot', () => {
     // — equivalent to `@Module({ ... }) class AppModule {}`.
     class AppModule {}
     Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+      ],
       imports: [AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] })],
     })(AppModule);
 
@@ -28,6 +32,10 @@ describe('AuthzModule.forRoot', () => {
 
     class AppModule {}
     Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+      ],
       imports: [AuthzModule.forRoot({ roles: [defineRole('viewer', ['posts:read'])] })],
     })(AppModule);
 
@@ -47,6 +55,10 @@ describe('AuthzModule.forRootAsync', () => {
   it('builds authorization from roles and permissions returned by the async factory', async () => {
     class AppModule {}
     Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+      ],
       imports: [
         AuthzModule.forRootAsync({
           useFactory: async () => ({
@@ -71,6 +83,10 @@ describe('AuthzModule.forRootAsync', () => {
   it('rejects undeclared role permissions returned by the async factory', async () => {
     class AppModule {}
     Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+      ],
       imports: [
         AuthzModule.forRootAsync({
           useFactory: async () => ({

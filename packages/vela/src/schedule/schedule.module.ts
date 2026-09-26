@@ -1,11 +1,8 @@
 import { Container } from '../container/container';
-import { defineProvider } from '../container/types';
+import { defineProvider, InjectionToken } from '../container/types';
 import { InternalDispatcher } from '../dispatch/internal-dispatcher';
-import { Module } from '../module/decorators';
+import { Global, Module } from '../module/decorators';
 import { defineModule } from '../module/define-module';
-import { attachModuleIdentity } from '../module/module-fingerprints';
-import { referenceKey } from '../module/reference-key';
-import type { DynamicModule } from '../module/types';
 import { ScheduleRegistry } from './schedule.registry';
 import {
   bindSignedScheduleDispatch,
@@ -19,8 +16,7 @@ import type { ScheduleDispatchMode } from './schedule.types';
 export interface ScheduleModuleOptions {
   /**
    * Opt-in signed re-entry for fired jobs (default: jobs are called directly).
-   * Structural: it decides whether the module contributes the global
-   * `SCHEDULE_DISPATCH` policy.
+   * Resolved per application, including through forRootAsync factories.
    */
   dispatch?: ScheduleDispatchMode;
 }
@@ -35,15 +31,6 @@ export interface ScheduleModuleOptions {
  */
 @Module({ lazy: true, providers: [ScheduleRegistry], exports: [ScheduleRegistry] })
 export class ScheduleRegistryModule {}
-
-/**
- * Dedicated host for the dispatch policy. The policy's consumers (the
- * schedule-node executor, the Cloudflare adapter, Studio) live in other
- * modules, so the token must be global, and a dynamic module's `global: true`
- * globalizes all its exports: a single-token host keeps the globalization
- * scoped to the policy.
- */
-class ScheduleDispatchHost {}
 
 /**
  * Re-enter a fired job's route under `policy` through the application's
@@ -63,62 +50,51 @@ function runSignedScheduledJob(policy: SignedScheduleDispatch): SignedScheduleRu
   };
 }
 
-/**
- * A direct policy is a value; a signed policy keys by reference: a helper that
- * builds `target: () => ({ path })` per call yields policies with one source
- * but different captured targets, which no structural key tells apart.
- */
-function policyKey(dispatch: ScheduleDispatchMode | undefined): string {
-  if (dispatch === undefined) return 'none';
-  return referenceKey(dispatch.kind === 'direct' ? 'direct' : dispatch);
-}
+const SCHEDULE_OPTIONS = new InjectionToken<ScheduleModuleOptions>('vela:schedule:options');
 
-/**
- * Each policy gets its own owner of `SCHEDULE_DISPATCH`. Bootstrap resolves the
- * policy once per owner and fails when there is more than one: each signed
- * policy object is its own policy, so two conflict even when they differ only
- * in a captured target, method or TTL.
- */
-function dispatchHost(dispatch: ScheduleDispatchMode): DynamicModule {
-  return attachModuleIdentity(
-    {
-      module: ScheduleDispatchHost,
-      key: `dispatch:${policyKey(dispatch)}`,
-      providers: [
-        defineProvider(SCHEDULE_DISPATCH, {
-          useFactory: (container: Container) => {
-            const owners = container.getOwnerModuleIds(SCHEDULE_DISPATCH);
-            if (owners.length > 1) {
-              throw new Error(
-                `ScheduleModule.forRoot() is imported with different dispatch policies by ` +
-                  `${owners.join(', ')}. An application configures scheduled dispatch once: ` +
-                  `import ScheduleModule.forRoot({ dispatch }) once, in the root module.`,
-              );
-            }
-            return dispatch;
-          },
-          inject: [Container],
-        }),
-      ],
-      exports: [SCHEDULE_DISPATCH],
-      global: true,
-    },
-    { dispatch },
-  );
-}
+/** Every scheduler reads this application's one resolved policy. */
+@Global()
+@Module({
+  providers: [
+    defineProvider(SCHEDULE_DISPATCH, {
+      inject: [Container],
+      useFactory: async (container) => {
+        const options = await Promise.all(
+          container
+            .getOwnerModuleIds(SCHEDULE_OPTIONS)
+            .map((owner) => container.resolveAsync(SCHEDULE_OPTIONS, owner)),
+        );
+        const policies = options.flatMap((value) => (value.dispatch ? [value.dispatch] : []));
+        const first = policies[0];
+        if (
+          policies.some(
+            (policy) => policy !== first && !(policy.kind === 'direct' && first?.kind === 'direct'),
+          )
+        ) {
+          throw new Error(
+            'ScheduleModule is imported with different dispatch policies. Configure scheduled dispatch once per application.',
+          );
+        }
+        const dispatch: ScheduleDispatchMode = first ? { ...first } : { kind: 'direct' };
+        if (dispatch.kind !== 'direct' && dispatch.kind !== 'signed')
+          throw new TypeError('Schedule dispatch kind must be direct or signed.');
+        if (dispatch.kind === 'signed') {
+          if (typeof dispatch.target !== 'function')
+            throw new TypeError('Signed schedule dispatch requires a target function.');
+          bindSignedScheduleDispatch(dispatch, runSignedScheduledJob(dispatch));
+        }
+        return dispatch;
+      },
+    }),
+  ],
+  exports: [SCHEDULE_DISPATCH],
+})
+class ScheduleDispatchHost {}
 
-const { ConfigurableModuleClass } = defineModule<ScheduleModuleOptions, 'dispatch'>({
+const { ConfigurableModuleClass } = defineModule<ScheduleModuleOptions>({
   name: 'Schedule',
-  structural: ['dispatch'],
-  key: (options) => policyKey(options.dispatch),
-  setup: ({ options }) => {
-    const { dispatch } = options;
-    if (!dispatch) return {};
-    if (dispatch.kind === 'signed') {
-      bindSignedScheduleDispatch(dispatch, runSignedScheduledJob(dispatch));
-    }
-    return { imports: [dispatchHost(dispatch)] };
-  },
+  optionsToken: SCHEDULE_OPTIONS,
+  setup: () => ({ imports: [ScheduleDispatchHost] }),
 });
 
 /**
@@ -130,9 +106,9 @@ const { ConfigurableModuleClass } = defineModule<ScheduleModuleOptions, 'dispatc
  * Cloudflare adapter's cron triggers, Studio's run-now), so the target route runs
  * the full request pipeline, global guards included. With no options jobs are
  * called directly in-isolate. An application configures one policy: two
- * `forRoot` calls with different `dispatch` policies (a different kind, or two
- * different signed policy objects, even ones a helper builds from one source)
- * fail bootstrap, and importing the same policy object again deduplicates.
+ * configurations cannot provide different policies, including when separately
+ * keyed registrations resolve them asynchronously. Policies bind at bootstrap
+ * in the application that owns their resolved options.
  */
 @Module({ imports: [ScheduleRegistryModule], exports: [ScheduleRegistryModule] })
 export class ScheduleModule extends ConfigurableModuleClass {}

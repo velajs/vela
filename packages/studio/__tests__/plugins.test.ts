@@ -87,7 +87,7 @@ describe('StudioModule plugins', () => {
     @Module({
       imports: [
         QueueModule.forRoot(),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
         ScheduleModule,
         StudioModule.forRoot({
           token: TOKEN,

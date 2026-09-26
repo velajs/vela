@@ -75,7 +75,7 @@ function assertQueueConsumerOwnership(entrypoints: VelaApplication['entrypoints'
     if (queue !== undefined && pinned.has(queue)) {
       throw new Error(
         `Ambiguous consumer ownership for queue '${queue}': @QueueConsumer('${queue}') and a ` +
-          `QueueModule.registerQueue({ consumer: '${queue}' }) both claim it. Keep one owner.`,
+          `QueueModule.forFeature([{ consumer: '${queue}' }]) both claim it. Keep one owner.`,
       );
     }
   }

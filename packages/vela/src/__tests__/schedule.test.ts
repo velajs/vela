@@ -166,7 +166,7 @@ describe('ScheduleNodeModule', () => {
     }
 
     @Module({
-      imports: [ScheduleNodeModule.forRoot()],
+      imports: [ScheduleNodeModule],
       providers: [CronService],
     })
     class AppModule {}
@@ -194,7 +194,7 @@ describe('ScheduleNodeModule', () => {
     }
 
     @Module({
-      imports: [ScheduleNodeModule.forRoot()],
+      imports: [ScheduleNodeModule],
       providers: [TimerService],
     })
     class AppModule {}
@@ -221,7 +221,7 @@ describe('ScheduleNodeModule', () => {
     }
 
     @Module({
-      imports: [ScheduleNodeModule.forRoot()],
+      imports: [ScheduleNodeModule],
       providers: [TimerService],
     })
     class AppModule {}

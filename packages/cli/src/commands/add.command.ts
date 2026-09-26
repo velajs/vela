@@ -12,7 +12,7 @@ export class AddCommand extends Command {
       'which adds it to a wrangler.json(c) file; a queue with `wrangler queues create`, then its ' +
       'producer and consumer are added to wrangler.json(c) in place), registers it, and regenerates ' +
       'the binding types: a d1/kv/r2 binding as an injection token of a global BindingsModule next to ' +
-      'the root module, a queue as QueueModule.registerQueue({ name, binding }) with the ' +
+      'the root module, a queue as QueueModule.forFeature([{ name, binding }]) with the ' +
       "cloudflareQueues() driver in the root module. The module edits, and a queue's Wrangler file " +
       'edit, are computed first: when one cannot be made, nothing is created. A BINDING that is a ' +
       'JavaScript reserved word, or a name the bindings module declares or imports, is refused. ' +

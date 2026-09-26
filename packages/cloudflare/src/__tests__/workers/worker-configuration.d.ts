@@ -21,6 +21,9 @@ declare namespace Cloudflare {
       Parameters<import('./entry').SignupWorkflow['run']>[0]['payload']
     >;
     NAP_WORKFLOW: Workflow<Parameters<import('./entry').NapWorkflow['run']>[0]['payload']>;
+    PORTABLE_WORKFLOW: Workflow<Parameters<import('./entry').PortableExampleWorkflow['run']>[0]['payload']>;
+    PORTABLE_AGENT_WORKFLOW: Workflow<Parameters<import('./entry').PortableAgentWorkflow['run']>[0]['payload']>;
+    PORTABLE_PROBE: Service<typeof import('./entry').PortableProbe>;
     BILLING: Service<typeof import('./entry').Billing>;
     CACHE: KVNamespace;
     DB: D1Database;

@@ -27,13 +27,13 @@ class ApiController {
 }
 @Module({
   imports: [
-    RpcClientModule.forRootAsync({
+    RpcClientModule.registerAsync({
       name: 'catalog',
       binding: 'CATALOG',
       inject: [ENV],
       useFactory: (env) => ({ url: 'https://catalog/rpc', fetch: env.CATALOG }),
     }),
-    RpcClientModule.forRootAsync({
+    RpcClientModule.registerAsync({
       name: 'accounts',
       binding: 'ACCOUNTS',
       inject: [ENV],
@@ -41,7 +41,7 @@ class ApiController {
     }),
     // TASKS is a queues.producers binding; the driver reads it from ENV per send.
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    QueueModule.registerQueue({ name: 'tasks', binding: 'TASKS' }),
+    QueueModule.forFeature([{ name: 'tasks', binding: 'TASKS' }]),
   ],
   controllers: [ApiController],
 })

@@ -8,13 +8,13 @@ pnpm add @velajs/better-auth better-auth
 
 ## Quick start
 
-Construct your better-auth instance once and hand it to `BetterAuthModule.forRoot`. The module installs `AuthGuard` application-wide by default; use `@CurrentUser()` on authenticated routes and mark the small anonymous surface explicitly.
+Construct your better-auth instance once and hand it to `BetterAuthModule.forRoot`. Attach its exported `AuthGuard` in the application; use `@CurrentUser()` on authenticated routes and mark the small anonymous surface explicitly.
 
 ```ts
 import { betterAuth } from 'better-auth';
-import { Module, Controller, Get, VelaFactory } from '@velajs/vela';
+import { APP_GUARD, Module, Controller, Get, VelaFactory } from '@velajs/vela';
 import {
-  BetterAuthModule, CurrentUser, Public,
+  AuthGuard, BetterAuthModule, CurrentUser, Public,
 } from '@velajs/better-auth';
 
 const auth = betterAuth({
@@ -36,6 +36,7 @@ class MeController {
 @Module({
   imports: [BetterAuthModule.forRoot({ auth })],
   controllers: [MeController],
+  providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
 })
 class AppModule {}
 
@@ -52,17 +53,19 @@ BetterAuthModule.forRoot({
   auth,                          // betterAuth({ ... }) instance, or () => betterAuth({ ... })
   issuer: 'my-app:better-auth',  // stable namespace paired with user ids
   basePath: '/api/auth',         // default — must match your better-auth config
-  guard: 'global',               // default — AuthGuard runs globally in the authenticate phase
   mountHandler: true,            // mount /api/auth/* catch-all controller
   isGlobal: false,               // default — true makes BetterAuthService visible to every module
 });
 ```
 
-Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `guard: 'none'` is intended only for applications that install an equivalent global authentication guard themselves.
+Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. Importing the module alone does not install authentication; attach an application alias or `@UseGuards(AuthGuard)`.
 
-`basePath`, `mountHandler` and `guard` are structural: `forRootAsync` takes them next to its factory, which returns the other options. An `auth` function runs on the first authentication, not while the application initializes.
+`basePath` and `mountHandler` are structural: `forRootAsync` takes them next to its factory, which returns the other options. An `auth` function runs on the first authentication, not while the application initializes.
 
-Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity. The mounted auth handler is `@Public(true)` and marked `SkipGuardPhases(['tenant', 'authorize'])`, so the tenant admission and authorization guards integrations install globally never block sign-in, including a `TenantGuard` the application registers globally itself; throttling and the other global guards still apply.
+Global guards run in deterministic phases whatever the import order: `authenticate` (AuthGuard), `tenant` (TenantGuard), `authorize` (PermissionGuard, RolesGuard, CedarGuard), then `feature` (ThrottlerGuard and any guard without a declared phase). Throttling therefore always partitions by the verified identity. The mounted auth handler is `@Public(true)` and marked `SkipGuardPhases(['tenant', 'authorize'])`, so the tenant admission and authorization guards applications install globally never block sign-in, including a `TenantGuard` the application registers globally itself; throttling and the other global guards still apply.
+
+The following imports configure authentication; retain the `APP_GUARD` alias from
+the quick start in the application root.
 
 ## Three composition patterns
 
@@ -193,9 +196,9 @@ handle(@CurrentUser() user: User | undefined) {
 - **`AuthGuard`** — singleton. Reads `Authorization` header / cookies via `auth.api.getSession`, validates the full base user/session models, and publishes Vela's trusted principal, tenant, roles, and session expiry for downstream security components. The Better Auth organization plugin's verified `activeOrganizationId` becomes the tenant partition when present. The guard honors only explicit `@Public()` / `@OptionalAuth()` metadata. The generated Better Auth catch-all controller is explicitly public; sharing its URL prefix never makes an application controller public.
 Permission and role guards live in `@velajs/authz/vela`: import `PermissionGuard`, `RequirePermission`, `RolesGuard`, and `Roles` there. They read the same trusted identity for Better Auth and Cloudflare Access. Run authentication before authorization.
 
-Global registration is the default: installing the module binds `AuthGuard` to `APP_GUARD`. Routes are deny-by-default; mark public ones with `@Public(true)`. The generated Better Auth controller is already marked public.
+Install globally with `{ provide: APP_GUARD, useExisting: AuthGuard }`, or select routes with `@UseGuards(AuthGuard)`. Routes are deny-by-default; mark public ones with `@Public(true)`. The generated Better Auth controller is already marked public.
 
-When using `ThrottlerModule`, import Better Auth first. Vela then rate-limits by
+When using `ThrottlerModule`, also attach its exported `ThrottlerGuard`. Guard phases ensure Vela rate-limits by
 the verified issuer, subject, principal type, and active organization before it
 falls back to a platform-attested client address.
 

@@ -1,8 +1,12 @@
-import { Module, VelaFactory, type VelaApplication } from '@velajs/vela';
+import { APP_GUARD, Module, VelaFactory, type VelaApplication } from '@velajs/vela';
 import { createWebSocketUpgradeGate, type UpgradeAuthenticator } from '@velajs/vela/websocket';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { cloudflareAccessIssuer } from '../issuer';
-import { CloudflareAccessModule, CloudflareAccessUpgradeAuthenticator } from '../vela';
+import {
+  CloudflareAccessGuard,
+  CloudflareAccessModule,
+  CloudflareAccessUpgradeAuthenticator,
+} from '../vela';
 import { makeKeyMaterial, mintToken, type TestKeyMaterial } from './harness';
 
 const preset = cloudflareAccessIssuer('acme');
@@ -31,7 +35,10 @@ const upgrade = (jwt?: string): Request =>
   });
 
 async function application(): Promise<VelaApplication> {
-  @Module({ imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })] })
+  @Module({
+    providers: [{ provide: APP_GUARD, useExisting: CloudflareAccessGuard }],
+    imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })],
+  })
   class AppModule {}
   return VelaFactory.create(AppModule);
 }

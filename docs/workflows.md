@@ -183,4 +183,10 @@ try {
   `unexported-workflow` (see [deployment](deployment.md)).
 
 For portable workflow definitions shared with other execution adapters, see
-[`@velajs/workflow`](../packages/workflow/README.md).
+[`@velajs/workflow`](../packages/workflow/README.md#cloudflare-and-dependency-injection).
+`VelaWorkflowDefinition(app, { params, inject, useFactory })` from the separate
+`@velajs/cloudflare/workflow-definitions` entrypoint runs those definitions and
+compiled agents through this same native host lifecycle. Trigger validation
+precedes dependency resolution; the factory returns `{ definition, run }` in
+each run's execution scope. The binding accepts schema inputs while the handler
+receives schema outputs. `run` remains an explicit application dispatcher.

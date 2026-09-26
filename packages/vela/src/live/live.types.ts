@@ -230,8 +230,10 @@ export interface LiveModuleOptions {
   maxRefreshFanout?: number;
   /** Maximum tags on one subscription or invalidation. Default 100. */
   maxTags?: number;
-  /** Presence preset configuration; `false` disables the built-in resolver. */
-  presence?: LivePresenceOptions | false;
+  /** Structural: register the built-in presence resolver. Defaults to true. */
+  presence?: boolean;
+  /** Runtime presence configuration, available through async option factories. */
+  presenceOptions?: LivePresenceOptions;
 }
 
 export interface LiveDeliveryAuthorizationContext {

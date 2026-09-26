@@ -18,8 +18,8 @@ const runners = new WeakMap<SignedScheduleDispatch, SignedScheduleRunner>();
 
 /**
  * @internal Record how a signed policy re-enters its routes.
- * `ScheduleModule.forRoot({ dispatch })` binds each signed policy it
- * contributes, so the signing and dispatch code ships only with applications
+ * ScheduleModule binds its resolved signed policy during application bootstrap,
+ * so the signing and dispatch code ships only with applications
  * that configure signed dispatch, not with every runtime that fires jobs.
  */
 export function bindSignedScheduleDispatch(

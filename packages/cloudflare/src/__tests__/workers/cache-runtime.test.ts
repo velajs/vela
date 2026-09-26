@@ -1,8 +1,9 @@
 // @ts-expect-error virtual module supplied by @cloudflare/vitest-plugin
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { Controller, Get, Module } from '@velajs/vela';
+import { APP_INTERCEPTOR, Controller, Get, Module } from '@velajs/vela';
 import {
+  CacheInterceptor,
   CacheModule,
   CacheResponse,
   MemoryCacheInvalidationStore,
@@ -28,6 +29,7 @@ describe('response caching under workerd', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: `worker-cache-${crypto.randomUUID()}`,
@@ -63,6 +65,7 @@ describe('response caching under workerd', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
       imports: [
         CacheModule.forRoot({
           namespace: 'worker-named',

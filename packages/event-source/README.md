@@ -55,6 +55,38 @@ requests. Give one owner serialized access to a runtime; await recovery before
 applying events. A Durable Object is a suitable owner, but no storage adapter is
 included here.
 
+## Vela dependency injection
+
+An ordinary injectable service can own a projection session. For a temporary
+projection built from a trusted persisted stream, give each invocation its own
+log and materializers:
+
+```ts
+import { Injectable, Module, Scope } from '@velajs/vela';
+import { EventLog, defineMaterializer, MaterializerRuntime } from '@velajs/event-source';
+
+@Injectable({ scope: Scope.REQUEST })
+class ProjectionSession {
+  readonly log = new EventLog();
+  readonly count = defineMaterializer({
+    name: 'entry-count',
+    initial: () => 0,
+    handle: (total) => total + 1,
+  });
+  readonly runtime = new MaterializerRuntime([this.count]);
+}
+
+@Module({ providers: [ProjectionSession], exports: [ProjectionSession] })
+class ProjectionModule {}
+```
+
+Load the authorized stream into the fresh session before reading its projection.
+This session is temporary, not persistent aggregate storage. For a long-lived
+aggregate, use a service owned by a serialized Durable Object and supply its
+durable log/snapshot adapters. Construct mutable projections inside that owner;
+never reuse one module-level materializer across applications or tenant streams.
+The library's root imports remain independent of Vela.
+
 ## Supported exports
 
 All exports are on `@velajs/event-source`; there are no public subpaths.

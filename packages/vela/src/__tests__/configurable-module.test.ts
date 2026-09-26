@@ -16,7 +16,7 @@ interface WidgetOptions {
 
 describe('ConfigurableModuleBuilder', () => {
   describe('register (sync)', () => {
-    it('emits a DynamicModule referencing the subclass with an options provider and a stable key', () => {
+    it('emits a DynamicModule referencing the subclass with an options provider and an opaque key', () => {
       const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
         new ConfigurableModuleBuilder<WidgetOptions>({
           moduleName: 'Widget',
@@ -33,7 +33,7 @@ describe('ConfigurableModuleBuilder', () => {
       ]);
     });
 
-    it('keys one instance per class: a different configuration reuses the key', () => {
+    it('creates an independent instance for every registration call', () => {
       const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({
         moduleName: 'Widget',
       }).build();
@@ -43,9 +43,8 @@ describe('ConfigurableModuleBuilder', () => {
       const a = WidgetModule.register({ color: 'red' });
       const b = WidgetModule.register({ color: 'red' });
       const c = WidgetModule.register({ color: 'blue' });
-      expect(a.key).toBe(b.key);
-      // No structural fields: a second configuration needs an explicit key.
-      expect(c.key).toBe(a.key);
+      expect(a.key).not.toBe(b.key);
+      expect(c.key).not.toBe(a.key);
       expect(WidgetModule.register({ color: 'blue', key: 'blue' }).key).toBe('blue');
     });
 
@@ -69,8 +68,8 @@ describe('ConfigurableModuleBuilder', () => {
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
-      const off = WidgetModule.register({ color: 'red' });
-      const on = WidgetModule.register({ color: 'red', isGlobal: true });
+      const off = WidgetModule.register({ color: 'red', key: 'shared' });
+      const on = WidgetModule.register({ color: 'red', isGlobal: true, key: 'shared' });
       expect(off.global).toBeUndefined();
       expect(on.global).toBe(true);
       expect(off.key).toBe(on.key);

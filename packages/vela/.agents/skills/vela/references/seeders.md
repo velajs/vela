@@ -27,11 +27,11 @@ class ProductSeeder {
 
 ## Registering
 
-Register seeder classes via `SeederModule.forRoot({ seeders })` (or list them in any module's `providers`):
+Register seeder classes via `SeederModule.forFeature(seeders)` (or list them in any module's `providers`):
 
 ```ts
 @Module({
-  imports: [SeederModule.forRoot({ seeders: [UserSeeder, ProductSeeder] })],
+  imports: [SeederModule.forFeature([UserSeeder, ProductSeeder])],
 })
 class AppModule {}
 ```

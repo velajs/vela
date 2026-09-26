@@ -14,7 +14,7 @@ export interface R2StorageOptions extends Omit<R2DriverOptions, 'bucket'> {
  * application's `ENV` by name:
  *
  * ```ts
- * StorageModule.forRoot({ driver: r2Storage({ binding: 'UPLOADS' }) })
+ * StorageModule.register({ driver: r2Storage({ binding: 'UPLOADS' }) })
  * ```
  *
  * `StorageModule` builds the driver on the first storage operation of each

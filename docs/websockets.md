@@ -269,7 +269,7 @@ omit it). Without a type argument, any event and payload are accepted.
   gateway's room never reaches the other gateway's sockets. The push's
   `BroadcastCommand` carries the gateway path, and the in-memory and Durable
   Object room registries skip sockets whose `WsClient.path` differs. A custom
-  `RoomRegistry` passed to `WebSocketModule.forRoot({ registry })` must apply
+  `RoomRegistry` supplied to `WebSocketModule.forRoot({ registry })` must apply
   the same filter in `deliverLocal`: one that ignores `cmd.gatewayPath`
   delivers every gateway-scoped push and broadcast to all gateways' sockets in
   the named rooms. A custom transport's `WsClient` must set `path` to its
@@ -599,9 +599,15 @@ import Redis from 'ioredis';
 import { redis } from '@velajs/vela/websocket-node';
 
 WebSocketModule.forRoot({
-  sync: redis({ pub: new Redis(url), sub: new Redis(url) }), // pub and sub MUST be separate connections
+  sync: () => redis({ pub: new Redis(url), sub: new Redis(url) }), // Fresh connections per application.
 });
 ```
+
+`sync` and `registry` accept instances or factories, including async factories.
+They are runtime options, so `WebSocketModule.forRootAsync(...)` can resolve
+them through DI. Use fresh instances when reusing configuration across apps:
+an instance already assigned to another application fails at startup. A registry
+may be shared within one application; a driver cannot bind to two registries.
 
 Delivery guarantees (honest): at-most-once, no ordering across publishers, no replay. The driver delivers locally first, then fans the command out on one broadcast channel; each instance filters to its own local room members and the command's gateway, and drops its own echo.
 

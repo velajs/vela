@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { InjectionToken } from '@velajs/vela';
 import { defineProcedure, createRpcClient } from '../index';
 import type {
   ProcedureInput,
@@ -6,7 +7,16 @@ import type {
   ProcedureResult,
   ProcedureWireInput,
 } from '../index';
-import { Rpc } from '../server';
+import { Rpc, RpcClientModule, type RpcClientAsyncOptions } from '../server';
+
+const RPC_URL = new InjectionToken<string>('rpc:typecheck:url');
+const globalClientOptions = {
+  name: 'typed-client',
+  isGlobal: true,
+  inject: [RPC_URL],
+  useFactory: (url) => ({ url }),
+} satisfies RpcClientAsyncOptions<readonly [typeof RPC_URL]>;
+RpcClientModule.registerAsync(globalClientOptions);
 
 const procedure = defineProcedure({
   name: 'math.parse',

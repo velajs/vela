@@ -39,7 +39,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
 >({
   name: 'Queue',
   extras: {},
-  // One driver per application, visible to every registerQueue() module.
+  // One driver per application, visible to every forFeature() module.
   transform: (definition) => ({ ...definition, global: true }),
   setup: ({ OPTIONS }) => ({
     providers: [
@@ -82,7 +82,7 @@ class QueueModuleRequired {
   constructor(@Inject(Container) container: Container) {
     if (!container.has(QUEUE_DRIVER)) {
       throw new Error(
-        'QueueModule.registerQueue() needs QueueModule.forRoot() in the application: import ' +
+        'QueueModule.forFeature() needs QueueModule.forRoot() in the application: import ' +
           'QueueModule.forRoot({ driver }) once, in the root module.',
       );
     }
@@ -93,7 +93,7 @@ class QueueModuleRequired {
 class QueueClientHost {}
 /** Owns one registration record, keyed by the whole registration, like a defineModule instance. */
 class QueueRegistrationHost {}
-/** Groups the registrations of one `registerQueue(a, b, ...)` call. */
+/** Groups the registrations of one `forFeature([a, b, ...])` call. */
 class QueueRegistrationGroup {}
 
 function registrationModule(input: QueueRegistration): DynamicModule {
@@ -135,12 +135,12 @@ function registrationModule(input: QueueRegistration): DynamicModule {
  * // root module
  * imports: [QueueModule.forRoot({ driver: cloudflareQueues() })]
  * // feature module
- * imports: [QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })]
+ * imports: [QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }])]
  * constructor(@InjectQueue('email') private readonly email: QueueClient) {}
  * ```
  *
  * `forRoot` is global: its driver, dispatcher and registry serve every
- * `registerQueue` module. Processors are `@Processor(name)` providers in
+ * `forFeature` module. Processors are `@Processor(name)` providers in
  * ordinary modules. Transport configuration materializes at bootstrap,
  * including consumer-only applications, so native routes and registrations
  * are validated before events arrive. `forRootAsync` options are awaited
@@ -177,11 +177,7 @@ export class QueueModule extends ConfigurableModuleClass {
    * a queue in several modules is fine; the same name must not name two
    * different bindings.
    */
-  static registerQueue(
-    registration: QueueRegistration,
-    ...more: QueueRegistration[]
-  ): DynamicModule {
-    const registrations = [registration, ...more];
+  static forFeature(registrations: readonly QueueRegistration[]): DynamicModule {
     const modules = registrations.map(registrationModule);
     if (modules.length === 1) return modules[0]!;
     return {

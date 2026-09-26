@@ -11,7 +11,7 @@ import { TodosService } from './todos.service.js';
   imports: [
     // The queue this module produces and processes; TODO_EVENTS is its
     // Wrangler queues.producers binding.
-    QueueModule.registerQueue({ name: TODO_EVENTS, binding: 'TODO_EVENTS' }),
+    QueueModule.forFeature([{ name: TODO_EVENTS, binding: 'TODO_EVENTS' }]),
     NotificationsModule,
   ],
   controllers: [TodosController],

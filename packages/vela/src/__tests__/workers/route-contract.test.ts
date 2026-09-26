@@ -13,7 +13,7 @@ import {
   type ExecutionContext,
   type NestInterceptor,
 } from '../../index';
-import { CacheModule, CacheResponse } from '../../cache/index';
+import { CacheInterceptor, CacheModule, CacheResponse } from '../../cache/index';
 import { defineRoute, type ContractBody } from '../../contract/index';
 import { createOpenApiDocument } from '../../openapi/index';
 import type { SchemaOutput } from '../../validation/index';
@@ -100,6 +100,7 @@ class Tasks {
 class StampModule {}
 
 @Module({
+  providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
   imports: [
     StampModule,
     CacheModule.forRoot({

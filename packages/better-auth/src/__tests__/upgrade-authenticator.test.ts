@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defineWebSocketHelper } from 'hono/ws';
-import { Module, VelaFactory, defineProvider, type VelaApplication } from '@velajs/vela';
+import { APP_GUARD, Module, VelaFactory, defineProvider, type VelaApplication } from '@velajs/vela';
 import {
   WebSocketGateway,
   WebSocketModule,
@@ -8,6 +8,7 @@ import {
 } from '@velajs/vela/websocket';
 import { registerWebSocketGateways } from '@velajs/vela/websocket-node';
 import {
+  AuthGuard,
   BETTER_AUTH_UPGRADE_TENANT,
   BetterAuthModule,
   BetterAuthUpgradeAuthenticator,
@@ -65,6 +66,7 @@ async function authenticate(
 describe('BetterAuthUpgradeAuthenticator', () => {
   it("admits a session with the module's issuer and the active organization as tenant", async () => {
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth: auth(), issuer: ISSUER, mountHandler: false })],
     })
     class AppModule {}
@@ -84,6 +86,7 @@ describe('BetterAuthUpgradeAuthenticator', () => {
 
   it('fails closed when a session has no tenant and no resolver supplies one', async () => {
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth: auth(), issuer: ISSUER, mountHandler: false })],
     })
     class AppModule {}
@@ -109,6 +112,7 @@ describe('BetterAuthUpgradeAuthenticator', () => {
     @Module({
       imports: [BetterAuthModule.forRoot({ auth: auth(), issuer: ISSUER, mountHandler: false })],
       providers: [
+        { provide: APP_GUARD, useExisting: AuthGuard },
         // Every session joins the alpha board's tenant; any other board
         // resolves no tenant, so the upgrade is refused.
         defineProvider(BETTER_AUTH_UPGRADE_TENANT, {

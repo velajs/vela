@@ -62,7 +62,7 @@ describe('QueueModule routing', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'email' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'email' }])],
       providers: [EmailProcessor],
     })
     class App {}
@@ -100,7 +100,7 @@ describe('QueueModule routing', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'audit' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'audit' }])],
       providers: [A, B],
     })
     class App {}
@@ -118,7 +118,7 @@ describe('QueueModule routing', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'ghost' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'ghost' }])],
     })
     class App {}
 
@@ -167,7 +167,7 @@ describe('QueueModule pipeline', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'work' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'work' }])],
       providers: [WorkProcessor, JobGuard, JobInterceptor],
     })
     class App {}
@@ -208,7 +208,7 @@ describe('QueueModule pipeline', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'jobs' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'jobs' }])],
       providers: [JobsProcessor, KnownFilter],
     })
     class App {}
@@ -246,7 +246,7 @@ describe('QueueModule pipeline', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'scoped' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'scoped' }])],
       providers: [ScopedProcessor, PerJobDep],
     })
     class App {}
@@ -275,7 +275,7 @@ describe('inline driver', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'now' })], // default inline() immediate
+      imports: [QueueModule.forRoot(), QueueModule.forFeature([{ name: 'now' }])], // default inline() immediate
       providers: [NowProcessor],
     })
     class App {}
@@ -293,7 +293,7 @@ describe('inline driver', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'later' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'later' }])],
     })
     class App {}
 
@@ -311,7 +311,7 @@ describe('inline driver', () => {
   });
 
   it('rejects enqueue after disposal', async () => {
-    @Module({ imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'late' })] })
+    @Module({ imports: [QueueModule.forRoot(), QueueModule.forFeature([{ name: 'late' }])] })
     class App {}
 
     const app = await VelaFactory.create(App);
@@ -330,7 +330,7 @@ describe('queue tokens and module identity', () => {
   });
 
   it('fails with the queue name in the error for unregistered queues', async () => {
-    @Module({ imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'real' })] })
+    @Module({ imports: [QueueModule.forRoot(), QueueModule.forFeature([{ name: 'real' }])] })
     class App {}
 
     const app = await VelaFactory.create(App);
@@ -339,8 +339,8 @@ describe('queue tokens and module identity', () => {
   });
 
   it('identical forRoot options and registrations dedup into one module instance', async () => {
-    const first = [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'dedup' })];
-    const second = [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'dedup' })];
+    const first = [QueueModule.forRoot(), QueueModule.forFeature([{ name: 'dedup' }])];
+    const second = [QueueModule.forRoot(), QueueModule.forFeature([{ name: 'dedup' }])];
 
     @Module({ imports: [...first, ...second] })
     class App {}
@@ -358,7 +358,7 @@ describe('queue tokens and module identity', () => {
       imports: [
         QueueModule.forRoot(),
         QueueModule.forRoot({ driver: other }),
-        QueueModule.registerQueue({ name: 'clash' }),
+        QueueModule.forFeature([{ name: 'clash' }]),
       ],
     })
     class App {}
@@ -395,7 +395,7 @@ describe('queue tokens and module identity', () => {
           inject: [],
           useFactory: async () => ({ driver, dispatch: { kind: 'direct' } }),
         }),
-        QueueModule.registerQueue({ name: 'async-q' }),
+        QueueModule.forFeature([{ name: 'async-q' }]),
       ],
       providers: [AsyncProcessor, AsyncProducer],
     })
@@ -434,7 +434,7 @@ describe('transport initialization', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'remote' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'remote' }])],
       providers: [RemoteProcessor],
     })
     class App {}
@@ -479,7 +479,7 @@ describe('transport initialization', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'orders' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'orders' }])],
       providers: [ProducerService],
     })
     class App {}
@@ -509,7 +509,7 @@ describe('transport initialization', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'boot' })],
+      imports: [QueueModule.forRoot(), QueueModule.forFeature([{ name: 'boot' }])],
       providers: [BootProcessor, EagerProducer],
     })
     class App {}
@@ -547,7 +547,7 @@ describe('transport initialization', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver }),
-        QueueModule.registerQueue({ name: 'lazy-q' }),
+        QueueModule.forFeature([{ name: 'lazy-q' }]),
         LazyConsumers,
       ],
     })
@@ -586,7 +586,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'reportq' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'reportq' }])],
       providers: [
         ThrowingProcessor,
         defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } }),
@@ -619,7 +619,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'inlinereport' })], // default inline() immediate
+      imports: [QueueModule.forRoot(), QueueModule.forFeature([{ name: 'inlinereport' }])], // default inline() immediate
       providers: [BoomProcessor, defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
     })
     class App {}
@@ -660,7 +660,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'inlinemany' })],
+      imports: [QueueModule.forRoot(), QueueModule.forFeature([{ name: 'inlinemany' }])],
       providers: [
         First,
         Second,
@@ -696,7 +696,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
     };
 
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'detached' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'detached' }])],
       providers: [defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
     })
     class App {}

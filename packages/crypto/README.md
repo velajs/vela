@@ -41,7 +41,7 @@ its cipher, preventing ciphertext substitution across fields or rows. Unreadable
 fields are omitted; authenticated plaintext is never automatically exposed by
 serialization. Call these boundaries explicitly from services/hooks.
 
-`CryptoModule.forRoot({ provider })` / `forRootAsync` and `CRYPTO_SERVICE` from
+`CryptoModule.register({ provider })` / `registerAsync` and `CRYPTO_SERVICE` from
 `/vela` integrate DI. Construct providers from the current environment binding.
 Never cache one environment's keys in a module-level provider singleton.
 

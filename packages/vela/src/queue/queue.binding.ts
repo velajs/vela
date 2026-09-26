@@ -50,7 +50,7 @@ export class QueueDispatchBinding {
       throw new Error(
         `QueueModule.forRoot() is imported with different options by ${owners.join(', ')}. ` +
           `An application configures its queue driver once: import QueueModule.forRoot() ` +
-          `once in the root module and register queues with QueueModule.registerQueue().`,
+          `once in the root module and register queues with QueueModule.forFeature([]).`,
       );
     }
 
@@ -94,7 +94,7 @@ export class QueueDispatchBinding {
     if (!this.#queues.has(job.queue)) {
       throw new Error(
         `Queue '${job.queue}' is not registered in this application. Register it with ` +
-          `QueueModule.registerQueue({ name: '${job.queue}' }) in the module that processes it.`,
+          `QueueModule.forFeature([{ name: '${job.queue}' }]) in the module that processes it.`,
       );
     }
     return this.#deliver(job, { ...options, unhandled: options.unhandled ?? 'error' });

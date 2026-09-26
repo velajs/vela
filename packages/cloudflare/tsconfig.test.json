@@ -26,6 +26,7 @@
     "src/__tests__/factory-options.test.ts",
     "src/__tests__/do-live.test.ts",
     "src/__tests__/workflow-host.test.ts",
+    "src/__tests__/workflow-definition.test.ts",
     "src/__tests__/entrypoint-host.test.ts",
     "src/__tests__/email-tail.test.ts",
     "src/__tests__/worker-events.test.ts"

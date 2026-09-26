@@ -12,10 +12,9 @@ import type { AddressInput, MailTransport, RenderSeam } from './types';
 export const MAIL_TRANSPORT = new InjectionToken<MailTransport>('vela:mail:transport');
 
 /**
- * The app-level inbound gate. Contributed as a GLOBAL token (the
- * `ScheduleModule.SCHEDULE_DISPATCH` pattern) so the inbound dispatcher — which
- * the Cloudflare email host hook invokes from a different module — can read it.
- * Absent ⇒ {@link import('./inbound/gate').DEFAULT_INBOUND_GATE}.
+ * An explicit application-level inbound gate for standalone handler wiring.
+ * MailModule contributes its runtime gates through owned discovery records.
+ * Absent contributions use {@link import('./inbound/gate').DEFAULT_INBOUND_GATE}.
  */
 export const MAIL_INBOUND_GATE = new InjectionToken<MailInboundGate>('vela:mail:inbound-gate');
 
@@ -24,7 +23,7 @@ export interface ResolvedMailOptions {
   from: AddressInput;
   render?: RenderSeam;
   /**
-   * A transport passed directly to the mailer (`forRoot`/`forRootAsync`). When
+   * A transport passed directly to the mailer (`register`/`registerAsync`). When
    * absent, the transport is resolved from the {@link MAIL_TRANSPORT} token that
    * an application-authored transport module provides.
    */

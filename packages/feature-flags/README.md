@@ -15,7 +15,8 @@ pnpm add @velajs/feature-flags
 ## Quick start
 
 ```ts
-import { FeatureFlagsModule, FeatureFlagsService, memoryFlagDriver } from '@velajs/feature-flags';
+import { APP_GUARD } from '@velajs/vela';
+import { FeatureFlagGuard, FeatureFlagsModule, FeatureFlagsService, memoryFlagDriver } from '@velajs/feature-flags';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { FeatureFlagsModule, FeatureFlagsService, memoryFlagDriver } from '@vela
       context: (ctx) => ({ userId: ctx.get('userId') }), // merged into every evaluation
     }),
   ],
+  providers: [{ provide: APP_GUARD, useExisting: FeatureFlagGuard }],
 })
 class AppModule {}
 
@@ -56,12 +58,11 @@ class CheckoutController {
 }
 ```
 
-`FeatureFlagsModule` registers `FeatureFlagGuard` app-wide by default, so every
-`@FeatureFlag()` route is gated without `@UseGuards`: a flagged route is never
-reachable ungated. To gate per route instead, pass `guard: 'none'` and add
-`@UseGuards(FeatureFlagGuard)` to each gated controller or handler (not both, or
-the flag is evaluated twice per request). `isGlobal: true` separately makes the
-service visible to every module.
+`FeatureFlagsModule` exports `FeatureFlagGuard`; the quick start explicitly aliases
+it to `APP_GUARD`. Importing the module alone does not enforce `@FeatureFlag()`.
+For selected routes, use `@UseGuards(FeatureFlagGuard)` on the controller or handler.
+Avoid attaching the same guard globally and locally, which evaluates it twice.
+`isGlobal: true` only makes exported providers visible to every module.
 
 The route guard opens only when the driver returns the literal boolean `true`
 and evaluation completed without error. Non-boolean driver output, a missing

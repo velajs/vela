@@ -55,12 +55,10 @@ it('orders route authentication, tenant admission and Cedar authorization withou
     imports: [
       // A fully route-level pipeline: no module installs its global guard.
       TenantModule.forRoot({
-        guard: 'none',
         lookup: store,
         authorize: ({ principal }) => principal.subject === 'alice',
       }),
       CedarModule.forRoot({
-        guard: 'none',
         auditModules: [App],
         authorize: async ({ context, identity }) => {
           const tenant = context
@@ -146,6 +144,8 @@ it('orders global authentication, tenant admission and Cedar authorization by ph
       }),
     ],
     providers: [
+      { provide: APP_GUARD, useExisting: CedarGuard },
+      { provide: APP_GUARD, useExisting: TenantGuard },
       AuthenticationGuard,
       defineProvider(APP_GUARD, { useExisting: AuthenticationGuard }),
     ],
@@ -216,6 +216,7 @@ it('declares Cedar policy on headless CRUD resources under default deny', async 
       ]),
     ],
     providers: [
+      { provide: APP_GUARD, useExisting: CedarGuard },
       AuthenticationGuard,
       defineProvider(APP_GUARD, { useExisting: AuthenticationGuard }),
     ],

@@ -109,7 +109,7 @@ way to the caller. `@OnEmail()` and `@OnTail()` handlers list as `cf:email` and
 `cf:tail` rows; Email Routing and `tail_consumers` are configured outside this
 Worker's bindings, so the check does not compare them.
 
-Queues registered with `QueueModule.registerQueue()` appear as
+Queues registered with `QueueModule.forFeature([])` appear as
 `queue:registration` rows. Each registered `binding` must be a
 `queues.producers[].binding` of the selected environment
 (`missing-queue-producer`). When the application consumes natively through

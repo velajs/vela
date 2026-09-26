@@ -1,10 +1,4 @@
-import {
-  defineProvider,
-  type DynamicModule,
-  InjectionToken,
-  Module,
-  VelaFactory,
-} from '@velajs/vela';
+import { defineProvider, type DynamicModule, Module, VelaFactory } from '@velajs/vela';
 import {
   dispatchQueueJob,
   inline,
@@ -18,14 +12,7 @@ import { MailError } from '../mail.error';
 import { MailModule } from '../mail.module';
 import { MailService } from '../mail.service';
 import { MAIL_OPTIONS, MAIL_TRANSPORT, MAIL_QUEUE_JOB } from '../mail.tokens';
-import type { MailInboundGate } from '../inbound/gate';
-import type {
-  BuiltMessage,
-  DeliveryResult,
-  MailMessage,
-  MailTransport,
-  RenderSeam,
-} from '../types';
+import type { BuiltMessage, DeliveryResult, MailMessage, MailTransport } from '../types';
 import { ADDRESS_VECTORS, CONTROL_VECTORS } from './vectors';
 
 const FROM = 'sender@example.com';
@@ -57,8 +44,8 @@ afterEach(async () => {
 async function makeApp(transport: SpyTransport, withQueue: boolean) {
   const driver = inline({ mode: 'manual' });
   const mailModule = withQueue
-    ? MailModule.forRoot({ from: FROM, transport, queue: { name: 'mail' } })
-    : MailModule.forRoot({ from: FROM, transport });
+    ? MailModule.register({ from: FROM, transport, queue: { name: 'mail' } })
+    : MailModule.register({ from: FROM, transport });
 
   @Module({
     // The mailer registers its own queue; the application only picks the driver.
@@ -72,135 +59,58 @@ async function makeApp(transport: SpyTransport, withQueue: boolean) {
 }
 
 describe('MailModule + MailService', () => {
-  describe('security-sensitive module identity', () => {
-    it('dedups the same references and reports equal-shaped transport and render instances', async () => {
+  describe('local registration identity', () => {
+    it('shares a reused definition and isolates independent registrations', async () => {
       const transport = spyTransport();
-      const render: RenderSeam = async () => ({ text: 'rendered' });
-      const first = MailModule.forRoot({ from: FROM, transport, render });
-      const repeat = MailModule.forRoot({ from: FROM, transport, render });
-      expect(repeat.key).toBe(first.key);
-
-      @Module({ imports: [first, repeat] })
+      const first = MailModule.register({ from: FROM, transport });
+      const second = MailModule.register({ from: FROM, transport });
+      expect(second.key).not.toBe(first.key);
+      @Module({ imports: [first, first] })
       class Same {}
       const same = await VelaFactory.create(Same, { diagnostics: 'throw' });
       disposers.push(() => same.dispose());
       expect(same.getContainer().getOwnerModuleIds(MAIL_OPTIONS)).toHaveLength(1);
-
-      // Another transport under the same key is a conflicting configuration,
-      // never merged into the first mailer.
-      const otherTransport = MailModule.forRoot({ from: FROM, transport: spyTransport(), render });
-      @Module({ imports: [first, otherTransport] })
-      class Conflicting {}
-      await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
-        /MailModule#\w+ was imported again with different options/,
-      );
-
-      const makeRender = (): RenderSeam => async () => ({ text: 'rendered' });
-      @Module({
-        imports: [
-          MailModule.forRoot({ from: FROM, transport, render: makeRender() }),
-          MailModule.forRoot({ from: FROM, transport, render: makeRender() }),
-        ],
-      })
-      class SameSourceRenders {}
-      await expect(VelaFactory.create(SameSourceRenders, { diagnostics: 'throw' })).rejects.toThrow(
-        /was imported again with different options/,
-      );
-
-      // Two mailers coexist under their own keys.
-      @Module({ imports: [first, { ...otherTransport, key: 'secondary' }] })
-      class TwoMailers {}
-      const two = await VelaFactory.create(TwoMailers, { diagnostics: 'throw' });
-      disposers.push(() => two.dispose());
-      expect(two.getContainer().getOwnerModuleIds(MAIL_OPTIONS)).toHaveLength(2);
-    });
-
-    it('gives each inbound gate object its own global host', () => {
-      const sharedPolicy = () => true;
-      const makeGate = (): MailInboundGate => ({
-        require: ['dmarc'],
-        policy: sharedPolicy,
-      });
-      const firstGate = makeGate();
-      const secondGate = makeGate();
-      const hostKey = (module: DynamicModule) =>
-        (module.imports?.[0] as DynamicModule | undefined)?.key;
-      const first = MailModule.forRoot({ from: FROM, inbound: { gate: firstGate } });
-      const repeat = MailModule.forRoot({ from: FROM, inbound: { gate: firstGate } });
-      const second = MailModule.forRoot({ from: FROM, inbound: { gate: secondGate } });
-
-      expect(hostKey(repeat)).toBe(hostKey(first));
-      expect(hostKey(second)).not.toBe(hostKey(first));
-
-      const makePolicy = () => () => true;
-      const mutableGate: MailInboundGate = { require: ['dmarc'], policy: makePolicy() };
-      const beforePolicyChange = MailModule.forRoot({
-        from: FROM,
-        inbound: { gate: mutableGate },
-      });
-      mutableGate.policy = makePolicy();
-      const afterPolicyChange = MailModule.forRoot({
-        from: FROM,
-        inbound: { gate: mutableGate },
-      });
-      expect(hostKey(afterPolicyChange)).not.toBe(hostKey(beforePolicyChange));
-    });
-
-    it('reports same-source async closures and keeps async wiring functional', async () => {
-      const makeFactory = (transport: MailTransport) => () => ({ from: FROM, transport });
-      const firstTransport = spyTransport();
-      const first = MailModule.forRootAsync({
-        useFactory: makeFactory(firstTransport),
-      });
-      const second = MailModule.forRootAsync({
-        useFactory: makeFactory(spyTransport()),
-      });
-      expect(second.key).toBe(first.key);
-
       @Module({ imports: [first, second] })
-      class Conflicting {}
-      await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
-        /MailModule#\w+ was imported again with different options/,
+      class Two {}
+      const two = await VelaFactory.create(Two, { diagnostics: 'throw' });
+      disposers.push(() => two.dispose());
+      const owners = two.getContainer().getOwnerModuleIds(MAIL_OPTIONS);
+      expect(owners).toHaveLength(2);
+      expect(two.getContainer().resolve(MailService, owners[0])).not.toBe(
+        two.getContainer().resolve(MailService, owners[1]),
       );
-
-      @Module({ imports: [first] })
-      class App {}
-
-      const app = await VelaFactory.create(App);
-      disposers.push(() => app.dispose());
-      await app.get(MailService).send(validMessage());
-      expect(firstTransport.calls).toHaveLength(1);
     });
 
-    it('rejects an async factory that declares parameters but no inject', () => {
+    it('isolates same-source async factories without explicit keys', async () => {
+      const transports = [spyTransport(), spyTransport()];
+      const makeFactory = (transport: MailTransport) => () => ({ from: FROM, transport });
+      const registrations = transports.map((transport) =>
+        MailModule.registerAsync({ useFactory: makeFactory(transport) }),
+      );
+      @Module({ imports: registrations })
+      class App {}
+      const app = await VelaFactory.create(App, { diagnostics: 'throw' });
+      disposers.push(() => app.dispose());
+      await Promise.all(
+        app
+          .getContainer()
+          .getOwnerModuleIds(MAIL_OPTIONS)
+          .map((owner) => app.getContainer().resolve(MailService, owner).send(validMessage())),
+      );
+      expect(transports.map((transport) => transport.calls.length)).toEqual([1, 1]);
+    });
+
+    it('rejects an async factory with missing injection tokens', () => {
       expect(() =>
         // @ts-expect-error A factory with parameters names the tokens that supply them.
-        MailModule.forRootAsync({ useFactory: (from: string) => ({ from }) }),
-      ).toThrow(/MailModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
+        MailModule.registerAsync({ useFactory: (from: string) => ({ from }) }),
+      ).toThrow(/MailModule\.registerAsync: useFactory declares parameters but no inject tokens/);
     });
 
-    it('reports one async factory wired to distinct equal-named configuration tokens', async () => {
-      interface MailConfig {
-        transport: MailTransport;
-      }
-      const firstConfig = new InjectionToken<MailConfig>('MAIL_CONFIG');
-      const secondConfig = new InjectionToken<MailConfig>('MAIL_CONFIG');
-      const useFactory = (config: MailConfig) => ({ from: FROM, transport: config.transport });
-
-      const first = MailModule.forRootAsync({ inject: [firstConfig], useFactory });
-      const second = MailModule.forRootAsync({ inject: [secondConfig], useFactory });
-      @Module({ imports: [first, second] })
-      class Conflicting {}
-      await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
-        /was imported again with different options/,
-      );
-    });
-
-    it('reports registrations with the same label but distinct configuration', async () => {
+    it('rejects distinct configurations under one explicit key', async () => {
       const key = 'mail-security-explicit-conflict';
-      const first = MailModule.forRoot({ from: FROM, transport: spyTransport(), key });
-      const second = MailModule.forRoot({ from: FROM, transport: spyTransport(), key });
-      expect(second.key).toBe(first.key);
+      const first = MailModule.register({ from: FROM, transport: spyTransport(), key });
+      const second = MailModule.register({ from: FROM, transport: spyTransport(), key });
       @Module({ imports: [first, second] })
       class Conflicting {}
       await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
@@ -209,7 +119,7 @@ describe('MailModule + MailService', () => {
     });
   });
 
-  it('forRoot provides a MailService that delivers through the transport', async () => {
+  it('register provides a MailService that delivers through the transport', async () => {
     const transport = spyTransport();
     const { app } = await makeApp(transport, false);
     const svc = app.get(MailService);
@@ -222,7 +132,7 @@ describe('MailModule + MailService', () => {
   });
 
   it('throws no_transport when no transport is configured', async () => {
-    @Module({ imports: [MailModule.forRoot({ from: FROM })] })
+    @Module({ imports: [MailModule.register({ from: FROM })] })
     class App {}
     const app = await VelaFactory.create(App);
     disposers.push(() => app.dispose());
@@ -252,7 +162,7 @@ describe('MailModule + MailService', () => {
       global: true,
     };
 
-    @Module({ imports: [transportModule, MailModule.forRoot({ from: FROM })] })
+    @Module({ imports: [transportModule, MailModule.register({ from: FROM })] })
     class App {}
     const app = await VelaFactory.create(App);
     disposers.push(() => app.dispose());
@@ -389,7 +299,7 @@ describe('MailModule + MailService', () => {
       @Module({
         imports: [
           QueueModule.forRoot({ driver }),
-          MailModule.forRoot({
+          MailModule.register({
             from: FROM,
             transport: spyTransport(),
             queue: { name: 'outbound', binding: 'MAIL_QUEUE', consumer: 'mail-production' },
@@ -409,7 +319,7 @@ describe('MailModule + MailService', () => {
     });
 
     it('requires QueueModule.forRoot at bootstrap when a queue is configured', async () => {
-      @Module({ imports: [MailModule.forRoot({ from: FROM, queue: {} })] })
+      @Module({ imports: [MailModule.register({ from: FROM, queue: {} })] })
       class App {}
       await expect(VelaFactory.create(App)).rejects.toThrow(/QueueModule\.forRoot/);
     });
@@ -427,7 +337,7 @@ describe('MailModule + MailService', () => {
       }
       expect(error?.code).toBe('queue_required');
       // The fix is MailModule configuration, not a hand-registered queue.
-      expect(error?.message).toMatch(/queue: \{ name\?, binding\? \}.*MailModule\.forRoot/);
+      expect(error?.message).toMatch(/queue: \{ name\?, binding\? \}.*MailModule\.register/);
       expect(error?.message).toMatch(
         /QueueModule\.forRoot\(\{ driver \}\) once in the root module/,
       );

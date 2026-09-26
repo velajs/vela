@@ -187,14 +187,14 @@ function createDriver({ env, queues }: QueueDriverContext): QueueDriver {
     const registration = queues.get(name);
     if (!registration) {
       throw new Error(
-        `Queue '${name}' is not registered. Add QueueModule.registerQueue({ name: '${name}', ` +
-          `binding }) to the module that produces it.`,
+        `Queue '${name}' is not registered. Add QueueModule.forFeature([{ name: '${name}', ` +
+          `binding }]) to the module that produces it.`,
       );
     }
     if (registration.binding === undefined) {
       throw new Error(
         `Queue '${name}' has no producer binding. Register it with ` +
-          `QueueModule.registerQueue({ name: '${name}', binding: 'YOUR_QUEUE' }), where the ` +
+          `QueueModule.forFeature([{ name: '${name}', binding: 'YOUR_QUEUE' }]), where the ` +
           `binding is a queues.producers[].binding of this Worker.`,
       );
     }
@@ -300,7 +300,7 @@ function createDriver({ env, queues }: QueueDriverContext): QueueDriver {
  *
  * ```ts
  * QueueModule.forRoot({ driver: cloudflareQueues() })
- * QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })
+ * QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }])
  * ```
  *
  * Each application gets its own driver. Producing reads the registered binding

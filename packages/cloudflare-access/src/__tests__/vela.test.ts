@@ -5,9 +5,18 @@ import {
   setTrustedRequestIdentity,
   setTrustedRequestTenant,
 } from '@velajs/vela/module-kit';
-import { ThrottlerModule } from '@velajs/vela/throttler';
-import { Controller, Get, Module, UseGuards, VelaFactory } from '@velajs/vela';
+import { ThrottlerGuard, ThrottlerModule } from '@velajs/vela/throttler';
 import {
+  defineProvider,
+  APP_GUARD,
+  Controller,
+  Get,
+  Module,
+  UseGuards,
+  VelaFactory,
+} from '@velajs/vela';
+import {
+  RolesGuard,
   AuthzModule,
   PermissionGuard,
   RequirePermission,
@@ -70,6 +79,7 @@ describe('CloudflareAccessGuard', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: CloudflareAccessGuard }],
       imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })],
       controllers: [Routes],
     })
@@ -96,6 +106,7 @@ describe('CloudflareAccessGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: CloudflareAccessGuard }],
       imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })],
       controllers: [MeController],
     })
@@ -127,6 +138,7 @@ describe('CloudflareAccessGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: CloudflareAccessGuard }],
       imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })],
       controllers: [MeController],
     })
@@ -149,6 +161,7 @@ describe('CloudflareAccessGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: CloudflareAccessGuard }],
       imports: [
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks, mode: 'optional' }),
       ],
@@ -212,6 +225,11 @@ describe('PermissionGuard', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+      ],
       imports: [
         AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({
@@ -245,6 +263,11 @@ describe('PermissionGuard', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+      ],
       imports: [
         AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
@@ -272,6 +295,11 @@ describe('PermissionGuard', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+      ],
       imports: [
         AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
@@ -300,6 +328,7 @@ describe('PermissionGuard', () => {
 
     // No AuthzModule import — AUTHZ is unresolvable, so the guard must deny.
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: CloudflareAccessGuard }],
       imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })],
       controllers: [PostsController],
     })
@@ -323,6 +352,11 @@ describe('PermissionGuard', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+      ],
       imports: [
         AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
@@ -350,6 +384,11 @@ describe('PermissionGuard', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+      ],
       imports: [
         AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         CloudflareAccessModule.forRoot({
@@ -364,6 +403,10 @@ describe('PermissionGuard', () => {
     class RouteModule {}
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+      ],
       imports: [AuthzModule.forRoot({ roles: [defineRole('editor', ['unrelated:*'])] })],
     })
     class UnrelatedModule {}
@@ -391,6 +434,11 @@ describe('PermissionGuard', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+      ],
       imports: [
         AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         AuthzModule.forRoot({ key: 'secondary', roles: [defineRole('editor', ['posts:*'])] }),
@@ -425,6 +473,11 @@ describe('shared identity enforcement across Access, authz and core', () => {
       }
     }
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+      ],
       imports: [
         CloudflareAccessModule.forRoot({
           preset,
@@ -484,6 +537,7 @@ describe('shared identity enforcement across Access, authz and core', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: CloudflareAccessGuard }],
       imports: [
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks, mode: 'optional' }),
       ],
@@ -524,6 +578,11 @@ describe('shared identity enforcement across Access, authz and core', () => {
       }
     }
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+      ],
       imports: [
         CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks, mode: 'optional' }),
         AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
@@ -553,6 +612,10 @@ describe('shared identity enforcement across Access, authz and core', () => {
       }
     }
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: ThrottlerGuard },
+        { provide: APP_GUARD, useExisting: CloudflareAccessGuard },
+      ],
       // Throttling is imported first; the global Access guard still authenticates before it.
       imports: [
         ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] }),
@@ -572,7 +635,7 @@ describe('shared identity enforcement across Access, authz and core', () => {
     await app.dispose();
   });
 
-  it("leaves routes to @UseGuards with guard: 'none'", async () => {
+  it('does not install a guard merely by importing the module', async () => {
     @Controller('/open')
     class OpenController {
       @Get() read() {
@@ -580,9 +643,7 @@ describe('shared identity enforcement across Access, authz and core', () => {
       }
     }
     @Module({
-      imports: [
-        CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks, guard: 'none' }),
-      ],
+      imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })],
       controllers: [OpenController],
     })
     class App {}
@@ -591,12 +652,8 @@ describe('shared identity enforcement across Access, authz and core', () => {
     await app.dispose();
   });
 
-  it('takes guard beside a forRootAsync factory, defaulting to one global install', async () => {
+  it('installs an async-configured guard only through an explicit alias', async () => {
     const options = { preset, aud: AUD, keySet: keys.jwks };
-    // A spelled-out default is the same instance as leaving it out.
-    expect(CloudflareAccessModule.forRoot({ ...options, guard: 'global' }).key).toBe(
-      CloudflareAccessModule.forRoot(options).key,
-    );
     @Controller('/async')
     class AsyncController {
       @Get() read() {
@@ -604,11 +661,15 @@ describe('shared identity enforcement across Access, authz and core', () => {
       }
     }
     const statuses: number[] = [];
-    for (const guard of [undefined, 'global', 'none'] as const) {
+    for (const installGuard of [true, false]) {
       @Module({
+        providers: [
+          ...(installGuard
+            ? [defineProvider(APP_GUARD, { useExisting: CloudflareAccessGuard })]
+            : []),
+        ],
         imports: [
           CloudflareAccessModule.forRootAsync({
-            ...(guard ? { guard } : {}),
             useFactory: () => options,
           }),
         ],
@@ -619,7 +680,7 @@ describe('shared identity enforcement across Access, authz and core', () => {
       statuses.push((await app.getHonoApp().request(withHeader('/async'))).status);
       await app.dispose();
     }
-    expect(statuses).toEqual([401, 401, 200]);
+    expect(statuses).toEqual([401, 200]);
   });
 });
 
@@ -651,6 +712,7 @@ it('retains mapped Access payload only while its exact core identity is current'
     }
   }
   @Module({
+    providers: [{ provide: APP_GUARD, useExisting: CloudflareAccessGuard }],
     imports: [
       CloudflareAccessModule.forRoot({
         preset,

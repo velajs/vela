@@ -63,6 +63,7 @@ const editor = defineRole('editor', ['posts:write']);
 
 async function application(
   authz: DynamicModule = AuthzModule.forRoot({ roles: [editor] }),
+  installGuards = true,
 ): Promise<VelaApplication> {
   class App {}
   Module({
@@ -70,6 +71,12 @@ async function application(
     imports: [authz],
     controllers: [Posts],
     providers: [
+      ...(installGuards
+        ? [
+            defineProvider(APP_GUARD, { useExisting: PermissionGuard }),
+            defineProvider(APP_GUARD, { useExisting: RolesGuard }),
+          ]
+        : []),
       HeaderAuthentication,
       defineProvider(APP_GUARD, { useExisting: HeaderAuthentication }),
     ],
@@ -78,7 +85,7 @@ async function application(
 }
 
 describe('AuthzModule global guards', () => {
-  it('installs PermissionGuard and RolesGuard in the authorize phase by default', async () => {
+  it('runs explicitly installed PermissionGuard and RolesGuard in the authorize phase', async () => {
     expect(PermissionGuard.phase).toBe('authorize');
     expect(RolesGuard.phase).toBe('authorize');
     // Integration routes that authorize themselves (SkipGuardPhases) skip them.
@@ -155,6 +162,8 @@ describe('AuthzModule global guards', () => {
       imports: [AuthzModule.forRoot({ roles: [editor] })],
       controllers: [Reviews, Drafts, PublicNotes],
       providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
         HeaderAuthentication,
         defineProvider(APP_GUARD, { useExisting: HeaderAuthentication }),
       ],
@@ -173,8 +182,8 @@ describe('AuthzModule global guards', () => {
     }
   });
 
-  it("leaves routes to explicit guards with guard: 'none'", async () => {
-    const app = await application(AuthzModule.forRoot({ roles: [editor], guard: 'none' }));
+  it('does not install authorization guards merely by importing the module', async () => {
+    const app = await application(AuthzModule.forRoot({ roles: [editor] }), false);
     try {
       expect((await app.getHonoApp().request('/posts/write')).status).toBe(200);
     } finally {
@@ -182,15 +191,12 @@ describe('AuthzModule global guards', () => {
     }
   });
 
-  it('takes guard beside a forRootAsync factory, defaulting to one global install', async () => {
-    // A spelled-out default is the same instance as leaving it out.
-    expect(AuthzModule.forRoot({ roles: [editor], guard: 'global' }).key).toBe(
-      AuthzModule.forRoot({ roles: [editor] }).key,
-    );
+  it('installs async-configured guards only through explicit application aliases', async () => {
     const statuses: number[] = [];
-    for (const guard of ['global', 'none'] as const) {
+    for (const installGuards of [true, false]) {
       const app = await application(
-        AuthzModule.forRootAsync({ guard, useFactory: () => ({ roles: [editor] }) }),
+        AuthzModule.forRootAsync({ useFactory: () => ({ roles: [editor] }) }),
+        installGuards,
       );
       try {
         statuses.push((await app.getHonoApp().request('/posts/write')).status);
@@ -212,15 +218,28 @@ describe('AuthzModule global guards', () => {
     Get('/write')(Drafts.prototype, 'write', write);
     RequirePermission(['posts:write'])(Drafts.prototype, 'write', write);
     // Editors write posts but not drafts.
-    const feature = (controller: typeof Posts | typeof Drafts, authz: DynamicModule) => {
+    const feature = (
+      controller: typeof Posts | typeof Drafts,
+      authz: DynamicModule,
+      installGuards = false,
+    ) => {
       class Feature {}
-      Module({ imports: [authz], controllers: [controller] })(Feature);
+      Module({
+        imports: [authz],
+        controllers: [controller],
+        providers: installGuards
+          ? [
+              defineProvider(APP_GUARD, { useExisting: PermissionGuard }),
+              defineProvider(APP_GUARD, { useExisting: RolesGuard }),
+            ]
+          : [],
+      })(Feature);
       return Feature;
     };
     const build = (posts: DynamicModule, drafts: DynamicModule) => {
       class App {}
       Module({
-        imports: [feature(Posts, posts), feature(Drafts, drafts)],
+        imports: [feature(Posts, posts, true), feature(Drafts, drafts)],
         providers: [
           HeaderAuthentication,
           defineProvider(APP_GUARD, { useExisting: HeaderAuthentication }),
@@ -232,13 +251,13 @@ describe('AuthzModule global guards', () => {
     // Two engines under one instance key are two configurations of one instance.
     await expect(
       build(
-        AuthzModule.forRoot({ roles: [editor], guard: 'none' }),
-        AuthzModule.forRoot({ roles: [draftEditor], guard: 'none' }),
+        AuthzModule.forRoot({ roles: [editor] }),
+        AuthzModule.forRoot({ roles: [draftEditor] }),
       ),
     ).rejects.toThrow(/imported again with different options/);
     const app = await build(
       AuthzModule.forRoot({ key: 'posts', roles: [editor] }),
-      AuthzModule.forRoot({ key: 'drafts', roles: [draftEditor], guard: 'none' }),
+      AuthzModule.forRoot({ key: 'drafts', roles: [draftEditor] }),
     );
     try {
       const hono = app.getHonoApp();

@@ -44,7 +44,7 @@ const swallow = (op: unknown): void => {
  * its own echo via an `origin` stamp.
  *
  * Guarantees: at-most-once, no ordering across publishers, no replay — a fan-out
- * bus, not a log. Pass it to `WebSocketModule.forRoot({ sync: redis({ pub, sub }) })`.
+ * bus, not a log. Construct it in `WebSocketModule.forRoot({ sync: () => redis({ pub, sub }) })`.
  */
 export function redis(options: RedisSyncOptions): SyncDriver {
   const prefix = options.prefix ?? 'vela:ws';

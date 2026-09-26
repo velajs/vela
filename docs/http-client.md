@@ -1,15 +1,15 @@
 # HTTP client
 
 `HttpModule` provides an injectable `HttpService` backed by the Web Fetch API.
-Use the bare module for default settings, or configure defaults with `forRoot()`
-or `forRootAsync()`:
+Use the bare module for default settings, or configure defaults with `register()`
+or `registerAsync()`:
 
 ```ts
 import { Injectable, Module } from '@velajs/vela';
 import { HttpModule, HttpService } from '@velajs/vela/http-client';
 
 @Module({
-  imports: [HttpModule.forRoot({
+  imports: [HttpModule.register({
     baseURL: 'https://api.example.com/v1',
     timeout: 5_000,
     maxResponseBytes: 1_048_576,

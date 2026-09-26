@@ -59,3 +59,54 @@ try {
 } finally {
   await app.dispose();
 }
+
+// The packed SDL path discovers decorated providers and preserves field ownership.
+const {
+  Resolver: ResolverDecorator,
+  Query,
+  ResolveField,
+  Args,
+  Parent,
+} = await import('@velajs/graphql');
+class ItemResolver {
+  item(id) {
+    return { id };
+  }
+  label(item) {
+    return `Item ${item.id}`;
+  }
+}
+ResolverDecorator('Item')(ItemResolver);
+Query('item')(
+  ItemResolver.prototype,
+  'item',
+  Object.getOwnPropertyDescriptor(ItemResolver.prototype, 'item'),
+);
+Args('id')(ItemResolver.prototype, 'item', 0);
+ResolveField('label')(
+  ItemResolver.prototype,
+  'label',
+  Object.getOwnPropertyDescriptor(ItemResolver.prototype, 'label'),
+);
+Parent()(ItemResolver.prototype, 'label', 0);
+class DecoratedApp {}
+Module({
+  providers: [ItemResolver],
+  imports: [
+    GraphqlModule.forRoot({
+      typeDefs: 'type Item { id: ID!, label: String! } type Query { item(id: ID!): Item! }',
+      driver: yogaDriver(),
+    }),
+  ],
+})(DecoratedApp);
+const decorated = await VelaFactory.create(DecoratedApp);
+try {
+  const response = await decorated.getHonoApp().request('/graphql', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: '{ item(id: "7") { id label } }' }),
+  });
+  assert.deepEqual(await response.json(), { data: { item: { id: '7', label: 'Item 7' } } });
+} finally {
+  await decorated.dispose();
+}

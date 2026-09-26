@@ -10,8 +10,8 @@ import {
 } from '@velajs/vela/module-kit';
 import type { Container } from '@velajs/vela/module-kit';
 import { MailError } from '../mail.error';
-import { MAIL_INBOUND_GATE } from '../mail.tokens';
-import { DEFAULT_INBOUND_GATE, evaluateInboundGate } from './gate';
+import { resolveInboundGate } from '../mail.configuration';
+import { evaluateInboundGate } from './gate';
 import type { OnInboundEmailMeta } from './decorator';
 import type { InboundEmail } from './parse';
 
@@ -122,14 +122,7 @@ export async function dispatchInboundEmail(
   entrypoints: EntrypointRegistry,
   email: InboundEmail,
 ): Promise<InboundDispatchResult> {
-  const registeredGates = container.resolveAll(MAIL_INBOUND_GATE);
-  if (registeredGates.length > 1) {
-    throw new MailError(
-      'inbound_rejected',
-      '@velajs/mail: multiple inbound authentication gates are registered; select exactly one',
-    );
-  }
-  const gate = registeredGates[0] ?? DEFAULT_INBOUND_GATE;
+  const gate = await resolveInboundGate(container);
   const verdict = evaluateInboundGate(gate, email.authentication, email);
   if (!verdict.ok) return { gated: true, handled: 0, failed: verdict.failed };
 

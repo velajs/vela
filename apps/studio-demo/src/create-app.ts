@@ -183,8 +183,8 @@ class WelcomeEmailProcessor {
 @Module({ providers: [WelcomeEmailProcessor] })
 class EmailProcessorModule {}
 
-// `registerQueue` declares its module class per call: register the queue once.
-const demoQueueModule = QueueModule.registerQueue({ name: DEMO_QUEUE });
+// `forFeature` declares its module class per call: register the queue once.
+const demoQueueModule = QueueModule.forFeature([{ name: DEMO_QUEUE }]);
 
 @Module({
   controllers: [AuthorsController, BooksController, TagsController, InfoController],

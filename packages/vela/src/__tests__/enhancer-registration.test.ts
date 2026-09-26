@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APP_GUARD,
   Catch,
   Controller,
   Get,
@@ -32,7 +33,7 @@ import {
 } from '../index';
 import { MultipleProvidersFoundError, resolvePipelineComponents } from '../module-kit';
 import { NONCE_STORE, type NonceStore } from '../security/index';
-import { SkipThrottle, ThrottlerModule } from '../throttler/index';
+import { ThrottlerGuard, SkipThrottle, ThrottlerModule } from '../throttler/index';
 import { instantiate } from '../http/instantiate';
 import { dispatchQueueJob, Process, Processor } from '../queue/index';
 
@@ -736,7 +737,7 @@ describe('framework-global providers', () => {
 
     @Module({
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60_000 }] })],
-      providers: [ReflectorReader],
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }, ReflectorReader],
       controllers: [LimitedController],
     })
     class LimitedModule {}

@@ -71,6 +71,10 @@
     "./workflows": {
       "types": "./dist/workflows.d.ts",
       "import": "./dist/workflows.js"
+    },
+    "./workflow-definitions": {
+      "types": "./dist/workflow-definitions.d.ts",
+      "import": "./dist/workflow-definitions.js"
     }
   },
   "publishConfig": {
@@ -96,10 +100,12 @@
     "@cloudflare/vitest-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
     "@swc/core": "catalog:",
+    "@velajs/agent": "workspace:*",
     "@velajs/feature-flags": "workspace:*",
     "@velajs/storage": "workspace:*",
     "@velajs/testing": "workspace:*",
     "@velajs/vela": "workspace:*",
+    "@velajs/workflow": "workspace:*",
     "hono": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
@@ -108,7 +114,7 @@
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
     "vitest": "catalog:",
-    "zod": "^3.25.76"
+    "zod": "catalog:"
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
@@ -116,9 +122,13 @@
     "@velajs/storage": "workspace:^",
     "@velajs/testing": "workspace:^",
     "@velajs/vela": "workspace:^",
+    "@velajs/workflow": "workspace:^",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {
+    "@velajs/workflow": {
+      "optional": true
+    },
     "@velajs/feature-flags": {
       "optional": true
     },

@@ -134,7 +134,7 @@ export const SESSIONS = new InjectionToken<KVNamespace>('SESSIONS');`);
     const app = await read('src/app.module.ts');
     expect(app).toContain(`  imports: [
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' }),
+    QueueModule.forFeature([{ name: 'emails', binding: 'EMAILS' }]),
   ],`);
     expect(result.output).toContain("@InjectQueue('emails')");
   });
@@ -155,7 +155,7 @@ export class InfraModule {}
     expect(result.code, result.output).toBe(0);
     const app = await read('src/app.module.ts');
     expect(app).not.toContain('QueueModule.forRoot');
-    expect(app).toContain("QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' })");
+    expect(app).toContain("QueueModule.forFeature([{ name: 'emails', binding: 'EMAILS' }])");
     const skipped = await add('queue', 'AUDIT', '--skip-import');
     expect(skipped.code, skipped.output).toBe(0);
     expect(skipped.output).not.toContain('QueueModule.forRoot');
@@ -176,7 +176,7 @@ export default createCloudflareWorker(Root);
     expect(skipped.output).toContain('Provide it yourself');
     const queue = await add('queue', 'JOBS', '--skip-import');
     expect(queue.code, queue.output).toBe(0);
-    expect(queue.output).toContain("QueueModule.registerQueue({ name: 'jobs', binding: 'JOBS' })");
+    expect(queue.output).toContain("QueueModule.forFeature([{ name: 'jobs', binding: 'JOBS' }])");
     expect((await calls()).map((call) => call[0])).toEqual(['kv', 'types', 'queues', 'types']);
   });
 
@@ -215,7 +215,7 @@ export default createCloudflareWorker({ module: AppModule });
     const queue = await add('queue', 'EMAILS');
     expect(queue.code, queue.output).toBe(0);
     expect(await read('src/app.module.ts')).toContain(
-      "QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' })",
+      "QueueModule.forFeature([{ name: 'emails', binding: 'EMAILS' }])",
     );
   });
 
@@ -233,7 +233,7 @@ export default createCloudflareWorker({ module: AppModule });
     const queue = await add('queue', 'EMAILS');
     expect(queue.code, queue.output).toBe(0);
     expect(await read('src/core/root.module.ts')).toContain(
-      "QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' })",
+      "QueueModule.forFeature([{ name: 'emails', binding: 'EMAILS' }])",
     );
     expect(await read('src/app.module.ts')).toBe("export * from './core/root.module.js';\n");
     await expect(read('src/bindings.module.ts')).rejects.toThrow();
@@ -513,7 +513,7 @@ export class AppModule {}
     // The Wrangler file is left to you; the module registration is done.
     expect(await read('wrangler.toml')).toBe(toml);
     expect(await read('src/app.module.ts')).toContain(
-      "QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' })",
+      "QueueModule.forFeature([{ name: 'emails', binding: 'EMAILS' }])",
     );
   });
 

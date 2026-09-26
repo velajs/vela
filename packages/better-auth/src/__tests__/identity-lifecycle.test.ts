@@ -1,4 +1,5 @@
 import {
+  APP_GUARD,
   Controller,
   Get,
   Module,
@@ -15,7 +16,7 @@ import {
   bindTrustedRequestContext,
   buildEntrypointExecutionContext,
 } from '@velajs/vela/module-kit';
-import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
+import { RolesGuard, AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AuthGuard,
@@ -137,7 +138,6 @@ describe('canonical identity lifecycle', () => {
             api: { getSession: async () => sessionFixture() },
             handler: async () => new Response(),
           },
-          guard: 'none',
         }),
       ],
       controllers: [ControllerUnderTest],
@@ -179,7 +179,7 @@ describe('canonical identity lifecycle', () => {
       }
     }
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, guard: 'none' })],
+      imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [ControllerUnderTest],
     })
     class App {}
@@ -213,10 +213,13 @@ describe('canonical identity lifecycle', () => {
       }
     }
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+      ],
       imports: [
         BetterAuthModule.forRoot({
           auth: { api: { getSession: async () => fixture }, handler: async () => new Response() },
-          guard: 'none',
         }),
         AuthzModule.forRoot({
           resolver: {

@@ -69,7 +69,7 @@ describe('signed queue dispatch on Cloudflare', () => {
       imports: [
         signingSecret(),
         QueueModule.forRoot({ driver: cloudflareQueues(), dispatch: signed }),
-        QueueModule.registerQueue({ name: 'tasks', binding: 'TASKS' }),
+        QueueModule.forFeature([{ name: 'tasks', binding: 'TASKS' }]),
       ],
       controllers: [JobsController],
       providers: [Tasks, defineProvider(APP_GUARD, { useClass: GlobalGuard })],
@@ -123,7 +123,7 @@ describe('signed queue dispatch on Cloudflare', () => {
       imports: [
         signingSecret(),
         QueueModule.forRoot({ driver: cloudflareQueues(), dispatch: signed }),
-        QueueModule.registerQueue({ name: 'tasks' }),
+        QueueModule.forFeature([{ name: 'tasks' }]),
       ],
       controllers: [JobsController],
       providers: [Tasks, defineProvider(APP_GUARD, { useClass: Deny })],

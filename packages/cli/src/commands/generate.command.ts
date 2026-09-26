@@ -18,7 +18,7 @@ export class GenerateCommand extends Command {
     details:
       'Writes the new files under src/<name>/ and registers them: a module or resource in the module ' +
       'of the directory above, a controller, service, cron job or queue processor in the module of ' +
-      'its directory (else the nearest one up to the root module), QueueModule.registerQueue() next ' +
+      'its directory (else the nearest one up to the root module), QueueModule.forFeature([]) next ' +
       'to a processor and QueueModule.forRoot({ driver: cloudflareQueues() }) in the root module ' +
       'once, and a Durable Object, Workflow or service entrypoint as an export of the Worker ' +
       'entry Wrangler names. A Workflow or service entrypoint runs in the Worker application, so ' +

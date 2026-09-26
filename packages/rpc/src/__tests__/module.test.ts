@@ -176,7 +176,7 @@ describe('RPC module composition', () => {
       'bindings',
     );
     const binding = { fetch: (r: Request) => Promise.resolve(server.fetch(r)) };
-    const rpc = RpcClientModule.forRootAsync({
+    const rpc = RpcClientModule.registerAsync({
       name: 'greetings',
       binding: 'SERVICE',
       inject: [ENV],
@@ -209,7 +209,7 @@ describe('RPC module composition', () => {
     @Module({ providers: [Greetings], imports: [RpcModule.forRoot({ authorize: 'public' })] })
     class Server {}
     const server = await VelaFactory.create(Server);
-    const rpc = RpcClientModule.forRootAsync({
+    const rpc = RpcClientModule.registerAsync({
       name: 'static-greetings',
       useFactory: () => ({
         url: 'https://worker/rpc',
@@ -223,7 +223,7 @@ describe('RPC module composition', () => {
     expect(await consumer.get(token).call(greet, 'factory')).toBe('Hello factory');
     const missingInject = () =>
       // @ts-expect-error A factory with parameters names the tokens that supply them.
-      RpcClientModule.forRootAsync({ name: 'missing', useFactory: (url: string) => ({ url }) });
+      RpcClientModule.registerAsync({ name: 'missing', useFactory: (url: string) => ({ url }) });
     void missingInject;
     await Promise.all([consumer.close(), server.close()]);
   });
@@ -256,7 +256,7 @@ describe('RPC module composition', () => {
   );
 
   it('rejects conflicting named clients and deduplicates reused imports', async () => {
-    const shared = RpcClientModule.forRoot({ name: 'shared', url: 'https://one/rpc' });
+    const shared = RpcClientModule.register({ name: 'shared', url: 'https://one/rpc' });
     @Module({ imports: [shared] })
     class Feature {}
     @Module({ imports: [shared, Feature] })
@@ -266,7 +266,7 @@ describe('RPC module composition', () => {
     await good.close();
     // Another configuration of the name is reported, never merged.
     @Module({
-      imports: [shared, RpcClientModule.forRoot({ name: 'shared', url: 'https://two/rpc' })],
+      imports: [shared, RpcClientModule.register({ name: 'shared', url: 'https://two/rpc' })],
     })
     class Bad {}
     await expect(VelaFactory.create(Bad, { diagnostics: 'throw' })).rejects.toThrow(
@@ -276,7 +276,7 @@ describe('RPC module composition', () => {
     @Module({
       imports: [
         shared,
-        RpcClientModule.forRoot({ name: 'shared', url: 'https://two/rpc', key: 'second' }),
+        RpcClientModule.register({ name: 'shared', url: 'https://two/rpc', key: 'second' }),
       ],
     })
     class Keyed {}

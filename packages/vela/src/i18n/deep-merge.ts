@@ -6,24 +6,24 @@ export function deepMerge(
   const result: Record<string, unknown> = { ...target };
 
   for (const key of Object.keys(source)) {
-    const targetValue = target[key];
+    const targetValue = Object.hasOwn(target, key) ? target[key] : undefined;
     const sourceValue = source[key];
 
-    if (
+    const mergeObjects =
       typeof targetValue === 'object' &&
       targetValue !== null &&
       !Array.isArray(targetValue) &&
       typeof sourceValue === 'object' &&
       sourceValue !== null &&
-      !Array.isArray(sourceValue)
-    ) {
-      result[key] = deepMerge(
-        targetValue as Record<string, unknown>,
-        sourceValue as Record<string, unknown>,
-      );
-    } else {
-      result[key] = sourceValue;
-    }
+      !Array.isArray(sourceValue);
+    Object.defineProperty(result, key, {
+      value: mergeObjects
+        ? deepMerge(targetValue as Record<string, unknown>, sourceValue as Record<string, unknown>)
+        : sourceValue,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
   }
 
   return result;

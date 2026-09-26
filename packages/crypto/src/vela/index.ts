@@ -5,8 +5,15 @@ export interface CryptoModuleOptions {
   provider: KeyProvider;
   maxPlaintextBytes?: number;
 }
-const { ConfigurableModuleClass } = defineModule<CryptoModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<
+  CryptoModuleOptions,
+  never,
+  { isGlobal?: boolean },
+  'register'
+>({
   name: 'Crypto',
+  methodName: 'register',
+  identity: 'registration',
   setup: ({ OPTIONS }) => ({
     providers: [
       defineProvider(CRYPTO_SERVICE, {

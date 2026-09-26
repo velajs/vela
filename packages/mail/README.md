@@ -32,7 +32,7 @@ import { Inject, Injectable, Module } from '@velajs/vela';
 import { MailModule, MailService } from '@velajs/mail';
 import { createMailCatcher } from '@velajs/mail/transports/catcher';
 
-const mail = MailModule.forRoot({
+const mail = MailModule.register({
   from: 'support@example.com',
   transport: createMailCatcher(),
   limits: { maxRecipients: 100, maxBodyBytes: 2 * 1024 * 1024 },
@@ -77,7 +77,7 @@ bodies; it is not a complete MIME/attachment composer.
 
 ### Transport and environment configuration
 
-Use `forRootAsync` with a typed application environment/configuration token when
+Use `registerAsync` with a typed application environment/configuration token when
 credentials depend on the application. Dependencies are tuple-inferred from
 `inject`; a factory without parameters may omit it:
 
@@ -88,7 +88,7 @@ import { resendTransport } from '@velajs/mail/transports/resend';
 
 const Config = new InjectionToken<{ from: string; apiKey: string }>('mail-config');
 // Application bootstrap must supply Config from its own validated environment.
-const mail = MailModule.forRootAsync({
+const mail = MailModule.registerAsync({
   imports: [ApplicationConfigModule],
   inject: [Config],
   useFactory: (config) => ({
@@ -107,15 +107,7 @@ Alternatively, an application transport module can export a global
 explicit `transport`, then that token. A missing transport fails at delivery with
 `no_transport`, so producer-only queue workers can enqueue without one.
 
-A mailer's instance key comes from its structural `queue` and `inbound` options
-only. The same configuration imported twice deduplicates into one mailer. A
-second configuration under the same key, such as another `from`, `transport` or
-`render` with the same (or no) queue settings, fails bootstrap instead of
-running on the first mailer's configuration. Give each additional mailer its own
-distinct `key`: `MailModule.forRoot({ ..., key: 'marketing' })`. Keys are
-per application, so separate applications can reuse one. Consumers of multiple
-mailers should import the intended registration in separate feature modules;
-root `app.get(MailService)` is not a multi-mailer selector.
+Each `register` or `registerAsync` call owns a mailer with its own configuration. Reuse the returned dynamic module to share one mailer across feature imports. An explicit `key` is optional; reusing a key with different configuration fails bootstrap. Separate applications always own separate service instances. Consumers of multiple mailers should import the intended registration in separate feature modules; root `app.get(MailService)` is not a multi-mailer selector.
 
 ## Queued delivery
 
@@ -126,7 +118,7 @@ import { cloudflareQueues } from '@velajs/cloudflare/queues';
 @Module({
   imports: [
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    MailModule.forRoot({
+    MailModule.register({
       from: 'support@example.com',
       transport,
       queue: { name: 'mail', binding: 'MAIL_QUEUE' },
@@ -138,22 +130,20 @@ class AppModule {}
 await mailer.queue({ to: 'user@example.com', subject: 'Digest', text: 'News' });
 ```
 
-The mailer registers its queue with `QueueModule.registerQueue({ name, binding,
-consumer })` and its consumer as a `@Processor(name)`, so the application only
+The mailer registers its queue with `QueueModule.forFeature([{ name, binding,
+consumer }])` and its consumer as a `@Processor(name)`, so the application only
 imports `QueueModule.forRoot({ driver })` once; a mailer with `queue` fails
 bootstrap without it. `queue: {}` selects the default name `mail`. `binding` is
 the producer binding the driver sends through (on Workers, a Wrangler
 `queues.producers[].binding`) and `consumer` optionally pins the physical queue,
-exactly as in `registerQueue`. Queue names must be unique across mail
+exactly as in `forFeature`. Queue names must be unique across mail
 registrations in one application. Each registration has its own processor
 class, preventing options from another mailer being selected by token
 resolution. The service validates before enqueue; the consumer treats
 `job.data` as unknown, reconstructs a fresh message, rebuilds its envelope, and
 reruns validation and limits before delivery.
 
-For `forRootAsync`, `queue` and `inbound` are structural options alongside
-`inject` and `useFactory`; returning them from the factory is rejected. The factory
-returns only outbound options (`from`, `transport?`, `render?`, `limits?`).
+For `registerAsync`, `queue` stays beside `inject` and `useFactory` because it declares a processor. The factory returns outbound options and runtime `inbound: { gate }` policy. Gate contributions are discovered within each application: reusing one gate object is allowed, while distinct gates fail inbound dispatch. Policies are snapshotted when DI resolves them and cannot be relaxed by later caller mutation. The default still requires DMARC.
 
 The default core queue driver is in-memory. Durable delivery requires a platform
 queue driver such as `cloudflareQueues()`, whose native deliveries reach the
@@ -297,8 +287,7 @@ The standalone checkout remains untouched. npm returned E404 for `@velajs/mail`
 on 2026-09-21; the package retains source version 1.0.0 with a pending root changeset.
 
 Intentional 1.x integration changes: use checked `defineProvider` descriptors,
-explicit async `inject` tuples, structural queue/inbound options, instance keys
-from those structural options (another mailer takes its own `key`), unique mail
+explicit async `inject` tuples, structural queue declarations, independent mailer registrations, runtime inbound policies, unique mail
 queue names per app, and nonempty
 authentication requirements. Public subpaths and `InboundEmail` are preserved.
 Releases, catalogs, and lockfiles are owned by the monorepo root. The release

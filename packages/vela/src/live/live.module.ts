@@ -61,8 +61,8 @@ const { ConfigurableModuleClass } = defineModule<LiveModuleOptions, 'presence'>(
   optionsToken: LIVE_MODULE_OPTIONS,
   // One engine per application: a second configuration fails bootstrap, not merged.
   structural: ['presence'],
-  // Presence is on unless disabled: `{}` and an absent `presence` are one engine.
-  defaults: { presence: {} },
+  // Presence is on unless disabled: `true` and an absent `presence` are one engine.
+  defaults: { presence: true },
   setup: ({ OPTIONS, options }) => ({
     providers: [
       LivePlatformRef,
@@ -80,7 +80,7 @@ const { ConfigurableModuleClass } = defineModule<LiveModuleOptions, 'presence'>(
         useFactory: (options) => {
           const presence = options.presence;
           if (presence === false) return new PresenceService(undefined, false);
-          return new PresenceService(presence?.ttlMs, true);
+          return new PresenceService(options.presenceOptions?.ttlMs, true);
         },
         inject: [OPTIONS],
       }),

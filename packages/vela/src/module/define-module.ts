@@ -34,6 +34,7 @@ import { getModuleMetadata } from './decorators';
 import { attachModuleIdentity } from './module-fingerprints';
 import { GENERATED_MODULE_METHODS, UNCONFIGURED_MODULE } from './module-identity';
 import { stableHash } from './stable-hash';
+import { referenceKey } from './reference-key';
 
 /** The `global:` slot's component groups, lowered to `APP_*` registrations. */
 export interface GlobalComponentSlot {
@@ -98,8 +99,8 @@ export interface DefineModuleSpec<
   /**
    * Values for structural options a call site leaves out or passes as
    * `undefined`. `key`, `setup` and the comparison of repeated imports see
-   * them, so with `{ guard: 'global' }` here `forRoot({})` and
-   * `forRoot({ guard: 'global' })` are one configuration and one instance.
+   * them, so with `{ path: '/files' }` here `forRoot({})` and
+   * `forRoot({ path: '/files' })` are one configuration and one instance.
    * The options token receives the options as given. Only options in
    * `structural` may have a default.
    */
@@ -120,6 +121,12 @@ export interface DefineModuleSpec<
    * import under that key fails bootstrap next to the bare one.
    */
   key?: (options: Pick<Opts, S>) => string;
+  /**
+   * Structural registrations share their declared configuration. Registration
+   * identity creates a fresh owner per call; reimport the returned definition
+   * to share it. An explicit call-site key or spec key takes precedence.
+   */
+  identity?: 'structural' | 'registration';
   /** Call-site extras defaults (default `{ isGlobal: false }`). */
   extras?: Extras;
   /** Reshape the definition from resolved extras (default: `isGlobal` → `global: true`). */
@@ -239,6 +246,13 @@ export function defineModule<
 >(
   spec: DefineModuleSpec<Opts, S, Extras, MethodKey, FactoryMethodKey>,
 ): ConfigurableModuleHost<Opts, MethodKey, FactoryMethodKey, Extras, S> {
+  if (
+    spec.identity !== undefined &&
+    spec.identity !== 'structural' &&
+    spec.identity !== 'registration'
+  ) {
+    throw new TypeError(`${spec.name}: identity must be 'structural' or 'registration'`);
+  }
   const optionsToken = spec.optionsToken ?? new InjectionToken<Opts>(`${spec.name}_MODULE_OPTIONS`);
   const syncName = spec.methodName ?? 'forRoot';
   const asyncName = `${syncName}Async`;
@@ -280,7 +294,12 @@ export function defineModule<
 
   const deriveKey = (host: unknown, explicit: unknown, structural: object): string => {
     if (explicit === undefined) {
-      return spec.key?.(structural as Pick<Opts, S>) ?? stableHash(structural);
+      return (
+        spec.key?.(structural as Pick<Opts, S>) ??
+        (spec.identity === 'registration'
+          ? `registration:${referenceKey({})}`
+          : stableHash(structural))
+      );
     }
     if (typeof explicit !== 'string' || explicit.length === 0 || explicit !== explicit.trim()) {
       throw new TypeError(

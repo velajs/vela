@@ -157,7 +157,7 @@ describe('module.seed', () => {
 
   it('runs the given seeders in call order', async () => {
     const module = await Test.createTestingModule({
-      imports: [SeederModule.forRoot({ seeders: [FirstSeeder, SecondSeeder] })],
+      imports: [SeederModule.forFeature([FirstSeeder, SecondSeeder])],
     }).compile();
 
     await module.seed(SecondSeeder, FirstSeeder);
@@ -166,7 +166,7 @@ describe('module.seed', () => {
 
   it('throws when a class is not a registered seeder', async () => {
     const module = await Test.createTestingModule({
-      imports: [SeederModule.forRoot({ seeders: [FirstSeeder] })],
+      imports: [SeederModule.forFeature([FirstSeeder])],
     }).compile();
 
     await expect(module.seed(UnregisteredSeeder)).rejects.toThrow(/not registered/);
