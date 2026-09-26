@@ -41,6 +41,9 @@ export default defineConfig([
   {
     ...shared,
     dts: { emitDtsOnly: true },
+    // Root-exported flag drivers retain the exact optional integration contract
+    // without requiring that package merely to type-check a Cloudflare import.
+    deps: { dts: { alwaysBundle: ['@velajs/feature-flags'] } },
     clean: false,
   },
 ]);
