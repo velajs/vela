@@ -2,6 +2,12 @@
 
 All notable changes to `@velajs/ai` are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.0
+
+### Minor Changes
+
+- 201fcdc: Separate RAG publication, ACLs and text from candidate search using required transactional publication storage, revision compare-and-swap, tombstones and resumable indexing journals. Replace the vector contract with explicit mutation acknowledgments and nonnegative scores; remove in-index manifests and the optional text-store API. Add an optional Vectorize V2 driver, Durable Object publication storage, native recipe and bounded opt-in live acceptance fixture. Replacements require current revision tokens and old data must be re-indexed into a fresh partition.
+
 ## 1.2.0
 
 ### Minor Changes
