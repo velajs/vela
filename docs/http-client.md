@@ -160,6 +160,12 @@ Workers Web API declarations with DOM/Node declarations can produce conflicting
 `RequestInit` and `Response` types. The transport contract uses the environment's
 Web API types and has no Cloudflare runtime dependency.
 
+See the [VPC composition recipe](../apps/cloudflare-composition/src/private-service.ts)
+for a native VPC Service transport with a fixed Host/SNI/path, manual redirects,
+request cancellation and bounded schema validation. Its application controller
+checks authorization separately; private network connectivity alone grants no
+application permission. The caller disposes non-2xx response bodies.
+
 ## Instrumentation interface
 
 `HttpModuleOptions.observer` accepts an optional `HttpClientObserver`.

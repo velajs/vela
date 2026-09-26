@@ -48,6 +48,9 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 
 ## Integrations
 
+- [Native Cloudflare composition](../apps/cloudflare-composition/README.md): tested Browser Run,
+  Workers AI / AI Gateway, VPC and Images recipes with authorization and bounded I/O.
+
 - [Cloudflare security](cloudflare-security.md): platform identity, signed R2
   URLs, and Durable Object WebSockets.
 - [Cloudflare service acceptance](cloudflare-live-validation.md): opt-in service

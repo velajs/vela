@@ -87,6 +87,17 @@ cache a provider holding one environment's credentials in a process-global
 singleton. Request identity belongs in operation arguments, never mutable shared
 configuration. A separate `AiModule` would only duplicate Vela's existing DI API.
 
+## Workers AI and AI Gateway composition
+
+The [native composition example](../../apps/cloudflare-composition/README.md) uses
+`workers-ai-provider@4.0.0` with AI SDK 7.0.26 and the existing `createAi` API. It
+constructs the provider from each request's `env.AI`, fixes the model and output
+limits on the server, and selects AI Gateway through the provider's native gateway
+option. Request-bound tools validate input and capture authorized ownership.
+Streaming failures and cancellation propagate through an owned deadline; forwarding
+an abort signal does not confirm upstream inference cancellation. The example
+includes local contract/native tests and a separate opt-in deployed-fixture check.
+
 ## Retrieval
 
 `defineRag(config)` returns `{ sync, retrieve, remove, asTool }`. It owns chunking

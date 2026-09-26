@@ -1,0 +1,21 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "vela-cloudflare-composition",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-25",
+  // Remote access is opt-in. These names/IDs are synthetic, never provisioned by this app.
+  "browser": { "binding": "BROWSER", "remote": false },
+  "ai": { "binding": "AI", "remote": false },
+  "images": { "binding": "IMAGES", "remote": false },
+  "r2_buckets": [
+    { "binding": "MEDIA", "bucket_name": "composition-synthetic-media", "remote": false },
+  ],
+  "vpc_services": [
+    {
+      "binding": "PRIVATE_API",
+      "service_id": "00000000-0000-0000-0000-000000000000",
+      "remote": false,
+    },
+  ],
+  "vars": { "DEMO_OWNER": "alpha", "AI_GATEWAY_ID": "composition-synthetic" },
+}
