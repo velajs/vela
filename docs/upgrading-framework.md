@@ -1,5 +1,24 @@
 # Upgrading framework integrations
 
+## Request-owned CRUD databases
+
+`CrudModule.forFeature` now provides invocation-scoped resources. Replace
+`app.get(crudResourceToken(...))` and root-container resource resolution with
+`await scope.resolveAsync(crudResourceToken(...))` inside
+`runInEntrypointScope(app.getContainer(), async scope => { ... })`, or resolve from
+a managed HTTP child. Consumers of those resource tokens inherit request scope;
+retained resources reject after invocation completion. Standalone `defineResource`
+and application-owned native database registrations retain explicit ownership.
+
+For request-connected clients, replace connection creation in `forRootAsync` with
+`CrudModule.forRequestAsync` and `acquireCrudDatabases({ acquire, create, release })`.
+Allocate the native client in `acquire`, connect and build adapters/stores in
+`create`, and close it in `release`. The factory's first parameter is the managed
+execution lifetime; later parameters follow its optional `inject` tuple. One
+registration supplies all named databases. Await unjoined operations sequentially
+within a lease; compose transactional work with the same explicit transaction
+scope and bound audit/version stores. See [database lifecycles](multi-database.md#request-owned-connections).
+
 ## Removing obsolete contracts
 
 This release removes compatibility paths. Update extensions and applications together:

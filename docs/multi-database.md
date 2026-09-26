@@ -104,7 +104,7 @@ shared between registrations. Supply independent stores, or separate wrappers
 that explicitly namespace an application-owned backend. Per-resource overrides
 remain available and retain their existing semantics.
 
-`CRUD_DATABASES` resolves the application registry. The public
+`CRUD_DATABASES` resolves the application registry for `forRoot` or the invocation registry for `forRequestAsync`. The public
 `resolveCrudDatabase(container, runtimeConfig)` helper provides the same selection
 for integrations. `resolveCrudDatabaseSync` supports synchronous discovery after
 providers initialize; unresolved async providers throw instead of selecting a
@@ -119,12 +119,15 @@ For DI resources, start with the selected resource's adapter so application
 ownership is preserved:
 
 ```ts
-const orders = container.resolve(crudResourceToken('order', 'primary'));
-const items = container.resolve(crudResourceToken('item', 'primary'));
+import { runInEntrypointScope } from '@velajs/vela/module-kit';
 
-await crudTransaction({ runtime: orders.config.adapter }, { tenantId }, async (transaction) => {
-  await orders.execute('create', { transaction, vars: { tenantId }, body: orderInput });
-  await items.execute('update', { transaction, vars: { tenantId }, id: itemId, body: patch });
+await runInEntrypointScope(app.getContainer(), async (scope) => {
+  const orders = await scope.resolveAsync(crudResourceToken('order', 'primary'));
+  const items = await scope.resolveAsync(crudResourceToken('item', 'primary'));
+  await crudTransaction({ runtime: orders.config.adapter }, { tenantId }, async (transaction) => {
+    await orders.execute('create', { transaction, vars: { tenantId }, body: orderInput });
+    await items.execute('update', { transaction, vars: { tenantId }, id: itemId, body: patch });
+  });
 });
 ```
 
@@ -205,3 +208,80 @@ Configure each deployment environment's bindings separately. Choose remote
 migration execution explicitly in your deployment procedure; starting the app
 never migrates production. Wrangler stores history in each database's migration
 table. See [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/).
+
+## Request-owned connections
+
+`CrudModule.forRootAsync` builds application configuration. A socket opened there
+can survive its Worker invocation and cannot be safely reused in later requests.
+Use `CrudModule.forRequestAsync` for connected clients:
+
+```ts
+CrudModule.forRequestAsync({
+  inject: [ENV],
+  useFactory: (lifetime, env) => acquireCrudDatabases({
+    signal: lifetime.signal,
+    acquire: () => new Client({ connectionString: env.HYPERDRIVE.connectionString }),
+    create: async (client) => {
+      await client.connect();
+      const db = drizzle(client);
+      return createCrudDatabaseRegistry([
+        defineCrudDatabase('primary', {
+          handle: db,
+          resources: { item: { model: itemModel, adapter: drizzleAdapter({ db, table: items, dialect: 'pg' }) } },
+        }),
+      ]);
+    },
+    release: (client) => client.end(),
+  }),
+});
+```
+
+The lifetime is always the first factory argument; `inject` may be omitted when
+there are no other dependencies. Import one database registration per application;
+combining root and request registrations or two distinct request factories fails
+at bootstrap. Reimporting one shared module definition is supported. Put all named
+databases in its registry. D1 and other application-owned handles can continue to
+use ordinary `forRoot`/`forRootAsync` registrations.
+
+A factory runs lazily once per HTTP or non-HTTP execution scope. Repeated resolves
+share its lease. Concurrent acquisition of the same native object is rejected without
+releasing its current owner; a failed release quarantines that object. The returned
+registry cannot be re-leased or promoted to an
+application registration. One lease conservatively admits only one unjoined
+database operation at a time, across all its names and stores, since several ORM
+wrappers may share one socket. Await work sequentially or pass an existing CRUD
+transaction scope. Different invocations have independent clients and can overlap.
+
+`acquireCrudDatabases` owns a handle once `acquire` returns. Put fallible connection
+initialization in `create` after allocating the client in `acquire`. If `acquire`
+itself fails, it must clean up any partial resource it never returned. Construction
+failure releases the acquired handle; if release also fails, an `AggregateError`
+retains both failures. Aborting during acquisition waits for acquisition to settle
+before releasing. Aborting after acquisition does not close in-flight work.
+
+The invocation disposes the lease after awaited handler work, lifetime-managed
+work, and response body completion, error or cancellation. Register detached work
+with `lifetime.waitUntil`/`defer`; raw platform `waitUntil` does not extend Vela's
+scope. Release runs once, even if it fails. Existing container disposal logs release
+errors and continues other disposers; it cannot change an already-sent HTTP
+response. Standalone `lease.dispose()` rejects and can be awaited in `finally`.
+
+Compiled `forFeature` resource tokens are invocation-scoped even when their
+underlying database is application-owned. Their consumers inherit request scope.
+Use a managed HTTP child or `runInEntrypointScope`, as above; root and unmanaged
+resolution reject. Metadata and static adapters are validated at bootstrap.
+Request factory adapters/stores are validated after acquisition. Resource-token
+compilation is cached by DI once per resource per invocation. Standalone
+`defineResource` keeps explicit caller ownership.
+
+Framework adapters and stores reject use after release. Native handle references
+are not revocable JavaScript capabilities: never retain the raw client, ORM handle,
+or original unbound adapters/stores outside their invocation. Inside a transaction,
+use its bound stores; do not issue raw queries or start another transaction on the
+same client. Trusted tenant context is explicit and is not inherited by event
+scopes. Studio's synchronous app-root discovery cannot acquire request databases;
+use a separately owned static Studio data source instead of sharing live clients.
+
+See the [Hyperdrive example](../apps/hyperdrive-crud/README.md) for Vite/Oxc setup,
+Wrangler types, local PostgreSQL/native Worker coverage, opt-in remote acceptance,
+and the required cache-disabled binding for fresh CRUD reads.
