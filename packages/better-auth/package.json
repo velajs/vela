@@ -1,6 +1,6 @@
 {
   "name": "@velajs/better-auth",
-  "version": "1.31.0",
+  "version": "1.32.0",
   "description": "better-auth integration for the Vela framework",
   "keywords": [
     "auth",
