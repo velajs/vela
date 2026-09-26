@@ -1,5 +1,20 @@
 # @velajs/authz-cedar
 
+## 1.33.0
+
+### Minor Changes
+
+- 1a520f9: Publish verified identity through the canonical execution-context APIs across HTTP adapters and native managed invocations. Identity snapshots are immutable, isolated to the exact invocation, and unavailable after expiry, clear, replacement, completion or container disposal. Tenant admission and authorization reject stale authentication snapshots after asynchronous checks.
+  
+  Native tenant and Cedar guards now require canonical identity published by a verified transport adapter. Resolver output and service-binding caller props cannot substitute for authentication. WebSocket attachment support remains available. The integrations require the updated core peer version; explicitly order authentication, tenant and authorization guards on native hosts.
+  
+  Update the Better Auth integration alongside its authorization dependency with the compatible core peer floor.
+
+### Patch Changes
+
+- Updated dependencies [1a520f9]
+  - @velajs/vela@1.35.0
+
 ## 1.32.0
 
 ### Minor Changes
