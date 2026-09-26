@@ -6,6 +6,18 @@
   "preview_urls": false,
   "services": [
     {
+      "binding": "NATIVE_CATALOG",
+      "service": "module-catalog",
+      "entrypoint": "Catalog",
+      "props": { "caller": "example-api" },
+    },
+    {
+      "binding": "UNTRUSTED_CATALOG",
+      "service": "module-catalog",
+      "entrypoint": "Catalog",
+      "props": { "caller": "untrusted", "subject": "alice" },
+    },
+    {
       "binding": "CATALOG",
       "service": "module-catalog",
     },

@@ -1137,6 +1137,14 @@ export declare const TRUSTED_REQUEST_IDENTITY: RequestContextKey<TrustedRequestI
 
 export declare function setTrustedRequestTenant(request: Request, expectedIdentity: TrustedRequestIdentity, tenantId: string): TrustedRequestIdentity;
 
+export declare function getTrustedContextIdentity(context: ExecutionContext): TrustedRequestIdentity | undefined;
+
+export declare function setTrustedContextIdentity(context: ExecutionContext, identity: TrustedRequestIdentity): void;
+
+export declare function clearTrustedContextIdentity(context: ExecutionContext): void;
+
+export declare function setTrustedContextTenant(context: ExecutionContext, expectedIdentity: TrustedRequestIdentity, tenantId: string): TrustedRequestIdentity;
+
 interface TrustedRequestIdentityStore<T> {
   get(request: Request): T | undefined;
 

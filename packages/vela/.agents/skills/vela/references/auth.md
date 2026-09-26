@@ -78,3 +78,12 @@ The unparameterized `BetterAuthService` exposes the framework's minimal operatio
 ## Tests
 
 `actingAs` from `@velajs/better-auth/testing` creates/signs a real session and returns headers. Set `module.setAuthResolver(actingAs)` then call `module.http.get('/me').actingAs({ email: 'ada@example.com' }).send()`. Principals need a resolvable id or email. See `testing.md` and the auth/authz package READMEs for provider construction and permission policy details.
+
+Native adapters use `clearTrustedContextIdentity` before verification and
+`setTrustedContextIdentity(context, verified)` afterward. `getTrustedContextIdentity`
+reads canonical authority; `setTrustedContextTenant(context, originalSnapshot, id)`
+admits without reauthentication. All are in `@velajs/vela/module-kit` and reuse
+`TrustedRequestIdentity`. Tenant, permission and Cedar guards require that native
+authority and reject a replaced snapshot after async checks. Tenant resolvers select
+admission input only; Cedar's alternate identity resolver is WebSocket-only.
+`ENTRYPOINT_PROPS` and binding possession never establish an end-user principal.

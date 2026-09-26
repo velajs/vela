@@ -125,3 +125,10 @@ authorize socket contexts against a declared resource.
 
 The package includes NestM BSD-licensed adaptations and unmodified Apache-licensed
 Cedar WASM; see `THIRD_PARTY_LICENSES`.
+
+For native RPC, queues and other managed invocation contexts, publish verified
+identity through `setTrustedContextIdentity` from `@velajs/vela/module-kit` before
+`CedarGuard`. It reads canonical context authority and rechecks the exact snapshot
+after `authorize` completes. Missing, cleared, expired, replaced or disposed identity
+denies; no native resolver fallback applies. The `identity` option is reserved for
+verified WebSocket connection attachments. HTTP-bound adapters retain request authority.

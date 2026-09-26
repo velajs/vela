@@ -130,6 +130,10 @@ export {
   createTrustedRequestIdentityStore,
   bindTrustedRequestContext,
   getTrustedContextRequest,
+  getTrustedContextIdentity,
+  setTrustedContextIdentity,
+  clearTrustedContextIdentity,
+  setTrustedContextTenant,
   TRUSTED_REQUEST_IDENTITY,
 } from './http/trusted-request-identity';
 export type {

@@ -17,8 +17,9 @@ import {
 } from '@velajs/vela';
 import {
   runInEntrypointScope,
-  getTrustedRequestIdentity,
-  setTrustedRequestTenant,
+  getTrustedContextRequest,
+  getTrustedContextIdentity,
+  setTrustedContextTenant,
 } from '@velajs/vela/module-kit';
 import type { Container } from '@velajs/vela/module-kit';
 import {
@@ -48,8 +49,9 @@ class TenantScopeState implements TenantContextReader {
     const value = this.#snapshot;
     return this.#active &&
       value &&
-      (value.principal.expiresAtMs === undefined || value.principal.expiresAtMs > Date.now()) &&
-      (!this.#identity || this.#identity())
+      (this.#identity
+        ? this.#identity()
+        : value.principal.expiresAtMs === undefined || value.principal.expiresAtMs > Date.now())
       ? value
       : undefined;
   }
@@ -85,7 +87,7 @@ export const TenantOptional = () => requirement('optional');
 export const TenantIgnored = () => requirement('ignored');
 export interface TenantModuleOptions extends TenantServiceOptions {
   selector?: TenantSelector;
-  /** Non-HTTP transports supply verified credentials through their transport adapter. */
+  /** Select tenant admission input; non-WebSocket adapters must first publish canonical identity. */
   resolve?: (
     context: ExecutionContext,
   ) => TenantRunOptions | undefined | Promise<TenantRunOptions | undefined>;
@@ -151,11 +153,13 @@ export class TenantGuard implements CanActivate {
       config = options[0]!;
     const requestContext =
       context.getType() === 'http' ? container.resolve(REQUEST_CONTEXT) : undefined;
-    const request = requestContext?.request;
-    const identity = request ? getTrustedRequestIdentity(request) : undefined;
+    const request = getTrustedContextRequest(context);
+    const identity = getTrustedContextIdentity(context);
+    const canonical = context.getType() !== 'ws';
     let input = await config.resolve?.(context);
-    if (!input && request) {
-      const id = (config.selector ?? headerTenant())(request) ?? identity?.tenantId;
+    if (!input) {
+      const id =
+        (request ? (config.selector ?? headerTenant())(request) : undefined) ?? identity?.tenantId;
       if (id !== undefined && !identity)
         throw new ForbiddenException('Tenant selector requires authenticated identity');
       if (id !== undefined && identity)
@@ -165,13 +169,16 @@ export class TenantGuard implements CanActivate {
             ...identity.principal,
             ...(identity.expiresAtMs === undefined ? {} : { expiresAtMs: identity.expiresAtMs }),
           },
-          source: 'http',
+          source: request ? 'http' : context.getType(),
         };
     }
     if (!input) {
       if (declared === 'optional') return true;
       throw new BadRequestException('Tenant and authenticated identity are required');
     }
+    // Optional permits absence of a selector, never unauthenticated admission.
+    if (canonical && !identity)
+      throw new ForbiddenException('Tenant admission requires authenticated identity');
     if (identity?.tenantId && identity.tenantId !== input.tenantId)
       throw new ForbiddenException('Conflicting tenant identity');
     if (
@@ -181,6 +188,14 @@ export class TenantGuard implements CanActivate {
         identity.principal.principalType !== input.principal.principalType)
     )
       throw new ForbiddenException('Conflicting tenant principal');
+    if (identity)
+      input = {
+        ...input,
+        principal: {
+          ...identity.principal,
+          ...(identity.expiresAtMs === undefined ? {} : { expiresAtMs: identity.expiresAtMs }),
+        },
+      };
     let tenant: TenantSnapshot;
     try {
       tenant = await service.admit(input);
@@ -188,15 +203,19 @@ export class TenantGuard implements CanActivate {
       if (error instanceof TenantError) throw new ForbiddenException('Tenant access denied');
       throw error;
     }
-    if (request) {
-      if (!identity || getTrustedRequestIdentity(request) !== identity)
+    let admittedIdentity = identity;
+    if (canonical) {
+      if (!identity || getTrustedContextIdentity(context) !== identity)
         throw new ForbiddenException('Identity changed during tenant admission');
-      setTrustedRequestTenant(request, identity, tenant.id);
+      admittedIdentity = setTrustedContextTenant(context, identity, tenant.id);
     }
-    const admittedIdentity = request ? getTrustedRequestIdentity(request) : undefined;
     state().publish(
       tenant,
-      request ? () => getTrustedRequestIdentity(request) === admittedIdentity : undefined,
+      canonical
+        ? () =>
+            admittedIdentity !== undefined &&
+            getTrustedContextIdentity(context) === admittedIdentity
+        : undefined,
     );
     // Compatibility bridge for independently usable Hono CRUD resources.
     requestContext?.hono.set('tenantId' as never, tenant.id as never);

@@ -7,7 +7,6 @@ import {
   type ExecutionContext,
   type GuardPhase,
 } from '@velajs/vela';
-import { getTrustedContextRequest } from '@velajs/vela/module-kit';
 import type { Authz } from '../authz';
 import { AUTHZ } from './tokens';
 import { RequirePermission } from './require-permission.decorator';
@@ -49,7 +48,7 @@ export class PermissionGuard implements CanActivate {
     const current = getContextIdentity(context);
     if (
       !current ||
-      (getTrustedContextRequest(context) !== undefined && current !== trusted) ||
+      (context.getType() !== 'ws' && current !== trusted) ||
       current.principal.issuer !== trusted.principal.issuer ||
       current.principal.subject !== trusted.principal.subject ||
       current.principal.principalType !== trusted.principal.principalType ||

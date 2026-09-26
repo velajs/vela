@@ -105,3 +105,11 @@ Module options name bindings; they never hold them. `kv`, `r2`, `d1`, `queue`, `
 - Flags: `kvFlagDriver(env.CACHE, options)` and `flagshipFlagDriver(nativeBinding, options)`. Cache/object flag values remain unknown until parsed.
 
 The `@velajs/vela` root entry imports `hono/context-storage` (`node:async_hooks`) whether or not ambient access is used. `nodejs_compat` provides it and is default-on from compatibility date 2026-08-04; with an earlier date add `nodejs_als` (or `nodejs_compat`). Vela's Cloudflare and Durable Object transports need no other Node.js APIs; add `nodejs_compat` only for dependencies that import other `node:*` modules. Ambient container access is optional; per-request DI works without ambient state. On Workers stamp live commit headers explicitly instead of relying on ALS across DO RPC. See the Cloudflare package README and `apps/live-todo` for the complete deployed wiring.
+
+For protected native service methods, explicitly order authentication, `TenantGuard`,
+`PermissionGuard` and/or `CedarGuard` with `UseGuards`; native hosts exclude `APP_*`.
+Validate `ENTRYPOINT_PROPS` as caller metadata. Verify credentials before publishing
+`setTrustedContextIdentity` and clear before verification. The canonical snapshot
+belongs to one exact invocation; membership enrichment uses `setTrustedContextTenant`
+with the original live snapshot. Do not create an HTTP request or infer user identity
+from a service binding. See `invocation-scopes.md` and the module-workers example.

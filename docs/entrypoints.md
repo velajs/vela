@@ -91,6 +91,24 @@ Type the RPC result as serializable data: `wrangler types` gives a method whose
 result is not `Rpc.Serializable` (an `unknown` field, a class instance) the
 type `never` on the stub.
 
+## Verified identity in native calls
+
+Use `@UseGuards(AuthenticationGuard, TenantGuard, PermissionGuard, CedarGuard)`
+for a protected host, importing the modules that own those guards. The authentication
+guard clears `clearTrustedContextIdentity(context)` before checking credentials,
+then calls `setTrustedContextIdentity(context, verifiedIdentity)` after verification.
+Both functions, `getTrustedContextIdentity`, and the tenant admission CAS
+`setTrustedContextTenant` come from `@velajs/vela/module-kit` and reuse
+`TrustedRequestIdentity`.
+
+The exact invocation owns the snapshot; aliases share it, while concurrent,
+nested and later invocations do not. Completion and direct container disposal
+invalidate it. No HTTP context is created. Validate `ENTRYPOINT_PROPS` as unknown
+caller metadata; possession of a binding or caller props never authenticates an
+end user. Tenant and authorization guards deny absent, expired or replaced authority.
+The [four-worker example](../apps/module-workers/README.md) proves this pipeline
+using named identity, membership and catalog entrypoints under workerd.
+
 ## RPC errors
 
 Durable Object hosts and service entrypoints reject a failed RPC call with an

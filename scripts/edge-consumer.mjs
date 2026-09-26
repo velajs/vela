@@ -82,6 +82,13 @@ export async function verifyEdgePackages(releaseTarballs) {
     join(consumer, 'consumer.ts'),
     `
 import { defineDto, ValidationPipe } from '@velajs/vela/validation';
+import type { ExecutionContext } from '@velajs/vela';
+import { getTrustedContextIdentity, setTrustedContextIdentity, clearTrustedContextIdentity, setTrustedContextTenant, type TrustedRequestIdentity } from '@velajs/vela/module-kit';
+const readIdentity: (context: ExecutionContext) => TrustedRequestIdentity | undefined = getTrustedContextIdentity;
+const publishIdentity: (context: ExecutionContext, identity: TrustedRequestIdentity) => void = setTrustedContextIdentity;
+const clearIdentity: (context: ExecutionContext) => void = clearTrustedContextIdentity;
+const admitTenant: (context: ExecutionContext, expected: TrustedRequestIdentity, tenantId: string) => TrustedRequestIdentity = setTrustedContextTenant;
+void [readIdentity, publishIdentity, clearIdentity, admitTenant];
 import { defineResource, defineStandardModel, defineCrudDatabase, createCrudDatabaseRegistry, type ContractInput, type ContractOutput } from '@velajs/crud';
 import { bindCrudService } from '@velajs/crud/service';
 import { hmacCursorCodec } from '@velajs/crud/query';

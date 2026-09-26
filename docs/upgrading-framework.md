@@ -1031,3 +1031,14 @@ database-qualified history.
 
 See [RPC](../packages/rpc/README.md), [GraphQL](../packages/graphql/README.md) and
 [multiple databases](multi-database.md), including its runnable two-D1 example.
+
+## Canonical identity for native invocations
+
+Native tenant and Cedar adapters must now publish verified `TrustedRequestIdentity`
+with `setTrustedContextIdentity(context, identity)` from `@velajs/vela/module-kit`
+before authorization. Clear before each verification attempt. `TenantModule.resolve`
+selects admission input and cannot substitute its principal for canonical authority;
+Cedar's `identity` option remains for verified WebSocket attachments only. HTTP
+and bound HTTP contexts retain request authority. Native scopes never inherit
+identity from their parent. Use an explicit ordered authentication/tenant/authorization
+guard list on native hosts; application `APP_*` components do not apply there.

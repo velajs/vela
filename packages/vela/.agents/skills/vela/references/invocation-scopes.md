@@ -29,3 +29,14 @@ tenant IDs or principals from event payloads, correlation IDs, or mutable Hono
 variables into trusted identity. Authentication and tenant admission remain
 explicit server-side steps. Preserve the original request when an authenticated
 HTTP transport invokes another framework pipeline.
+
+Use the canonical context identity APIs from `@velajs/vela/module-kit`:
+`getTrustedContextIdentity`, `setTrustedContextIdentity`,
+`clearTrustedContextIdentity`, and `setTrustedContextTenant` (CAS against the original
+snapshot). They reuse `TrustedRequestIdentity`. HTTP/bound HTTP contexts delegate to
+the original request; native contexts require the exact live managed scope. Never
+inherit authority from a root, sibling or parent. Clear before verification and
+publish only after success. Claims are frozen; replacement, observed expiry,
+completion and direct scope/root disposal invalidate authority. Managed deferred
+work retains access only while its scope stays valid. Recheck exact identity
+references after asynchronous admission or authorization.
