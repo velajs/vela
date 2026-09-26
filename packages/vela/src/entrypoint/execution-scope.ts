@@ -1,4 +1,5 @@
 import type { Container } from '../container/container';
+import { isContainerAvailable } from '../container/availability';
 import { InjectionToken } from '../container/types';
 
 /** Work owned by one invocation, never by an ambient or process-global context. */
@@ -37,6 +38,10 @@ export interface ExecutionScope {
 
 type SettledWork = { readonly ok: true } | { readonly ok: false; readonly error: unknown };
 
+// Authoritative reads never dispatch through mutable properties of the
+// injected facade or its constructor/prototype.
+const lifetimeActive = new WeakMap<ManagedLifetime, () => boolean>();
+
 /** @internal Separate write/finalization authority from the injected lifetime. */
 class ManagedLifetime implements ExecutionLifetime {
   readonly id = crypto.randomUUID();
@@ -51,10 +56,11 @@ class ManagedLifetime implements ExecutionLifetime {
   constructor(container: Container, options: ExecutionScopeOptions) {
     this.#container = container;
     this.signal = options.signal;
+    lifetimeActive.set(this, () => this.#active && isContainerAvailable(this.#container));
   }
 
   get active(): boolean {
-    return this.#active;
+    return this.#active && isContainerAvailable(this.#container);
   }
 
   defer(work: () => unknown | Promise<unknown>): void {
@@ -84,7 +90,8 @@ class ManagedLifetime implements ExecutionLifetime {
   }
 
   #assertActive(): void {
-    if (!this.#active) throw new Error('Execution lifetime is closed.');
+    if (!this.#active || !isContainerAvailable(this.#container))
+      throw new Error('Execution lifetime is closed.');
   }
 
   #notify(): void {
@@ -162,13 +169,15 @@ export function createExecutionScope(
 
 /** @internal Reject resolution after an invocation has closed. */
 export function assertExecutionScopeActive(container: Container): void {
-  if (lifetimes.get(container)?.active === false) throw new Error('Execution lifetime is closed.');
+  const lifetime = lifetimes.get(container);
+  if (lifetime && lifetimeActive.get(lifetime)?.() !== true)
+    throw new Error('Execution lifetime is closed.');
 }
 
 /** An explicit read path; closed and unmanaged scopes have no active lifetime. */
 export function getExecutionLifetime(container: Container): ExecutionLifetime | undefined {
   const lifetime = lifetimes.get(container);
-  return lifetime?.active ? lifetime : undefined;
+  return lifetime && lifetimeActive.get(lifetime)?.() === true ? lifetime : undefined;
 }
 
 /** Finalize a child created by createExecutionScope. */

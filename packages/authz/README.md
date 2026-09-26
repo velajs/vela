@@ -193,3 +193,11 @@ need their own review; runtime guards continue checking authority and engine vis
 ## License
 
 MIT © Kauan Guesser
+
+Native managed invocations use the canonical context identity published by their
+verified transport adapter through `setTrustedContextIdentity` from
+`@velajs/vela/module-kit`. Attach authentication before `PermissionGuard` in the
+host's scoped guard list. The guard rechecks the exact snapshot after asynchronous
+permission resolution, denying clear, expiry, replacement or disposed scopes.
+HTTP-bound adapters share request authority; WebSocket connection attachments
+retain their existing verified-principal behavior.

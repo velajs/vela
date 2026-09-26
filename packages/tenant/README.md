@@ -144,3 +144,11 @@ application dependencies, never global framework state.
 ## Authentication composition
 
 Global guards run AuthGuard or CloudflareAccessGuard (`authenticate`) before TenantGuard (`tenant`), then permission guards (`authorize`) and throttling (`feature`). Admission preserves authentication provider payload while publishing a new immutable tenant-bound identity. Clearing, replacement, or expiry invalidates both identity payload and the admitted request reader. For concurrent HTTP-backed resolver fields, admit the tenant once at the outer HTTP boundary and consume the request reader in each field.
+
+Native managed contexts use `getTrustedContextIdentity` from `@velajs/vela/module-kit`.
+A transport guard must clear and publish verified identity before `TenantGuard` runs;
+`resolve` selects a tenant and must match the canonical principal. Admission preserves
+the verified expiry and uses the original snapshot in `setTrustedContextTenant`.
+Replacement, clear, expiry or scope disposal invalidates the retained tenant reader.
+Optional admission permits no selection; an explicit selector requires authentication.
+The WebSocket attachment resolver and explicit `runInTenantScope` remain supported.

@@ -5,12 +5,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { ensureConsumerArchives } from './consumer-companions.mjs';
 
 /** Build and run the multi-worker example against the exact packed public packages. */
-export async function verifyModuleWorkers(tarballs) {
-  const required = ['@velajs/vela', '@velajs/cloudflare', '@velajs/rpc'];
-  for (const name of required)
-    if (!tarballs[name]) throw new Error(`Module worker proof requires ${name}`);
+export async function verifyModuleWorkers(releaseTarballs) {
+  const required = [
+    '@velajs/vela',
+    '@velajs/cloudflare',
+    '@velajs/rpc',
+    '@velajs/tenant',
+    '@velajs/authz',
+    '@velajs/authz-cedar',
+  ];
+  const { tarballs, companions } = await ensureConsumerArchives(releaseTarballs, required);
   const root = fileURLToPath(new URL('../', import.meta.url));
   const source = join(root, 'apps/module-workers');
   const consumer = await mkdtemp(join(tmpdir(), 'vela-module-workers-consumer-'));
@@ -61,5 +68,5 @@ export async function verifyModuleWorkers(tarballs) {
       ]),
     ),
   );
-  return { path: consumer, status: 'passed', archives };
+  return { path: consumer, status: 'passed', archives, companions };
 }

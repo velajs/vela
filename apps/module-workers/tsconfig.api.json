@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/api.ts", "worker-configuration.api.d.ts"]
+  "include": ["src/api.ts", "worker-configuration.api.d.ts", "src/api-bindings.typecheck.ts"]
 }

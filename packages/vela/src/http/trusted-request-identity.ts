@@ -1,4 +1,5 @@
 import type { ExecutionContext } from '../pipeline/types';
+import { getExecutionLifetime, type ExecutionLifetime } from '../entrypoint/execution-scope';
 import { RequestContextKey } from './request-context';
 
 /** Canonical principal published only after server-side credential verification. */
@@ -27,6 +28,7 @@ interface AuthenticationState {
   identity: TrustedRequestIdentity;
 }
 const identityByRequest = new WeakMap<Request, AuthenticationState>();
+const identityByLifetime = new WeakMap<ExecutionLifetime, AuthenticationState>();
 const identityEncoder = new TextEncoder();
 const requestByContext = new WeakMap<ExecutionContext, Request>();
 
@@ -128,6 +130,10 @@ export function setTrustedRequestIdentity(
   identity: TrustedRequestIdentity,
 ): void {
   identityByRequest.delete(request);
+  identityByRequest.set(request, { identity: snapshotIdentity(identity) });
+}
+
+function snapshotIdentity(identity: TrustedRequestIdentity): TrustedRequestIdentity {
   if (typeof identity !== 'object' || identity === null) {
     throw new TypeError('[vela] trusted request identity must be an object');
   }
@@ -164,14 +170,12 @@ export function setTrustedRequestIdentity(
   }
   const claimInput = readData(identity, 'claims');
   const claims = claimInput === undefined ? undefined : snapshotClaims(claimInput);
-  identityByRequest.set(request, {
-    identity: Object.freeze({
-      principal: Object.freeze({ issuer, subject, principalType }),
-      ...(tenantId === undefined ? {} : { tenantId }),
-      ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
-      ...(roles === undefined ? {} : { roles }),
-      ...(claims === undefined ? {} : { claims }),
-    }),
+  return Object.freeze({
+    principal: Object.freeze({ issuer, subject, principalType }),
+    ...(tenantId === undefined ? {} : { tenantId }),
+    ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
+    ...(roles === undefined ? {} : { roles }),
+    ...(claims === undefined ? {} : { claims }),
   });
 }
 
@@ -186,9 +190,16 @@ export function getTrustedRequestIdentity(request: Request): TrustedRequestIdent
 }
 
 function authenticationState(request: Request): AuthenticationState | undefined {
-  const state = identityByRequest.get(request);
+  return liveState(identityByRequest, request);
+}
+
+function liveState<K extends object>(
+  states: WeakMap<K, AuthenticationState>,
+  key: K,
+): AuthenticationState | undefined {
+  const state = states.get(key);
   if (state?.identity.expiresAtMs !== undefined && state.identity.expiresAtMs <= Date.now()) {
-    identityByRequest.delete(request);
+    states.delete(key);
     return undefined;
   }
   return state;
@@ -217,6 +228,14 @@ export function setTrustedRequestTenant(
   tenantId: string,
 ): TrustedRequestIdentity {
   const state = authenticationState(request);
+  return admitTenant(state, expectedIdentity, tenantId);
+}
+
+function admitTenant(
+  state: AuthenticationState | undefined,
+  expectedIdentity: TrustedRequestIdentity,
+  tenantId: string,
+): TrustedRequestIdentity {
   if (!state || state.identity !== expectedIdentity) {
     throw new TypeError('[vela] tenant admission requires the current live identity');
   }
@@ -227,6 +246,63 @@ export function setTrustedRequestTenant(
   if (state.identity.tenantId === tenant) return state.identity;
   state.identity = Object.freeze({ ...state.identity, tenantId: tenant });
   return state.identity;
+}
+
+function contextLifetime(context: ExecutionContext): ExecutionLifetime | undefined {
+  const container = context.getContainer();
+  return container ? getExecutionLifetime(container) : undefined;
+}
+
+/** Canonical authority: original HTTP request or the exact managed invocation. */
+export function getTrustedContextIdentity(
+  context: ExecutionContext,
+): TrustedRequestIdentity | undefined {
+  const request = getTrustedContextRequest(context);
+  if (request) return getTrustedRequestIdentity(request);
+  const lifetime = contextLifetime(context);
+  return lifetime ? liveState(identityByLifetime, lifetime)?.identity : undefined;
+}
+
+/** Publish only after credential verification; invalid replacement clears authority. */
+export function setTrustedContextIdentity(
+  context: ExecutionContext,
+  identity: TrustedRequestIdentity,
+): void {
+  const request = getTrustedContextRequest(context);
+  if (request) return setTrustedRequestIdentity(request, identity);
+  const lifetime = contextLifetime(context);
+  if (!lifetime)
+    throw new TypeError('[vela] identity publication requires a live managed invocation');
+  identityByLifetime.delete(lifetime);
+  const verified = snapshotIdentity(identity);
+  // Validation may call proxy traps. Never publish into a scope closed meanwhile.
+  if (contextLifetime(context) !== lifetime)
+    throw new TypeError('[vela] identity publication requires a live managed invocation');
+  identityByLifetime.set(lifetime, { identity: verified });
+}
+
+/** Clear before verification, on rejection, logout or an anonymous invocation. */
+export function clearTrustedContextIdentity(context: ExecutionContext): void {
+  const request = getTrustedContextRequest(context);
+  if (request) return clearTrustedRequestIdentity(request);
+  const lifetime = contextLifetime(context);
+  if (lifetime) identityByLifetime.delete(lifetime);
+}
+
+/** Admit a tenant against the exact live authentication snapshot after async verification. */
+export function setTrustedContextTenant(
+  context: ExecutionContext,
+  expectedIdentity: TrustedRequestIdentity,
+  tenantId: string,
+): TrustedRequestIdentity {
+  const request = getTrustedContextRequest(context);
+  if (request) return setTrustedRequestTenant(request, expectedIdentity, tenantId);
+  const lifetime = contextLifetime(context);
+  return admitTenant(
+    lifetime ? liveState(identityByLifetime, lifetime) : undefined,
+    expectedIdentity,
+    tenantId,
+  );
 }
 
 /** Provider-owned payload, available only during its live authentication. */

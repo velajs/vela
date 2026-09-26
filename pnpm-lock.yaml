@@ -591,12 +591,21 @@ importers:
 
   apps/module-workers:
     dependencies:
+      '@velajs/authz':
+        specifier: workspace:*
+        version: link:../../packages/authz
+      '@velajs/authz-cedar':
+        specifier: workspace:*
+        version: link:../../packages/authz-cedar
       '@velajs/cloudflare':
         specifier: workspace:*
         version: link:../../packages/cloudflare
       '@velajs/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
+      '@velajs/tenant':
+        specifier: workspace:*
+        version: link:../../packages/tenant
       '@velajs/vela':
         specifier: workspace:*
         version: link:../../packages/vela

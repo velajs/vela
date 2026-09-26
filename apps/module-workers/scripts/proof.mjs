@@ -13,10 +13,31 @@ const runtime = new Miniflare(
         ...common,
         name: 'api',
         scriptPath: bundle('api'),
-        serviceBindings: { CATALOG: 'catalog', ACCOUNTS: 'accounts' },
+        serviceBindings: {
+          CATALOG: 'catalog',
+          ACCOUNTS: 'accounts',
+          NATIVE_CATALOG: {
+            name: 'catalog',
+            entrypoint: 'Catalog',
+            props: { caller: 'example-api' },
+          },
+          UNTRUSTED_CATALOG: {
+            name: 'catalog',
+            entrypoint: 'Catalog',
+            props: { caller: 'untrusted', subject: 'alice' },
+          },
+        },
         queueProducers: { TASKS: 'module-tasks' },
       },
-      { ...common, name: 'catalog', scriptPath: bundle('catalog') },
+      {
+        ...common,
+        name: 'catalog',
+        scriptPath: bundle('catalog'),
+        serviceBindings: {
+          IDENTITY: { name: 'accounts', entrypoint: 'Identity' },
+          MEMBERSHIP: { name: 'accounts', entrypoint: 'Membership' },
+        },
+      },
       { ...common, name: 'accounts', scriptPath: bundle('accounts') },
       {
         ...common,
@@ -34,6 +55,42 @@ try {
     document: { id: 'document-1', label: 'Example document' },
     owner: { id: 'account-1', active: true },
   });
+  const call = (body, path = 'native') =>
+    api.fetch(`https://api/api/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const inputs = [
+    { credential: 'fixture-alice', tenantId: 'team-a', documentId: 'document-a' },
+    { credential: 'fixture-bob', tenantId: 'team-b', documentId: 'document-b' },
+  ];
+  const resultsNative = await Promise.all(
+    inputs.map(async (input) => {
+      const response = await call(input);
+      assert.equal(response.status, 201);
+      return response.json();
+    }),
+  );
+  assert.deepEqual(resultsNative, [
+    { subject: 'alice', tenantId: 'team-a', documentId: 'document-a', frozen: true },
+    { subject: 'bob', tenantId: 'team-b', documentId: 'document-b', frozen: true },
+  ]);
+  for (const input of [
+    { ...inputs[0], credential: undefined },
+    { ...inputs[0], credential: 'forged' },
+    { ...inputs[0], tenantId: 'team-b' },
+    { ...inputs[0], credential: 'fixture-no-permission' },
+    { ...inputs[0], credential: 'fixture-no-resource' },
+    { ...inputs[0], documentId: 'document-b' },
+    { ...inputs[0], documentId: 'missing-document' },
+  ]) {
+    const response = await call(input);
+    assert.equal(response.status, 403, `Native authorization denied ${JSON.stringify(input)}`);
+  }
+  assert.equal((await call(inputs[0], 'untrusted')).status, 403);
+  // A denied invocation cannot contaminate a later authenticated call.
+  assert.equal((await call(inputs[0])).status, 201);
   assert.equal((await api.fetch('https://api/api/tasks', { method: 'POST' })).status, 201);
   const results = await runtime.getKVNamespace('RESULTS', 'jobs');
   const deadline = Date.now() + 10000;
@@ -50,7 +107,7 @@ try {
   );
   assert(!sources.some((path) => /src\/(api|catalog|accounts)\.ts$/.test(path)));
   console.log(
-    'Four native Workers passed: composed RPC API, queue delivery, cron, and separate bundles.',
+    'Four native Workers passed: HTTP RPC, verified native identity/tenant/permissions/Cedar, queue, cron, and separate bundles.',
   );
 } finally {
   await runtime.dispose();

@@ -4,4 +4,8 @@
   "compatibility_date": "2026-09-22",
   "workers_dev": false,
   "preview_urls": false,
+  "services": [
+    { "binding": "IDENTITY", "service": "module-accounts", "entrypoint": "Identity" },
+    { "binding": "MEMBERSHIP", "service": "module-accounts", "entrypoint": "Membership" },
+  ],
 }

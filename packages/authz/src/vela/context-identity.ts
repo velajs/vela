@@ -1,9 +1,5 @@
 import type { ExecutionContext } from '@velajs/vela';
-import {
-  getTrustedRequestIdentity,
-  getTrustedContextRequest,
-  type TrustedRequestIdentity,
-} from '@velajs/vela/module-kit';
+import { getTrustedContextIdentity, type TrustedRequestIdentity } from '@velajs/vela/module-kit';
 import type { Identity } from '../identity';
 
 /** Read an own data property without executing an untrusted getter. */
@@ -18,15 +14,13 @@ function nonEmptyString(value: unknown): value is string {
 }
 
 /**
- * HTTP uses only core's verified request identity. WebSocket frames use only
+ * HTTP and native invocations use core's canonical identity. WebSocket frames use only
  * the server's normalized connection attachment, never HTTP headers or frame
  * payloads. Roles/claims in arbitrary socket data are not trusted authority;
  * a resolver can look up grants using the verified principal and tenant.
  */
 export function getContextIdentity(context: ExecutionContext): TrustedRequestIdentity | undefined {
-  const request = getTrustedContextRequest(context);
-  if (request) return getTrustedRequestIdentity(request);
-  if (context.getType() !== 'ws') return undefined;
+  if (context.getType() !== 'ws') return getTrustedContextIdentity(context);
   try {
     // WsClient is framework-owned and may implement data as a class getter.
     const data: unknown = context.switchToWs().getClient().data;

@@ -1,9 +1,10 @@
-import { Controller, ENV, Get, Inject, Module, Post } from '@velajs/vela';
-import { createCloudflareWorker } from '@velajs/cloudflare';
+import { Controller, Body, ENV, ForbiddenException, Get, Inject, Module, Post } from '@velajs/vela';
+import { createCloudflareWorker, isEntrypointError } from '@velajs/cloudflare';
 import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import { InjectQueue, QueueModule, type QueueClient } from '@velajs/vela/queue';
 import { RpcClientModule, rpcClientToken } from '@velajs/rpc/server';
 import type { RpcClient } from '@velajs/rpc';
+import { catalogInput, type CatalogBinding } from './native-contracts';
 import { account, catalog } from './contracts';
 // ENV carries this Worker's bindings, typed by worker-configuration.api.d.ts.
 @Controller('/api')
@@ -12,6 +13,7 @@ class ApiController {
     @Inject(rpcClientToken('catalog')) private catalogClient: RpcClient,
     @Inject(rpcClientToken('accounts')) private accountsClient: RpcClient,
     @InjectQueue('tasks') private tasks: QueueClient,
+    @Inject(ENV) private env: { NATIVE_CATALOG: CatalogBinding; UNTRUSTED_CATALOG: CatalogBinding },
   ) {}
   @Get('/document') async document() {
     const [document, owner] = await Promise.all([
@@ -19,6 +21,21 @@ class ApiController {
       this.accountsClient.call(account, 'account-1'),
     ]);
     return { document, owner };
+  }
+  @Post('/native') async native(@Body() body: unknown) {
+    const input = catalogInput.parse(body);
+    return this.readNative(this.env.NATIVE_CATALOG, input);
+  }
+  @Post('/untrusted') async untrusted(@Body() body: unknown) {
+    return this.readNative(this.env.UNTRUSTED_CATALOG, catalogInput.parse(body));
+  }
+  private async readNative(binding: CatalogBinding, input: Parameters<CatalogBinding['read']>[0]) {
+    try {
+      return await binding.read(input);
+    } catch (error) {
+      if (isEntrypointError(error) && error.status === 403) throw new ForbiddenException();
+      throw error;
+    }
   }
   @Post('/tasks') async enqueue() {
     await this.tasks.add('record', { source: 'api' });

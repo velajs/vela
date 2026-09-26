@@ -354,7 +354,7 @@ considering any fallback, whatever the import order. Better Auth publishes this
 state automatically and uses its verified `activeOrganizationId` when present.
 Services read it through `REQUEST_CONTEXT` with the `TRUSTED_REQUEST_IDENTITY`
 key, a read-only view: writing it throws, so `setTrustedRequestIdentity` stays the
-only way to publish identity. The throttling decisions are available under
+request publication authority. The context API delegates HTTP publication to it. The throttling decisions are available under
 `RATE_LIMIT`, one per throttler name (`requestContext.get(RATE_LIMIT)?.default`).
 
 Without trusted identity, throttling uses `getTracker(request, context)` and then
@@ -473,6 +473,36 @@ bridge; it neither authenticates nor copies authority. Authenticate and admit th
 once before concurrent resolver fields. Better Auth and Cloudflare Access guards on these
 bound custom contexts read existing provider payload instead of authenticating again.
 Queue and socket payloads never become HTTP authority through this mechanism.
+
+## Native invocation identity
+
+`@velajs/vela/module-kit` exports `getTrustedContextIdentity(context)`,
+`setTrustedContextIdentity(context, identity)`, `clearTrustedContextIdentity(context)`,
+and `setTrustedContextTenant(context, expectedIdentity, tenantId)`. They reuse
+`TrustedRequestIdentity`; HTTP and explicitly bound HTTP adapters share their
+original request's authority. Other contexts use their exact managed invocation
+scope. Roots, unmanaged children, and closed/disposed scopes cannot publish.
+A sibling or nested scope never inherits its parent's identity.
+
+Authentication adapters clear before attempting verification and publish only
+after success. Publication validates own data properties and recursively freezes
+claims. Clear, failed publication, replacement, observed expiry, and scope disposal
+invalidate authority; rolling the clock back cannot revive observed expiry.
+Managed deferred work can read identity while its scope is valid. Direct container
+or root disposal makes native identity unavailable immediately.
+
+`TenantGuard`, `PermissionGuard`, and `CedarGuard` consume this canonical identity
+and recheck the exact snapshot after asynchronous admission/authorization. Tenant
+admission uses the original live snapshot in its compare-and-set and preserves
+canonical expiry. A resolver can select a tenant, but cannot authenticate a native
+call. Cedar's `identity` callback is only for verified WebSocket attachments;
+native adapters publish before the guard runs. WebSocket attachment behavior and
+explicit `runInTenantScope` remain supported.
+
+A service binding and `ENTRYPOINT_PROPS` identify a calling application only when
+its adapter validates them. They do not establish an end-user principal. Native
+hosts explicitly declare guards in authentication, tenant, authorization order;
+`APP_*` does not apply. See the [native service-binding example](../apps/module-workers/README.md).
 
 ## Non-browser cookie clients
 

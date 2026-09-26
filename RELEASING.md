@@ -122,8 +122,10 @@ verification only. A package's future release must include compatible framework
 peer floors; successful companion checks do not publish those dependencies.
 
 The module-workers consumer builds four separate Workers from the exact core,
-Cloudflare and RPC archives, then exercises service bindings, native queue
-delivery, cron execution and bundle isolation in workerd. Its integrity proof is
+Cloudflare, RPC, tenant, authz and Cedar archives, then exercises HTTP and named
+native service bindings, verified invocation identity, tenant/permission/resource
+admission, native queue delivery, cron execution and bundle isolation in workerd.
+Missing companions are packed for verification and recorded by SHA-512. Its integrity proof is
 recorded in `consumer.json`.
 
 The API-capabilities consumer also installs the exact core, HTTP client, CLI,

@@ -14,7 +14,7 @@ import {
 } from '@velajs/vela';
 import {
   MetadataRegistry,
-  getTrustedRequestIdentity,
+  getTrustedContextIdentity,
   type TrustedRequestIdentity,
 } from '@velajs/vela/module-kit';
 export interface ResourceRequirement {
@@ -40,7 +40,7 @@ export interface CedarModuleOptions {
     context: ExecutionContext;
     identity: TrustedRequestIdentity;
   }): Promise<boolean>;
-  /** Transport adapters must verify queue/scheduled/socket credentials before returning identity. */
+  /** Verified WebSocket connection attachment only. Other adapters publish canonical context identity. */
   identity?: (context: ExecutionContext) => TrustedRequestIdentity | undefined;
   auditModules?: readonly Type[];
 }
@@ -103,9 +103,7 @@ export class CedarGuard implements CanActivate {
     if (candidates.length !== 1) throw new ForbiddenException('Cedar configuration is ambiguous');
     const options = candidates[0]!;
     const read = () =>
-      context.getType() === 'http'
-        ? getTrustedRequestIdentity(context.getRequest())
-        : options.identity?.(context);
+      context.getType() === 'ws' ? options.identity?.(context) : getTrustedContextIdentity(context);
     const identity = read();
     if (!identity || (identity.expiresAtMs !== undefined && identity.expiresAtMs <= Date.now()))
       throw new ForbiddenException();
@@ -116,7 +114,7 @@ export class CedarGuard implements CanActivate {
     const current = read();
     if (
       !current ||
-      (context.getType() === 'http' && current !== identity) ||
+      (context.getType() !== 'ws' && current !== identity) ||
       current.principal.issuer !== identity.principal.issuer ||
       current.principal.subject !== identity.principal.subject ||
       current.principal.principalType !== identity.principal.principalType ||

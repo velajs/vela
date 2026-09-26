@@ -119,3 +119,14 @@ bindings fail at startup instead of the first client resolution. Job providers s
 Cloudflare queue deliveries without a registered consumer now reject, rather than
 returning successfully and allowing implicit acknowledgement. These behavior
 changes ship within 1.x; native decorators remain explicit escape hatches.
+
+## Native identity across service bindings
+
+The [module-workers example](../apps/module-workers/README.md) also exports named
+`VelaEntrypoint` identity, membership and catalog services. Its native catalog
+pipeline validates caller props, verifies a synthetic opaque credential remotely,
+publishes canonical context identity, admits tenant membership, then runs explicit
+permission and Cedar guards. Concurrent calls remain isolated and unavailable
+identity fails closed. The packed consumer runs these named bindings in workerd
+and records core, Cloudflare, RPC, tenant, authz and Cedar archive integrities.
+See [invocation identity](security.md#native-invocation-identity) for the contract.

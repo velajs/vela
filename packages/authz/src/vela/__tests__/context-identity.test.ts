@@ -11,7 +11,7 @@ import { AUTHZ } from '../tokens';
 import { PermissionGuard } from '../permission.guard';
 import { RequirePermission } from '../require-permission.decorator';
 import type { WsClient } from '@velajs/vela/websocket';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getContextIdentity, identityFromTrusted } from '../context-identity';
 
 function context(data: Record<string, unknown>, container?: Container): ExecutionContext {
@@ -155,5 +155,66 @@ it('denies a WebSocket identity replacement while an async permission is being r
   RequirePermission(['posts:write'])(ctx.getClass());
   await expect(new PermissionGuard(new Reflector()).canActivate(ctx)).rejects.toThrow(
     'Access denied',
+  );
+});
+
+describe('native canonical permission authority', () => {
+  it.each(['missing', 'clear', 'replace', 'expire', 'dispose'] as const)(
+    'denies %s authority after asynchronous authorization',
+    async (mode) => {
+      const {
+        createExecutionScope,
+        buildEntrypointExecutionContext,
+        setTrustedContextIdentity,
+        getTrustedContextIdentity,
+        clearTrustedContextIdentity,
+      } = await import('@velajs/vela/module-kit');
+      class Native {
+        read() {}
+      }
+      RequirePermission(['read'])(Native);
+      const root = new Container();
+      const scope = createExecutionScope(root);
+      const ctx = buildEntrypointExecutionContext(
+        'rpc',
+        Native,
+        'read',
+        [],
+        '__root__',
+        scope.container,
+      );
+      let now = 1000;
+      const time = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      root.register(
+        defineProvider(AUTHZ, {
+          useValue: createAuthz({
+            resolver: {
+              async grants() {
+                await Promise.resolve();
+                if (mode === 'clear') clearTrustedContextIdentity(ctx);
+                if (mode === 'replace')
+                  setTrustedContextIdentity(ctx, getTrustedContextIdentity(ctx)!);
+                if (mode === 'expire') now = 2000;
+                if (mode === 'dispose') await scope.container.dispose();
+                return new Set(['read']);
+              },
+            },
+          }),
+        }),
+      );
+      try {
+        if (mode !== 'missing')
+          setTrustedContextIdentity(ctx, {
+            principal: { issuer: 'accounts', subject: 'alice', principalType: 'user' },
+            expiresAtMs: 2000,
+          });
+        await expect(new PermissionGuard(new Reflector()).canActivate(ctx)).rejects.toThrow(
+          'Access denied',
+        );
+      } finally {
+        time.mockRestore();
+        await scope.finish();
+      }
+    },
   );
 });

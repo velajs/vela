@@ -1,4 +1,5 @@
 import { Scope } from '../constants';
+import { registerContainerAvailability } from './availability';
 import { reportDiagnostic } from './diagnostics';
 import { disposeInstance, isDisposable } from './disposable';
 import {
@@ -115,6 +116,10 @@ export class Container {
 
   constructor(options: ContainerOptions = {}) {
     this.#diagnostics = options.diagnostics ?? 'log';
+    registerContainerAvailability(
+      this,
+      () => !this.#disposing && !this.#disposed && !this.#root.#disposing && !this.#root.#disposed,
+    );
   }
 
   /** Install the lazy-module seam (bootstrap-time; root container only). */
