@@ -82,16 +82,17 @@ Low-level AST utilities are available at `/plan`, vocabulary authoring at
 - `/durable-objects`: `DurableObjectPolicyStore.migrate()`; object-local SQLite.
 - Root `MemoryPolicyStore`: instance-owned tests and prototypes.
 
-`CedarModule.forRoot({ authorize, auditModules })` from `/vela` installs the
-resource-aware `CedarGuard` as a global guard in the `authorize` phase, so it
-runs after global authentication and tenant admission whatever the import order.
+`CedarModule.forRoot({ authorize, auditModules })` from `/vela` provides and exports
+`CedarGuard`. Attach `{ provide: APP_GUARD, useExisting: CedarGuard }` or use
+`@UseGuards(CedarGuard)`. Its `authorize` phase runs after global authentication
+and tenant admission. Importing the module alone installs no guard.
 Apply `@RequireResource({ action, resourceType, idParam })` or `@CedarPublic()`
 to handlers/classes. The callback receives verified identity and execution
 context, resolves authoritative resource entities, and calls the engine.
 
 Application routes that carry neither declaration are denied (403) by
-default; `undeclared: 'allow'` lets them through. `undeclared` and `guard` shape
-the module, so `forRootAsync` takes them beside its factory. The global guard covers
+default; `undeclared: 'allow'` lets them through. `undeclared` is a runtime
+option: return it from the `forRootAsync` factory. The global guard covers
 every application route, including routes in modules that do not import
 `CedarModule` (they use the installing module's policy) and whether or not it
 is registered with `isGlobal`. An integration package's own controller opts out
@@ -103,17 +104,12 @@ CRUD controllers declare their policy through the resource's `decorators` and
 route-level `CedarGuard` in a module that cannot see `CedarModule` denies.
 `auditCedarRoutes([Module])` (or `auditModules`) rejects undeclared routes in
 selected modules at startup. Queue/socket adapters must supply verified
-identities explicitly. To order a fully route-level pipeline yourself, pass
-`guard: 'none'` and apply `@UseGuards(AuthenticationGuard, TenantGuard, CedarGuard)`
+identities explicitly. For a fully route-level pipeline, apply `@UseGuards(AuthenticationGuard, TenantGuard, CedarGuard)`
 in that order: global guards run before route guards.
 
-Each `guard: 'global'` registration installs its own global `CedarGuard`,
-including each keyed instance (`forRoot({ key, ... })`), and every installed
-guard runs on every application route. The installed guard authorizes through
-the `CedarModule` the route's module sees, so one global installation serves
-every module: when several modules register their own authorizer, give each
-registration its own `key`, keep `guard: 'global'` on one and pass
-`guard: 'none'` on the others.
+The configured guard keeps its module-owned configuration and resolves request-scoped
+dependencies from the current request. Multiple keyed policies must have unambiguous
+ownership; attach only the guard instances the application intends to run.
 
 The installed guard also runs wherever the application's global guards run outside
 controller routes: on WebSocket gateway messages, on the check before each push to a
@@ -124,7 +120,7 @@ frame, pushes are dropped, `$live` frames get no reply and an undeclared RPC pro
 answers 403. Declare `@RequireResource()` or `@CedarPublic()` on gateway classes and
 handlers and on RPC providers and procedures; only a declaration on the gateway class
 also admits its pushes. No declaration reaches `$live` frames: with live queries or
-presence, set `undeclared: 'allow'` or pass `guard: 'none'`. Supply `identity` to
+presence, set `undeclared: 'allow'` or install Cedar on selected routes only. Supply `identity` to
 authorize socket contexts against a declared resource.
 
 The package includes NestM BSD-licensed adaptations and unmodified Apache-licensed

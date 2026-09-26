@@ -99,7 +99,7 @@ class TodosController {
   imports: [
     NotifyModule,
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    QueueModule.registerQueue({ name: 'todos', binding: 'QUEUE_BRIDGE' }),
+    QueueModule.forFeature([{ name: 'todos', binding: 'QUEUE_BRIDGE' }]),
   ],
   controllers: [TodosController],
   providers: [TodoJobs, Nightly, defineProvider(CLOCK, { useValue: { now: () => 'real time' } })],

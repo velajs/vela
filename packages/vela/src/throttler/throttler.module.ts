@@ -6,7 +6,6 @@ import { defineProvider } from '../container/types';
 import { DiscoveryService } from '../discovery/discovery.service';
 import { defineModule } from '../module/define-module';
 import { Reflector } from '../pipeline/reflector';
-import { APP_GUARD } from '../pipeline/tokens';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import {
   ThrottlerGuard,
@@ -90,13 +89,13 @@ class ThrottlerConfiguration {
     }),
     ThrottlerGuard,
     ThrottlerConfiguration,
-    defineProvider(APP_GUARD, { useExisting: ThrottlerGuard }),
   ],
   exports: [THROTTLER_OPTIONS, THROTTLER_STORAGE, ThrottlerGuard],
 })
 /**
  * Nest v5 named throttlers: `forRoot({ throttlers: [{ name, ttl, limit }, ...], storage? })`
- * registers the global `ThrottlerGuard`, which counts every request once per
+ * provides `ThrottlerGuard`. Install it with `APP_GUARD` and `useExisting`, or
+ * with `@UseGuards`. The guard counts each request once per
  * throttler, each in its own bucket, and answers 429 at the first one
  * exceeded. `@Throttle({ name: { ttl, limit } })` and
  * `@SkipThrottle({ name: true })` adjust them per route or controller; a

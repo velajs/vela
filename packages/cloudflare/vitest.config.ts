@@ -19,7 +19,15 @@ export default defineConfig({
     // through the dedicated workers-pool configuration.
     exclude: ['src/__tests__/workers/**', 'node_modules/**'],
     // Native Durable Object classes require workerd; use a stub for unit tests.
-    alias: [{ find: /^cloudflare:workers$/, replacement: cloudflareWorkersShim }],
+    alias: [
+      { find: /^cloudflare:workers$/, replacement: cloudflareWorkersShim },
+      {
+        find: /^cloudflare:workflows$/,
+        replacement: fileURLToPath(
+          new URL('./test-shims/cloudflare-workflows.ts', import.meta.url),
+        ),
+      },
+    ],
   },
   plugins: [
     swc.vite({

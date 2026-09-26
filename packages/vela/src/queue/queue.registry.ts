@@ -22,7 +22,7 @@ function readName(value: unknown, field: string): string {
   return value;
 }
 
-/** Validate one `registerQueue` entry and return a frozen copy. */
+/** Validate one `forFeature` entry and return a frozen copy. */
 export function readQueueRegistration(value: unknown): QueueRegistration {
   if (typeof value !== 'object' || value === null) {
     throw new TypeError('Queue registration must be an object with a name.');
@@ -44,7 +44,7 @@ export function readQueueRegistration(value: unknown): QueueRegistration {
 }
 
 /**
- * The registration one `registerQueue` module instance provides. Every keyed
+ * The registration one `forFeature` module instance provides. Every keyed
  * instance lists this one class token with its own record as the value, so
  * registering queues declares no class, and discovery reads the values
  * without constructing anything.
@@ -61,7 +61,7 @@ function registrationOf(record: unknown): QueueRegistration {
 }
 
 /**
- * The queues one application registered with `QueueModule.registerQueue`,
+ * The queues one application registered with `QueueModule.forFeature`,
  * merged by name. Several modules may register the same queue: their
  * bindings must agree (an omitted binding agrees with any), and their
  * `consumer` pins accumulate. A disagreement fails bootstrap.

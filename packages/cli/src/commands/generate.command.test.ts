@@ -137,9 +137,9 @@ import { EMAILS_QUEUE, EmailsProcessor } from './emails/emails.processor.js';
 import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import { REPORTS_QUEUE, ReportsProcessor } from './reports/reports.processor.js';`);
     expect(app).toContain(`  imports: [
-    QueueModule.registerQueue({ name: EMAILS_QUEUE, binding: 'EMAILS' }),
+    QueueModule.forFeature([{ name: EMAILS_QUEUE, binding: 'EMAILS' }]),
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    QueueModule.registerQueue({ name: REPORTS_QUEUE, binding: 'REPORT_JOBS' }),
+    QueueModule.forFeature([{ name: REPORTS_QUEUE, binding: 'REPORT_JOBS' }]),
   ],`);
     expect(app).toContain('providers: [AppService, EmailsProcessor, ReportsProcessor],');
     expect(app.match(/QueueModule\.forRoot/g)).toHaveLength(1);
@@ -152,7 +152,7 @@ import { REPORTS_QUEUE, ReportsProcessor } from './reports/reports.processor.js'
     ).toBe(0);
     const todos = await read('src/todos/todos.module.ts');
     expect(todos).toContain(
-      "    QueueModule.registerQueue({ name: REMINDERS_QUEUE, binding: 'REMINDERS' }),\n  ],",
+      "    QueueModule.forFeature([{ name: REMINDERS_QUEUE, binding: 'REMINDERS' }]),\n  ],",
     );
     expect(todos).toContain(
       "import { REMINDERS_QUEUE, RemindersProcessor } from '../reminders/reminders.processor.js';",
@@ -188,7 +188,7 @@ export class InfraModule {}
     expect(result.code, result.output).toBe(0);
     const app = await read('src/app.module.ts');
     expect(app).not.toContain('QueueModule.forRoot');
-    expect(app).toContain("QueueModule.registerQueue({ name: AUDIT_QUEUE, binding: 'AUDIT' })");
+    expect(app).toContain("QueueModule.forFeature([{ name: AUDIT_QUEUE, binding: 'AUDIT' }])");
     const skipped = await generate('g', 'queue', 'sms', '--skip-import');
     expect(skipped.code, skipped.output).toBe(0);
     expect(skipped.output).not.toContain('QueueModule.forRoot');
@@ -199,7 +199,7 @@ export class InfraModule {}
     expect((await generate('g', 'queue', 'emails')).code).toBe(0);
     const skipped = await generate('g', 'queue', 'sms', '--skip-import');
     expect(skipped.code, skipped.output).toBe(0);
-    expect(skipped.output).toContain('QueueModule.registerQueue({ name: SMS_QUEUE');
+    expect(skipped.output).toContain('QueueModule.forFeature([{ name: SMS_QUEUE');
     expect(skipped.output).not.toContain('QueueModule.forRoot');
   });
 
@@ -632,7 +632,7 @@ export default { ...worker, async email() {} };
     const lines = skipped.output.trim().split('\n');
     expect(lines).toEqual([
       'CREATE src/emails/emails.processor.ts',
-      "Register it in src/app.module.ts: add QueueModule.registerQueue({ name: EMAILS_QUEUE, binding: 'EMAILS' }) to @Module({ imports }) after import { QueueModule } from '@velajs/vela/queue'; import { EMAILS_QUEUE } from './emails/emails.processor.js';",
+      "Register it in src/app.module.ts: add QueueModule.forFeature([{ name: EMAILS_QUEUE, binding: 'EMAILS' }]) to @Module({ imports }) after import { QueueModule } from '@velajs/vela/queue'; import { EMAILS_QUEUE } from './emails/emails.processor.js';",
       "Register it in src/app.module.ts: add EmailsProcessor to @Module({ providers }) after import { EmailsProcessor } from './emails/emails.processor.js';",
       "Register it in src/app.module.ts: add QueueModule.forRoot({ driver: cloudflareQueues() }) to @Module({ imports }) after import { QueueModule } from '@velajs/vela/queue'; import { cloudflareQueues } from '@velajs/cloudflare/queues';",
       'Next: vela cf sync --write adds the EMAILS producer and its consumer, and your types script types ENV.EMAILS.',

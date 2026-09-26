@@ -1,5 +1,5 @@
 import { sessionFixture } from './fixtures';
-import { Controller, Get, Inject, UseGuards } from '@velajs/vela';
+import { APP_GUARD, Controller, Get, Inject, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthGuard, BetterAuthModule, BetterAuthService, CurrentUser, Public } from '../index';
@@ -23,6 +23,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
     const stub = new BetterAuthService(() => makeAuth('stub'));
 
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth: real })],
     })
       .overrideProvider(BetterAuthService)
@@ -52,7 +53,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
       // This test installs AuthGuard explicitly on the controller. Disable the
       // module-level global registration so a single request has one guard
       // invocation, matching the behavior under test.
-      imports: [BetterAuthModule.forRoot({ auth: real, guard: 'none' })],
+      imports: [BetterAuthModule.forRoot({ auth: real })],
       controllers: [MeController],
     })
       .overrideProvider(BetterAuthService)
@@ -85,6 +86,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
     }
 
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth: real })],
       controllers: [PrivateController],
     })
@@ -120,6 +122,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
     }
 
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth: real })],
       controllers: [ProbeController],
     })

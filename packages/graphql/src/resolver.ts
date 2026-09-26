@@ -58,6 +58,26 @@ export function bindResolver<
   Record<string, unknown>,
   Promise<Output extends ValidationSchema ? SchemaOutput<Output> : MethodResult<T, K>>
 > {
+  // The public signature retains method/validator output inference at the reflection boundary.
+  return bindProviderResolver(provider, methodName, options) as GraphQLFieldResolver<
+    unknown,
+    GraphqlContext,
+    Record<string, unknown>,
+    Promise<Output extends ValidationSchema ? SchemaOutput<Output> : MethodResult<T, K>>
+  >;
+}
+
+/** Shared invocation path for the typed binder and schema-first decorators. */
+export function bindProviderResolver(
+  provider: Type,
+  methodName: string | symbol,
+  options: {
+    readonly args?: ValidationSchema;
+    readonly output?: ValidationSchema | undefined;
+    readonly moduleId?: string;
+    readonly mapArgs?: (args: unknown, field: GraphqlResolverContext) => unknown[];
+  },
+): GraphQLFieldResolver<unknown, GraphqlContext, Record<string, unknown>, Promise<unknown>> {
   // Recorded before any operation, as HTTP routes are (Reflector reads).
   resolverMethod(provider, methodName);
   return async (root, args, context, info) => {
@@ -137,11 +157,18 @@ export function bindResolver<
               : await pipe.transform(input, metadata);
           }
           // Parse once, after general transforms, so no pipe can invalidate a checked value.
-          return [await parseSchemaAsync(options.args, input), field];
+          const parsed = options.args ? await parseSchemaAsync(options.args, input) : input;
+          return options.mapArgs ? options.mapArgs(parsed, field) : [parsed, field];
         },
         invoke: async (values) => {
           operation.assertActive();
           const instance = await container.resolveAsync(provider, moduleId);
+          if (
+            (typeof instance !== 'object' || instance === null) &&
+            typeof instance !== 'function'
+          ) {
+            throw new TypeError(`GraphQL resolver ${provider.name} did not resolve to an object`);
+          }
           const method: unknown = Reflect.get(instance, methodName);
           if (typeof method !== 'function')
             throw new TypeError(`GraphQL resolver method ${String(methodName)} is not callable`);
@@ -176,7 +203,7 @@ export function bindResolver<
       }
     }
     operation.assertActive();
-    return output as Output extends ValidationSchema ? SchemaOutput<Output> : MethodResult<T, K>;
+    return output;
   };
 }
 

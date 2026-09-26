@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APP_GUARD,
   Controller,
   Get,
   Inject,
@@ -19,7 +20,12 @@ import {
   setTrustedRequestIdentity,
   type TrustedRequestIdentity,
 } from '../module-kit';
-import { RATE_LIMIT, ThrottlerModule, type RateLimitInfo } from '../throttler/index';
+import {
+  ThrottlerGuard,
+  RATE_LIMIT,
+  ThrottlerModule,
+  type RateLimitInfo,
+} from '../throttler/index';
 
 @Injectable()
 class SignInGuard implements CanActivate {
@@ -103,6 +109,7 @@ describe('trusted request context keys', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 5, ttl: 60_000 }] })],
       controllers: [LimitedController],
     })

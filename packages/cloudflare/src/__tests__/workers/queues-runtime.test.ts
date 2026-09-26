@@ -64,8 +64,8 @@ describe('QueueModule delivery under workerd', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email', binding: 'QUEUE_BRIDGE' }),
-        QueueModule.registerQueue({ name: 'sms' }),
+        QueueModule.forFeature([{ name: 'email', binding: 'QUEUE_BRIDGE' }]),
+        QueueModule.forFeature([{ name: 'sms' }]),
       ],
       providers: [Email, Sms],
     })
@@ -117,7 +117,7 @@ describe('QueueModule delivery under workerd', () => {
           driver: cloudflareQueues(),
           dispatch: { kind: 'signed', target: () => ({ path: '/jobs/email' }) },
         }),
-        QueueModule.registerQueue({ name: 'email', consumer: 'email-native' }),
+        QueueModule.forFeature([{ name: 'email', consumer: 'email-native' }]),
       ],
       controllers: [JobsController],
       providers: [Email, defineProvider(APP_GUARD, { useClass: GlobalGuard })],
@@ -143,7 +143,7 @@ describe('QueueModule delivery under workerd', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'email' }),
+        QueueModule.forFeature([{ name: 'email' }]),
       ],
       providers: [
         Email,
@@ -204,7 +204,7 @@ describe('QueueModule delivery under workerd', () => {
           driver: cloudflareQueues(),
           dispatch: { kind: 'signed', target: () => ({ path: '/jobs/guarded' }) },
         }),
-        QueueModule.registerQueue({ name: 'guarded' }),
+        QueueModule.forFeature([{ name: 'guarded' }]),
       ],
       controllers: [JobsController],
       providers: [Guarded, defineProvider(APP_GUARD, { useClass: Deny })],
@@ -258,7 +258,7 @@ describe('cloudflareQueues() producers under workerd', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: cloudflareQueues() }),
-        QueueModule.registerQueue({ name: 'tasks', binding: 'QUEUE_BRIDGE' }),
+        QueueModule.forFeature([{ name: 'tasks', binding: 'QUEUE_BRIDGE' }]),
       ],
       providers: [Producer],
     })

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  defineProvider,
+  APP_GUARD,
   Controller,
   Get,
   Module,
@@ -45,6 +47,7 @@ describe('resource authorization declarations', () => {
     CedarPublic()(Routes);
     class App {}
     Module({
+      providers: [{ provide: APP_GUARD, useExisting: CedarGuard }],
       controllers: [Routes],
       imports: [CedarModule.forRoot({ authorize: async () => false })],
     })(App);
@@ -85,6 +88,7 @@ describe('resource authorization declarations', () => {
     const requirements: string[] = [];
     class App {}
     Module({
+      providers: [{ provide: APP_GUARD, useExisting: CedarGuard }],
       controllers: [Routes],
       imports: [
         CedarModule.forRoot({
@@ -147,6 +151,7 @@ describe('resource authorization declarations', () => {
     );
     class App {}
     Module({
+      providers: [{ provide: APP_GUARD, useExisting: CedarGuard }],
       controllers: [Routes],
       imports: [
         CedarModule.forRoot({
@@ -206,13 +211,18 @@ describe('resource authorization declarations', () => {
     SkipGuardPhases(['authorize'])(Integration);
     class Outside {}
     Module({ controllers: [Elsewhere, Integration] })(Outside);
-    const build = (options: {
-      guard?: 'global' | 'none';
-      undeclared?: 'deny' | 'allow';
-      isGlobal?: boolean;
-    }) => {
+    const build = (
+      options: {
+        undeclared?: 'deny' | 'allow';
+        isGlobal?: boolean;
+      },
+      installGuard = true,
+    ) => {
       class App {}
       Module({
+        providers: [
+          ...(installGuard ? [defineProvider(APP_GUARD, { useExisting: CedarGuard })] : []),
+        ],
         controllers: [Undeclared],
         imports: [CedarModule.forRoot({ authorize: async () => true, ...options }), Outside],
       })(App);
@@ -231,8 +241,7 @@ describe('resource authorization declarations', () => {
         await strict.close();
       }
     }
-    for (const options of [{ undeclared: 'allow' as const }, { guard: 'none' as const }]) {
-      const relaxed = await build(options);
+    for (const relaxed of [await build({ undeclared: 'allow' }), await build({}, false)]) {
       try {
         expect((await relaxed.getHonoApp().request('/undeclared')).status).toBe(200);
         expect((await relaxed.getHonoApp().request('/elsewhere')).status).toBe(200);
@@ -241,19 +250,23 @@ describe('resource authorization declarations', () => {
       }
     }
   });
-  it('takes guard and undeclared beside a forRootAsync factory', async () => {
+  it('resolves undeclared-route policy through the async options factory', async () => {
     const authorize = async () => true;
-    // Spelled-out defaults are the same instance as leaving them out.
-    expect(CedarModule.forRoot({ authorize, guard: 'global', undeclared: 'deny' }).key).toBe(
-      CedarModule.forRoot({ authorize }).key,
-    );
     const Undeclared = route('/undeclared');
     const statuses: number[] = [];
-    for (const options of [{}, { undeclared: 'allow' as const }, { guard: 'none' as const }]) {
+    for (const undeclared of [undefined, 'deny', 'allow'] as const) {
       class App {}
       Module({
+        providers: [{ provide: APP_GUARD, useExisting: CedarGuard }],
         controllers: [Undeclared],
-        imports: [CedarModule.forRootAsync({ ...options, useFactory: () => ({ authorize }) })],
+        imports: [
+          CedarModule.forRootAsync({
+            useFactory: async () => ({
+              authorize,
+              ...(undeclared === undefined ? {} : { undeclared }),
+            }),
+          }),
+        ],
       })(App);
       const app = await VelaFactory.create(App);
       try {
@@ -262,20 +275,7 @@ describe('resource authorization declarations', () => {
         await app.close();
       }
     }
-    expect(statuses).toEqual([403, 200, 200]);
-    // The factory cannot relax the policy the call site declared.
-    class Relaxing {}
-    Module({
-      imports: [
-        CedarModule.forRootAsync({
-          // @ts-expect-error The policy is structural: the factory cannot return it.
-          useFactory: () => ({ authorize, undeclared: 'allow' }),
-        }),
-      ],
-    })(Relaxing);
-    await expect(VelaFactory.create(Relaxing)).rejects.toThrow(
-      /the factory returned the structural option 'undeclared'/,
-    );
+    expect(statuses).toEqual([403, 403, 200]);
   });
   it('authorizes routes in modules without CedarModule through the installing module', async () => {
     let allowed = true;
@@ -285,6 +285,7 @@ describe('resource authorization declarations', () => {
     Module({ controllers: [Declared] })(Outside);
     class App {}
     Module({
+      providers: [{ provide: APP_GUARD, useExisting: CedarGuard }],
       imports: [
         CedarModule.forRoot({
           authorize: async ({ identity }) => allowed && identity.principal.subject === 'alice',
@@ -314,7 +315,11 @@ describe('resource authorization declarations', () => {
     const Undeclared = route('/undeclared');
     const imports = [CedarModule.forRoot({ authorize: async () => false })];
     const real = await (
-      await Test.createTestingModule({ imports, controllers: [Undeclared] }).compile()
+      await Test.createTestingModule({
+        imports,
+        controllers: [Undeclared],
+        providers: [{ provide: APP_GUARD, useExisting: CedarGuard }],
+      }).compile()
     ).createApplication();
     expect((await real.getHonoApp().request('/undeclared')).status).toBe(403);
     class AllowAll extends CedarGuard {
@@ -322,7 +327,11 @@ describe('resource authorization declarations', () => {
         return true;
       }
     }
-    const moduleRef = await Test.createTestingModule({ imports, controllers: [Undeclared] })
+    const moduleRef = await Test.createTestingModule({
+      imports,
+      controllers: [Undeclared],
+      providers: [{ provide: APP_GUARD, useExisting: CedarGuard }],
+    })
       .overrideGuard(CedarGuard)
       .useValue(new AllowAll(new Reflector()))
       .compile();
@@ -338,10 +347,7 @@ describe('resource authorization declarations', () => {
     Module({ controllers: [Undeclared, Declared] })(Feature);
     class App {}
     Module({
-      imports: [
-        CedarModule.forRoot({ guard: 'none', undeclared: 'allow', authorize: async () => true }),
-        Feature,
-      ],
+      imports: [CedarModule.forRoot({ undeclared: 'allow', authorize: async () => true }), Feature],
     })(App);
     const app = await VelaFactory.create(App, {
       middleware: [

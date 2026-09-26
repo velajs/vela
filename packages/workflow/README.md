@@ -186,8 +186,9 @@ validators deterministic across replays. `waitForEvent` payloads remain unknown
 and need their own validation. Schemas establish shape, not identity or permission.
 
 `run` is required and scoped to this invocation. In a Vela host, inject
-`InternalDispatcher` and supply `(target, init) => this.dispatcher.run(target, init)`.
-That dispatcher signs calls and retains the request pipeline, guards and filters.
+`InternalDispatcher` and adapt the portable target to a permitted path or typed
+application route, as in the DI example below. That dispatcher signs calls and
+retains the request pipeline, guards and filters.
 The adapter does not infer credentials from params or keep global environment,
 application, dispatcher, or result caches. See the runnable
 [agent approval Worker](../../apps/agent-approvals/README.md#native-worker) for the
@@ -236,6 +237,92 @@ compensation, wait/resume, retained subscriptions and deletion. For Cloudflare's
 current contracts see [Workers API](https://developers.cloudflare.com/workflows/build/workers-api/),
 [subscription lifecycle](https://developers.cloudflare.com/workflows/build/subscribe-to-instance-events/)
 and [instance deletion](https://developers.cloudflare.com/workflows/build/trigger-workflows/#delete-workflow-instances).
+
+## Cloudflare and dependency injection
+
+The portable root and `/harness` remain independent of Vela and Cloudflare.
+`VelaWorkflow(app, Host)` from `@velajs/cloudflare/workflows` runs an injectable
+class whose `run(event, step)` uses the native platform API, including the
+standalone `runCloudflareWorkflow` adapter above. To declare a portable definition
+with a typed injection tuple and validation before application startup, use the
+separate `@velajs/cloudflare/workflow-definitions` entrypoint:
+
+```ts
+import { Injectable, Module } from '@velajs/vela';
+import { InternalDispatcher } from '@velajs/vela/dispatch';
+import { defineCloudflareApp } from '@velajs/cloudflare';
+import { VelaWorkflowDefinition } from '@velajs/cloudflare/workflow-definitions';
+import { defineWorkflow, WorkflowNonRetryableError } from '@velajs/workflow';
+import { z } from 'zod';
+
+@Injectable()
+class Calculator {
+  async double(value: number) { return value * 2; }
+}
+@Module({ providers: [Calculator] })
+class AppModule {}
+const app = defineCloudflareApp(AppModule);
+const params = z.object({ value: z.string().regex(/^\d+$/).transform(Number) });
+
+export class ExampleWorkflow extends VelaWorkflowDefinition(app, {
+  params,
+  inject: [Calculator, InternalDispatcher],
+  useFactory: (calculator, dispatcher) => ({
+    definition: defineWorkflow<z.output<typeof params>, number>({
+      handler: (ctx) => ctx.step.do('double', () => calculator.double(ctx.params.value)),
+    }),
+    run: (target, init) => {
+      if (!('path' in target)) {
+        throw new WorkflowNonRetryableError('This dispatcher accepts path targets only.');
+      }
+      return dispatcher.run(target, init);
+    },
+  }),
+}) {}
+export default app.worker;
+```
+
+Register the exported class explicitly in Wrangler:
+
+```toml
+[[workflows]]
+name = "example"
+binding = "EXAMPLE_WORKFLOW"
+class_name = "ExampleWorkflow"
+```
+
+The binding accepts the schema's **input** (`{ value: '7' }`); the handler receives
+its validated **output** (`{ value: 7 }`). Validation finishes before application
+startup, dependency resolution, or `useFactory`. A validation rejection becomes a native
+`NonRetryableError`; an exception thrown by validator code remains an ordinary
+failure. The factory runs for each native invocation, including replay. Keep
+schemas, step names, and factory behavior stable for in-flight workflows.
+
+`inject` infers literal and readonly tuples. Dependencies resolve through the
+root module's normal visibility and the current run's execution scope. Export
+providers from feature modules when the root imports them. Request-scoped
+resources are disposed when the invocation finishes; another environment has a
+different application. An existing typed `WorkflowDefinition` token can be one
+of the injected dependencies, with the factory returning that definition.
+
+The required `run` function is the application's dispatcher. It never acquires
+identity or tenant authority from trigger fields. `InternalDispatcher` signs its
+calls and runs the destination's request pipeline; configure its signing secret
+and authorize the destination as usual. This example accepts path targets;
+applications using named routes map the portable route name to an allowed,
+typed application route. Put dispatch effects in durable steps.
+
+Native Workflows owns checkpoints, serialization, waits, retries and rollback.
+The bridge converts `WorkflowNonRetryableError` inside step and rollback
+callbacks before the engine retries them, and converts terminal errors leaving
+the handler. Ordinary errors and engine pause/restart interruptions retain their
+behavior. Numeric durations are milliseconds; strings use native duration units.
+An omitted retry delay uses Cloudflare's default ten seconds. The replay harness
+still does not emulate native scheduling or compensation.
+
+There is no automatic binding discovery or Wrangler generation. The native
+event's `workflowName` labels logs. `createWorkflows` continues to wrap explicitly
+supplied producer bindings. See the native [Workers API](https://developers.cloudflare.com/workflows/build/workers-api/).
 
 ## Migration from the standalone source
 

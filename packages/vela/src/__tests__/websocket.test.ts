@@ -995,8 +995,9 @@ describe('rooms + Server handle', () => {
     })
     class DoubleModule {}
 
+    const websocket = WebSocketModule.forRoot();
     @Module({
-      imports: [WebSocketModule.forRoot(), DoubleModule],
+      imports: [websocket, DoubleModule],
       providers: [RoomGateway],
     })
     class GatewayModule {}
@@ -1004,7 +1005,7 @@ describe('rooms + Server handle', () => {
     const bootstrap = VelaFactory.create(GatewayModule);
     await expect(bootstrap).rejects.toThrow(
       "RoomGateway's @WebSocketServer() is ambiguous: its module 'GatewayModule#default' sees " +
-        "2 WS_SERVER providers, from 'WebSocketModule#ws#local', 'DoubleModule#default'.",
+        `2 WS_SERVER providers, from 'WebSocketModule#${websocket.key}', 'DoubleModule#default'.`,
     );
     expect(recorded).toEqual([]);
   });
@@ -1018,18 +1019,16 @@ describe('rooms + Server handle', () => {
     // Each instance has its own server and sync driver: which one serves the
     // gateway would depend on which dispatcher connected it first.
     const registry = new InMemoryRoomRegistry();
+    const websocket = WebSocketModule.forRoot({ registry });
     @Module({
-      imports: [
-        WebSocketModule.forRoot({ registry }),
-        WebSocketModule.forRoot({ key: 'second', registry }),
-      ],
+      imports: [websocket, WebSocketModule.forRoot({ key: 'second', registry })],
       providers: [RoomGateway],
     })
     class GatewayModule {}
 
     await expect(VelaFactory.create(GatewayModule, { diagnostics: 'silent' })).rejects.toThrow(
       "RoomGateway's @WebSocketServer() is ambiguous: its module 'GatewayModule#default' sees " +
-        "2 WS_SERVER providers, from 'WebSocketModule#ws#local', 'WebSocketModule#second'.",
+        `2 WS_SERVER providers, from 'WebSocketModule#${websocket.key}', 'WebSocketModule#second'.`,
     );
   });
 

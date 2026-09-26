@@ -1,4 +1,4 @@
-import { InjectionToken, Module, VelaFactory, defineProvider } from '@velajs/vela';
+import { APP_GUARD, InjectionToken, Module, VelaFactory, defineProvider } from '@velajs/vela';
 import { runInEntrypointScope } from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
 import { describe, expect, it } from 'vitest';
@@ -16,6 +16,7 @@ describe('FeatureFlagsModule', () => {
     // This is the proof the service works in queue / scheduled / global scope:
     // resolving it via module.get() (root, no request) must not throw.
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: FeatureFlagGuard }],
       imports: [
         FeatureFlagsModule.forRoot({
           drivers: [memoryFlagDriver({ values: { 'new-checkout': true } })],
@@ -32,6 +33,7 @@ describe('FeatureFlagsModule', () => {
 
   it('resolves and evaluates inside an entrypoint (queue/cron) scope — no request', async () => {
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: FeatureFlagGuard }],
       imports: [
         FeatureFlagsModule.forRoot({ drivers: [memoryFlagDriver({ values: { job: true } })] }),
       ],
@@ -49,6 +51,7 @@ describe('FeatureFlagsModule', () => {
 
   it('forRoot: defaults to a single in-memory driver when none are configured', async () => {
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: FeatureFlagGuard }],
       imports: [FeatureFlagsModule.forRoot({ manifest: { flag: true } })],
     }).compile();
 
@@ -68,6 +71,7 @@ describe('FeatureFlagsModule', () => {
     class ConfigModule {}
 
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: FeatureFlagGuard }],
       imports: [
         ConfigModule,
         FeatureFlagsModule.forRootAsync({
@@ -85,6 +89,7 @@ describe('FeatureFlagsModule', () => {
 
   it('exports the driver registry and options token', async () => {
     const moduleRef = await Test.createTestingModule({
+      providers: [{ provide: APP_GUARD, useExisting: FeatureFlagGuard }],
       imports: [FeatureFlagsModule.forRoot({ default: 'memory' })],
     }).compile();
 
@@ -92,12 +97,12 @@ describe('FeatureFlagsModule', () => {
     expect(moduleRef.get(FEATURE_FLAG_TOKENS.Options)).toMatchObject({ default: 'memory' });
   });
 
-  it('registers one instance, and one app-wide guard, for registrations that spell out defaults', async () => {
+  it('registers one instance and one injectable guard for repeated configurations', async () => {
     const manifest = { beta: false };
-    // `guard` defaults to 'global' and the module is lazy by default.
+    // The module remains lazy when the call site spells out its default.
     const registrations = [
       FeatureFlagsModule.forRoot({ manifest }),
-      FeatureFlagsModule.forRoot({ manifest, guard: 'global' }),
+      FeatureFlagsModule.forRoot({ manifest }),
       FeatureFlagsModule.forRoot({ manifest, lazy: true }),
     ];
     expect(new Set(registrations.map((registration) => registration.key)).size).toBe(1);

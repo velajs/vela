@@ -47,9 +47,9 @@ in module options or singleton providers.
 // Both Workers
 QueueModule.forRoot({ driver: cloudflareQueues() });
 // API Worker (producer): DOCUMENTS is a queues.producers binding
-QueueModule.registerQueue({ name: 'documents', binding: 'DOCUMENTS' });
+QueueModule.forFeature([{ name: 'documents', binding: 'DOCUMENTS' }]);
 // Jobs Worker (consumer): pins the physical queue it consumes
-QueueModule.registerQueue({ name: 'documents', consumer: 'documents-staging' });
+QueueModule.forFeature([{ name: 'documents', consumer: 'documents-staging' }]);
 ```
 
 Import `QueueModule`, `InjectQueue`, `Processor` and `Process` from
@@ -90,7 +90,7 @@ See [scheduling](scheduling.md#workers-cron-triggers).
 
 `RpcModule.forRoot({ authorize })` and `forRootAsync` serve registered `@Rpc`
 procedures through the existing schema-validated HTTP dispatcher. Named clients
-use `RpcClientModule.forRoot/forRootAsync` and `rpcClientToken(name)`; supply a
+use `RpcClientModule.register/forRootAsync` and `rpcClientToken(name)`; supply a
 native service binding as the client's `fetch` transport. `binding` records its
 Wrangler name for deployment checks. Contracts and browser clients stay free of
 server imports. The server module applies the global and scoped pipeline once.
@@ -112,7 +112,7 @@ imports and configuration when upgrading.
 
 Queue transport configuration now initializes during bootstrap, including apps
 without a producer. `QueueModule.forRoot()` configures only the driver; register
-queues with `QueueModule.registerQueue()` and replace the former
+queues with `QueueModule.forFeature([])` and replace the former
 `@velajs/cloudflare/queue` driver with `cloudflareQueues()` from
 `@velajs/cloudflare/queues`. Conflicting queue
 bindings fail at startup instead of the first client resolution. Job providers still follow their declared scopes.

@@ -66,7 +66,7 @@ export class AppModule {}
       'app.module.ts',
       source,
       'imports',
-      "QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS_QUEUE' })",
+      "QueueModule.forFeature([{ name: 'emails', binding: 'EMAILS_QUEUE' }])",
       { imports: [{ name: 'QueueModule', from: '@velajs/vela/queue' }] },
     );
     expect(edit.source).toBe(`import { Module } from '@velajs/vela';
@@ -75,7 +75,7 @@ import { QueueModule } from '@velajs/vela/queue';
 @Module({
   imports: [
     QueueModule.forRoot({ driver: inline() }),
-    QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS_QUEUE' }),
+    QueueModule.forFeature([{ name: 'emails', binding: 'EMAILS_QUEUE' }]),
   ],
 })
 export class AppModule {}
@@ -246,7 +246,7 @@ export default AppModule;
       'app.module.ts',
       `import { Module, type ENV } from '@velajs/vela';\nimport { type QueueModule } from '@velajs/vela/queue';\n\n@Module({})\nexport class AppModule {}\n`,
       'imports',
-      'QueueModule.registerQueue({ name: "emails" })',
+      'QueueModule.forFeature([{ name: "emails" }])',
       { imports: [{ name: 'QueueModule', from: '@velajs/vela/queue' }] },
     ).source;
     expect(inline).toContain(

@@ -1,5 +1,5 @@
-/** Compile a portable agent into a workflow definition. Applications supply
- * native entrypoint/binding wiring; /testing supplies an in-memory context. */
+/** Compile a portable agent into a workflow definition. The optional Cloudflare
+ * workflow-definitions entrypoint supplies native execution; /testing supplies an in-memory context. */
 import { defineWorkflow } from '@velajs/workflow';
 import { parseAgentRunParams } from './validation';
 import type { WorkflowDefinition } from '@velajs/workflow';

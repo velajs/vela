@@ -1,7 +1,16 @@
 import { sessionFixture } from './fixtures';
 import { RolesGuard, Roles } from '@velajs/authz/vela';
-import { Controller, Get, Module, Reflector, Req, UseGuards, VelaFactory } from '@velajs/vela';
-import { ThrottlerModule } from '@velajs/vela/throttler';
+import {
+  APP_GUARD,
+  Controller,
+  Get,
+  Module,
+  Reflector,
+  Req,
+  UseGuards,
+  VelaFactory,
+} from '@velajs/vela';
+import { ThrottlerGuard, ThrottlerModule } from '@velajs/vela/throttler';
 import { getTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@velajs/vela';
@@ -40,6 +49,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [MeController],
     })
@@ -62,6 +72,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth: mockAuth(null) })],
       controllers: [OpenController],
     })
@@ -87,6 +98,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth, issuer: 'accounts.example' })],
       controllers: [IdentityController],
     })
@@ -131,6 +143,10 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: ThrottlerGuard },
+        { provide: APP_GUARD, useExisting: AuthGuard },
+      ],
       imports: [
         ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] }),
         BetterAuthModule.forRoot({ auth, issuer: 'accounts.example' }),
@@ -150,7 +166,7 @@ describe('AuthGuard', () => {
     expect((await requestAs('user-a')).status).toBe(429);
   });
 
-  it("does not install AuthGuard with guard: 'none'", async () => {
+  it('does not install AuthGuard merely by importing the module', async () => {
     @Controller('/unguarded')
     class UnguardedController {
       @Get()
@@ -160,14 +176,14 @@ describe('AuthGuard', () => {
     }
 
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth: mockAuth(null), guard: 'none' })],
+      imports: [BetterAuthModule.forRoot({ auth: mockAuth(null) })],
       controllers: [UnguardedController],
     })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
     expect((await app.getHonoApp().request('/unguarded')).status).toBe(200);
-    expect(app.get(BETTER_AUTH_OPTIONS).guard).toBe('none');
+    expect(app.get(BETTER_AUTH_OPTIONS)).not.toHaveProperty('guard');
   });
 
   it('lets throttling partition verified Better Auth principals before IP fallback', async () => {
@@ -191,6 +207,10 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: AuthGuard },
+        { provide: APP_GUARD, useExisting: ThrottlerGuard },
+      ],
       imports: [
         BetterAuthModule.forRoot({ auth, issuer: 'accounts.example' }),
         ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] }),
@@ -223,6 +243,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [SessionController],
     })
@@ -247,6 +268,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [MeController],
     })
@@ -257,7 +279,7 @@ describe('AuthGuard', () => {
     expect(res.status).toBe(401);
   });
 
-  it("@Public() bypasses the global guard (guard: 'global')", async () => {
+  it('@Public() bypasses an explicitly installed global guard', async () => {
     const auth = mockAuth(null);
 
     @Controller('/health')
@@ -270,7 +292,8 @@ describe('AuthGuard', () => {
     }
 
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, guard: 'global' })],
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+      imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [HealthController],
     })
     class AppModule {}
@@ -299,6 +322,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [MaybeController],
     })
@@ -322,7 +346,8 @@ describe('AuthGuard', () => {
     }
 
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, guard: 'global', mountHandler: false })],
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+      imports: [BetterAuthModule.forRoot({ auth, mountHandler: false })],
       controllers: [PrivateController],
     })
     class AppModule {}
@@ -345,6 +370,7 @@ describe('AuthGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [ItemsController],
     })
@@ -421,6 +447,7 @@ describe('RolesGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [AdminController],
     })
@@ -448,6 +475,7 @@ describe('RolesGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [AdminController],
     })
@@ -471,6 +499,7 @@ describe('RolesGuard', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [AnyoneController],
     })

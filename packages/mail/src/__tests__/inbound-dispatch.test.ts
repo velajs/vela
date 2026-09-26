@@ -133,8 +133,8 @@ describe('dispatchInboundEmail — gating', () => {
 
     @Module({
       imports: [
-        MailModule.forRoot({ from: 'first@example.com', inbound: { gate: firstGate } }),
-        MailModule.forRoot({ from: 'second@example.com', inbound: { gate: secondGate } }),
+        MailModule.register({ from: 'first@example.com', inbound: { gate: firstGate } }),
+        MailModule.register({ from: 'second@example.com', inbound: { gate: secondGate } }),
       ],
     })
     class App {}

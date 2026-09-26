@@ -7,7 +7,7 @@ describe('native Worker GraphQL', () => {
       new Request('https://example.test/graphql', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query: '{ a:greet(name:"Ada") b:greet(name:"Ada") }' }),
+        body: JSON.stringify({ query: '{ a:greet(name:" Ada ") b:greet(name:"Ada") }' }),
       });
     const context = {
       props: {},

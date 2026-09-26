@@ -41,7 +41,7 @@ its cipher, preventing ciphertext substitution across fields or rows. Unreadable
 fields are omitted; authenticated plaintext is never automatically exposed by
 serialization. Call these boundaries explicitly from services/hooks.
 
-`CryptoModule.forRoot({ provider })` / `forRootAsync` and `CRYPTO_SERVICE` from
+`CryptoModule.register({ provider })` / `registerAsync` and `CRYPTO_SERVICE` from
 `/vela` integrate DI. Construct providers from the current environment binding.
 Never cache one environment's keys in a module-level provider singleton.
 
@@ -132,7 +132,7 @@ Configure a separate binding per key version with `secrets_store_secrets`:
 ```
 
 Reads start on `current()`/`get()` during an operation, not in the constructor.
-For Vela, construct this provider in `CryptoModule.forRootAsync({ inject: [ENV],
+For Vela, construct this provider in `CryptoModule.registerAsync({ inject: [ENV],
 useFactory: env => ({ provider: new SecretsStoreKeyProvider(...) }) })` using a
 typed environment token. Keep asynchronous reads out of synchronous `registerAs`
 configuration factories. Applications that need eager validation can await

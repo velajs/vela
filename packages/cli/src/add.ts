@@ -303,7 +303,7 @@ async function planRegistration(
   const notes: string[] = [];
   if (resource === 'queue') {
     const queueName = kebabCase(binding).replace(/-queue$/, '') || kebabCase(binding);
-    const registration = `QueueModule.registerQueue({ name: '${queueName}', binding: '${binding}' })`;
+    const registration = `QueueModule.forFeature([{ name: '${queueName}', binding: '${binding}' }])`;
     // The driver is configured once, in whichever module already does it.
     const driver = await configuresQueueDriver([dirname(entry)]);
     if (!root) {

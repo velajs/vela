@@ -1,7 +1,7 @@
 import { sessionFixture } from './fixtures';
 import { PermissionGuard, RequirePermission } from '@velajs/authz/vela';
-import { Controller, Get, Module, UseGuards, VelaFactory } from '@velajs/vela';
-import { AuthzModule } from '@velajs/authz/vela';
+import { APP_GUARD, Controller, Get, Module, UseGuards, VelaFactory } from '@velajs/vela';
+import { RolesGuard, AuthzModule } from '@velajs/authz/vela';
 import { defineRole } from '@velajs/authz';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthGuard, BetterAuthModule, OptionalAuth } from '../index';
@@ -31,6 +31,11 @@ describe('PermissionGuard (e2e)', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: AuthGuard },
+      ],
       imports: [
         // Deliberately NON-global: no `isGlobal: true`. PermissionGuard resolves
         // AUTHZ at request time from the per-request container (via the exporter
@@ -64,6 +69,11 @@ describe('PermissionGuard (e2e)', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: AuthGuard },
+      ],
       imports: [
         // Deliberately NON-global: no `isGlobal: true`. PermissionGuard resolves
         // AUTHZ at request time from the per-request container (via the exporter
@@ -99,6 +109,11 @@ describe('PermissionGuard (e2e)', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: AuthGuard },
+      ],
       imports: [
         // Deliberately NON-global: no `isGlobal: true`. PermissionGuard resolves
         // AUTHZ at request time from the per-request container (via the exporter
@@ -132,6 +147,11 @@ describe('PermissionGuard (e2e)', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: AuthGuard },
+      ],
       imports: [
         // Non-global registration (no isGlobal) — see note in the first test.
         AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
@@ -160,6 +180,11 @@ describe('PermissionGuard (e2e)', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: AuthGuard },
+      ],
       imports: [
         // Non-global registration (no isGlobal) — see note in the first test.
         AuthzModule.forRoot({
@@ -189,6 +214,11 @@ describe('PermissionGuard (e2e)', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: AuthGuard },
+      ],
       imports: [
         // Deliberately NON-global: no `isGlobal: true`. PermissionGuard resolves
         // AUTHZ at request time from the per-request container (via the exporter
@@ -222,6 +252,7 @@ describe('PermissionGuard (e2e)', () => {
 
     // No AuthzModule import — AUTHZ resolves to undefined via @Optional().
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [PostsController],
     })
@@ -246,6 +277,11 @@ describe('PermissionGuard (e2e)', () => {
     }
 
     @Module({
+      providers: [
+        { provide: APP_GUARD, useExisting: PermissionGuard },
+        { provide: APP_GUARD, useExisting: RolesGuard },
+        { provide: APP_GUARD, useExisting: AuthGuard },
+      ],
       imports: [
         AuthzModule.forRoot({ key: 'primary', roles: [defineRole('editor', ['posts:write'])] }),
         AuthzModule.forRoot({ key: 'secondary', roles: [defineRole('editor', ['posts:*'])] }),

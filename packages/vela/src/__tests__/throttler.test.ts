@@ -11,7 +11,13 @@ import {
   REQUEST_CONTEXT,
 } from '../index.js';
 import { getRequestContainer, setTrustedRequestIdentity } from '../module-kit.js';
-import { RATE_LIMIT, ThrottlerModule, Throttle, SkipThrottle } from '../throttler/index.js';
+import {
+  ThrottlerGuard,
+  RATE_LIMIT,
+  ThrottlerModule,
+  Throttle,
+  SkipThrottle,
+} from '../throttler/index.js';
 import type { CanActivate, ExecutionContext, Type, VelaContext, VelaEnv } from '../index.js';
 import type {
   RateLimitInfo,
@@ -31,6 +37,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 5, ttl: 60000 }] })],
       controllers: [TestController],
     })
@@ -55,6 +62,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 3, ttl: 60000 }] })],
       controllers: [TestController],
     })
@@ -82,6 +90,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 10, ttl: 60000 }] })],
       controllers: [TestController],
     })
@@ -116,6 +125,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }], storage })],
       controllers: [TestController],
     })
@@ -141,6 +151,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 30000 }] })],
       controllers: [TestController],
     })
@@ -169,6 +180,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 50 }] })],
       controllers: [TestController],
     })
@@ -207,6 +219,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }] })],
       controllers: [TestController],
     })
@@ -244,6 +257,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 10, ttl: 60000 }] })],
       controllers: [TestController],
     })
@@ -276,6 +290,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }] })],
       controllers: [TestController],
     })
@@ -314,6 +329,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60000 }] })],
       controllers: [TestController],
     })
@@ -340,6 +356,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [
         ThrottlerModule.forRoot({
           throttlers: [{ limit: 2, ttl: 60000 }],
@@ -405,6 +422,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [
         IdentityModule,
         ThrottlerModule.forRoot({
@@ -443,6 +461,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [
         ThrottlerModule.forRoot({
           throttlers: [{ limit: 1, ttl: 60000 }],
@@ -513,6 +532,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [
         ThrottlerModule.forRoot({ throttlers: [{ limit: 2, ttl: 60000 }], storage: customStore }),
       ],
@@ -546,6 +566,7 @@ describe('ThrottlerModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 5, ttl: 60000 }] })],
       controllers: [TestController],
     })
@@ -588,6 +609,7 @@ describe('named throttlers (Nest v5)', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [
         ThrottlerModule.forRoot({
           throttlers: [
@@ -642,6 +664,7 @@ describe('named throttlers (Nest v5)', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [
         ThrottlerModule.forRoot({
           throttlers: [
@@ -678,6 +701,7 @@ describe('named throttlers (Nest v5)', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 1 }] })],
       controllers: [Plain],
     })
@@ -699,6 +723,7 @@ describe('named throttlers (Nest v5)', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [
         ThrottlerModule.forRoot({
           throttlers: [{ ttl: 60_000, limit: 5 }],
@@ -724,6 +749,7 @@ describe('named throttlers (Nest v5)', () => {
     };
     const fixed = (controller: Type) => {
       @Module({
+        providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
         imports: [
           ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }], storage: store }),
         ],
@@ -764,7 +790,10 @@ describe('named throttlers (Nest v5)', () => {
       },
     };
     const bootstrap = (throttlers: ThrottlerOptions[]) => {
-      @Module({ imports: [ThrottlerModule.forRoot({ throttlers, storage: store })] })
+      @Module({
+        providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
+        imports: [ThrottlerModule.forRoot({ throttlers, storage: store })],
+      })
       class App {}
       return VelaFactory.create(App);
     };
@@ -786,6 +815,7 @@ describe('named throttlers (Nest v5)', () => {
   it('rejects unknown throttler names at bootstrap, on routes and controllers', async () => {
     const bootstrapWith = (controller: Type) => {
       @Module({
+        providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
         imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }] })],
         controllers: [controller],
       })
@@ -823,6 +853,7 @@ describe('named throttlers (Nest v5)', () => {
     };
     const bootstrapWith = (controller: Type, storage?: ThrottlerStore) => {
       @Module({
+        providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
         imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 5 }], storage })],
         controllers: [controller],
       })
@@ -897,6 +928,7 @@ describe('named throttlers (Nest v5)', () => {
       }
     }
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [
         ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }], storage: store }),
       ],
@@ -920,7 +952,11 @@ describe('named throttlers (Nest v5)', () => {
       }
     }
     const bootstrap = (throttlers: ThrottlerOptions[]) => {
-      @Module({ imports: [ThrottlerModule.forRoot({ throttlers })], controllers: [Unknown] })
+      @Module({
+        providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
+        imports: [ThrottlerModule.forRoot({ throttlers })],
+        controllers: [Unknown],
+      })
       class Invalid {}
       return VelaFactory.create(Invalid);
     };
@@ -935,3 +971,37 @@ describe('named throttlers (Nest v5)', () => {
     await expect(bootstrap([{ ttl: 1_000, limit: 1.5 }])).rejects.toThrow('limit');
   });
 });
+
+it.each([false, true])(
+  'throttler provider visibility never installs its guard (isGlobal: %s)',
+  async (isGlobal) => {
+    for (const installGuard of [false, true]) {
+      @Controller('/explicit-throttle')
+      class Routes {
+        @Get()
+        read() {
+          return { ok: true };
+        }
+      }
+      @Module({
+        imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 1 }], isGlobal })],
+        controllers: [Routes],
+        providers: [
+          ...(installGuard ? [defineProvider(APP_GUARD, { useExisting: ThrottlerGuard })] : []),
+        ],
+      })
+      class App {}
+      const app = await VelaFactory.create(App);
+      try {
+        const first = await app.getHonoApp().request('/explicit-throttle');
+        expect(first.status).toBe(200);
+        expect(first.headers.has('X-RateLimit-Limit')).toBe(installGuard);
+        expect((await app.getHonoApp().request('/explicit-throttle')).status).toBe(
+          installGuard ? 429 : 200,
+        );
+      } finally {
+        await app.close();
+      }
+    }
+  },
+);

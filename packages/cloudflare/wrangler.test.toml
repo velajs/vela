@@ -73,6 +73,21 @@ name = "vela-naps"
 binding = "NAP_WORKFLOW"
 class_name = "NapWorkflow"
 
+[[workflows]]
+name = "vela-portable-example"
+binding = "PORTABLE_WORKFLOW"
+class_name = "PortableExampleWorkflow"
+
+[[workflows]]
+name = "vela-portable-agent"
+binding = "PORTABLE_AGENT_WORKFLOW"
+class_name = "PortableAgentWorkflow"
+
+[[services]]
+binding = "PORTABLE_PROBE"
+service = "vela-cloudflare-security-test"
+entrypoint = "PortableProbe"
+
 # A Vela service entrypoint, bound to this Worker with the props its calls carry.
 [[services]]
 binding = "BILLING"

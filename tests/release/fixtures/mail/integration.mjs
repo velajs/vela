@@ -37,7 +37,7 @@ Module({
   providers: [Inbox],
   imports: [
     QueueModule.forRoot({ driver }),
-    MailModule.forRoot({
+    MailModule.register({
       from: 'sender@example.com',
       transport: catcher,
       queue: {},

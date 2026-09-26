@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { AuthGuard, BetterAuthModule } from '@velajs/better-auth';
-import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
+import { AuthzModule, PermissionGuard, RolesGuard, RequirePermission } from '@velajs/authz/vela';
 import { MemoryTenantRegistryStore } from '@velajs/tenant';
-import { TenantModule } from '@velajs/tenant/vela';
+import { TenantGuard, TenantModule } from '@velajs/tenant/vela';
 import {
+  APP_GUARD,
   Injectable,
   Module,
   REQUEST_CONTEXT,
@@ -110,7 +111,13 @@ describe('GraphQL trusted HTTP authority', () => {
       );
       class App {}
       Module({
-        providers: [Resolver],
+        providers: [
+          Resolver,
+          { provide: APP_GUARD, useExisting: AuthGuard },
+          { provide: APP_GUARD, useExisting: TenantGuard },
+          { provide: APP_GUARD, useExisting: PermissionGuard },
+          { provide: APP_GUARD, useExisting: RolesGuard },
+        ],
         imports: [
           auth,
           tenant,

@@ -3,7 +3,6 @@
 import '../metadata';
 
 export { EventEmitterModule } from './event-emitter.module';
-export type { EventEmitterModuleOptions } from './event-emitter.module';
 export { EventEmitter } from './event-emitter.service';
 export { OnEvent } from './event-emitter.decorators';
 export type { EventHandler } from './event-emitter.types';

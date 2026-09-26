@@ -60,7 +60,7 @@ export function processorSource(name: Names): string {
   return `import { Logger } from '@velajs/vela';
 import { Process, Processor, type QueueJob } from '@velajs/vela/queue';
 
-/** The logical queue: QueueModule.registerQueue({ name }) and @Processor(name). */
+/** The logical queue: QueueModule.forFeature([{ name }]) and @Processor(name). */
 export const ${name.constant}_QUEUE = '${name.kebab}';
 
 // Cloudflare delivers the queue's batches to the Worker; QueueModule routes

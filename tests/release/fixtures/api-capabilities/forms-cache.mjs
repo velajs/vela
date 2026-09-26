@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import {
+  APP_INTERCEPTOR,
   Body,
   Controller,
   Get,
@@ -13,6 +14,7 @@ import {
   VelaFactory,
 } from '@velajs/vela';
 import {
+  CacheInterceptor,
   CacheModule,
   CacheResponse,
   CacheService,
@@ -132,7 +134,7 @@ export async function verifyFormsAndCache() {
       }),
     ],
     controllers: [Records],
-    providers: [AccessGuard],
+    providers: [AccessGuard, { provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
   })(Application);
   const app = await VelaFactory.create(Application);
   try {

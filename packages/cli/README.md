@@ -81,7 +81,7 @@ and the [tooling guide](https://github.com/velajs/vela/blob/main/docs/tooling.md
 vela g resource notes                       # src/notes/: module, controller, service, schemas
 vela g module billing                       # imported into the module above
 vela g controller billing                   # registered in src/billing/billing.module.ts
-vela g queue emails --binding EMAIL_QUEUE   # @Processor + QueueModule.registerQueue(); the driver once
+vela g queue emails --binding EMAIL_QUEUE   # @Processor + QueueModule.forFeature([]); the driver once
 vela g cron digest --schedule "0 6 * * *"   # @Cron(..., { dialect: 'cloudflare' })
 vela g durable-object counter               # exported from the Worker entry
 vela g workflow signup                      # a Workflow built from the entry's app
@@ -129,7 +129,7 @@ vela add queue EMAILS   # wrangler queues create <worker>-emails; producer and c
 registers the binding, then runs the project's `types` script: D1, KV and R2
 bindings become injection tokens of a global `BindingsModule` next to the root
 module (`constructor(@Inject(DB) db: D1Database)`), and a queue becomes
-`QueueModule.registerQueue({ name, binding })`, with the `cloudflareQueues()`
+`QueueModule.forFeature([{ name, binding }])`, with the `cloudflareQueues()`
 driver added to the root module unless a module already configures it.
 `--config <file>` is passed on to Wrangler. Every module edit, and a queue's
 Wrangler file edit, is computed before anything is created, so a root module,
@@ -212,7 +212,7 @@ vela cf sync --env staging --write
 ```
 
 The application declares what the Worker needs: a cron trigger per `@Cron`
-expression, a queue producer per `QueueModule.registerQueue({ binding })`, a
+expression, a queue producer per `QueueModule.forFeature([{ binding }])`, a
 consumer per processed or `@QueueConsumer` queue, a Durable Object binding and a
 `new_sqlite_classes` migration per exported Durable Object class, and a
 `workflows` entry per exported `WorkflowEntrypoint` (Vela Workflows included).

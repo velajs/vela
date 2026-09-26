@@ -524,7 +524,7 @@ describe('vela cf sync plan', () => {
     expect(plan.changes).toEqual([]);
     expect(plan.warnings).toEqual([
       'NodeJob#run declares the unix dialect, which Workers cron triggers do not run; it gets no trigger.',
-      '@Processor("orphans") has no QueueModule.registerQueue({ name: "orphans" }), so no consumer is added for it.',
+      '@Processor("orphans") has no QueueModule.forFeature([{ name: "orphans" }]), so no consumer is added for it.',
       'A WebSocket gateway uses the Durable Object binding "LOBBY", which no exported class serves: export a VelaWebSocketDurableObject class from the Worker entry.',
       'The Durable Object binding "GONE" names class "Removed", which the Worker entry does not export.',
       'The Workflow "old" names class "OldFlow", which the Worker entry does not export.',

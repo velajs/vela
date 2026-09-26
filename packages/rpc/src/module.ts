@@ -104,7 +104,7 @@ export interface RpcClientModuleOptions extends RpcClientOptions {
   binding?: string;
 }
 
-/** The options `forRootAsync` takes alongside its factory: they declare the client. */
+/** The options `registerAsync` takes alongside its factory: they declare the client. */
 export type RpcClientStructuralOption = 'name' | 'binding';
 
 /** Deferred client registration; a factory without parameters may omit `inject`. */
@@ -114,7 +114,9 @@ export type RpcClientAsyncOptions<Inject extends readonly Token[] = readonly Tok
     RpcClientStructuralOption,
     'create',
     Inject
-  >;
+  > & {
+    isGlobal?: boolean;
+  };
 
 const RPC_CLIENT_OPTIONS = new InjectionToken<RpcClientModuleOptions>('vela:rpc:client-options');
 
@@ -145,9 +147,13 @@ class RpcClientDeclaration {
 
 const { ConfigurableModuleClass: RpcClientModuleHost } = defineModule<
   RpcClientModuleOptions,
-  RpcClientStructuralOption
+  RpcClientStructuralOption,
+  { isGlobal?: boolean },
+  'register'
 >({
   name: 'RpcClient',
+  methodName: 'register',
+  key: ({ name }) => name,
   optionsToken: RPC_CLIENT_OPTIONS,
   structural: ['name', 'binding'],
   setup: ({ OPTIONS, options: { name, binding } }) => {
@@ -174,7 +180,7 @@ const { ConfigurableModuleClass: RpcClientModuleHost } = defineModule<
 
 /**
  * Registers a named RPC client, injected with `rpcClientToken(name)`.
- * `name` and `binding` are structural: `forRootAsync` takes them alongside its
+ * `name` and `binding` are structural: `registerAsync` takes them alongside its
  * factory, which returns the transport settings (`url`, `fetch`, ...).
  */
 export class RpcClientModule extends RpcClientModuleHost {}

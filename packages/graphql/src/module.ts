@@ -10,29 +10,45 @@ import {
   type ModuleImport,
   type VelaContext,
 } from '@velajs/vela';
-import { DiscoveryService, SkipGuardPhases } from '@velajs/vela/module-kit';
+import { Container, DiscoveryService, SkipGuardPhases } from '@velajs/vela/module-kit';
 import { assertValidSchema } from 'graphql';
 import { GraphqlOperation } from './operation';
+import { decoratedSchema } from './decorators';
 import type { GraphqlOptions, GraphqlServer } from './types';
 
 class GraphqlService {
   readonly #options: GraphqlOptions;
   readonly #discovery: DiscoveryService;
+  readonly #container: Container;
   #server: Promise<GraphqlServer> | undefined;
   #closed = false;
 
-  constructor(options: GraphqlOptions, discovery: DiscoveryService) {
+  constructor(options: GraphqlOptions, discovery: DiscoveryService, container: Container) {
+    if ((options.schema === undefined) === (options.typeDefs === undefined)) {
+      throw new TypeError('GraphQL requires exactly one of schema or typeDefs');
+    }
+    if (options.schema !== undefined && options.include !== undefined) {
+      throw new TypeError('GraphQL include is only supported with typeDefs');
+    }
     this.#options = options;
     this.#discovery = discovery;
+    this.#container = container;
   }
 
   #getServer(path: string): Promise<GraphqlServer> {
     if (this.#server) return this.#server;
     const pending = Promise.resolve().then(async () => {
       const schema =
-        typeof this.#options.schema === 'function'
-          ? await this.#options.schema({ discovery: this.#discovery })
-          : this.#options.schema;
+        this.#options.typeDefs !== undefined
+          ? decoratedSchema(
+              this.#options.typeDefs,
+              this.#discovery,
+              this.#options.include,
+              this.#container,
+            )
+          : typeof this.#options.schema === 'function'
+            ? await this.#options.schema({ discovery: this.#discovery })
+            : this.#options.schema;
       assertValidSchema(schema);
       return this.#options.driver.create(schema, path);
     });
@@ -66,10 +82,10 @@ class GraphqlService {
   }
 }
 
-export interface GraphqlModuleOptions extends GraphqlOptions {
+export type GraphqlModuleOptions = GraphqlOptions & {
   /** Modules the endpoint's field guards, pipes and interceptors resolve from. Structural. */
   readonly imports?: ModuleImport[];
-}
+};
 
 /** The options `forRootAsync` takes alongside its factory: they shape the module graph. */
 export type GraphqlStructuralOption = 'path' | 'imports';
@@ -143,8 +159,9 @@ const { ConfigurableModuleClass } = defineModule<GraphqlModuleOptions, GraphqlSt
       controllers: [controller],
       providers: [
         defineProvider(service, {
-          inject: [DiscoveryService, OPTIONS],
-          useFactory: (discovery, resolved) => new GraphqlService(resolved, discovery),
+          inject: [DiscoveryService, OPTIONS, Container],
+          useFactory: (discovery, resolved, container) =>
+            new GraphqlService(resolved, discovery, container),
         }),
       ],
     };

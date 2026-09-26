@@ -1,6 +1,8 @@
 import { Test } from '@velajs/testing';
 import {
   Module,
+  InjectionToken,
+  defineProvider,
   VelaFactory,
   type DynamicModule,
   type VelaApplication,
@@ -18,9 +20,57 @@ function appWith(imports: DynamicModule[]): Promise<VelaApplication> {
 }
 
 describe('StorageModule', () => {
+  it('does not let explicit keys bypass bucket name uniqueness', async () => {
+    await expect(
+      appWith([
+        StorageModule.register({ name: 'uploads', key: 'first', driver: memoryDriver() }),
+        StorageModule.register({ name: 'uploads', key: 'second', driver: memoryDriver() }),
+      ]),
+    ).rejects.toThrow("duplicate bucket registration 'uploads'");
+  });
+
+  it('mounts only explicit controller declarations and resolves HTTP policy through DI', async () => {
+    const POLICY = new InjectionToken<{ allowed: boolean }>('storage test policy');
+    @Module({
+      providers: [defineProvider(POLICY, { useValue: { allowed: true } })],
+      exports: [POLICY],
+    })
+    class Policy {}
+    const driver = memoryDriver({ initial: { 'hello.txt': 'hello' } });
+    const app = await appWith([
+      StorageModule.registerAsync({
+        name: 'runtime',
+        httpController: { path: '/runtime' },
+        imports: [Policy],
+        inject: [POLICY],
+        useFactory: async (policy) => ({
+          driver,
+          http: { authorize: () => policy.allowed, download: 'proxy' as const },
+        }),
+      }),
+      StorageModule.register({ name: 'hidden', driver, http: { authorize: () => true } }),
+      StorageModule.register({
+        name: 'disabled',
+        driver,
+        httpController: false,
+        http: { authorize: () => true },
+      }),
+    ]);
+    try {
+      const response = await app.getHonoApp().request('/runtime/download?key=hello.txt');
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe('hello');
+      expect((await app.getHonoApp().request('/api/storage/download?key=hello.txt')).status).toBe(
+        404,
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
   it('forRoot provides a working StorageService', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [StorageModule.forRoot({ driver: memoryDriver() })],
+      imports: [StorageModule.register({ driver: memoryDriver() })],
     }).compile();
 
     const svc = moduleRef.get(StorageService);
@@ -40,7 +90,7 @@ describe('StorageModule', () => {
     const authorizeA = () => true;
     const authorizeB = () => true;
     const register = (overrides: Partial<StorageModuleOptions> = {}) =>
-      StorageModule.forRoot({
+      StorageModule.register({
         driver: driverA,
         http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
         ...overrides,
@@ -71,18 +121,20 @@ describe('StorageModule', () => {
     const publicDriver = memoryDriver();
     @Module({
       imports: [
-        StorageModule.forRoot({
+        StorageModule.register({
           driver: privateDriver,
-          http: { basePath: '/files', authorize: () => false },
+          httpController: { path: '/files' },
+          http: { authorize: () => false },
         }),
       ],
     })
     class PrivateFeature {}
     @Module({
       imports: [
-        StorageModule.forRoot({
+        StorageModule.register({
           driver: publicDriver,
-          http: { basePath: '/public', authorize: () => true },
+          httpController: { path: '/public' },
+          http: { authorize: () => true },
         }),
       ],
     })
@@ -98,14 +150,14 @@ describe('StorageModule', () => {
   });
 
   it('fails bootstrap when a second feature also asks for a global bucket, in either order', async () => {
-    const privateBucket = StorageModule.forRoot({
+    const privateBucket = StorageModule.register({
       driver: memoryDriver({ initial: { 'secret.txt': 'private' } }),
-      http: { basePath: '/files' },
+      httpController: { path: '/files' },
     });
-    const publicBucket = StorageModule.forRoot({
+    const publicBucket = StorageModule.register({
       driver: memoryDriver(),
       isGlobal: true,
-      http: { basePath: '/public' },
+      httpController: { path: '/public' },
     });
     for (const [first, second] of [
       [privateBucket, publicBucket],
@@ -130,11 +182,16 @@ describe('StorageModule', () => {
   it('reports a registration that differs only in its global flag', async () => {
     const driver = memoryDriver();
     const authorize = () => true;
-    const local = StorageModule.forRoot({ driver, http: { basePath: '/files', authorize } });
-    const global = StorageModule.forRoot({
+    const local = StorageModule.register({
+      driver,
+      httpController: { path: '/files' },
+      http: { authorize },
+    });
+    const global = StorageModule.register({
       driver,
       isGlobal: true,
-      http: { basePath: '/files', authorize },
+      httpController: { path: '/files' },
+      http: { authorize },
     });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
@@ -161,9 +218,9 @@ describe('StorageModule', () => {
   it('treats an extra at its default and an undefined option as absent', async () => {
     const driver = memoryDriver();
     const app = await appWith([
-      StorageModule.forRoot({ driver }),
-      StorageModule.forRoot({ driver, isGlobal: false }),
-      StorageModule.forRoot({ driver, prefix: undefined }),
+      StorageModule.register({ driver }),
+      StorageModule.register({ driver, isGlobal: false }),
+      StorageModule.register({ driver, prefix: undefined }),
     ]);
     expect(app.getContainer().getOwnerModuleIds(StorageService)).toEqual(['StorageModule#default']);
     await app.close();
@@ -172,8 +229,8 @@ describe('StorageModule', () => {
   it('treats the default bucket name spelled out as the default bucket', async () => {
     const driver = memoryDriver();
     const app = await appWith([
-      StorageModule.forRoot({ driver }),
-      StorageModule.forRoot({ driver, name: 'default' }),
+      StorageModule.register({ driver }),
+      StorageModule.register({ driver, name: 'default' }),
     ]);
     expect(app.getContainer().getOwnerModuleIds(StorageService)).toEqual(['StorageModule#default']);
     await app.close();
@@ -183,7 +240,7 @@ describe('StorageModule', () => {
     const driver = memoryDriver();
     const authorize = () => true;
     const register = () =>
-      StorageModule.forRoot({ driver, http: { basePath: '/files', authorize } });
+      StorageModule.register({ driver, httpController: { path: '/files' }, http: { authorize } });
     const app = await appWith([register(), register()]);
     const routes = app
       .describeRoutes()
@@ -197,9 +254,9 @@ describe('StorageModule', () => {
   it('reports a second async factory for one bucket', async () => {
     const factoryA = () => ({ driver: memoryDriver() });
     const factoryB = () => ({ driver: memoryDriver() });
-    const first = StorageModule.forRootAsync({ useFactory: factoryA });
-    const same = StorageModule.forRootAsync({ useFactory: factoryA });
-    const other = StorageModule.forRootAsync({ useFactory: factoryB });
+    const first = StorageModule.registerAsync({ useFactory: factoryA });
+    const same = StorageModule.registerAsync({ useFactory: factoryA });
+    const other = StorageModule.registerAsync({ useFactory: factoryB });
 
     expect(same.key).toBe(first.key);
     expect(other.key).toBe(first.key);
@@ -212,18 +269,18 @@ describe('StorageModule', () => {
 
   it('rejects a driver factory that declares parameters but no inject', () => {
     expect(() =>
-      StorageModule.forRootAsync({
+      StorageModule.registerAsync({
         // @ts-expect-error A factory with parameters names the tokens that supply them.
         useFactory: (bucket: string) => ({ driver: memoryDriver({ initial: { bucket } }) }),
       }),
-    ).toThrow(/StorageModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
+    ).toThrow(/StorageModule\.registerAsync: useFactory declares parameters but no inject tokens/);
   });
 
   it('builds a driver function lazily (edge-binding safe)', async () => {
     let calls = 0;
     const moduleRef = await Test.createTestingModule({
       imports: [
-        StorageModule.forRootAsync({
+        StorageModule.registerAsync({
           useFactory: () => ({
             driver: () => {
               calls += 1;
@@ -248,7 +305,7 @@ describe('StorageModule', () => {
     let calls = 0;
     const moduleRef = await Test.createTestingModule({
       imports: [
-        StorageModule.forRoot({
+        StorageModule.register({
           driver: () => {
             calls += 1;
             if (calls === 1) throw new Error('binding not ready');
@@ -270,7 +327,7 @@ describe('StorageModule', () => {
   it('builds a static driver factory from each application ENV on first use', async () => {
     const seen: VelaEnv[] = [];
     // One static module graph; each application passes its own ENV to the factory.
-    const storage = StorageModule.forRoot({
+    const storage = StorageModule.register({
       driver: (env: VelaEnv) => {
         seen.push(env);
         return memoryDriver({ initial: { origin: String(Reflect.get(env, 'REGION')) } });
@@ -293,8 +350,8 @@ describe('StorageModule', () => {
   it('supports multiple named buckets deduped by name', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
-        StorageModule.forRoot({ driver: memoryDriver() }),
-        StorageModule.forRoot({ name: 'backups', driver: memoryDriver() }),
+        StorageModule.register({ driver: memoryDriver() }),
+        StorageModule.register({ name: 'backups', driver: memoryDriver() }),
       ],
     }).compile();
 
@@ -312,7 +369,7 @@ describe('StorageModule', () => {
   it('applies a prefix that is transparent to callers', async () => {
     const driver = memoryDriver();
     const moduleRef = await Test.createTestingModule({
-      imports: [StorageModule.forRoot({ driver, prefix: 'tenant-1' })],
+      imports: [StorageModule.register({ driver, prefix: 'tenant-1' })],
     }).compile();
 
     const svc = moduleRef.get(StorageService);
@@ -329,7 +386,7 @@ describe('StorageModule', () => {
     const stub = new StorageService(() => memoryDriver(), { name: 'test' });
     vi.spyOn(stub, 'upload').mockResolvedValue({ key: 'k', size: 1, contentType: 'x' });
     const moduleRef = await Test.createTestingModule({
-      imports: [StorageModule.forRoot({ driver: memoryDriver() })],
+      imports: [StorageModule.register({ driver: memoryDriver() })],
     })
       .overrideProvider(StorageService)
       .useValue(stub)

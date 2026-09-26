@@ -461,7 +461,7 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
       }
     }
 
-    @Module({ imports: [SeederModule.forRoot({ seeders: [UserSeeder] })] })
+    @Module({ imports: [SeederModule.forFeature([UserSeeder])] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -487,7 +487,7 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
     @Module({
       imports: [
         I18nModule.forRoot({ fallbackLocale: 'en' }),
-        I18nModule.registerMessages({ en: { greeting: 'hello' } }),
+        I18nModule.forFeature({ en: { greeting: 'hello' } }),
       ],
       controllers: [GreetController],
     })

@@ -8,11 +8,7 @@ import {
   type VelaEnv,
 } from '@velajs/vela';
 import { Container, lazyProvider, readEnv, type EnvFactory } from '@velajs/vela/module-kit';
-import {
-  createStorageController,
-  type ResolvedHttpOptions,
-  type StorageControllerOptions,
-} from './storage.controller';
+import { createStorageController, type ResolvedHttpOptions } from './storage.controller';
 import { StorageService } from './storage.service';
 import {
   DEFAULT_STORAGE_NAME,
@@ -24,23 +20,18 @@ import type { StorageDriver, StorageHooks } from './storage.types';
 import type { StorageAuthorizer } from './http/authorizer.types';
 import { validateMultipartGrantSecret } from './http/multipart-grant';
 
-/** Options for mounting the HTTP upload/download controller for a bucket. */
+/** Runtime policy for a bucket's HTTP upload/download controller. */
 export interface StorageHttpOptions {
-  /** Mount path (relative to vela's globalPrefix). Default `/api/storage`. */
-  basePath?: string;
   /** Fine-grained per-action authorizer (deny / allow / allow-with-overrides). */
   authorize?: StorageAuthorizer;
   /** `redirect` to a signed URL (default) or `proxy` bytes through the Worker. */
   download?: 'redirect' | 'proxy';
-  /** Set `false` to configure options without mounting the controller. Default mounts. */
-  mountController?: boolean;
   defaultExpiresIn?: number;
   maxExpiresIn?: number;
   maxUploadSize?: number;
   /**
    * HMAC key for stateless multipart grants, at least 32 bytes: a shorter one
-   * throws when the module is set up. Required for multipart HTTP endpoints,
-   * unless the top-level `multipartGrantSecret` option supplies it.
+   * fails application initialization. Required for multipart HTTP endpoints.
    */
   multipartGrantSecret?: string | Uint8Array;
   /** Maximum browser-direct multipart parts. Default 10,000. */
@@ -65,18 +56,14 @@ export interface StorageModuleOptions {
   prefix?: string;
   readonly?: boolean;
   hooks?: StorageHooks;
-  /** The HTTP controller. Structural: it decides the mounted routes. */
+  /** Declare the HTTP routes. Omitted or false mounts no controller. Structural. */
+  httpController?: { path?: string } | false;
+  /** HTTP policy, including authorization and limits; resolved through DI. */
   http?: StorageHttpOptions;
-  /**
-   * HMAC key for stateless multipart grants, at least 32 bytes, such as a
-   * secret a `forRootAsync` factory reads from `ENV`. Takes precedence over
-   * `http.multipartGrantSecret`; a shorter one fails every multipart grant.
-   */
-  multipartGrantSecret?: string | Uint8Array;
 }
 
-/** The options `forRootAsync` takes alongside its factory: they shape the module graph. */
-export type StorageStructuralOption = 'name' | 'http';
+/** The options `registerAsync` takes alongside its factory: they shape the module graph. */
+export type StorageStructuralOption = 'name' | 'httpController';
 
 /** Deferred registration; a driver factory without parameters may omit `inject`. */
 export type StorageModuleAsyncOptions<Inject extends readonly Token[] = readonly Token[]> =
@@ -116,18 +103,21 @@ function buildDriver(driver: StorageModuleOptions['driver'], env: VelaEnv): Stor
 }
 
 function buildControllers(
-  name: string,
   serviceToken: TypedToken<StorageService>,
-  optionsToken: TypedToken<StorageControllerOptions>,
-  http: StorageHttpOptions | undefined,
+  optionsToken: TypedToken<ResolvedHttpOptions>,
+  controller: StorageModuleOptions['httpController'],
 ): Type[] {
-  if (!http || http.mountController === false) return [];
+  if (!controller) return [];
+  return [createStorageController(controller.path ?? '/api/storage', serviceToken, optionsToken)];
+}
+
+function resolveHttpOptions(name: string, http: StorageHttpOptions = {}): ResolvedHttpOptions {
   if (http.multipartGrantSecret !== undefined) {
     validateMultipartGrantSecret(http.multipartGrantSecret);
   }
   const defaultExpiresIn = positiveInteger(http.defaultExpiresIn ?? 900, 'defaultExpiresIn');
   const maxExpiresIn = positiveInteger(http.maxExpiresIn ?? 3600, 'maxExpiresIn');
-  const resolved: ResolvedHttpOptions = {
+  return {
     driverName: name,
     authorize: http.authorize,
     download: http.download ?? 'redirect',
@@ -139,13 +129,17 @@ function buildControllers(
     maxListLimit: positiveInteger(http.maxListLimit ?? 1000, 'maxListLimit'),
     deleteConcurrency: positiveInteger(http.deleteConcurrency ?? 8, 'deleteConcurrency'),
   };
-  const basePath = http.basePath ?? '/api/storage';
-  return [createStorageController(basePath, serviceToken, resolved, optionsToken)];
 }
 
-const { ConfigurableModuleClass } = defineModule<StorageModuleOptions, StorageStructuralOption>({
+const { ConfigurableModuleClass } = defineModule<
+  StorageModuleOptions,
+  StorageStructuralOption,
+  { isGlobal?: boolean },
+  'register'
+>({
   name: 'Storage',
-  structural: ['name', 'http'],
+  methodName: 'register',
+  structural: ['name', 'httpController'],
   defaults: { name: DEFAULT_STORAGE_NAME },
   // One instance per bucket name: the name decides the provided tokens, so a
   // second registration of a name with different options fails bootstrap
@@ -168,21 +162,27 @@ const { ConfigurableModuleClass } = defineModule<StorageModuleOptions, StorageSt
             buildDriver(resolved.driver, readEnv(container)),
         }),
         defineProvider(serviceToken, {
-          useFactory: (build, resolved) =>
-            new StorageService(build, {
+          useFactory: (build, resolved, container) => {
+            if (container.getOwnerModuleIds(serviceToken).length !== 1) {
+              throw new TypeError(
+                `@velajs/storage: duplicate bucket registration '${name}'; reuse the same module import`,
+              );
+            }
+            return new StorageService(build, {
               name,
               prefix: resolved.prefix,
               readonly: resolved.readonly,
               hooks: resolved.hooks,
-            }),
-          inject: [builderToken, OPTIONS],
+            });
+          },
+          inject: [builderToken, OPTIONS, Container],
         }),
         defineProvider(controllerOptions, {
-          useFactory: (resolved) => ({ multipartGrantSecret: () => resolved.multipartGrantSecret }),
+          useFactory: (resolved) => resolveHttpOptions(name, resolved.http),
           inject: [OPTIONS],
         }),
       ],
-      controllers: buildControllers(name, serviceToken, controllerOptions, options.http),
+      controllers: buildControllers(serviceToken, controllerOptions, options.httpController),
       exports: [serviceToken, builderToken],
     };
   },
@@ -192,7 +192,7 @@ const { ConfigurableModuleClass } = defineModule<StorageModuleOptions, StorageSt
  * Registers one storage bucket: its `StorageService` (the default bucket) or
  * `storageToken(name)` service, and optionally the HTTP controller.
  *
- * `name` and `http` are structural: `forRootAsync` takes them alongside its
- * factory, which returns the driver and the other options.
+ * `name` and `httpController` are structural: `registerAsync` takes them alongside
+ * its factory, which returns the driver, HTTP policy and other runtime options.
  */
 export class StorageModule extends ConfigurableModuleClass {}

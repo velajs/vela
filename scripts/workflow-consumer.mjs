@@ -1,15 +1,18 @@
 import { execFileSync } from 'node:child_process';
-import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { ensureConsumerArchives } from './consumer-companions.mjs';
 
 const root = new URL('../', import.meta.url);
 
 /** Verify workflow's public subpaths using only installed archives outside the workspace. */
 export async function verifyWorkflowPackage(tarballs) {
   if (!tarballs['@velajs/workflow']) throw new Error('A workflow archive is required');
+  ({ tarballs } = await ensureConsumerArchives(tarballs, ['@velajs/cloudflare', '@velajs/vela']));
   const consumer = await mkdtemp(join(tmpdir(), 'vela-workflow-consumer-'));
+  console.log(`Workflow consumer: ${consumer}`);
   const version = async (name) =>
     JSON.parse(await readFile(new URL(`node_modules/${name}/package.json`, root), 'utf8')).version;
   await writeFile(
@@ -21,6 +24,8 @@ export async function verifyWorkflowPackage(tarballs) {
         type: 'module',
         dependencies: {
           '@velajs/workflow': tarballs['@velajs/workflow'],
+          '@velajs/cloudflare': tarballs['@velajs/cloudflare'],
+          '@velajs/vela': tarballs['@velajs/vela'],
           zod: await version('zod'),
         },
         devDependencies: {
@@ -46,7 +51,8 @@ export async function verifyWorkflowPackage(tarballs) {
           strict: true,
           noEmit: true,
           verbatimModuleSyntax: true,
-          types: ['node'],
+          types: ['node', '@cloudflare/workers-types'],
+          skipLibCheck: true,
         },
         include: ['example.ts', 'contract.ts'],
       },
@@ -58,6 +64,25 @@ export async function verifyWorkflowPackage(tarballs) {
   await cp(
     new URL('tests/release/fixtures/workflow-consumer.ts', root),
     join(consumer, 'contract.ts'),
+  );
+  await cp(
+    new URL('tests/release/fixtures/workflow-definition-consumer.ts', root),
+    join(consumer, 'native.ts'),
+  );
+  await writeFile(
+    join(consumer, 'wrangler.native.json'),
+    JSON.stringify(
+      {
+        name: 'vela-workflow-definition-consumer',
+        main: 'native.ts',
+        compatibility_date: '2026-09-21',
+        workflows: [
+          { name: 'example-workflow', binding: 'EXAMPLE_WORKFLOW', class_name: 'ExampleWorkflow' },
+        ],
+      },
+      null,
+      2,
+    ),
   );
   await cp(
     new URL('tests/release/fixtures/workflow-cloudflare.ts', root),
@@ -76,14 +101,14 @@ export async function verifyWorkflowPackage(tarballs) {
           lib: ['ES2024'],
           types: ['@cloudflare/workers-types'],
         },
-        include: ['cloudflare.ts'],
+        include: ['cloudflare.ts', 'native.ts'],
       },
       null,
       2,
     ),
   );
   await writeFile(
-    join(consumer, 'wrangler.toml'),
+    join(consumer, 'wrangler.cloudflare.toml'),
     'name = "workflow-archive-check"\nmain = "cloudflare.ts"\ncompatibility_date = "2026-09-25"\n',
   );
   const run = (command, args) => execFileSync(command, args, { cwd: consumer, stdio: 'inherit' });
@@ -97,11 +122,38 @@ export async function verifyWorkflowPackage(tarballs) {
   ]);
   run('npx', ['--no-install', 'tsc', '--noEmit']);
   run('npx', ['--no-install', 'tsc', '-p', 'tsconfig.cloudflare.json']);
-  run('npx', ['--no-install', 'wrangler', 'deploy', '--dry-run', '--outdir', 'bundle']);
+  run('npx', [
+    '--no-install',
+    'wrangler',
+    'deploy',
+    '--dry-run',
+    '--config',
+    'wrangler.cloudflare.toml',
+    '--outdir',
+    'standalone-worker-bundle',
+  ]);
   run('node', ['example.ts']);
   run('node', ['contract.ts']);
+  run('npx', [
+    '--no-install',
+    'wrangler',
+    'deploy',
+    '--dry-run',
+    '--config',
+    'wrangler.native.json',
+    '--outdir',
+    'definition-worker-bundle',
+  ]);
+  // Ordinary Cloudflare imports must not eagerly load the optional workflow peer.
+  const workflow = join(consumer, 'node_modules/@velajs/workflow');
+  await rename(workflow, workflow + '-disabled');
+  try {
+    run('node', ['--input-type=module', '-e', "await import('@velajs/cloudflare');"]);
+  } finally {
+    await rename(workflow + '-disabled', workflow);
+  }
   console.log(
-    `PASS: workflow root, /harness and /cloudflare archive imports and Worker bundle, Zod 4 types and replay: ${consumer}`,
+    `PASS: workflow root, /harness and /cloudflare archives, native definition bridge, both Worker bundles, optional peer isolation, Zod 4 types and replay: ${consumer}`,
   );
   return consumer;
 }

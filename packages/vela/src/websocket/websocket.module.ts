@@ -1,5 +1,7 @@
 import { defineProvider } from '../container/types';
+import { Container } from '../container/container';
 import { defineModule } from '../module/define-module';
+import { referenceKey } from '../module/reference-key';
 import type { DynamicModule } from '../registry/types';
 import { Gateways } from './gateways';
 import { WebSocketPlatform, WebSocketRoutesModule } from './upgrade-routes';
@@ -18,14 +20,42 @@ export interface WebSocketModuleOptions {
    * Cross-instance sync driver. Defaults to `local()` (single instance). Use
    * `redis()` from `@velajs/vela/websocket-node` for horizontal scale. A
    * platform transport that owns delivery (Cloudflare's Durable Object per
-   * room) may ignore it.
+   * room) may ignore it. Supply an instance for one application, or a factory
+   * that constructs a fresh instance for each application.
    */
-  sync?: SyncDriver;
+  sync?: SyncDriver | (() => SyncDriver | Promise<SyncDriver>);
   /**
    * Local room registry the sync driver reads/writes. Defaults to the
-   * in-memory implementation.
+   * in-memory implementation. An instance can be shared within one application;
+   * use a factory when reusing configuration across applications.
    */
-  registry?: RoomRegistry;
+  registry?: RoomRegistry | (() => RoomRegistry | Promise<RoomRegistry>);
+}
+
+// Drivers bind a mutable registry, and registries hold sockets. Neither may acquire
+// a second application owner, including when a factory returns a captured singleton.
+const ownedDrivers = new WeakMap<SyncDriver, string>();
+const ownedRegistries = new WeakMap<RoomRegistry, string>();
+const driverRegistries = new WeakMap<SyncDriver, RoomRegistry>();
+
+function own<T extends object>(
+  value: T,
+  owners: WeakMap<T, string>,
+  container: Container,
+  name: string,
+): T {
+  if (value === null || typeof value !== 'object')
+    throw new TypeError(`WebSocket ${name} must be an object or a factory returning one.`);
+  // These singleton factories receive the application container. Keep only its
+  // opaque identity, so a supplied resource cannot retain a disposed container.
+  const application = referenceKey(container);
+  const owner = owners.get(value);
+  if (owner && owner !== application)
+    throw new Error(
+      `WebSocket ${name} was already assigned to an application. Supply a fresh instance or return one from a factory.`,
+    );
+  owners.set(value, application);
+  return value;
 }
 
 /**
@@ -48,30 +78,49 @@ export interface WebSocketModuleOptions {
  * is preserved and everything materializes at bootstrap's eager
  * instantiation, before any lifecycle hook or message dispatch.
  *
- * The instance key derives from the structural sync driver's kind: importing
- * the same configuration again dedups (HMR-idempotent), a different driver of
- * the same kind fails bootstrap; pass an explicit `key` to run multiple same-kind
- * instances side by side.
+ * Options resolve per application. Drivers and registries may be supplied directly
+ * or through factories; sharing them across application owners fails bootstrap.
  */
-const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions, 'sync'>({
+const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
   name: 'WebSocket',
   optionsToken: WS_MODULE_OPTIONS,
-  structural: ['sync'],
-  key: (options) => `ws#${options.sync?.kind ?? 'local'}`,
   setup: ({ OPTIONS }) => ({
     imports: [WebSocketRoutesModule],
     providers: [
       defineProvider(WS_ROOM_REGISTRY, {
-        useFactory: (o: WebSocketModuleOptions) => o.registry ?? new InMemoryRoomRegistry(),
-        inject: [OPTIONS],
+        useFactory: async (o: WebSocketModuleOptions, container: Container) =>
+          own(
+            typeof o.registry === 'function'
+              ? await o.registry()
+              : (o.registry ?? new InMemoryRoomRegistry()),
+            ownedRegistries,
+            container,
+            'registry',
+          ),
+        inject: [OPTIONS, Container],
       }),
       defineProvider(WS_SYNC_DRIVER, {
-        useFactory: (o: WebSocketModuleOptions, registry: RoomRegistry) => {
-          const driver = o.sync ?? local();
-          driver.bind(registry);
+        useFactory: async (
+          o: WebSocketModuleOptions,
+          registry: RoomRegistry,
+          container: Container,
+        ) => {
+          const driver = own(
+            typeof o.sync === 'function' ? await o.sync() : (o.sync ?? local()),
+            ownedDrivers,
+            container,
+            'sync driver',
+          );
+          const bound = driverRegistries.get(driver);
+          if (bound && bound !== registry)
+            throw new Error('WebSocket sync driver is already bound to a different room registry.');
+          if (!bound) {
+            driver.bind(registry);
+            driverRegistries.set(driver, registry);
+          }
           return driver;
         },
-        inject: [OPTIONS, WS_ROOM_REGISTRY],
+        inject: [OPTIONS, WS_ROOM_REGISTRY, Container],
       }),
       defineProvider(WS_SERVER, {
         useFactory: (driver: SyncDriver, { transport }: WebSocketPlatform) => {

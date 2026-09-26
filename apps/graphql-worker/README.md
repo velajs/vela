@@ -1,6 +1,6 @@
 # GraphQL Worker
 
-A native Worker example using `@velajs/graphql`, Yoga, Zod validation, request-scoped DI, an injected environment binding and an operation-owned cache. No `nodejs_compat` flag is required.
+A native Worker example using schema-first `@Resolver`, `@Query`, `@Args` and `@Context` decorators, Yoga, Zod validation, request-scoped DI, an injected environment binding and an operation-owned cache. Its SDL remains explicit. No `nodejs_compat` flag is required.
 
 From the repository root, after installing and building workspace dependencies:
 

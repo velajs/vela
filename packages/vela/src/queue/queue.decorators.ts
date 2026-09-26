@@ -29,7 +29,7 @@ export function readProcessorMetadata(value: unknown): ProcessorMetadata {
 
 /**
  * Inject the `QueueClient` of a queue registered with
- * `QueueModule.registerQueue({ name })`. Same as `@Inject(queueToken(name))`:
+ * `QueueModule.forFeature([{ name }])`. Same as `@Inject(queueToken(name))`:
  *
  * ```ts
  * constructor(@InjectQueue('email') private readonly email: QueueClient) {}

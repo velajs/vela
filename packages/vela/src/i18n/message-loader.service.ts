@@ -8,9 +8,8 @@ type CompiledMessages = Record<string, (params?: Record<string, unknown>) => str
 
 /**
  * Compiles and caches ICU messages (via `intl-messageformat`). Singleton: reads
- * the merged registry once at construction (all `registerMessages` calls run at
- * module-load, before providers are instantiated), flattens each locale to
- * dot-paths, and compiles lazily per locale.
+ * the application's merged feature contributions once at construction,
+ * flattens each locale to dot-paths, and compiles lazily per locale.
  */
 @Injectable()
 export class MessageLoaderService {

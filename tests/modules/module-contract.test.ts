@@ -6,13 +6,7 @@ import { Module, type DynamicModule } from '@velajs/vela';
 import { ModuleLoader, RouteManager } from '@velajs/vela/internal';
 import { Container } from '@velajs/vela/module-kit';
 
-/**
- * The uniform module contract, checked across every published package: each
- * exported `*Module` class is authored on `defineModule`, exposes `forRoot`
- * and `forRootAsync`, keys instances by its structural options (never by the
- * factory it was given), strips registration controls from the key, and has
- * the module loader reject a second configuration under the same key.
- */
+/** Public module census: registration names follow ownership rather than one uniform method. */
 
 const PACKAGES = join(__dirname, '..', '..', 'packages');
 
@@ -49,6 +43,7 @@ const WORKERS_ONLY = new Set([
   '@velajs/cloudflare/testing',
   '@velajs/cloudflare/tracing',
   '@velajs/cloudflare/workflows',
+  '@velajs/cloudflare/workflow-definitions',
   '@velajs/authz-cedar/cloudflare',
 ]);
 
@@ -100,21 +95,67 @@ async function exportedModules(): Promise<ExportedModule[]> {
 
 const modules = await exportedModules();
 
-function statics(module: ExportedModule['module']) {
-  const forRoot = module.forRoot;
-  const forRootAsync = module.forRootAsync;
-  if (typeof forRoot !== 'function' || typeof forRootAsync !== 'function') {
-    throw new Error('missing forRoot/forRootAsync');
+type Contract = 'shared' | 'local' | 'named' | 'bare' | 'feature';
+const CONTRACTS: Record<string, Contract> = {
+  ConfigModule: 'shared',
+  ErrorsModule: 'shared',
+  CacheModule: 'shared',
+  LoggingModule: 'shared',
+  SecurityModule: 'shared',
+  ThrottlerModule: 'shared',
+  I18nModule: 'shared',
+  ScheduleModule: 'shared',
+  QueueModule: 'shared',
+  WebSocketModule: 'shared',
+  LiveModule: 'shared',
+  OpenApiModule: 'shared',
+  BetterAuthModule: 'shared',
+  AuthzModule: 'shared',
+  CedarModule: 'shared',
+  CloudflareAccessModule: 'shared',
+  TenantModule: 'shared',
+  FeatureFlagsModule: 'shared',
+  CrudModule: 'shared',
+  GraphqlModule: 'shared',
+  RpcModule: 'shared',
+  StudioModule: 'shared',
+  HttpModule: 'local',
+  MailModule: 'local',
+  CryptoModule: 'local',
+  StorageModule: 'named',
+  RpcClientModule: 'named',
+  EventEmitterModule: 'bare',
+  HealthModule: 'bare',
+  ScheduleNodeModule: 'bare',
+  SeederModule: 'feature',
+};
+const FEATURE_MODULES = new Set([
+  'ConfigModule',
+  'CrudModule',
+  'QueueModule',
+  'I18nModule',
+  'SeederModule',
+]);
+const configured = modules.filter(({ name }) =>
+  ['shared', 'local', 'named'].includes(CONTRACTS[name] ?? ''),
+);
+
+function statics({ name, module }: ExportedModule) {
+  const method = CONTRACTS[name] === 'shared' ? 'forRoot' : 'register';
+  const sync = module[method];
+  const async = module[`${method}Async`];
+  if (typeof sync !== 'function' || typeof async !== 'function') {
+    throw new Error(`${name} is missing ${method}/${method}Async`);
   }
   return {
-    forRoot: (options: Record<string, unknown>): DynamicModule =>
-      Reflect.apply(forRoot, module, [options]) as DynamicModule,
-    forRootAsync: (options: Record<string, unknown>): DynamicModule =>
-      Reflect.apply(forRootAsync, module, [options]) as DynamicModule,
+    sync: (options: Record<string, unknown>): DynamicModule =>
+      Reflect.apply(sync, module, [options]) as DynamicModule,
+    async: (options: Record<string, unknown>): DynamicModule =>
+      Reflect.apply(async, module, [options]) as DynamicModule,
   };
 }
 
-/** Load a root importing `imports` without instantiating any provider. */
+/** Load without instantiating providers: test registration identity separately from valid runtime options. */
 function load(imports: DynamicModule[]): void {
   class Root {}
   Module({ imports })(Root);
@@ -122,70 +163,77 @@ function load(imports: DynamicModule[]): void {
   new ModuleLoader(container, new RouteManager(container)).load(Root);
 }
 
-describe('uniform module contract', () => {
-  it('finds the first-party modules', () => {
+describe('public module contracts', () => {
+  it('classifies every exported module and finds every declared contract', () => {
     expect(unloadable).toEqual([]);
-    const names = modules.map(({ id }) => id);
-    expect(names.length).toBeGreaterThan(25);
-    expect(names).toEqual(
-      expect.arrayContaining([
-        '@velajs/vela#CacheModule',
-        '@velajs/vela#EventEmitterModule',
-        '@velajs/vela#ScheduleModule',
-        '@velajs/storage#StorageModule',
-        '@velajs/mail#MailModule',
-        '@velajs/better-auth#BetterAuthModule',
-        '@velajs/graphql#GraphqlModule',
-        '@velajs/rpc#RpcClientModule',
-      ]),
-    );
+    expect(modules.map(({ name }) => name).sort()).toEqual(Object.keys(CONTRACTS).sort());
   });
 
-  it.each(modules)('$id exposes forRoot and forRootAsync', ({ module }) => {
-    expect(typeof module.forRoot).toBe('function');
-    expect(typeof module.forRootAsync).toBe('function');
+  it.each(modules)('$id exposes only its selected registration API', (entry) => {
+    const { name, module } = entry;
+    const contract = CONTRACTS[name];
+    if (contract === 'bare' || contract === 'feature') {
+      for (const method of ['forRoot', 'forRootAsync', 'register', 'registerAsync']) {
+        expect(module[method]).toBeUndefined();
+      }
+    } else {
+      statics(entry);
+      const removed = contract === 'shared' ? 'register' : 'forRoot';
+      expect(module[removed]).toBeUndefined();
+      expect(module[`${removed}Async`]).toBeUndefined();
+    }
+    if (FEATURE_MODULES.has(name)) expect(typeof module.forFeature).toBe('function');
+    expect(module.registerQueue).toBeUndefined();
+    expect(module.registerMessages).toBeUndefined();
   });
 
-  it.each(modules)('$id: forRootAsync keys by structural options only', ({ name, module }) => {
-    const { forRootAsync } = statics(module);
+  it.each(configured)('$id uses its declared instance ownership', (entry) => {
+    const { name } = entry;
+    const { async } = statics(entry);
     const structural = STRUCTURAL[name] ?? {};
-    const first = forRootAsync({ ...structural, useFactory: () => ({}) });
-    const second = forRootAsync({ ...structural, useFactory: () => ({}), lazy: true });
-    expect(first.module).toBe(module);
-    expect(typeof first.key).toBe('string');
-    // A different factory and registration controls never change the key...
-    if (name !== 'QueueModule') expect(second.key).toBe(first.key);
-    // ...and the caller's explicit key names the instance.
-    const named = forRootAsync({ ...structural, useFactory: () => ({}), key: 'conformance' });
+    const first = async({ ...structural, useFactory: () => ({}) });
+    const second = async({ ...structural, useFactory: () => ({}), lazy: true });
+    if (CONTRACTS[name] === 'local' || name === 'QueueModule') {
+      expect(second.key).not.toBe(first.key);
+    } else {
+      expect(second.key).toBe(first.key);
+    }
+    const named = async({ ...structural, useFactory: () => ({}), key: 'conformance' });
     expect(named.key).toContain('conformance');
   });
 
-  it.each(modules)(
-    '$id: a second configuration is rejected, the same one deduplicated',
-    ({ name, module }) => {
-      const { forRootAsync } = statics(module);
+  it.each(configured)(
+    '$id shares reused definitions and handles independent registrations',
+    (entry) => {
+      const { name } = entry;
+      const { async } = statics(entry);
       const structural = STRUCTURAL[name] ?? {};
-      const definition = forRootAsync({ ...structural, useFactory: () => ({}) });
+      const definition = async({ ...structural, useFactory: () => ({}) });
       expect(() => load([definition, definition])).not.toThrow();
-      const other = forRootAsync({ ...structural, useFactory: () => ({}) });
-      if (name === 'QueueModule') {
-        // A queue configuration keys by reference: a second one is its own
-        // instance, which queue bootstrap rejects (see queue-registration).
+      const other = async({ ...structural, useFactory: () => ({}) });
+      if (CONTRACTS[name] === 'local') {
+        expect(() => load([definition, other])).not.toThrow();
+      } else if (name === 'QueueModule') {
+        // The queue bootstrap separately rejects multiple application drivers.
         expect(other.key).not.toBe(definition.key);
-        return;
+      } else {
+        expect(() => load([definition, other])).toThrow(
+          /was imported again with different options/,
+        );
       }
-      expect(() => load([definition, other])).toThrow(/was imported again with different options/);
     },
   );
 
-  it.each(modules)('$id: the isGlobal extra does not change the key', ({ name, module }) => {
-    // QueueModule is always global and declares no extras, so it rejects the flag.
-    if (name === 'QueueModule') return;
-    const { forRootAsync } = statics(module);
-    const structural = STRUCTURAL[name] ?? {};
-    const useFactory = () => ({});
-    const plain = forRootAsync({ ...structural, useFactory });
-    const global = forRootAsync({ ...structural, useFactory, isGlobal: true });
-    expect(global.key).toBe(plain.key);
-  });
+  it.each(configured)(
+    '$id keeps provider visibility separate from explicit instance identity',
+    (entry) => {
+      if (entry.name === 'QueueModule') return;
+      const { async } = statics(entry);
+      const structural = STRUCTURAL[entry.name] ?? {};
+      const useFactory = () => ({});
+      const plain = async({ ...structural, useFactory, key: 'visibility' });
+      const global = async({ ...structural, useFactory, key: 'visibility', isGlobal: true });
+      expect(global.key).toBe(plain.key);
+    },
+  );
 });

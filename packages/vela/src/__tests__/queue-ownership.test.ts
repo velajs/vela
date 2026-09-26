@@ -42,7 +42,7 @@ describe('queue driver application ownership', () => {
             return driver;
           },
         }),
-        QueueModule.registerQueue({ name: 'owned' }),
+        QueueModule.forFeature([{ name: 'owned' }]),
       ],
       providers: [Producer, Consumer],
     })
@@ -72,7 +72,7 @@ describe('queue driver application ownership', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver: shared }),
-        QueueModule.registerQueue({ name: 'shared' }),
+        QueueModule.forFeature([{ name: 'shared' }]),
       ],
       providers: [Producer],
     })
@@ -90,7 +90,7 @@ it('does not silently deduplicate different driver instances with the same kind'
     imports: [
       QueueModule.forRoot({ driver: a }),
       QueueModule.forRoot({ driver: b }),
-      QueueModule.registerQueue({ name: 'collision' }),
+      QueueModule.forFeature([{ name: 'collision' }]),
     ],
   })
   class App {}

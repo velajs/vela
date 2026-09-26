@@ -44,7 +44,7 @@ class EmailProcessor {
 
 // Feature module: registers the queue it produces and processes.
 @Module({
-  imports: [QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })],
+  imports: [QueueModule.forFeature([{ name: 'email', binding: 'EMAIL_QUEUE' }])],
   providers: [SignupService, EmailProcessor],
 })
 class EmailModule {}
@@ -72,7 +72,7 @@ is the configuration, with or without an explicit `key`: importing the same
 object again deduplicates, and a different one, even one that shares its `key`,
 or a `forRoot` next to it, fails bootstrap.
 
-`QueueModule.registerQueue({ name, binding?, consumer? })` registers queues in
+`QueueModule.forFeature([{ name, binding?, consumer? }])` registers queues in
 the module that uses them and provides each queue's `QueueClient`. Inject it with
 `@InjectQueue(name)`, which is `@Inject(queueToken(name))`. Several queues can be
 registered in one call. Registering one queue in several modules is fine: the
@@ -190,7 +190,7 @@ handlers of its physical queue. A batch no `@QueueConsumer` claims goes to
   handler, or fails stays unacknowledged. The batch rejects after every message
   was tried, so Cloudflare retries the remainder and then routes it to the
   configured dead-letter queue.
-- `registerQueue({ name, consumer: 'email-production' })` pins the queue: its
+- `forFeature({ name, consumer: 'email-production' })` pins the queue: its
   jobs are accepted only from `email-production`, and that physical queue only
   carries the queues pinned to it. Without `consumer`, a job is accepted from any
   physical queue the Worker consumes. A pinned registration with a `binding`

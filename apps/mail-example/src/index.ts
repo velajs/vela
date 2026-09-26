@@ -13,7 +13,7 @@ import { assertCount, assertSent } from '@velajs/mail/testing';
 
 const catcher = createMailCatcher();
 const driver = inline({ mode: 'manual' });
-const mail = MailModule.forRoot({
+const mail = MailModule.register({
   from: 'support@example.com',
   transport: catcher,
   queue: { name: 'support-replies' },

@@ -59,7 +59,7 @@ async function application(issuer: string) {
     imports: [
       BetterAuthModule.forRoot({
         issuer,
-        guard: 'none',
+
         mountHandler: false,
         auth: {
           api: {
@@ -78,7 +78,6 @@ async function application(issuer: string) {
         },
       }),
       TenantModule.forRoot({
-        guard: 'none',
         lookup: new MemoryTenantRegistryStore(
           ['a', 'b'].map((id) => ({
             id,
@@ -95,7 +94,6 @@ async function application(issuer: string) {
       }),
       // Route guards order this pipeline explicitly, so no module installs a global one.
       AuthzModule.forRoot({
-        guard: 'none',
         resolver: {
           grants: async (identity) =>
             new Set(identity.tenantId === identity.subject ? ['data:read'] : []),

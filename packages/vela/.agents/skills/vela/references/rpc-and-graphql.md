@@ -22,7 +22,7 @@ The adapter reuses the HTTP child, global/scoped pipeline, module owner and
 trusted identity. The `authorize` policy runs in the global `authorize` phase,
 after global authentication and tenant guards, so it can read the trusted
 identity. Global guards run on every procedure, including the tenant,
-Cedar, authorization and feature-flag guards the integrations install, so
+Cedar, authorization and feature-flag guards the application installs, so
 procedures need a tenant, a Cedar declaration (`@CedarPublic()` or
 `@RequireResource()` on the provider or method) and so on, as routes do.
 Guards precede handler construction. Consume or cancel the
@@ -30,10 +30,16 @@ response body so managed work and resource disposal can complete.
 
 ## GraphQL
 
-`@velajs/graphql` binds explicit executable-schema fields to real DI providers
-through `bindResolver`; it does not expose CRUD automatically. Use
-`GraphqlModule.forRoot` with a schema and driver. `@velajs/graphql/yoga` opts into
-the Yoga peer; root and `/schema` imports do not load it.
+`GraphqlModule.forRoot` accepts either an executable `schema` or schema-first
+`typeDefs: string | DocumentNode`, together with a driver. SDL mode discovers
+registered `@Resolver('Type')` providers with `@Query`, `@Mutation` and
+`@ResolveField` methods. Parameters use `@Args('name')`, `@Parent`, `@Context`
+and `@Info`. Omitted `include` scans the application; `include: [FeatureModule]`
+selects providers declared by those module classes; `[]` selects none. It never
+imports a module and duplicate field bindings fail. SDL performs coercion;
+optional method-level `args` and `output` schemas add pipeline validation.
+Executable schemas retain `bindResolver`. The `/yoga` entrypoint alone opts into
+the optional Yoga peer. Subscriptions and code-first generation are unsupported.
 
 Select `moduleId` explicitly for multiply registered resolver classes. Field
 guards and pipes use the selected provider owner. Authenticate and admit the

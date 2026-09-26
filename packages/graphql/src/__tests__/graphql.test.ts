@@ -42,7 +42,9 @@ afterEach(async () => {
 });
 
 async function application(
-  options: Omit<GraphqlOptions, 'driver'> & { driver?: GraphqlOptions['driver'] },
+  options: Omit<Extract<GraphqlOptions, { schema: unknown }>, 'driver'> & {
+    driver?: GraphqlOptions['driver'];
+  },
   providers: Type[] = [],
   imports: (Type | DynamicModule)[] = [],
 ) {

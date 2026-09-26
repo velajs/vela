@@ -22,7 +22,7 @@ class Tasks {
     ScheduleModule.forRoot(),
     // Consumer-only: 'tasks' jobs arrive from the module-tasks queue this Worker consumes.
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    QueueModule.registerQueue({ name: 'tasks', consumer: 'module-tasks' }),
+    QueueModule.forFeature([{ name: 'tasks', consumer: 'module-tasks' }]),
   ],
   providers: [Tasks],
 })

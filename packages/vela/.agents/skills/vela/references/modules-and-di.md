@@ -123,7 +123,7 @@ A provider is private to its declaring module unless listed in that module's `ex
 
 ## Dynamic modules — `forRoot` / `forRootAsync`
 
-Every first-party configurable module exposes `forRoot(options)` (sync) and `forRootAsync({ useFactory, inject, imports })` (DI-resolved). A module's **structural** options (those that shape its graph, such as a bucket `name` or an `http` mount) go next to the factory; the factory returns the rest:
+Shared facilities expose `forRoot`/`forRootAsync`; local Http/Mail/Crypto and named Storage/RpcClient services expose `register`/`registerAsync`. Queue/I18n/Seeder use `forFeature` for declarations, and EventEmitter/Health/ScheduleNode are ordinary imports. A module's **structural** options (those that shape its graph, such as a bucket `name` or an `httpController` mount) go next to the factory; the factory returns the rest:
 
 ```ts
 @Module({
@@ -133,7 +133,7 @@ Every first-party configurable module exposes `forRoot(options)` (sync) and `for
       inject: [SecretLoader],
       useFactory: async (loader: SecretLoader) => ({ config: await loader.load() }),
     }),
-    StorageModule.forRootAsync({
+    StorageModule.registerAsync({
       name: 'uploads',                                   // structural: at the call site
       inject: [ENV],
       useFactory: (env) => ({ driver: () => r2Driver({ bucket: env.UPLOADS }) }),
@@ -144,11 +144,11 @@ Every first-party configurable module exposes `forRoot(options)` (sync) and `for
 class AppModule {}
 ```
 
-The instance key comes from the structural options only, so most modules have one instance per class: the same configuration imported twice deduplicates, while a second configuration under the same key fails bootstrap in every diagnostics mode, even when its `isGlobal` differs too. A repeat with the same options and only another `isGlobal` is reported (`'log'` warns, `'throw'` fails bootstrap) and the first is kept. An extra at its default, a structural option at the module's default (`guard: 'global'`) or an option passed as `undefined` (at any depth) counts as not given. A bare class import configures nothing, so it names a module only when the class has its own `@Module()`: a generated class without one (even with `@Global()`) fails bootstrap when imported bare, naming its `forRoot(...)`/`forRootAsync(...)` (or `register(...)`) methods. A configured import under its key (`HttpModule.forRoot({ key: 'default', baseURL })` next to `HttpModule`) fails bootstrap in either order. Give a second instance its own `key` (`MailModule.forRoot({ ..., key: 'marketing' })`). `key`, `lazy` and `isGlobal` never reach the options token; an explicit `key` replaces the default key, which `lazy` and `isGlobal` never change. `isGlobal` only makes exports visible everywhere; options that register app-wide components are named for them (`guard: 'global' | 'none'` on `BetterAuthModule`, `CloudflareAccessModule`, `TenantModule`, `AuthzModule`, `CedarModule` and `FeatureFlagsModule`).
+`defineModule` defaults to `identity: 'structural'`, keying by structural options. `identity: 'registration'` gives each call an opaque key, and is the default for `ConfigurableModuleBuilder` and local Http/Mail/Crypto registrations. Reuse a returned definition to share it within an application; separate applications still construct their own providers. Explicit keys deduplicate and reject differing options, including fresh factories with different references. Named Storage/RPC resources remain unique. `key`, `lazy` and `isGlobal` never reach the options token. `isGlobal` controls provider visibility only; attach exported guards and interceptors explicitly with `APP_*` aliases or route decorators. Method naming is independent of identity.
 
 ## Authoring a configurable module — `defineModule`
 
-`defineModule` is THE module-authoring engine: one spec generates `forRoot` **and** `forRootAsync`, the instance key, and contributions computed from the structural options:
+`defineModule` is THE module-authoring engine: one spec generates a sync/async method pair (`forRoot`/`forRootAsync` by default, renamed with `methodName`), the instance key, and contributions computed from the structural options:
 
 ```ts
 import { defineModule, defineProvider, InjectionToken } from '@velajs/vela';

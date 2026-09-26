@@ -12,8 +12,8 @@ import type { ExceptionHandler } from './exception-handler';
 export interface ErrorsModuleOptions {
   /**
    * App-specific catalogs composed **onto** `CORE_CATALOG` via
-   * {@link composeCatalogs}. Composition is eager (at `forRoot` call time), so a
-   * duplicate code across two catalogs fails fast with `duplicate error code`.
+   * {@link composeCatalogs}. Composition happens per application during bootstrap;
+   * duplicate codes fail before the application serves requests.
    */
   catalogs?: Catalog<string>[];
   /**
@@ -29,14 +29,14 @@ const handlerProvider = (handler: Type<ExceptionHandler> | ExceptionHandler): Pr
     ? defineProvider(APP_EXCEPTION_HANDLER, { useClass: handler })
     : defineProvider(APP_EXCEPTION_HANDLER, { useValue: handler });
 
-const { ConfigurableModuleClass } = defineModule<ErrorsModuleOptions, 'catalogs' | 'handler'>({
+const { ConfigurableModuleClass } = defineModule<ErrorsModuleOptions, 'handler'>({
   name: 'Errors',
-  structural: ['catalogs', 'handler'],
-  defaults: { catalogs: [] },
-  setup: ({ options }) => {
+  structural: ['handler'],
+  setup: ({ OPTIONS, options }) => {
     const providers: ProviderDefinition[] = [
       defineProvider(ERROR_CATALOG, {
-        useValue: composeCatalogs(CORE_CATALOG, ...(options.catalogs ?? [])),
+        inject: [OPTIONS],
+        useFactory: (resolved) => composeCatalogs(CORE_CATALOG, ...(resolved.catalogs ?? [])),
       }),
     ];
     const exports: Array<typeof ERROR_CATALOG | typeof APP_EXCEPTION_HANDLER> = [ERROR_CATALOG];

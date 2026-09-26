@@ -4,37 +4,45 @@ import type { MailTransport } from '../types';
 
 const Config = new InjectionToken<{ from: string; transport: MailTransport }>('mail-config');
 
-MailModule.forRootAsync({
+MailModule.registerAsync({
   inject: [Config],
   useFactory: (config) => ({ from: config.from, transport: config.transport }),
 });
-MailModule.forRootAsync({ inject: [], useFactory: () => ({ from: 'a@example.com' }) });
-MailModule.forRootAsync({ useFactory: () => ({ from: 'a@example.com' }) });
-
-// @ts-expect-error a factory with parameters names the tokens that supply them
-MailModule.forRootAsync({ useFactory: (config: { from: string }) => ({ from: config.from }) });
-// @ts-expect-error a caller-only dependency tuple cannot supply runtime tokens
-MailModule.forRootAsync<readonly [typeof Config]>({
+MailModule.registerAsync({ inject: [], useFactory: () => ({ from: 'a@example.com' }) });
+MailModule.registerAsync({ useFactory: () => ({ from: 'a@example.com' }) });
+MailModule.registerAsync({
+  useFactory: () => ({ from: 'a@example.com', inbound: { gate: { require: ['spf'] } } }),
+});
+MailModule.registerAsync({
+  // @ts-expect-error The inbound gate resolves through the options factory.
+  inbound: { gate: { require: ['spf'] } },
   useFactory: () => ({ from: 'a@example.com' }),
 });
-MailModule.forRootAsync({
+
+// @ts-expect-error a factory with parameters names the tokens that supply them
+MailModule.registerAsync({ useFactory: (config: { from: string }) => ({ from: config.from }) });
+// @ts-expect-error a caller-only dependency tuple cannot supply runtime tokens
+MailModule.registerAsync<readonly [typeof Config]>({
+  useFactory: () => ({ from: 'a@example.com' }),
+});
+MailModule.registerAsync({
   inject: ['untyped-config'],
   // @ts-expect-error a raw string token cannot promise a typed configuration
   useFactory: (config: { from: string }) => ({ from: config.from }),
 });
-MailModule.forRootAsync({
+MailModule.registerAsync({
   inject: [Config],
   // @ts-expect-error the factory must match its actual injected token
   useFactory: (config: number) => ({ from: String(config) }),
 });
 
-MailModule.forRoot({
+MailModule.register({
   from: 'a@example.com',
   queue: { name: 'mail', binding: 'MAIL_QUEUE', consumer: 'mail-production' },
 });
-MailModule.forRootAsync({
+MailModule.registerAsync({
   useFactory: () => ({ from: 'a@example.com' }),
   queue: { binding: 'MAIL_QUEUE' },
 });
 // @ts-expect-error a queue binding is a binding name
-MailModule.forRoot({ from: 'a@example.com', queue: { binding: 1 } });
+MailModule.register({ from: 'a@example.com', queue: { binding: 1 } });

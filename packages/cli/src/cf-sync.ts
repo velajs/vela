@@ -115,7 +115,7 @@ const label = (path: JSONPath): string => path.join('.');
 /**
  * Compare the Wrangler target (the top level, or `environment`) with what the
  * application declares: cron triggers for `@Cron` jobs, queue producers for
- * `QueueModule.registerQueue({ binding })`, consumers for the queues its
+ * `QueueModule.forFeature([{ binding }])`, consumers for the queues its
  * processors and `@QueueConsumer` handlers read, and Durable Object bindings,
  * migrations and Workflows for the classes the Worker entry exports. It warns
  * about the Vela classes the app defines but the entry does not export, and
@@ -254,8 +254,8 @@ export function planCloudflareSync(
     const registration = registrations.get(name);
     if (!registration) {
       warnings.push(
-        `@Processor(${JSON.stringify(name)}) has no QueueModule.registerQueue({ name: ` +
-          `${JSON.stringify(name)} }), so no consumer is added for it.`,
+        `@Processor(${JSON.stringify(name)}) has no QueueModule.forFeature([{ name: ` +
+          `${JSON.stringify(name)} }]), so no consumer is added for it.`,
       );
       continue;
     }
@@ -268,7 +268,7 @@ export function planCloudflareSync(
     if (physical.length === 0) {
       warnings.push(
         `Queue ${JSON.stringify(name)} names no physical queue: register it with a binding or ` +
-          'QueueModule.registerQueue({ name, consumer }).',
+          'QueueModule.forFeature([{ name, consumer }]).',
       );
     }
     wantedConsumers.push(...physical);

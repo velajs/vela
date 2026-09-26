@@ -29,7 +29,7 @@ export function CacheResponse(options: CacheResponseOptions = {}) {
   );
 }
 
-/** Serves `@CacheResponse()` routes; `CacheModule` registers it application-wide. */
+/** Serves `@CacheResponse()` routes when the application attaches this interceptor. */
 @Injectable()
 export class CacheInterceptor implements NestInterceptor {
   constructor(

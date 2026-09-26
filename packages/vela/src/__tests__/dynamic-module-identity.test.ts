@@ -165,27 +165,20 @@ describe('Dynamic module identity', () => {
     await expect(VelaFactory.create(App)).rejects.toThrow(MultipleProvidersFoundError);
   });
 
-  // -------------------------------------------------------------------------
-  // Case E — same forRoot options on HttpModule twice → dedups
-  // -------------------------------------------------------------------------
-  it('E: HttpModule.forRoot({a}) imported twice with same options → dedups', async () => {
-    @Module({
-      imports: [
-        HttpModule.forRoot({ baseURL: 'https://a.test' }),
-        HttpModule.forRoot({ baseURL: 'https://a.test' }),
-      ],
-    })
+  it('reimporting one HTTP registration shares its providers', async () => {
+    const client = HttpModule.register({ baseURL: 'https://a.test' });
+    @Module({ imports: [client, client] })
     class App {}
-
-    const app = await VelaFactory.create(App);
-    const opts = app.getContainer().resolve(HTTP_MODULE_OPTIONS);
-    expect(opts).toEqual({ baseURL: 'https://a.test' });
+    const app = await VelaFactory.create(App, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(HttpService)).toHaveLength(1);
+    expect(app.get(HTTP_MODULE_OPTIONS)).toEqual({ baseURL: 'https://a.test' });
+    await app.dispose();
   });
 
   // -------------------------------------------------------------------------
-  // Case F — different HttpModule.forRoot options → both register
+  // Case F — different HttpModule.register options → both register
   // -------------------------------------------------------------------------
-  it('F: keyed HttpModule.forRoot({a}) and HttpModule.forRoot({b}) → both register', async () => {
+  it('independent HTTP registrations resolve each feature’s own configuration', async () => {
     @Injectable()
     class FeatureA {
       constructor(@Inject(HTTP_MODULE_OPTIONS) public opts: { baseURL?: string }) {}
@@ -196,14 +189,14 @@ describe('Dynamic module identity', () => {
     }
 
     @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://a.test', key: 'a' })],
+      imports: [HttpModule.register({ baseURL: 'https://a.test' })],
       providers: [FeatureA],
       exports: [FeatureA],
     })
     class ModA {}
 
     @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://b.test', key: 'b' })],
+      imports: [HttpModule.register({ baseURL: 'https://b.test' })],
       providers: [FeatureB],
       exports: [FeatureB],
     })
@@ -220,7 +213,7 @@ describe('Dynamic module identity', () => {
   // -------------------------------------------------------------------------
   // Case G — bare class + forRoot in same imports → both register, warn
   // -------------------------------------------------------------------------
-  it('G: [HttpModule, HttpModule.forRoot({base:X})] → both register, loader warns', async () => {
+  it('G: [HttpModule, HttpModule.register({base:X})] → both register, loader warns', async () => {
     const warnings: string[] = [];
     const originalWarn = console.warn;
     console.warn = (msg: string) => {
@@ -229,7 +222,7 @@ describe('Dynamic module identity', () => {
 
     try {
       @Module({
-        imports: [HttpModule, HttpModule.forRoot({ baseURL: 'https://x.test' })],
+        imports: [HttpModule, HttpModule.register({ baseURL: 'https://x.test' })],
       })
       class App {}
 
@@ -244,54 +237,37 @@ describe('Dynamic module identity', () => {
     expect(mixedWarning).toBeDefined();
   });
 
-  // -------------------------------------------------------------------------
-  // Unkeyed configurations share one instance and are reported, never dropped
-  // silently (the pre-1.11 loader swallowed the second one)
-  // -------------------------------------------------------------------------
-  it('fails bootstrap on a second unkeyed HttpModule configuration', async () => {
-    @Module({
-      imports: [
-        HttpModule.forRoot({
-          baseURL: 'https://first.test',
-          headers: { authorization: 'Bearer FIRST' },
-        }),
-      ],
-    })
-    class FirstModule {}
-
-    @Module({ imports: [HttpModule.forRoot({ baseURL: 'https://second.test' })] })
-    class SecondModule {}
-
-    @Module({ imports: [FirstModule, SecondModule] })
+  it('independent async HTTP registrations coexist without explicit keys', async () => {
+    const first = HttpModule.registerAsync({
+      useFactory: () => ({ baseURL: 'https://first.test' }),
+    });
+    const second = HttpModule.registerAsync({
+      useFactory: async () => ({ baseURL: 'https://second.test' }),
+    });
+    @Module({ imports: [first, second] })
     class App {}
-
-    await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
-      /HttpModule#\w+ was imported again with different options/,
-    );
-    // Under the default policy too: SecondModule's client must never send its
-    // requests to the first base URL with the first credentials.
-    await expect(VelaFactory.create(App)).rejects.toThrow(
-      /HttpModule#\w+ was imported again with different options.*own key/,
-    );
-
-    // A key per configuration keeps both clients.
-    @Module({
-      imports: [HttpModule.forRoot({ baseURL: 'https://second.test', key: 'second' })],
-    })
-    class KeyedSecondModule {}
-    @Module({ imports: [FirstModule, KeyedSecondModule] })
-    class KeyedApp {}
-    const app = await VelaFactory.create(KeyedApp, { diagnostics: 'throw' });
-    expect(app.getContainer().getOwnerModuleIds(HttpService)).toHaveLength(2);
-    await app.close();
+    const app = await VelaFactory.create(App, { diagnostics: 'throw' });
+    const owners = app.getContainer().getOwnerModuleIds(HttpService);
+    expect(owners).toHaveLength(2);
+    const options = owners.map((owner) => app.getContainer().resolve(HTTP_MODULE_OPTIONS, owner));
+    expect(options).toEqual([
+      { baseURL: 'https://first.test' },
+      { baseURL: 'https://second.test' },
+    ]);
+    await app.dispose();
   });
 
-  it('fails bootstrap on a second HttpModule configuration that also asks to be global', async () => {
-    const privateClient = HttpModule.forRoot({
+  it('rejects conflicting explicitly keyed HTTP registrations regardless of visibility', async () => {
+    const privateClient = HttpModule.register({
+      key: 'shared',
       baseURL: 'https://private.test',
       headers: { authorization: 'Bearer PRIVATE' },
     });
-    const publicClient = HttpModule.forRoot({ baseURL: 'https://public.test', isGlobal: true });
+    const publicClient = HttpModule.register({
+      key: 'shared',
+      baseURL: 'https://public.test',
+      isGlobal: true,
+    });
     // Either import order: the global flag never decides which client a feature gets.
     for (const [first, second] of [
       [privateClient, publicClient],
@@ -312,8 +288,12 @@ describe('Dynamic module identity', () => {
   });
 
   it('reports an HttpModule repeat that differs only in its global flag', async () => {
-    const local = HttpModule.forRoot({ baseURL: 'https://shared.test' });
-    const shared = HttpModule.forRoot({ baseURL: 'https://shared.test', isGlobal: true });
+    const local = HttpModule.register({ key: 'shared', baseURL: 'https://shared.test' });
+    const shared = HttpModule.register({
+      key: 'shared',
+      baseURL: 'https://shared.test',
+      isGlobal: true,
+    });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       for (const [first, second] of [
@@ -343,8 +323,8 @@ describe('Dynamic module identity', () => {
   // second configuration, never silently replaced by the class's defaults
   // -------------------------------------------------------------------------
   it('fails bootstrap on a configured HttpModule under the bare key, in either order', async () => {
-    const configured = HttpModule.forRoot({ key: 'default', baseURL: 'https://configured.test' });
-    const deferred = HttpModule.forRootAsync({
+    const configured = HttpModule.register({ key: 'default', baseURL: 'https://configured.test' });
+    const deferred = HttpModule.registerAsync({
       key: 'default',
       useFactory: () => ({ baseURL: 'https://configured.test' }),
     });
@@ -371,10 +351,10 @@ describe('Dynamic module identity', () => {
     }
   });
 
-  it('keeps an unconfigured HttpModule forRoot under the bare key as the bare import', async () => {
+  it('keeps an unconfigured HTTP registration under the bare key as the bare import', async () => {
     const cases: Array<Array<Type | DynamicModule>> = [
-      [HttpModule, HttpModule.forRoot({ key: 'default' })],
-      [HttpModule.forRoot({ key: 'default', baseURL: undefined }), HttpModule],
+      [HttpModule, HttpModule.register({ key: 'default' })],
+      [HttpModule.register({ key: 'default', baseURL: undefined }), HttpModule],
     ];
     for (const imports of cases) {
       @Module({ imports })
@@ -466,7 +446,7 @@ describe('Dynamic module identity', () => {
       constructor(@Inject(HTTP_MODULE_OPTIONS) public opts: { baseURL?: string }) {}
     }
 
-    const dyn: DynamicModule = HttpModule.forRoot({ baseURL: 'https://lazy.test' });
+    const dyn: DynamicModule = HttpModule.register({ baseURL: 'https://lazy.test' });
     @Module({ imports: [dyn], providers: [Consumer] })
     class App {}
 

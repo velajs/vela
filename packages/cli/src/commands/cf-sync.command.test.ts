@@ -30,7 +30,7 @@ class AppModule {}
 Module({
   imports: [
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' }),
+    QueueModule.forFeature([{ name: 'emails', binding: 'EMAILS' }]),
   ],
   providers: [Nightly, Emails],
 })(AppModule);

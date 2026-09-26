@@ -16,6 +16,9 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   provider and module overrides, `useMocker`, and the
   [testing package](../packages/testing/README.md) for HTTP, SSE and WebSockets.
 
+- [Module API migration](module-api-migration.md): registration signatures, instance
+  ownership, explicit guards and async configuration.
+- [Internationalization](i18n.md): application-owned messages, locale detection and ICU.
 - [Module authoring](modules.md): configurable modules, dependency injection,
   discovery, entrypoints, and lazy initialization.
 - [Runtime values and types](types.md): schema descriptors, request context,

@@ -170,6 +170,11 @@ guarded direct jobs (`scheduled-job-guards`) before deployment; see
 
 ## Signed dispatch
 
+`dispatch` is a runtime option: `ScheduleModule.forRootAsync({ inject,
+useFactory })` can derive it from application providers. Each application has
+one resolved policy, bound during startup. Conflicting policies fail startup,
+including policies returned by separately keyed async registrations.
+
 `ScheduleModule.forRoot({ dispatch: { kind: 'signed', target } })` makes every
 fired job re-enter a `@SignedInvocation()` route through `InternalDispatcher`
 instead of calling the method. The route runs the full request pipeline,

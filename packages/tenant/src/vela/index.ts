@@ -1,5 +1,4 @@
 import {
-  APP_GUARD,
   Inject,
   Injectable,
   InjectionToken,
@@ -85,15 +84,6 @@ export const TenantRequired = () => requirement('required');
 export const TenantOptional = () => requirement('optional');
 export const TenantIgnored = () => requirement('ignored');
 export interface TenantModuleOptions extends TenantServiceOptions {
-  /**
-   * `'global'` (default) installs `TenantGuard` as a global guard in the
-   * `tenant` phase: after authentication, before authorization, whatever the
-   * import order. It admits a tenant on every application route, including
-   * routes in modules that do not import this module; mark exceptions with
-   * `@TenantOptional()` or `@TenantIgnored()`. `'none'` leaves admission to
-   * `@UseGuards(TenantGuard)`. With `forRootAsync`, pass it beside the factory.
-   */
-  guard?: 'global' | 'none';
   selector?: TenantSelector;
   /** Non-HTTP transports supply verified credentials through their transport adapter. */
   resolve?: (
@@ -101,21 +91,13 @@ export interface TenantModuleOptions extends TenantServiceOptions {
   ) => TenantRunOptions | undefined | Promise<TenantRunOptions | undefined>;
 }
 const OPTIONS = new InjectionToken<TenantModuleOptions>('vela.tenant.options');
-const { ConfigurableModuleClass } = defineModule<TenantModuleOptions, 'guard'>({
+const { ConfigurableModuleClass } = defineModule<TenantModuleOptions>({
   name: 'Tenant',
   optionsToken: OPTIONS,
-  // `guard` shapes the module graph: `forRootAsync` takes it beside the factory.
-  structural: ['guard'],
-  defaults: { guard: 'global' },
-  setup: ({ OPTIONS, options }) => ({
+  setup: ({ OPTIONS }) => ({
     providers: [
-      // The installed guard answers to TenantGuard, so testing overrides reach it.
-      ...(installGuard(options.guard)
-        ? [
-            defineProvider(TenantGuard, { useClass: InstalledTenantGuard }),
-            defineProvider(APP_GUARD, { useExisting: TenantGuard }),
-          ]
-        : []),
+      // The exported guard retains this module's configuration when aliased by an application.
+      defineProvider(TenantGuard, { useClass: ConfiguredTenantGuard }),
       defineProvider(TENANT_SERVICE, {
         inject: [OPTIONS],
         useFactory: (options) => new TenantService(options),
@@ -125,18 +107,12 @@ const { ConfigurableModuleClass } = defineModule<TenantModuleOptions, 'guard'>({
         useFactory: () => new TenantScopeState(),
       }),
     ],
-    exports: [TENANT_SERVICE, TENANT_CONTEXT_READER, OPTIONS],
+    exports: [TENANT_SERVICE, TENANT_CONTEXT_READER, OPTIONS, TenantGuard],
   }),
 });
-function installGuard(guard: TenantModuleOptions['guard']): boolean {
-  if (guard !== undefined && guard !== 'global' && guard !== 'none') {
-    throw new TypeError("TenantModule guard must be 'global' or 'none'");
-  }
-  return guard !== 'none';
-}
 export class TenantModule extends ConfigurableModuleClass {}
-// The guards TenantModule installs globally, and the module each belongs to.
-const installedHosts = new WeakMap<TenantGuard, ModuleRef>();
+// Exported configured guards retain the module each belongs to.
+const configuredHosts = new WeakMap<TenantGuard, ModuleRef>();
 export class TenantGuard implements CanActivate {
   /** Global guards admit tenants after authentication and before authorization. */
   static readonly phase: GuardPhase = 'tenant';
@@ -159,10 +135,10 @@ export class TenantGuard implements CanActivate {
     let candidates = container.resolveAll(TENANT_SERVICE, moduleId);
     let options = container.resolveAll(OPTIONS, moduleId);
     let state = () => scopeState(container, moduleId);
-    // The globally installed guard covers every application route: where the
+    // A configured guard may cover every application route: where the
     // route's module does not import TenantModule, it admits through its own
     // module. A route-level TenantGuard there has no configuration and denies.
-    const host = installedHosts.get(this);
+    const host = configuredHosts.get(this);
     if (host && candidates.length === 0 && options.length === 0) {
       candidates = [await host.resolve(TENANT_SERVICE)];
       options = [await host.resolve(OPTIONS)];
@@ -230,16 +206,16 @@ export class TenantGuard implements CanActivate {
 // This package is authored without decorator syntax.
 Injectable()(TenantGuard);
 Inject(Reflector)(TenantGuard, undefined, 0);
-/** The instance `guard: 'global'` installs; it serves routes in every module. */
-class InstalledTenantGuard extends TenantGuard {
+/** The module-owned guard applications can alias through APP_GUARD. */
+class ConfiguredTenantGuard extends TenantGuard {
   constructor(reflector: Reflector, host: ModuleRef) {
     super(reflector);
-    installedHosts.set(this, host);
+    configuredHosts.set(this, host);
   }
 }
-Injectable()(InstalledTenantGuard);
-Inject(Reflector)(InstalledTenantGuard, undefined, 0);
-Inject(ModuleRef)(InstalledTenantGuard, undefined, 1);
+Injectable()(ConfiguredTenantGuard);
+Inject(Reflector)(ConfiguredTenantGuard, undefined, 0);
+Inject(ModuleRef)(ConfiguredTenantGuard, undefined, 1);
 export const CurrentTenant = createParamDecorator((_data: undefined, context: ExecutionContext) =>
   context.getContainer()?.resolve(TENANT_CONTEXT_READER, context.getModuleId()).requireTenant(),
 );

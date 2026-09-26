@@ -610,7 +610,7 @@ export interface AddToModuleOptions {
 
 /**
  * Add `entry` (source text such as `NotesController` or
- * `QueueModule.registerQueue({ name: 'emails' })`) to the `key` list of the
+ * `QueueModule.forFeature([{ name: 'emails' }])`) to the `key` list of the
  * file's `@Module()` metadata and import what it names. An entry already
  * listed, or any element `unless` matches, leaves the file unchanged.
  */

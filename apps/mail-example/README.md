@@ -27,7 +27,7 @@ registration; the root selects `cloudflareQueues()` once. The existing Worker
 host handles both email and queue events. No extra email host, processor, queue
 subscription adapter, or transport DI module is needed.
 
-`MailModule.forRootAsync` constructs `cloudflareEmailTransport({ binding: env.EMAIL })`
+`MailModule.registerAsync` constructs `cloudflareEmailTransport({ binding: env.EMAIL })`
 using the typed environment injected before provider construction. The transport
 maps messages to the transactional Email Service structured sending API, including
 To/CC/BCC, named addresses, both bodies, reply-to and allowed custom headers.

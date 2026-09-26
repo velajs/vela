@@ -13,7 +13,6 @@ BetterAuthModule.forRootAsync({ inject: [], useFactory: () => ({ auth: () => aut
 BetterAuthModule.forRootAsync({
   useFactory: () => ({ auth, issuer: 'accounts' }),
   basePath: '/auth',
-  guard: 'none',
 });
 BetterAuthModule.forRoot({ auth: () => auth, isGlobal: true });
 
@@ -32,3 +31,9 @@ BetterAuthModule.forRootAsync({
 BetterAuthModule.forRootAsync({ useFactory: () => auth });
 // @ts-expect-error The issuer is resolved by the factory, not passed at the call site.
 BetterAuthModule.forRootAsync({ issuer: 'accounts', useFactory: () => ({ auth }) });
+
+BetterAuthModule.forRoot({
+  auth,
+  // @ts-expect-error Applications install AuthGuard through APP_GUARD or UseGuards.
+  guard: 'global',
+});

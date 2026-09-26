@@ -2,6 +2,7 @@ import { defineProvider } from '../container/types';
 import type { DynamicModule } from '../module/types';
 import { Module } from '../module/decorators';
 import { defineModule } from '../module/define-module';
+import { attachModuleIdentity } from '../module/module-fingerprints';
 import { stableHash } from '../module/stable-hash';
 import { APP_MIDDLEWARE } from '../pipeline/tokens';
 import { I18nLocaleMiddleware } from './i18n.middleware';
@@ -10,27 +11,21 @@ import { I18nService } from './i18n.service';
 import { I18N_OPTIONS } from './i18n.tokens';
 import { MessageLoaderService } from './message-loader.service';
 import { MessageRegistry } from './message-registry';
+import { MessageContributionRecord, snapshotMessages } from './message-contribution';
 
 const { ConfigurableModuleClass } = defineModule<I18nModuleOptions>({
   name: 'I18n',
   optionsToken: I18N_OPTIONS,
 });
 
-// Empty marker module for `registerMessages`. The contribution is a side-effect
-// on the global MessageRegistry; this carries NO providers so it never
-// duplicates I18nModule's providers (which would trip vela's multi-instance
-// encapsulation → MultipleProvidersFoundError). New modules whose contribution
-// is providers (not an external registry) should use `sideEffectModule` from
-// the authoring kit; this predates it and keeps a shared-class identity so
-// identical message trees dedup as one module instance.
+// A separate owner contributes messages without duplicating I18n's services.
 @Module({})
 class I18nMessagesModule {}
 
 @Module({
   // Lazy: the merged-message snapshot (MessageLoaderService constructor) and
-  // locale middleware materialize on the first request that reaches them —
-  // message registration itself is import-time and unaffected. Safe because
-  // the route-build priority probe skips lazy-pending APP_MIDDLEWARE tokens.
+  // locale middleware materialize on the first request that reaches them.
+  // Imported feature records are already registered in this application's graph.
   lazy: true,
   providers: [
     MessageRegistry,
@@ -44,11 +39,23 @@ class I18nMessagesModule {}
 })
 export class I18nModule extends ConfigurableModuleClass {
   /**
-   * forFeature-style: contribute a message tree (`{ [locale]: { ...messages } }`).
-   * Contributions are collected statically at module-load and deep-merged.
+   * Contribute a message tree (`{ [locale]: { ...messages } }`) to this
+   * application's imported module graph. Later imports override earlier leaves;
+   * repeated identical imports contribute once, at their first position.
    */
-  static registerMessages(messages: Record<string, Record<string, unknown>>): DynamicModule {
-    MessageRegistry.addMessages(messages);
-    return { module: I18nMessagesModule, key: `messages:${stableHash(messages)}`, providers: [] };
+  static forFeature(messages: Record<string, Record<string, unknown>>): DynamicModule {
+    const snapshot = snapshotMessages(messages);
+    return attachModuleIdentity(
+      {
+        module: I18nMessagesModule,
+        key: `messages:${stableHash(snapshot)}`,
+        providers: [
+          defineProvider(MessageContributionRecord, {
+            useValue: new MessageContributionRecord(snapshot),
+          }),
+        ],
+      },
+      { messages: snapshot },
+    );
   }
 }

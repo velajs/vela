@@ -8,24 +8,23 @@ import {
   type Token,
   type Type,
 } from '@velajs/vela';
-import { Container, referenceKey } from '@velajs/vela/module-kit';
+import { Container } from '@velajs/vela/module-kit';
 import { QueueModule } from '@velajs/vela/queue';
-import { snapshotInboundGate, type MailInboundGate } from './inbound/gate';
-import { assertUniqueMailQueues, MAIL_QUEUE_REGISTRATION } from './mail.configuration';
+import type { MailInboundGate } from './inbound/gate';
+import {
+  assertUniqueMailQueues,
+  MAIL_QUEUE_REGISTRATION,
+  MailInboundGateRegistration,
+} from './mail.configuration';
 import { type MailLimits, resolveMailLimits } from './limits';
 import { MailService } from './mail.service';
 import { createMailSendProcessor } from './mail.processor';
-import {
-  MAIL_INBOUND_GATE,
-  MAIL_OPTIONS,
-  MAIL_QUEUE,
-  type ResolvedMailOptions,
-} from './mail.tokens';
+import { MAIL_OPTIONS, MAIL_QUEUE, type ResolvedMailOptions } from './mail.tokens';
 import type { AddressInput, MailTransport, RenderSeam } from './types';
 
 /**
  * The queue `MailService.queue()` sends through. The mailer registers it with
- * `QueueModule.registerQueue({ name, binding, consumer })`, so the application
+ * `QueueModule.forFeature([{ name, binding, consumer }])`, so the application
  * only imports `QueueModule.forRoot({ driver })`.
  */
 export interface MailQueueOptions {
@@ -33,7 +32,7 @@ export interface MailQueueOptions {
   name?: string;
   /** Producer binding the driver sends through, such as a Wrangler `queues.producers[].binding`. */
   binding?: string;
-  /** Physical queue to pin the queue to, as `QueueModule.registerQueue({ consumer })` does. */
+  /** Physical queue to pin the queue to, as `QueueModule.forFeature([{ consumer }])` does. */
   consumer?: string;
 }
 
@@ -49,24 +48,22 @@ export interface MailModuleOptions {
   render?: RenderSeam;
   /**
    * Enable the queue-backed send path. Structural: pass it alongside the
-   * factory for `forRootAsync`. The mailer registers the queue (`name`
+   * factory for `registerAsync`. The mailer registers the queue (`name`
    * defaults to `'mail'`) and its consumer; the application imports
    * `QueueModule.forRoot({ driver })` once.
    */
   queue?: MailQueueOptions;
   /**
-   * App-level inbound gate. When a custom `gate` is given it is globalized (the
-   * `SCHEDULE_DISPATCH` pattern) so the cross-module inbound dispatcher reads
-   * it; absent ⇒ the dispatcher's fail-closed default (`{ require: ['dmarc'] }`).
-   * Structural.
+   * Application-wide inbound gate, resolved through DI and discovered by the
+   * inbound dispatcher. Absent uses the fail-closed DMARC default.
    */
   inbound?: { gate?: MailInboundGate };
   /** Outbound and queue-boundary resource ceilings. */
   limits?: Partial<MailLimits>;
 }
 
-/** The options `forRootAsync` takes alongside its factory: they shape the module graph. */
-export type MailStructuralOption = 'queue' | 'inbound';
+/** The options `registerAsync` takes alongside its factory: they shape the module graph. */
+export type MailStructuralOption = 'queue';
 
 /** Options an async factory resolves; structural contributions stay at the call site. */
 export type MailModuleFactoryOptions = ModuleFactoryOptions<
@@ -97,33 +94,16 @@ function resolveMailOptions(o: MailModuleOptions): ResolvedMailOptions {
   return out;
 }
 
-/**
- * Dedicated global host for a custom inbound gate — mirrors
- * `ScheduleDispatchHost` so only the gate token globalizes (a dynamic module's
- * `global: true` globalizes ALL its exports). Undecorated on purpose: the loader
- * auto-registers empty metadata for a class used only as a dynamic module's
- * `module`.
- */
-class MailInboundGateHost {}
-
-/**
- * One host per gate object: a different gate (or policy) is a second owner of
- * the global `MAIL_INBOUND_GATE`, which inbound dispatch refuses, while
- * importing the same gate again deduplicates.
- */
-function gateHost(gate: MailInboundGate): DynamicModule {
-  return {
-    module: MailInboundGateHost,
-    key: `mail-gate:${referenceKey(gate, gate.policy)}`,
-    providers: [defineProvider(MAIL_INBOUND_GATE, { useValue: snapshotInboundGate(gate) })],
-    exports: [MAIL_INBOUND_GATE],
-    global: true,
-  };
-}
-
-const { ConfigurableModuleClass } = defineModule<MailModuleOptions, MailStructuralOption>({
+const { ConfigurableModuleClass } = defineModule<
+  MailModuleOptions,
+  MailStructuralOption,
+  { isGlobal?: boolean },
+  'register'
+>({
   name: 'Mail',
-  structural: ['queue', 'inbound'],
+  methodName: 'register',
+  identity: 'registration',
+  structural: ['queue'],
   setup: ({ OPTIONS, options }) => {
     const providers: Array<Type | ProviderDefinition> = [
       defineProvider(MAIL_OPTIONS, {
@@ -132,6 +112,10 @@ const { ConfigurableModuleClass } = defineModule<MailModuleOptions, MailStructur
           return resolveMailOptions(o);
         },
         inject: [OPTIONS, Container],
+      }),
+      defineProvider(MailInboundGateRegistration, {
+        inject: [OPTIONS],
+        useFactory: (resolved) => new MailInboundGateRegistration(resolved.inbound?.gate),
       }),
       MailService,
     ];
@@ -146,16 +130,15 @@ const { ConfigurableModuleClass } = defineModule<MailModuleOptions, MailStructur
         createMailSendProcessor(queueName),
       );
       imports.push(
-        QueueModule.registerQueue({
-          name: queueName,
-          ...(binding === undefined ? {} : { binding }),
-          ...(consumer === undefined ? {} : { consumer }),
-        }),
+        QueueModule.forFeature([
+          {
+            name: queueName,
+            ...(binding === undefined ? {} : { binding }),
+            ...(consumer === undefined ? {} : { consumer }),
+          },
+        ]),
       );
     }
-
-    const customGate = options.inbound?.gate;
-    if (customGate !== undefined) imports.push(gateHost(customGate));
 
     const moduleExports: Token[] = [MailService, MAIL_OPTIONS];
     return { providers, exports: moduleExports, imports };
@@ -164,13 +147,14 @@ const { ConfigurableModuleClass } = defineModule<MailModuleOptions, MailStructur
 
 /**
  * The Vela mail module. Provides `MailService` (the injectable producer) and,
- * when `queue` is set, registers that queue with `QueueModule.registerQueue`
+ * when `queue` is set, registers that queue with `QueueModule.forFeature`
  * and its `mail:send` consumer so the vela queue dispatcher picks it up.
  * Compose a transport by passing `transport` directly or by importing a
  * transport module (which provides {@link MAIL_TRANSPORT}) before this one.
  *
- * `queue` and `inbound` are structural: `forRootAsync` takes them alongside
- * its factory, which returns the rest. A second mailer in one application
- * needs its own `key`; the same key with different options fails bootstrap.
+ * `queue` is structural; `registerAsync` takes it beside its factory. The
+ * factory returns outbound settings and the inbound gate. Each call owns a
+ * mailer; reuse the returned module to share it. Explicit keys remain available
+ * and reject conflicting options. Distinct mailers need distinct queue names.
  */
 export class MailModule extends ConfigurableModuleClass {}

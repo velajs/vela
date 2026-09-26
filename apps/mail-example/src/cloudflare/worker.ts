@@ -32,7 +32,7 @@ class SupportInbox {
 @Module({
   imports: [
     QueueModule.forRoot({ driver: cloudflareQueues() }),
-    MailModule.forRootAsync({
+    MailModule.registerAsync({
       inject: [ENV],
       useFactory: (env) => ({
         from: env.MAIL_FROM,

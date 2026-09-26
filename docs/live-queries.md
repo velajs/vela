@@ -203,6 +203,11 @@ Mutation responses expose `Vela-Commit-Cursor` / `Vela-Commit-Epoch` (automatic 
 
 The module ships a preset: `{ t: 'presence' }` heartbeat frames update the roster of one gateway room (the gateway's path and the room id, so gateways whose rooms share an id keep separate rosters); `$presence.roster` is a built-in live query; socket close departs immediately (TTL only covers ungraceful drops, filtered at read time — no timers). A roster's invalidation tag is `presenceTag(gatewayPath, room)`: `$presence:` and the SHA-256 hex digest of the JSON `[gatewayPath, room]`, so any valid room id (up to 512 bytes) fits the 256-byte tag bound on any gateway path. A heartbeat's invalidation that the driver fails to deliver reaches the application's error reporter. Client side: `createPresence(client, { room, meta })` or React's `usePresence(room, { meta })`. Disable with `LiveModule.forRoot({ presence: false })`.
 
+`presence` is a structural boolean and defaults to `true`. Configure expiry with
+`presenceOptions: { ttlMs: 30_000 }`; this runtime option can also come from the
+`useFactory` in `LiveModule.forRootAsync(...)`. Place `presence: false` beside
+`useFactory` when the application should omit the built-in resolver.
+
 Defaults are 100 subscriptions per socket, 100 tags per subscription or
 invalidation, 10,000 refreshes per drain pass, and 4 KiB of presence metadata.
 All may be lowered; the first three have explicit bounded module options.

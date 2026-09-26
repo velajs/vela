@@ -1,10 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Module, Controller, Get, Inject } from '../index.js';
-import { I18nModule, I18nService, MessageRegistry } from '../i18n/index.js';
-
-beforeEach(() => {
-  MessageRegistry.reset();
-});
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Module, Controller, Get, Inject, type ModuleImport } from '../index.js';
+import { I18nModule, I18nService, MessageLoaderService } from '../i18n/index.js';
 
 const messages = {
   en: {
@@ -30,7 +26,7 @@ describe('I18nModule', () => {
     @Module({
       imports: [
         I18nModule.forRoot({ defaultLocale: 'en', locales: ['en', 'fr'] }),
-        I18nModule.registerMessages(messages),
+        I18nModule.forFeature(messages),
       ],
       controllers: [HiController],
     })
@@ -59,7 +55,7 @@ describe('I18nModule', () => {
     @Module({
       imports: [
         I18nModule.forRoot({ defaultLocale: 'en', locales: ['en', 'fr'] }),
-        I18nModule.registerMessages(messages),
+        I18nModule.forFeature(messages),
       ],
       controllers: [TController],
     })
@@ -84,7 +80,7 @@ describe('I18nModule', () => {
     }
 
     @Module({
-      imports: [I18nModule.forRoot({ locales: ['en'] }), I18nModule.registerMessages(messages)],
+      imports: [I18nModule.forRoot({ locales: ['en'] }), I18nModule.forFeature(messages)],
       controllers: [NController],
     })
     class AppModule {}
@@ -111,7 +107,7 @@ describe('I18nModule', () => {
     @Module({
       imports: [
         I18nModule.forRoot({ defaultLocale: 'en', fallbackLocale: 'en', locales: ['en', 'fr'] }),
-        I18nModule.registerMessages(messages),
+        I18nModule.forFeature(messages),
       ],
       controllers: [FbController],
     })
@@ -135,7 +131,7 @@ describe('I18nModule', () => {
     @Module({
       imports: [
         I18nModule.forRoot({ defaultLocale: 'en', locales: ['en', 'fr'] }),
-        I18nModule.registerMessages(messages),
+        I18nModule.forFeature(messages),
       ],
       controllers: [AlController],
     })
@@ -170,7 +166,7 @@ describe('I18nModule', () => {
           locales: ['en', 'fr'],
           detection: { strategy: 'cookie' },
         }),
-        I18nModule.registerMessages(messages),
+        I18nModule.forFeature(messages),
       ],
       controllers: [CkController],
     })
@@ -180,5 +176,124 @@ describe('I18nModule', () => {
     const res = await app.getHonoApp().request('/ck', { headers: { cookie: 'locale=%' } });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ locale: 'en' });
+  });
+});
+
+function messageApplication(...imports: ModuleImport[]) {
+  @Module({ imports: [I18nModule.forRoot({ locales: ['en', 'fr'] }), ...imports] })
+  class Application {}
+  return VelaFactory.create(Application);
+}
+
+describe('I18nModule feature ownership', () => {
+  it.each([false, true])(
+    'isolates applications regardless of first-read order (reverse: %s)',
+    async (reverse) => {
+      const first = I18nModule.forFeature({ en: { greeting: 'first' } });
+      const second = I18nModule.forFeature({ en: { greeting: 'second' } });
+      const apps = await Promise.all([messageApplication(first), messageApplication(second)]);
+      try {
+        for (const index of reverse ? [1, 0] : [0, 1]) {
+          const loader = apps[index]!.get(MessageLoaderService);
+          expect(loader.translate('en', 'greeting')).toBe(index === 0 ? 'first' : 'second');
+        }
+        expect(apps[0]!.get(MessageLoaderService)).not.toBe(apps[1]!.get(MessageLoaderService));
+      } finally {
+        await Promise.all(apps.map((app) => app.close()));
+      }
+    },
+  );
+
+  it('ignores contributions whose returned module is never imported', async () => {
+    I18nModule.forFeature({ en: { greeting: 'unimported', private: 'unimported' } });
+    const app = await messageApplication(I18nModule.forFeature({ en: { greeting: 'imported' } }));
+    try {
+      const loader = app.get(MessageLoaderService);
+      expect(loader.translate('en', 'greeting')).toBe('imported');
+      expect(loader.translate('en', 'private')).toBe('private');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('deep-merges in import order and deduplicates repeated contributions at their first position', async () => {
+    // Declaration order is deliberately the opposite of module import order.
+    const overrides = I18nModule.forFeature({ en: { section: { title: 'override' } } });
+    const defaults = I18nModule.forFeature({
+      en: { section: { title: 'default', description: 'description' } },
+      fr: { section: { title: 'français' } },
+    });
+    @Module({ imports: [defaults] })
+    class FirstFeature {}
+    @Module({ imports: [overrides, defaults] })
+    class SecondFeature {}
+    const app = await messageApplication(
+      FirstFeature,
+      SecondFeature,
+      I18nModule.forFeature({
+        fr: { section: { title: 'français' } },
+        en: { section: { description: 'description', title: 'default' } },
+      }),
+    );
+    try {
+      const loader = app.get(MessageLoaderService);
+      expect(loader.translate('en', 'section.title')).toBe('override');
+      expect(loader.translate('en', 'section.description')).toBe('description');
+      expect(loader.translate('fr', 'section.title')).toBe('français');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('snapshots caller-owned message values before bootstrap and lazy compilation', async () => {
+    const source = { en: { section: { title: 'original' }, values: [1, null, 3] } };
+    const feature = I18nModule.forFeature(source);
+    source.en.section.title = 'changed before bootstrap';
+    source.en.values.push(4);
+    const app = await messageApplication(feature);
+    try {
+      source.en.section.title = 'changed before first read';
+      const loader = app.get(MessageLoaderService);
+      expect(loader.translate('en', 'section.title')).toBe('original');
+      expect(loader.translate('en', 'values')).toBe('1,,3');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps message keys that also name object prototype properties', async () => {
+    const app = await messageApplication(
+      I18nModule.forFeature({
+        en: {
+          ['__proto__']: { title: 'prototype message' },
+          constructor: { title: 'constructor message' },
+        },
+      }),
+    );
+    try {
+      const loader = app.get(MessageLoaderService);
+      expect(loader.translate('en', '__proto__.title')).toBe('prototype message');
+      expect(loader.translate('en', 'constructor.title')).toBe('constructor message');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reuses a feature declaration across applications without retaining another application’s messages', async () => {
+    const shared = I18nModule.forFeature({ en: { greeting: 'shared' } });
+    const first = await messageApplication(
+      shared,
+      I18nModule.forFeature({ en: { greeting: 'first', private: 'first only' } }),
+    );
+    expect(first.get(MessageLoaderService).translate('en', 'greeting')).toBe('first');
+    await first.close();
+    const second = await messageApplication(shared);
+    try {
+      const loader = second.get(MessageLoaderService);
+      expect(loader.translate('en', 'greeting')).toBe('shared');
+      expect(loader.translate('en', 'private')).toBe('private');
+    } finally {
+      await second.close();
+    }
   });
 });

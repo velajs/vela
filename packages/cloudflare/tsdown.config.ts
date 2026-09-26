@@ -14,10 +14,11 @@ const shared: UserConfig = {
     'src/testing.ts',
     'src/tracing.ts',
     'src/workflows.ts',
+    'src/workflow-definitions.ts',
   ],
   format: ['esm'],
   platform: 'neutral',
-  external: ['cloudflare:workers', 'cloudflare:test'],
+  external: ['cloudflare:workers', 'cloudflare:workflows', 'cloudflare:test'],
   target: 'es2024',
   fixedExtension: false,
 };
@@ -40,6 +41,9 @@ export default defineConfig([
   {
     ...shared,
     dts: { emitDtsOnly: true },
+    // Root-exported flag drivers retain the exact optional integration contract
+    // without requiring that package merely to type-check a Cloudflare import.
+    deps: { dts: { alwaysBundle: ['@velajs/feature-flags'] } },
     clean: false,
   },
 ]);

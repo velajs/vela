@@ -65,6 +65,7 @@ If a route is named (`@Get(path, { name })`), that name becomes the OpenAPI `ope
 `app.mountOpenApi(options)` serves the JSON spec and one or more UIs:
 
 ```ts
+const document = createOpenApiDocument(AppModule);
 app.mountOpenApi({ document, specPath: '/openapi.json' });        // default UI: Scalar at /scalar
 app.mountOpenApi({ document, ui: 'swagger' });                   // Swagger UI at /docs
 app.mountOpenApi({ document, ui: 'all' });                       // swagger + scalar + redoc

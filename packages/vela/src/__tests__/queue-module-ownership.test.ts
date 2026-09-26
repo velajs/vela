@@ -72,7 +72,7 @@ describe('queue entrypoint module ownership and lifetime', () => {
     @Module({
       imports: [
         QueueModule.forRoot({ driver }),
-        QueueModule.registerQueue({ name: 'owners' }),
+        QueueModule.forFeature([{ name: 'owners' }]),
         ...['a', 'b'].map((key) => ({
           module: Feature,
           key,

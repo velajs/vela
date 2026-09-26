@@ -315,7 +315,9 @@ describe('Gateways', () => {
     const transport: WebSocketTransport = {
       forwardUpgrade: async () => new Response('forwarded'),
     };
-    const app = await makeApp([transportAdapter(transport)], { sync: recordingBus(commands) });
+    const app = await makeApp([transportAdapter(transport)], {
+      sync: () => recordingBus(commands),
+    });
     try {
       // The bus may reach the isolate the upgrade was forwarded to: both push
       // paths hand it the command instead of refusing.

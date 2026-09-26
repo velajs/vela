@@ -666,7 +666,7 @@ describe('queue ops (@velajs/studio/queue)', () => {
   function queueApp(editable: Partial<StudioModuleOptions['editable']> = {}) {
     return makeApp({ editable: { ops: true, ...editable }, plugins: [queuesPanel()] }, [
       QueueModule.forRoot(),
-      QueueModule.registerQueue({ name: 'email' }, { name: 'audit' }),
+      QueueModule.forFeature([{ name: 'email' }, { name: 'audit' }]),
       EmailProcessorModule,
     ]);
   }

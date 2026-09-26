@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ExecutionContext } from 'hono';
-import { Controller, Get, Ip, Module, VelaFactory, type VelaEnv } from '@velajs/vela';
-import { ThrottlerModule } from '@velajs/vela/throttler';
+import { APP_GUARD, Controller, Get, Ip, Module, VelaFactory, type VelaEnv } from '@velajs/vela';
+import { ThrottlerGuard, ThrottlerModule } from '@velajs/vela/throttler';
 import {
   cloudflareAdapter,
   createCloudflareApp,
@@ -157,6 +157,7 @@ describe('createCloudflareApp options', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
       imports: [ThrottlerModule.forRoot({ throttlers: [{ limit: 1, ttl: 60_000 }] })],
       controllers: [LimitedController],
     })

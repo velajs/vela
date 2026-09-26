@@ -10,7 +10,7 @@ import type { QueueRegistry } from './queue.registry';
 export interface QueueJob<T = unknown> {
   id: string;
   /**
-   * Logical queue the job was added to: the `QueueModule.registerQueue({ name })`
+   * Logical queue the job was added to: the `QueueModule.forFeature([{ name }])`
    * its client belongs to. Native delivery routes a job by this name.
    */
   queue: string;
@@ -81,7 +81,7 @@ export interface QueueDriverEntrypoint {
 export interface QueueDriverContext {
   /** The application's `ENV`, when a runtime seeded one (the Worker environment on Cloudflare). */
   readonly env: VelaEnv | undefined;
-  /** The queues this application registered with `QueueModule.registerQueue`. */
+  /** The queues this application registered with `QueueModule.forFeature`. */
   readonly queues: QueueRegistry;
 }
 
@@ -89,7 +89,7 @@ export interface QueueDriverContext {
 export type QueueDriverFactory = (context: QueueDriverContext) => QueueDriver;
 
 /**
- * One `QueueModule.registerQueue` entry. `name` is the logical queue: the
+ * One `QueueModule.forFeature` entry. `name` is the logical queue: the
  * `@InjectQueue(name)` client, the `@Processor(name)` handlers and every
  * job's `queue`.
  */

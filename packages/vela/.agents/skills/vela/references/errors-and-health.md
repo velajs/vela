@@ -65,7 +65,7 @@ Filters run closest-first (handler → controller → global) — see `pipeline.
 
 ## Health checks — `HealthModule`
 
-Import `HealthModule` bare or through `HealthModule.forRoot()` (no options; both forms are one instance) and write your own endpoint injecting `HealthCheckService` + `HealthIndicatorService`:
+Import `HealthModule` directly (no configuration methods) and write your own endpoint injecting `HealthCheckService` + `HealthIndicatorService`:
 
 ```ts
 import { HealthModule, HealthCheckService, HealthIndicatorService } from '@velajs/vela/health';
@@ -90,10 +90,11 @@ class HealthController {
 
 ## Throttling — `ThrottlerModule`
 
-Nest v5 named throttlers. `ThrottlerModule.forRoot({ throttlers: [{ name?, ttl, limit }, ...], storage? })` registers a global rate-limit guard (`APP_GUARD`) — importing it throttles all routes, counting every request once per throttler, each in its own bucket:
+Nest v5 named throttlers. `ThrottlerModule.forRoot({ throttlers: [{ name?, ttl, limit }, ...], storage? })` exports `ThrottlerGuard`. Attach it with an application alias to count requests once per throttler, each in its own bucket:
 
 ```ts
-import { ThrottlerModule, Throttle, SkipThrottle } from '@velajs/vela/throttler';
+import { APP_GUARD } from '@velajs/vela';
+import { ThrottlerGuard, ThrottlerModule, Throttle, SkipThrottle } from '@velajs/vela/throttler';
 
 @Module({
   imports: [
@@ -104,6 +105,7 @@ import { ThrottlerModule, Throttle, SkipThrottle } from '@velajs/vela/throttler'
       ],
     }),
   ],
+  providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
 })
 class AppModule {}
 
@@ -126,8 +128,8 @@ A throttler without `name` is `'default'`; `@SkipThrottle()` skips `'default'` o
 `CacheModule` is the one cache module, asynchronous end to end. `namespace` and a trusted `scope(context)` resolver are required; `store` defaults to a per-application `MemoryCacheStore` (`max` entries, default 1000):
 
 ```ts
-import { Body, Controller, Get, Module, Post } from '@velajs/vela';
-import { CacheModule, CacheResponse, CacheService, MemoryCacheInvalidationStore } from '@velajs/vela/cache';
+import { APP_INTERCEPTOR, Body, Controller, Get, Module, Post } from '@velajs/vela';
+import { CacheInterceptor, CacheModule, CacheResponse, CacheService, MemoryCacheInvalidationStore } from '@velajs/vela/cache';
 
 @Module({
   imports: [
@@ -138,6 +140,7 @@ import { CacheModule, CacheResponse, CacheService, MemoryCacheInvalidationStore 
       ttl: 30,                                          // seconds, default 30
     }),
   ],
+  providers: [{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }],
 })
 class AppModule {}
 
@@ -161,11 +164,11 @@ class ReportsController {
 }
 ```
 
-`CacheModuleOptions`: `namespace`, `scope`, `store?` (a `CacheStore`, sync or async, or `(env) => CacheStore`), `invalidation?` (a `CacheInvalidationStore` or `(env) => …`), `ttl?`, `max?`, `maxBytes?`, `shouldCache?`, `onError?`. On Workers use `store: kvCache({ binding: 'CACHE' })` and `invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' })` from `@velajs/cloudflare`: each reads its namespace from the application's `ENV` when used. Configure one `CacheModule` per application (`forRoot` or `forRootAsync`); it installs its interceptor automatically, and scopes return `{ visibility: 'public' | 'private', partition }` from trusted identity/tenant data. Guards authorize every hit; public scopes bypass credentialed requests.
+`CacheModuleOptions`: `namespace`, `scope`, `store?` (a `CacheStore`, sync or async, or `(env) => CacheStore`), `invalidation?` (a `CacheInvalidationStore` or `(env) => …`), `ttl?`, `max?`, `maxBytes?`, `shouldCache?`, `onError?`. On Workers use `store: kvCache({ binding: 'CACHE' })` and `invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' })` from `@velajs/cloudflare`: each reads its namespace from the application's `ENV` when used. Configure one `CacheModule` per application (`forRoot` or `forRootAsync`); attach its exported interceptor using `{ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor }` or `@UseInterceptors(CacheInterceptor)`, and scopes return `{ visibility: 'public' | 'private', partition }` from trusted identity/tenant data. Guards authorize every hit; public scopes bypass credentialed requests.
 
 Inject `CacheService` and obtain `cache.scope(trustedScope)` for async `get`, `getParsed`, `set`, `remember`, `invalidateKey`, `invalidateTags`, and `invalidateAll`. Tags and whole-scope invalidation reach routes and custom values in that partition only. Invalidate after a successful commit. Invalidation resolves `{ ok: true }` or `{ ok: false, reason }`, so cache failures do not report a committed write as failed. Tags require a `CacheInvalidationStore`; `MemoryCacheInvalidationStore` is process-local, and the KV one is eventually consistent.
 
-A route entry is the bounded JSON or text response the route sent (after interceptors and its `response` schema), replayed on a hit without running the handler; interceptors outside the cache receive the replayed `Response`, and what they did for the request that stored it is replayed to every request in the scope, so partition the scope by everything any interceptor or the handler varies the response on (role, locale, viewer). `shouldCache` receives the sent body, JSON-decoded. A fallback an interceptor outside `CacheInterceptor` sends when the call inside it fails or is still pending (error recovery, timeout default) is never cached; a fallback an interceptor inside it (controller, method, or a global one registered after `CacheModule`'s) returns for a failed handler is that call's result and is cached. Handler-returned `Response`s, streams, cookie-setting output and authentication secrets are never cached. Generation stamps fence old fills, and absolute expiry prevents stale replay. `TieredCacheStore` promotes only known-expiry entries into destinations implementing `CacheEntryWriter`, preserving their absolute deadline. KV generations require a dedicated namespace without expiry/reset; successful KV invalidation is not a global read-after-write guarantee. See `docs/caching.md` in the repository for the complete contract.
+A route entry is the bounded JSON or text response the route sent (after interceptors and its `response` schema), replayed on a hit without running the handler; interceptors outside the cache receive the replayed `Response`, and what they did for the request that stored it is replayed to every request in the scope, so partition the scope by everything any interceptor or the handler varies the response on (role, locale, viewer). `shouldCache` receives the sent body, JSON-decoded. A fallback an interceptor outside `CacheInterceptor` sends when the call inside it fails or is still pending (error recovery, timeout default) is never cached; a fallback an interceptor inside it (controller, method, or a global one registered after the `CacheInterceptor` alias) returns for a failed handler is that call's result and is cached. Handler-returned `Response`s, streams, cookie-setting output and authentication secrets are never cached. Generation stamps fence old fills, and absolute expiry prevents stale replay. `TieredCacheStore` promotes only known-expiry entries into destinations implementing `CacheEntryWriter`, preserving their absolute deadline. KV generations require a dedicated namespace without expiry/reset; successful KV invalidation is not a global read-after-write guarantee. See `docs/caching.md` in the repository for the complete contract.
 
 
 ## Application-owned structured logging
@@ -174,7 +177,7 @@ Optional tracing and metrics live in `@velajs/vela/observability`. Install
 `observabilityAdapter({ telemetry })` with application-owned recorders; defaults
 are inert and do not create exporters. `getRequestTelemetry(requestContext)`
 provides explicit invocation-local state. `createHttpClientTelemetryObserver`
-connects to `HttpModule.forRoot({ observer })`; `createExecutionTelemetryObserver`
+connects to `HttpModule.register({ observer })`; `createExecutionTelemetryObserver`
 is structurally usable by optional execution integrations. SDK setup and flushing
 remain application-owned. See `docs/observability.md` for the complete contracts.
 

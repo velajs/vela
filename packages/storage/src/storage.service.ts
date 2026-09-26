@@ -58,7 +58,7 @@ export interface StorageServiceOptions {
  * single-object operations so `service.upload(...)` works without reaching
  * through `.storage`.
  *
- * For multiple buckets, register `StorageModule.forRoot({ name })` per bucket
+ * For multiple buckets, register `StorageModule.register({ name })` per bucket
  * and inject with `@InjectStorage(name)`.
  */
 @Injectable()

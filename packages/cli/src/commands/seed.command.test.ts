@@ -97,7 +97,7 @@ describe('seeder application lifetime', () => {
         calls.push('next');
       }
     }
-    @Module({ imports: [SeederModule.forRoot({ seeders: [Failing, Next] })] })
+    @Module({ imports: [SeederModule.forFeature([Failing, Next])] })
     class Root {}
     for (const args of [[], ['--continue-on-error']]) {
       calls.length = 0;

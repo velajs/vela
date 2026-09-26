@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Controller, Get, Module, type Type } from '@velajs/vela';
-import { Throttle, ThrottlerModule, type ThrottlerModuleOptions } from '@velajs/vela/throttler';
+import { APP_GUARD, Controller, Get, Module, type Type } from '@velajs/vela';
+import {
+  ThrottlerGuard,
+  Throttle,
+  ThrottlerModule,
+  type ThrottlerModuleOptions,
+} from '@velajs/vela/throttler';
 import { createCloudflareApp, rateLimitStore } from '../index';
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} };
@@ -86,7 +91,11 @@ describe('rateLimitStore({ binding })', () => {
       }
     }
     const bootstrap = (options: ThrottlerModuleOptions, env: Record<string, unknown>) => {
-      @Module({ imports: [ThrottlerModule.forRoot(options)], controllers: [Limited] })
+      @Module({
+        providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
+        imports: [ThrottlerModule.forRoot(options)],
+        controllers: [Limited],
+      })
       class App {}
       return createCloudflareApp(App, { env });
     };
@@ -141,6 +150,7 @@ describe('rateLimitStore({ binding })', () => {
   it('backs a static ThrottlerModule with each application ENV', async () => {
     const limited = (controller: Type) => {
       @Module({
+        providers: [{ provide: APP_GUARD, useExisting: ThrottlerGuard }],
         imports: [
           ThrottlerModule.forRoot({
             throttlers: [{ ttl: 60_000, limit: 100 }],

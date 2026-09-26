@@ -23,6 +23,7 @@
     "src/__tests__/workers/testing-runtime.test.ts",
     "src/__tests__/workers/durable-object-host-runtime.test.ts",
     "src/__tests__/workers/workflow-runtime.test.ts",
+    "src/__tests__/workers/workflow-definition-runtime.test.ts",
     "src/__tests__/workers/service-rpc-runtime.test.ts",
     "src/__tests__/workers/tracing-runtime.test.ts",
     "src/__tests__/workers/email-tail-runtime.test.ts"

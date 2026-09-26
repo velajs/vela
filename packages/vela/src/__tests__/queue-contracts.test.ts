@@ -44,7 +44,7 @@ describe('validated queue contracts', () => {
     }
     const driver = inline({ mode: 'manual' });
     @Module({
-      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'jobs' })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'jobs' }])],
       providers: [Consumer],
     })
     class App {}
@@ -178,7 +178,7 @@ it('runs an async Zod transform once per producer and consumer boundary', async 
   }
   const driver = inline({ mode: 'manual' });
   @Module({
-    imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'transform' })],
+    imports: [QueueModule.forRoot({ driver }), QueueModule.forFeature([{ name: 'transform' }])],
     providers: [Consumer],
   })
   class App {}

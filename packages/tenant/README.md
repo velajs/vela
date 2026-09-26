@@ -32,24 +32,19 @@ principal. Construct services and stores per application/environment.
 
 Import `TenantModule`, `TenantGuard`, `TenantRequired`, `TenantOptional`,
 `TenantIgnored`, `CurrentTenant`, and `TENANT_CONTEXT_READER` from `/vela`.
-Register `TenantModule.forRoot({ lookup, authorize })` (or `forRootAsync`). It installs
-`TenantGuard` as a global guard in the `tenant` phase: after global authentication and
-before authorization, whatever the import order. It admits a tenant on every application route,
-including routes in modules that do not import `TenantModule`, which admit through the
-installing module, and whether or not it is registered with `isGlobal`. Mark tenant-free
-routes with `@TenantIgnored()` or `@TenantOptional()`. An integration package's own
-controller (the Better Auth handler, a storage controller) opts out with
-`SkipGuardPhases(['tenant'])` from `@velajs/vela/module-kit`, which skips the
-`TenantGuard` because it declares `static readonly skippable = true`. Pass `guard: 'none'`
-(beside the factory for `forRootAsync`) to apply `@UseGuards(TenantGuard)` after a
-route-level authentication guard instead; a route-level `TenantGuard` in a module that
-cannot see `TenantModule` answers 403. Each `guard: 'global'` registration installs its
-own global `TenantGuard`, including each keyed instance (`forRoot({ key, ... })`), and
-every installed guard runs on every application route. The installed guard admits
-through the `TenantModule` the route's module sees, so one global installation serves
-every module: when several modules register their own configuration, give each
-registration its own `key`, keep `guard: 'global'` on one and pass `guard: 'none'` on
-the others. Required is the guard's default;
+Register `TenantModule.forRoot({ lookup, authorize })` (or `forRootAsync`), then
+attach its exported guard with `{ provide: APP_GUARD, useExisting: TenantGuard }`
+or `@UseGuards(TenantGuard)`. Global aliases run in the `tenant` phase after
+authentication and before authorization. The configured guard retains its module's
+configuration even for routes outside that module; request-scoped dependencies
+resolve in the active scope and ambiguous configurations fail. `isGlobal` only
+controls provider visibility. Importing the module alone admits no tenants.
+
+Mark tenant-free routes with `@TenantIgnored()` or `@TenantOptional()`. Integration
+controllers retain their `SkipGuardPhases(['tenant'])` exemptions because
+`TenantGuard` declares `static readonly skippable = true`. For route-level
+protection, apply authentication before `TenantGuard`; missing visible Tenant
+configuration denies. Required is the guard's default;
 optional permits absence, but an explicit selector still requires authentication.
 Ignored routes do not admit a tenant. Conflicting authenticated tenant IDs fail.
 The guard publishes the canonical tenant into the trusted identity and CRUD's
@@ -65,7 +60,7 @@ select the tenant from, so by default each gateway message answers an `exception
 pushes are dropped and `$live` frames get no reply. Mark gateway classes and handlers
 with `@TenantIgnored()` or `@TenantOptional()`; only a marker on the gateway class also
 admits its pushes. No marker reaches `$live` frames: admit socket contexts with
-`resolve`, from the identity the upgrade verified, or pass `guard: 'none'`:
+`resolve`, from the identity the upgrade verified, or limit guard installation to selected routes:
 
 ```ts
 import { normalizeWebSocketUpgradeIdentity } from '@velajs/vela/websocket';

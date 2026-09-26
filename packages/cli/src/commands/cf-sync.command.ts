@@ -17,7 +17,7 @@ export class CloudflareSyncCommand extends Command {
     details:
       'Builds the application (vela.config, or else the Worker entry the Wrangler file names, with ' +
       'its `vars` only) and derives the configuration it needs: a cron trigger per @Cron ' +
-      'expression, a queue producer per QueueModule.registerQueue({ binding }), a consumer per ' +
+      'expression, a queue producer per QueueModule.forFeature([{ binding }]), a consumer per ' +
       'processed or @QueueConsumer queue, and a binding, migration and Workflow entry for every ' +
       'Durable Object and Workflow class the Worker entry exports. By default it prints the ' +
       'differences and exits 1 when there are any. --write applies them to wrangler.json(c) in ' +

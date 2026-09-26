@@ -174,6 +174,33 @@ describe('inbound module ownership and lifetime', () => {
 });
 
 describe('application isolation and queue routing', () => {
+  it('resolves runtime gates through DI and deduplicates a shared gate object', async () => {
+    const GATE = new InjectionToken<MailInboundGate>('runtime mail gate');
+    const gate: MailInboundGate = { require: ['spf'], policy: () => true };
+    @Module({ providers: [defineProvider(GATE, { useValue: gate })], exports: [GATE] })
+    class Configuration {}
+    const app = await appWith([
+      MailModule.register({ from: 'first@example.com', inbound: { gate } }),
+      MailModule.registerAsync({
+        imports: [Configuration],
+        inject: [GATE],
+        useFactory: async (resolved) => ({
+          from: 'second@example.com',
+          inbound: { gate: resolved },
+        }),
+      }),
+    ]);
+    expect((await dispatchInboundEmail(app.getContainer(), app.entrypoints, email())).gated).toBe(
+      false,
+    );
+    gate.require!.splice(0, 1, 'dmarc');
+    const incoming = email();
+    incoming.authentication.spf = 'fail';
+    expect(
+      (await dispatchInboundEmail(app.getContainer(), app.entrypoints, incoming)).failed,
+    ).toEqual(['spf']);
+  });
+
   it('allows independent apps to reuse an explicit key without sharing transport, queue or gate', async () => {
     const instances = [];
     for (const allowed of [true, false]) {
@@ -181,7 +208,7 @@ describe('application isolation and queue routing', () => {
       const driver = inline({ mode: 'manual' });
       const app = await appWith([
         QueueModule.forRoot({ driver }),
-        MailModule.forRoot({
+        MailModule.register({
           key: 'default',
           from: 'sender@example.com',
           transport: catcher,
@@ -209,7 +236,7 @@ describe('application isolation and queue routing', () => {
     const app = await appWith([
       QueueModule.forRoot({ driver }),
       ...[alpha, beta].map((catcher, i) =>
-        MailModule.forRoot({
+        MailModule.register({
           from: 'sender@example.com',
           transport: catcher,
           queue: { name: i === 0 ? 'alpha' : 'beta' },
@@ -228,7 +255,7 @@ describe('application isolation and queue routing', () => {
       appWith([
         QueueModule.forRoot(),
         ...['first', 'second'].map((key) =>
-          MailModule.forRoot({
+          MailModule.register({
             key,
             from: 'sender@example.com',
             queue: {},
@@ -242,13 +269,13 @@ describe('application isolation and queue routing', () => {
   it('rejects conflicting queues before application lifecycle hooks can send', async () => {
     const catcher = createMailCatcher();
     let started = false;
-    const first = MailModule.forRoot({
+    const first = MailModule.register({
       key: 'first',
       from: 'sender@example.com',
       queue: {},
       transport: catcher,
     });
-    const second = MailModule.forRoot({
+    const second = MailModule.register({
       key: 'second',
       from: 'other@example.com',
       queue: {},
@@ -277,7 +304,7 @@ describe('application isolation and queue routing', () => {
   it('rejects factory-supplied structural configuration', async () => {
     await expect(
       appWith([
-        MailModule.forRootAsync({
+        MailModule.registerAsync({
           // @ts-expect-error A factory never returns a structural option; untyped callers fail at bootstrap.
           useFactory: () => ({
             from: 'sender@example.com',
@@ -298,9 +325,9 @@ describe('authentication and wire boundaries', () => {
 
   it('snapshots a registered gate before its caller mutates it', async () => {
     const gate: MailInboundGate = { require: ['spf'] };
-    const registration = MailModule.forRoot({ from: 'a@example.com', inbound: { gate } });
-    gate.require!.splice(0, 1, 'dmarc');
+    const registration = MailModule.register({ from: 'a@example.com', inbound: { gate } });
     const app = await appWith([registration]);
+    gate.require!.splice(0, 1, 'dmarc');
     const incoming = email();
     incoming.authentication.spf = 'fail';
     expect(

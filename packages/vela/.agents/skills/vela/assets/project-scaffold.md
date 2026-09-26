@@ -193,7 +193,7 @@ needs no configuration file:
 
 ```sh
 pnpm exec vela generate resource notes     # module + controller + service, imported into AppModule
-pnpm exec vela g queue emails              # @Processor + QueueModule.registerQueue(), driver once
+pnpm exec vela g queue emails              # @Processor + QueueModule.forFeature([]), driver once
 pnpm exec vela g cron digest --schedule "0 6 * * *"
 pnpm exec vela g durable-object counter    # exported from the Worker entry
 pnpm exec vela add d1 DB                   # wrangler d1 create --binding DB --update-config, types, provider

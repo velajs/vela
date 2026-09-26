@@ -69,11 +69,47 @@ const workflow = compileAgent(support, 'support');
 
 `compileAgent` returns `WorkflowDefinition<AgentRunParams, AgentRunResult>`.
 Its handler consumes a workflow context with `env`, `event`, `step`, `run`, and
-`log`. To deploy, wire that definition into an application-owned native
-`WorkflowEntrypoint`, pass the native durable step API, and inject an authenticated
-application dispatcher. There is currently no `createWorkflowEntrypoint` helper
-or automatic agent discovery in `@velajs/cloudflare`. The naming helpers only
-produce names; applications register Wrangler bindings themselves.
+`log`. Deploy it with `VelaWorkflowDefinition` from the explicit
+`@velajs/cloudflare/workflow-definitions` entrypoint. The factory can construct
+the agent from injected services or receive an existing definition token:
+
+```ts
+import { VelaWorkflowDefinition } from '@velajs/cloudflare/workflow-definitions';
+import { InternalDispatcher } from '@velajs/vela/dispatch';
+import { WorkflowNonRetryableError } from '@velajs/workflow';
+import { z } from 'zod';
+
+// app comes from defineCloudflareApp(AppModule). SUPPORT_DEFINITION is a typed
+// InjectionToken<WorkflowDefinition<AgentRunParams, AgentRunResult>>, provided
+// with defineProvider and exported to AppModule by its declaring feature module.
+export class SupportWorkflow extends VelaWorkflowDefinition(app, {
+  params: z.object({
+    threadKey: z.string().min(1),
+    input: z.string(),
+    runKey: z.string().min(1),
+  }),
+  inject: [SUPPORT_DEFINITION, InternalDispatcher],
+  useFactory: (definition, dispatcher) => ({
+    definition,
+    run: (target, init) => {
+      if (!('path' in target)) {
+        throw new WorkflowNonRetryableError('This dispatcher accepts path targets only.');
+      }
+      return dispatcher.run(target, init);
+    },
+  }),
+}) {}
+```
+
+Trigger validation precedes application startup and dependency resolution. Each native run resolves the
+factory in its own execution scope, with the environment's application services.
+The bridge supplies native checkpoints, event waits, terminal-error conversion,
+and resource disposal; the agent retains its store, authenticated identity and
+approval contracts. A trigger schema validates shape, not identity. Production
+still supplies durable storage and verifies trusted trigger/approval authority.
+Register `SupportWorkflow` explicitly as Wrangler's `class_name`. No automatic
+agent discovery or binding registration occurs. See the
+[workflow bridge](../workflow/README.md#cloudflare-and-dependency-injection).
 
 ## Replay, duplicate delivery, and side effects
 

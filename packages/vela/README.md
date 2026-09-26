@@ -191,14 +191,16 @@ come from outside the program, so validate what you read.
 
 ## Dynamic modules
 
-Every configurable module exposes `forRoot` (sync) and `forRootAsync`
-(DI-resolved). `forRootAsync` takes the module's structural options next to the
-factory; the factory returns the rest:
+Shared facilities expose `forRoot` / `forRootAsync`; Http, Mail, Crypto, Storage
+and RpcClient expose `register` / `registerAsync`. Queue, I18n and Seeder use
+`forFeature` for declarations. EventEmitter, Health and ScheduleNode are ordinary
+imports. Async registration keeps structural options next to the factory, which
+returns runtime options:
 
 ```ts
 @Module({
   imports: [
-    HttpModule.forRoot({ baseURL: 'https://api.example.com' }),
+    HttpModule.register({ baseURL: 'https://api.example.com' }),
     ConfigModule.forRootAsync({
       inject: [ConfigLoader],
       useFactory: async (loader: ConfigLoader) => ({ config: await loader.load() }),
@@ -210,43 +212,35 @@ class AppModule {}
 
 ### Identity model
 
-Each `DynamicModule` has an optional `key?: string`; the same `(class, key)` is
-one instance, and different keys coexist. `defineModule` derives the key from a
-module's structural options only, so most modules have one instance per class:
+Each `DynamicModule` has an optional `key?: string`; the same class/key is one
+instance within an application. `defineModule` defaults to structural identity,
+while `ConfigurableModuleBuilder` and local Http/Mail/Crypto registrations default
+to registration identity: every call receives an opaque key.
 
 ```ts
-// The same configuration imported twice → one instance
-imports: [
-  HttpModule.forRoot({ baseURL: 'https://a.example' }),
-  HttpModule.forRoot({ baseURL: 'https://a.example' }),
-]
+const catalog = HttpModule.register({ baseURL: 'https://catalog.example.com' });
+// Reuse the definition in multiple features to share one configured instance.
+@Module({ imports: [catalog] })
+class CatalogModule {}
+@Module({ imports: [catalog] })
+class ReportsModule {}
 
-// A second configuration under the same key → bootstrap fails, whatever the
-// diagnostics policy: neither import may run on the other's options
-imports: [
-  HttpModule.forRoot({ baseURL: 'https://a.example' }),
-  HttpModule.forRoot({ baseURL: 'https://b.example' }),
-]
-
-// Two instances: give each its own key
-imports: [
-  HttpModule.forRoot({ baseURL: 'https://a.example', key: 'a' }),
-  HttpModule.forRoot({ baseURL: 'https://b.example', key: 'b' }),
-]
+// A separate registration owns its own service without an explicit key.
+@Module({ imports: [HttpModule.register({ baseURL: 'https://billing.example.com' })] })
+class BillingModule {}
 ```
 
-When a consumer module imports two instances that export the same token, the
-resolver throws `MultipleProvidersFoundError` with both candidate ids. Import
-only one, or use a per-instance accessor exposed by the module.
+Separate applications construct separate providers even when they reuse the same
+definition. Explicit keys preserve deduplication and reject conflicting options.
+Named Storage/RPC resources remain unique. If one consumer sees two owners of the
+same service token, resolution reports ambiguity; import the intended owner in
+each feature. `isGlobal` changes exported provider visibility only.
 
-The same applies to per-feature clients: two features that each import
-`HttpModule.forRoot({ baseURL })` with different settings give each its own
-`key`. `key`, `lazy` and `isGlobal` never change the key or reach the options
-token. A repeat with other options fails bootstrap even when its `global`
-flag differs too; one with the same options and another `global` flag is
-reported through the diagnostics policy. Build your own
-modules the same way with `defineModule`; see the [module authoring guide](https://github.com/velajs/vela/blob/main/docs/modules.md)
-for structural options, `referenceKey`, and the rest of the authoring contract.
+Applications explicitly attach exported guards/interceptors with `APP_GUARD` /
+`APP_INTERCEPTOR` aliases or route decorators. See the
+[module API migration](../../docs/module-api-migration.md) for the full signature
+census and the [module authoring guide](../../docs/modules.md) for structural
+options, identity controls and async factory inference.
 
 ## Custom parameter decorators with deferred resolution
 
@@ -374,8 +368,9 @@ commit hooks, encryption, and backend guarantees.
 ## Caching
 
 `CacheModule.forRoot({ namespace, scope, store?, invalidation? })` from
-`@velajs/vela/cache` is the one cache module: `@CacheResponse({ ttl, tags })`
-caches GET routes and the injected `CacheService` serves scoped reads and
+`@velajs/vela/cache` is the one cache module. Attach its exported
+`CacheInterceptor` with an `APP_INTERCEPTOR` alias or `@UseInterceptors`;
+`@CacheResponse({ ttl, tags })` then caches GET routes and the injected `CacheService` serves scoped reads and
 post-commit invalidation over the same store (memory by default; tiered, or
 `kvCache({ binding })` from `@velajs/cloudflare`). See the
 [caching guide](../../docs/caching.md) for trusted partitions, failure behavior,

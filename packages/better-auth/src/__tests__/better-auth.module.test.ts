@@ -1,6 +1,7 @@
-import { Controller, Get, Module, VelaFactory } from '@velajs/vela';
+import { APP_GUARD, Controller, Get, Module, VelaFactory } from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  AuthGuard,
   BETTER_AUTH_OPTIONS,
   BetterAuthModule,
   BetterAuthService,
@@ -21,7 +22,10 @@ describe('BetterAuthModule', () => {
   it('forRoot exposes BetterAuthService with the provided auth instance', async () => {
     const auth = makeMockAuth();
 
-    @Module({ imports: [BetterAuthModule.forRoot({ auth })] })
+    @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+      imports: [BetterAuthModule.forRoot({ auth })],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -31,7 +35,7 @@ describe('BetterAuthModule', () => {
     expect(app.get(BETTER_AUTH_OPTIONS)).toEqual({
       basePath: '/api/auth',
       issuer: 'better-auth:/api/auth',
-      guard: 'global',
+
       mountHandler: true,
     });
   });
@@ -40,7 +44,10 @@ describe('BetterAuthModule', () => {
     const auth = makeMockAuth();
     const build = vi.fn(() => auth);
 
-    @Module({ imports: [BetterAuthModule.forRoot({ auth: build })] })
+    @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+      imports: [BetterAuthModule.forRoot({ auth: build })],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -65,6 +72,7 @@ describe('BetterAuthModule', () => {
 
   it('reports a second auth configuration under the same key instead of merging it', async () => {
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [
         BetterAuthModule.forRoot({ auth: makeMockAuth() }),
         BetterAuthModule.forRoot({ auth: makeMockAuth() }),
@@ -78,6 +86,7 @@ describe('BetterAuthModule', () => {
     // Same-source async closures are different configurations too.
     const makeFactory = () => () => ({ auth: makeMockAuth() });
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [
         BetterAuthModule.forRootAsync({ useFactory: makeFactory() }),
         BetterAuthModule.forRootAsync({ useFactory: makeFactory() }),
@@ -109,7 +118,6 @@ describe('BetterAuthModule', () => {
             useFactory: factory,
             key: 'rebuilt-async-auth',
             basePath: '/internal-auth',
-            guard: 'none',
           }),
         ],
       })
@@ -159,7 +167,10 @@ describe('BetterAuthModule', () => {
 
   it('mounts the catch-all once for an identical registration imported twice', async () => {
     const auth = makeMockAuth();
-    @Module({ imports: [BetterAuthModule.forRoot({ auth }), BetterAuthModule.forRoot({ auth })] })
+    @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+      imports: [BetterAuthModule.forRoot({ auth }), BetterAuthModule.forRoot({ auth })],
+    })
     class AppModule {}
     const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
     const routes = app.describeRoutes().filter((route) => route.path.startsWith('/api/auth'));
@@ -171,7 +182,7 @@ describe('BetterAuthModule', () => {
     const auth = makeMockAuth();
     const registrations = [
       BetterAuthModule.forRoot({ auth }),
-      BetterAuthModule.forRoot({ auth, guard: 'global' }),
+      BetterAuthModule.forRoot({ auth }),
       BetterAuthModule.forRoot({ auth, basePath: '/api/auth', mountHandler: true }),
     ];
     expect(new Set(registrations.map((registration) => registration.key)).size).toBe(1);
@@ -191,6 +202,7 @@ describe('BetterAuthModule', () => {
     let authBuilds = 0;
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [
         BetterAuthModule.forRootAsync({
           useFactory: () => {
@@ -221,7 +233,7 @@ describe('BetterAuthModule', () => {
     expect(service.api).toBe(auth.api);
     expect(authBuilds).toBe(1);
 
-    expect(app.get(BETTER_AUTH_OPTIONS)).toMatchObject({ issuer: 'accounts', guard: 'global' });
+    expect(app.get(BETTER_AUTH_OPTIONS)).toMatchObject({ issuer: 'accounts' });
   });
 
   it('isGlobal makes BetterAuthService visible to every module; it defaults to false', async () => {
@@ -229,7 +241,10 @@ describe('BetterAuthModule', () => {
     @Module({})
     class Feature {}
     const visibleFrom = async (isGlobal: boolean | undefined) => {
-      @Module({ imports: [BetterAuthModule.forRoot({ auth, isGlobal }), Feature] })
+      @Module({
+        providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+        imports: [BetterAuthModule.forRoot({ auth, isGlobal }), Feature],
+      })
       class AppModule {}
       const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
       try {
@@ -245,7 +260,10 @@ describe('BetterAuthModule', () => {
   it('mounts the catch-all controller at /api/auth/* by default', async () => {
     const auth = makeMockAuth();
 
-    @Module({ imports: [BetterAuthModule.forRoot({ auth })] })
+    @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+      imports: [BetterAuthModule.forRoot({ auth })],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -268,7 +286,10 @@ describe('BetterAuthModule', () => {
       },
     });
 
-    @Module({ imports: [BetterAuthModule.forRoot({ auth })] })
+    @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+      imports: [BetterAuthModule.forRoot({ auth })],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -290,7 +311,10 @@ describe('BetterAuthModule', () => {
   it('mounts the catch-all controller at a custom basePath', async () => {
     const auth = makeMockAuth();
 
-    @Module({ imports: [BetterAuthModule.forRoot({ auth, basePath: '/auth' })] })
+    @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
+      imports: [BetterAuthModule.forRoot({ auth, basePath: '/auth' })],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -310,6 +334,7 @@ describe('BetterAuthModule', () => {
     const auth = makeMockAuth();
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRootAsync({ useFactory: () => ({ auth }), basePath: '/auth' })],
     })
     class AppModule {}
@@ -324,6 +349,7 @@ describe('BetterAuthModule', () => {
     const auth = makeMockAuth();
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth, mountHandler: false })],
     })
     class AppModule {}
@@ -335,7 +361,7 @@ describe('BetterAuthModule', () => {
     expect(auth.handler).not.toHaveBeenCalled();
   });
 
-  it('registers AuthGuard via APP_GUARD by default', async () => {
+  it('exports AuthGuard for explicit APP_GUARD registration', async () => {
     const auth = makeMockAuth(null);
 
     @Controller('/items')
@@ -347,6 +373,7 @@ describe('BetterAuthModule', () => {
     }
 
     @Module({
+      providers: [{ provide: APP_GUARD, useExisting: AuthGuard }],
       imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [ItemsController],
     })

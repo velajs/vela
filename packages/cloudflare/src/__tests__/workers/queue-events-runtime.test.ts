@@ -108,7 +108,7 @@ describe('platform event subscriptions under workerd', () => {
           driver: cloudflareQueues(),
           dispatch: { kind: 'signed', target: () => ({ path: '/jobs/run' }) },
         }),
-        QueueModule.registerQueue({ name: 'jobs', consumer: 'signed-jobs' }),
+        QueueModule.forFeature([{ name: 'jobs', consumer: 'signed-jobs' }]),
       ],
       providers: [Events],
       controllers: [Jobs],
