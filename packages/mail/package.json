@@ -1,6 +1,6 @@
 {
   "name": "@velajs/mail",
-  "version": "1.33.0",
+  "version": "1.34.0",
   "description": "Edge-neutral mail for Vela: a render→validate→build→dispatch pipeline behind a one-method MailTransport seam with header-injection guards hoisted above every transport, a queue-backed send path, and inbound email as a verdict-gated entrypoint kind",
   "keywords": [
     "cloudflare-workers",
@@ -43,6 +43,10 @@
     "./transports/resend": {
       "types": "./dist/transports/resend/index.d.ts",
       "import": "./dist/transports/resend/index.js"
+    },
+    "./transports/cloudflare": {
+      "types": "./dist/transports/cloudflare/index.d.ts",
+      "import": "./dist/transports/cloudflare/index.js"
     },
     "./transports/catcher": {
       "types": "./dist/transports/catcher/index.d.ts",

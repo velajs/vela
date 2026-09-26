@@ -1,6 +1,5 @@
 import type {
   NamespaceScope,
-  RagStoredVector,
   RagVectorMatch,
   RagVectorQuery,
   RagVectorRecord,
@@ -24,40 +23,12 @@ const cosineSimilarity = (a: ReadonlyArray<number>, b: ReadonlyArray<number>): n
 
   const denominator = Math.sqrt(normA) * Math.sqrt(normB);
 
-  return denominator === 0 ? 0 : dot / denominator;
+  return denominator === 0 ? 0 : Math.max(0, Math.min(1, (dot / denominator + 1) / 2));
 };
 
-/** A stored entry keeps its vector and a defensive copy of its metadata. */
 interface MemoryEntry {
   vector: ReadonlyArray<number>;
-  metadata: Record<string, unknown> | undefined;
 }
-
-/**
- * Does `metadata` satisfy every key of `filter` by strict equality? A missing
- * key fails the predicate. Intended for scalar equality — the common tenant/RBAC
- * filter shape — not deep structural matching.
- */
-const matchesFilter = (
-  metadata: Record<string, unknown> | undefined,
-  filter: Record<string, unknown> | undefined,
-): boolean => {
-  if (filter === undefined) {
-    return true;
-  }
-
-  for (const [key, value] of Object.entries(filter)) {
-    if (metadata === undefined || !Object.hasOwn(metadata, key) || metadata[key] !== value) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-const cloneMetadata = (
-  metadata: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined => (metadata === undefined ? undefined : { ...metadata });
 
 /**
  * An in-memory {@link RagVectors} adapter using cosine similarity, partitioned by
@@ -86,15 +57,16 @@ export const memoryVectors = (): RagVectors => {
   };
 
   return {
+    maxTopK: 100,
     upsert: async (records: ReadonlyArray<RagVectorRecord>, options: NamespaceScope) => {
       const partition = partitionOf(options);
 
       for (const record of records) {
         partition.set(record.id, {
           vector: [...record.vector],
-          metadata: cloneMetadata(record.metadata),
         });
       }
+      return { status: 'visible', mutationIds: [] };
     },
 
     query: async (query: RagVectorQuery): Promise<ReadonlyArray<RagVectorMatch>> => {
@@ -104,14 +76,10 @@ export const memoryVectors = (): RagVectors => {
         return [];
       }
 
-      const withMetadata = query.returnMetadata !== 'none';
       const scored: RagVectorMatch[] = [];
 
       for (const [id, entry] of partition) {
-        if (
-          entry.vector.length !== query.vector.length ||
-          !matchesFilter(entry.metadata, query.filter)
-        ) {
+        if (entry.vector.length !== query.vector.length) {
           continue;
         }
 
@@ -119,10 +87,6 @@ export const memoryVectors = (): RagVectors => {
           id,
           score: cosineSimilarity(query.vector, entry.vector),
         };
-
-        if (withMetadata && entry.metadata !== undefined) {
-          match.metadata = { ...entry.metadata };
-        }
 
         scored.push(match);
       }
@@ -132,48 +96,18 @@ export const memoryVectors = (): RagVectors => {
       return scored.slice(0, Math.max(0, query.topK));
     },
 
-    getByIds: async (
-      ids: ReadonlyArray<string>,
-      options: NamespaceScope,
-    ): Promise<ReadonlyArray<RagStoredVector>> => {
-      const partition =
-        options.namespace === undefined ? shared : partitions.get(options.namespace);
-
-      if (partition === undefined) {
-        return [];
-      }
-
-      const found: RagStoredVector[] = [];
-
-      for (const id of ids) {
-        const entry = partition.get(id);
-
-        if (entry !== undefined) {
-          const record: RagStoredVector = { id };
-          const metadata = cloneMetadata(entry.metadata);
-
-          if (metadata !== undefined) {
-            record.metadata = metadata;
-          }
-
-          found.push(record);
-        }
-      }
-
-      return found;
-    },
-
     deleteByIds: async (ids: ReadonlyArray<string>, options: NamespaceScope) => {
       const partition =
         options.namespace === undefined ? shared : partitions.get(options.namespace);
 
       if (partition === undefined) {
-        return;
+        return { status: 'visible', mutationIds: [] };
       }
 
       for (const id of ids) {
         partition.delete(id);
       }
+      return { status: 'visible', mutationIds: [] };
     },
   };
 };

@@ -8,6 +8,7 @@ import {
   type JSONPath,
   type Node as JsonNode,
 } from 'jsonc-parser';
+import { bindingInventory } from './project/bindings.js';
 import { cronDialectAmbiguity, parseCronMetadata } from '@velajs/vela/module-kit';
 import type { EntrypointRow } from './introspect.js';
 import { isRecord } from './project/files.js';
@@ -130,6 +131,11 @@ export function planCloudflareSync(
   const changes: SyncChange[] = [];
   const warnings: string[] = [];
   const worker = wranglerWorkerName(config, environment);
+  const occupied = new Set(
+    bindingInventory(config.root, environmentSection(config, environment)).map(
+      (binding) => binding.name,
+    ),
+  );
   // `vela entrypoint list` lists a declared kind with no entries as a placeholder row.
   const rows = (kind: string) =>
     facts.entrypoints.filter(
@@ -225,6 +231,13 @@ export function planCloudflareSync(
   for (const [name, registration] of registrations) {
     const { binding } = registration;
     if (binding === undefined || producers.has(binding)) continue;
+    if (occupied.has(binding)) {
+      warnings.push(
+        `Queue ${JSON.stringify(name)} needs binding ${JSON.stringify(binding)}, but that name is taken: bind it yourself.`,
+      );
+      continue;
+    }
+    occupied.add(binding);
     const queue = registration.consumers[0] ?? `${worker}-${name}`;
     producers.set(binding, queue);
     changes.push({
@@ -320,13 +333,14 @@ export function planCloudflareSync(
       className === gatewayClass
         ? (unboundGateways[0] ?? constantCase(className))
         : constantCase(className);
-    if (names.has(name)) {
+    if (occupied.has(name)) {
       warnings.push(
         `${className} needs a Durable Object binding, but ${JSON.stringify(name)} is taken: bind it yourself.`,
       );
       continue;
     }
     names.add(name);
+    occupied.add(name);
     changes.push({
       path: [...durable.path, 'bindings'],
       value: { name, class_name: className },
@@ -414,6 +428,13 @@ export function planCloudflareSync(
       binding: constantCase(className),
       class_name: className,
     };
+    if (occupied.has(entry.binding)) {
+      warnings.push(
+        `${className} needs a Workflow binding, but ${JSON.stringify(entry.binding)} is taken: bind it yourself.`,
+      );
+      continue;
+    }
+    occupied.add(entry.binding);
     changes.push({
       path: workflows.path,
       value: entry,

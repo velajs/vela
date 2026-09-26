@@ -41,6 +41,7 @@ const WORKERS_ONLY = new Set([
   '@velajs/cloudflare/durable-objects',
   '@velajs/cloudflare/entrypoints',
   '@velajs/cloudflare/testing',
+  '@velajs/cloudflare/tracing',
   '@velajs/cloudflare/workflows',
   '@velajs/cloudflare/workflow-definitions',
   '@velajs/authz-cedar/cloudflare',

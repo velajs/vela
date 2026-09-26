@@ -1,0 +1,9 @@
+{
+  "extends": "../../tools/tsconfig/decorators.json",
+  "compilerOptions": {
+    "lib": ["ES2024"],
+    "types": ["@cloudflare/workers-types"],
+    "exactOptionalPropertyTypes": true
+  },
+  "include": ["src/cloudflare/**/*.ts", "worker-configuration.d.ts"]
+}

@@ -1,6 +1,15 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { Binding } from '@velajs/vela/module-kit';
-import { d1, durableObject, kv, queue, r2, rateLimit } from '../index';
+import {
+  d1,
+  durableObject,
+  flagship,
+  kv,
+  queue,
+  r2,
+  rateLimit,
+  secretsStoreSecret,
+} from '../index';
 
 const fn = async () => null;
 
@@ -11,6 +20,18 @@ const natives = {
   JOBS: { send: fn, sendBatch: fn },
   ROOMS: { idFromName: fn, get: fn },
   LIMITER: { limit: fn },
+  FLAGS: {
+    get: fn,
+    getBooleanValue: fn,
+    getStringValue: fn,
+    getNumberValue: fn,
+    getObjectValue: fn,
+    getBooleanDetails: fn,
+    getStringDetails: fn,
+    getNumberDetails: fn,
+    getObjectDetails: fn,
+  },
+  API_KEY: { get: fn },
 };
 
 describe('Cloudflare binding factories', () => {
@@ -23,6 +44,10 @@ describe('Cloudflare binding factories', () => {
       Binding<DurableObjectNamespace>
     >();
     expectTypeOf(rateLimit({ binding: 'LIMITER' })).toEqualTypeOf<Binding<RateLimit>>();
+    expectTypeOf(flagship({ binding: 'FLAGS' })).toEqualTypeOf<Binding<Flagship>>();
+    expectTypeOf(secretsStoreSecret({ binding: 'API_KEY' })).toEqualTypeOf<
+      Binding<SecretsStoreSecret>
+    >();
   });
 
   it('resolve each kind from the environment it is called with', () => {
@@ -32,6 +57,8 @@ describe('Cloudflare binding factories', () => {
     expect(queue({ binding: 'JOBS' })(natives)).toBe(natives.JOBS);
     expect(durableObject({ binding: 'ROOMS' })(natives)).toBe(natives.ROOMS);
     expect(rateLimit({ binding: 'LIMITER' })(natives)).toBe(natives.LIMITER);
+    expect(flagship({ binding: 'FLAGS' })(natives)).toBe(natives.FLAGS);
+    expect(secretsStoreSecret({ binding: 'API_KEY' })(natives)).toBe(natives.API_KEY);
   });
 
   it('name the Wrangler key that declares a missing binding', () => {
@@ -41,6 +68,33 @@ describe('Cloudflare binding factories', () => {
     expect(() => queue({ binding: 'JOBS' })({})).toThrow('under queues.producers');
     expect(() => durableObject({ binding: 'ROOMS' })({})).toThrow('under durable_objects.bindings');
     expect(() => rateLimit({ binding: 'LIMITER' })({})).toThrow('under ratelimits');
+    expect(() => flagship({ binding: 'FLAGS' })({})).toThrow('under flagship');
+    expect(() => secretsStoreSecret({ binding: 'API_KEY' })({})).toThrow(
+      'under secrets_store_secrets',
+    );
+  });
+
+  it('resolves native handles separately for each environment without reading values', () => {
+    const flags = flagship({ binding: 'FLAGS' });
+    const secret = secretsStoreSecret({ binding: 'API_KEY' });
+    const other = {
+      FLAGS: { ...natives.FLAGS },
+      API_KEY: {
+        get: () => {
+          throw new Error('must not read');
+        },
+      },
+    };
+    expect(flags(other)).toBe(other.FLAGS);
+    expect(flags(natives)).toBe(natives.FLAGS);
+    expect(secret(other)).toBe(other.API_KEY);
+    expect(secret(natives)).toBe(natives.API_KEY);
+    expect(() => flags({ FLAGS: { getBooleanValue: fn } })).toThrow(
+      'is not a binding of type Flagship',
+    );
+    expect(() => secret({ API_KEY: 'secret-value' })).toThrow(
+      'is not a binding of type Secrets Store secret',
+    );
   });
 
   it('reject a binding of another kind', () => {

@@ -22,7 +22,7 @@ import type { CloudflareScheduledEvent } from '@velajs/cloudflare';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { WebSocketModule } from '@velajs/vela/websocket';
 import { LIVE_PLATFORM, LiveModule, localLive, type LivePlatform } from '@velajs/vela/live';
-import { FeatureFlagsModule } from '@velajs/feature-flags';
+import { FeatureFlagsModule, memoryFlagDriver } from '@velajs/feature-flags';
 import { BetterAuthService } from '@velajs/better-auth';
 import { betterAuth } from 'better-auth';
 import { admin, organization } from 'better-auth/plugins';
@@ -610,6 +610,28 @@ describe('flags ops (@velajs/studio/flags)', () => {
     expect(ok(await rpc(app, 'studio.capabilities')).features.flags).toBe(false);
   });
 
+  it('forwards provider reasons, variants and error codes through the flags panel', async () => {
+    const driver = Object.assign(memoryFlagDriver(), {
+      getBooleanDetails: async (flagKey: string) => ({
+        flagKey,
+        value: true,
+        reason: 'DEFAULT',
+        variant: 'control',
+        errorCode: 'FLAG_NOT_FOUND',
+      }),
+    });
+    const app = await makeApp({ plugins: [flagsPanel()] }, [
+      FeatureFlagsModule.forRoot({ drivers: [driver], isGlobal: true }),
+    ]);
+    expect(ok(await rpc(app, 'flags.evaluate', { key: 'missing' }))).toEqual({
+      flagKey: 'missing',
+      value: false,
+      reason: 'DEFAULT',
+      variant: 'control',
+      errorCode: 'FLAG_NOT_FOUND',
+    });
+  });
+
   it('lights the flags feature and lists / evaluates manifest flags', async () => {
     const app = await makeApp({ plugins: [flagsPanel()] }, [
       FeatureFlagsModule.forRoot({ manifest, isGlobal: true }),
@@ -623,7 +645,7 @@ describe('flags ops (@velajs/studio/flags)', () => {
     const evalRes = ok(await rpc(app, 'flags.evaluate', { key: 'alpha' }));
     expect(evalRes.flagKey).toBe('alpha');
     expect(evalRes.value).toBe(true);
-    expect(evalRes.reason).toBe('STATIC');
+    expect(evalRes.reason).toBe('UNKNOWN');
   });
 });
 

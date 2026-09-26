@@ -1,0 +1,21 @@
+name = "agent-approvals-example"
+main = "src/worker.ts"
+compatibility_date = "2026-09-25"
+# The portable packages and adapters use Web APIs; no nodejs_compat is needed.
+
+[vars]
+DEMO_OWNER = "operator"
+DEMO_TENANT = "workspace"
+
+[[durable_objects.bindings]]
+name = "THREADS"
+class_name = "Threads"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Threads"]
+
+[[workflows]]
+name = "review-agent"
+binding = "REVIEW"
+class_name = "ReviewWorkflow"

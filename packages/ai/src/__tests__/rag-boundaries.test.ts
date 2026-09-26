@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { defineRag, memoryVectors } from '../rag';
-import type { RagTextStore, RagVectorMatch, RagVectors } from '../rag';
-import { keywordEmbedder, memoryTextStore } from './support';
+import { defineRag, memoryVectors, memoryPublications } from '../rag';
+import type { RagVectorMatch, RagVectors } from '../rag';
+import { keywordEmbedder } from './support';
 
 describe('defineRag — untrusted boundary limits', () => {
   it('bounds custom chunker count, per-chunk bytes, and aggregate bytes', async () => {
     const tooMany = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
       chunk: () => Array.from({ length: 4097 }, () => 'alpha'),
@@ -14,6 +15,7 @@ describe('defineRag — untrusted boundary limits', () => {
     await expect(tooMany.sync([{ id: 'doc', text: 'alpha' }])).rejects.toThrow(/4096/);
 
     const tooLarge = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
       chunk: () => ['x'.repeat(64 * 1024 + 1)],
@@ -22,6 +24,7 @@ describe('defineRag — untrusted boundary limits', () => {
     await expect(tooLarge.sync([{ id: 'doc', text: 'alpha' }])).rejects.toThrow(/65536/);
 
     const tooLargeInAggregate = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
       chunk: () => Array.from({ length: 65 }, () => 'x'.repeat(64 * 1024)),
@@ -34,6 +37,7 @@ describe('defineRag — untrusted boundary limits', () => {
 
   it('rejects oversized or executable document metadata before hashing', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
       allowSharedNamespace: true,
@@ -57,6 +61,7 @@ describe('defineRag — untrusted boundary limits', () => {
 
   it('validates embedder output dimensions and finite values', async () => {
     const nonFinite = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: () => [Number.NaN],
       allowSharedNamespace: true,
@@ -64,6 +69,7 @@ describe('defineRag — untrusted boundary limits', () => {
     await expect(nonFinite.sync([{ id: 'doc', text: 'alpha' }])).rejects.toThrow(/finite/);
 
     const tooWide = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: () => Array.from({ length: 8193 }, () => 0),
       allowSharedNamespace: true,
@@ -73,6 +79,7 @@ describe('defineRag — untrusted boundary limits', () => {
 
   it('rejects malformed Unicode identifiers before percent-encoding them', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
       allowSharedNamespace: true,
@@ -85,9 +92,10 @@ describe('defineRag — untrusted boundary limits', () => {
     const base = memoryVectors();
     const vectors: RagVectors = {
       ...base,
-      query: (query) => base.query({ ...query, filter: undefined, topK: 100 }),
+      query: (query) => base.query({ ...query, topK: 100 }),
     };
     const rag = defineRag({
+      publications: memoryPublications(),
       vectors,
       embed: keywordEmbedder(),
       allowSharedNamespace: true,
@@ -121,6 +129,7 @@ describe('defineRag — untrusted boundary limits', () => {
       query: async (query) => [...(await base.query(query)), bomb],
     };
     const rag = defineRag({
+      publications: memoryPublications(),
       vectors,
       embed: keywordEmbedder(),
       allowSharedNamespace: true,
@@ -132,25 +141,9 @@ describe('defineRag — untrusted boundary limits', () => {
     });
   });
 
-  it('drops oversized text returned by an untrusted text-store adapter', async () => {
-    const base = memoryTextStore();
-    const textStore: RagTextStore = {
-      ...base,
-      getMany: async (ids) => ids.map(() => 'x'.repeat(64 * 1024 + 1)),
-    };
-    const rag = defineRag({
-      vectors: memoryVectors(),
-      textStore,
-      embed: keywordEmbedder(),
-      allowSharedNamespace: true,
-    });
-    await rag.sync([{ id: 'doc', text: 'alpha' }]);
-
-    await expect(rag.retrieve('alpha')).resolves.toMatchObject({ chunks: [], sources: [] });
-  });
-
   it('caps assembled retrieval context even when many maximum-sized chunks match', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
       chunk: () =>

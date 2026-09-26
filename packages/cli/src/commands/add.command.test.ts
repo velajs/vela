@@ -6,6 +6,7 @@ import { Cli } from 'clipanion';
 import { parse } from 'jsonc-parser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderTemplate } from '../new-project.js';
+import { AddBindingCommand } from './add-binding.command.js';
 import { AddCommand } from './add.command.js';
 
 let project: string;
@@ -47,10 +48,13 @@ async function add(...args: string[]) {
   const collect = (chunk: Buffer) => (output += String(chunk));
   stdout.on('data', collect);
   stderr.on('data', collect);
-  const code = await Cli.from([AddCommand], { binaryName: 'vela' }).run(['add', ...args], {
-    stdout,
-    stderr,
-  });
+  const code = await Cli.from([AddCommand, AddBindingCommand], { binaryName: 'vela' }).run(
+    ['add', ...args],
+    {
+      stdout,
+      stderr,
+    },
+  );
   return { code, output };
 }
 
@@ -489,8 +493,7 @@ export class AppModule {}
     await writeFile(join(project, 'wrangler.jsonc'), wrangler);
     const result = await add('queue', 'EMAILS');
     expect(result.code).toBe(1);
-    expect(result.output).toContain('cannot add the EMAILS producer and its consumer');
-    expect(result.output).toContain('Nothing was created');
+    expect(result.output).toContain('Invalid Wrangler field: queues');
     await expect(read('wrangler-calls.log')).rejects.toThrow();
     expect(await read('wrangler.jsonc')).toBe(wrangler);
     expect(await read('src/app.module.ts')).not.toContain('QueueModule');
@@ -673,5 +676,184 @@ export class BindingsModule {}
       'defineProvider(CACHE, { useFactory: (env) => env.CACHE, inject: [ENV] })',
     );
     expect(updated).toContain('exports: [CACHE]');
+  });
+});
+
+describe('native binding declarations', () => {
+  it('declares Flagship without provisioning or editing modules, preserving comments and future fields', async () => {
+    const source =
+      '{ // keep comment\n"name":"example","main":"src/worker.ts","future_config":{"enabled":true}}';
+    await writeFile(join(project, 'wrangler.jsonc'), source);
+    const app = await read('src/app.module.ts');
+    const result = await add(
+      'binding',
+      'flagship',
+      'FLAGS',
+      '--options',
+      '{"app_id":"example-app","future_option":true}',
+    );
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain('No resources were provisioned');
+    const updated = await read('wrangler.jsonc');
+    expect(updated).toContain('// keep comment');
+    expect(parse(updated)).toEqual({
+      name: 'example',
+      main: 'src/worker.ts',
+      future_config: { enabled: true },
+      flagship: [{ binding: 'FLAGS', app_id: 'example-app', future_option: true }],
+    });
+    expect(await calls()).toEqual([['types', '--include-runtime=false']]);
+    expect(await read('src/app.module.ts')).toBe(app);
+    await expect(read('src/bindings.module.ts')).rejects.toThrow();
+  });
+
+  it('declares singleton and name-key bindings in the selected environment and types that environment', async () => {
+    await writeFile(
+      join(project, 'wrangler.jsonc'),
+      JSON.stringify({ name: 'example', env: { staging: {} }, ai: { binding: 'AI' } }),
+    );
+    expect((await add('binding', 'ai', 'AI', '--env', 'staging')).code).toBe(0);
+    expect(
+      (
+        await add(
+          'binding',
+          'send_email',
+          'MAIL',
+          '--env',
+          'staging',
+          '--options',
+          '{"allowed_destination_addresses":["test@example.com"]}',
+        )
+      ).code,
+    ).toBe(0);
+    expect(parse(await read('wrangler.jsonc')).env.staging).toEqual({
+      ai: { binding: 'AI' },
+      send_email: [{ name: 'MAIL', allowed_destination_addresses: ['test@example.com'] }],
+    });
+    expect(await calls()).toEqual([
+      ['types', '--include-runtime=false', '--env', 'staging'],
+      ['types', '--include-runtime=false', '--env', 'staging'],
+    ]);
+  });
+
+  it('declares only a queue producer; creating the queue and its consumer is explicit', async () => {
+    const result = await add(
+      'binding',
+      'queues.producers',
+      'JOBS',
+      '--options',
+      '{"queue":"example-jobs"}',
+    );
+    expect(result.code, result.output).toBe(0);
+    expect(parse(await read('wrangler.jsonc')).queues).toEqual({
+      producers: [{ binding: 'JOBS', queue: 'example-jobs' }],
+    });
+    expect(await calls()).toEqual([['types', '--include-runtime=false']]);
+  });
+
+  it.each([
+    ['flagship', 'FLAGS', '{"app_id":5}'],
+    ['secrets_store_secrets', 'KEY', '{"store_id":"do-not-print"}'],
+    ['ai', 'AI', '{"binding":"OVERRIDE"}'],
+    ['ai', 'AI', '{secret-value}'],
+    ['ai', 'AI', '[]'],
+    ['pipelines', 'PIPE', '{}'],
+    ['future_binding', 'FUTURE', '{}'],
+  ])(
+    'refuses invalid %s options before writes or Wrangler calls',
+    async (kind, binding, options) => {
+      const before = await read('wrangler.jsonc');
+      const result = await add('binding', kind, binding, '--options', options);
+      expect(result.code).toBe(1);
+      expect(result.output).not.toContain('do-not-print');
+      expect(result.output).not.toContain('secret-value');
+      expect(await read('wrangler.jsonc')).toBe(before);
+      await expect(read('wrangler-calls.log')).rejects.toThrow();
+    },
+  );
+
+  it.each([
+    { flagship: [{ binding: 'TAKEN', app_id: 'example' }] },
+    { secrets_store_secrets: [{ binding: 'TAKEN', store_id: 'example', secret_name: 'example' }] },
+    { send_email: [{ name: 'TAKEN' }] },
+    { assets: { binding: 'TAKEN', directory: './public' } },
+    { unsafe: { bindings: [{ name: 'TAKEN', type: 'future-native' }] } },
+  ])(
+    'refuses provisioning and config-only declarations with a cross-kind collision',
+    async (fields) => {
+      const before = JSON.stringify({ name: 'example', main: 'src/worker.ts', ...fields });
+      await writeFile(join(project, 'wrangler.jsonc'), before);
+      expect((await add('d1', 'TAKEN')).output).toContain('already a binding');
+      expect((await add('binding', 'ai', 'TAKEN')).output).toContain('already a binding');
+      expect(await read('wrangler.jsonc')).toBe(before);
+      await expect(read('wrangler-calls.log')).rejects.toThrow();
+    },
+  );
+
+  it('refuses to replace an inherited singleton or collide with its binding', async () => {
+    const before = JSON.stringify({
+      name: 'example',
+      assets: { binding: 'ASSETS', directory: './public' },
+      env: { staging: {} },
+    });
+    await writeFile(join(project, 'wrangler.jsonc'), before);
+    expect((await add('binding', 'assets', 'NEW_ASSETS', '--env', 'staging')).output).toContain(
+      'already configured',
+    );
+    expect((await add('kv', 'ASSETS', '--env', 'staging')).output).toContain('already a binding');
+    expect(await read('wrangler.jsonc')).toBe(before);
+    await expect(read('wrangler-calls.log')).rejects.toThrow();
+  });
+
+  it('keeps TOML unchanged and returns manual instructions without a Wrangler call', async () => {
+    await writeFile(join(project, 'native.toml'), 'name = "example"\n[env.staging]\n');
+    const result = await add('binding', 'ai', 'AI', '--config', 'native.toml', '--env', 'staging');
+    expect(result.code, result.output).toBe(2);
+    expect(result.output).toContain('env.staging.ai');
+    expect(await read('native.toml')).toBe('name = "example"\n[env.staging]\n');
+    await expect(read('wrangler-calls.log')).rejects.toThrow();
+  });
+
+  it('bypasses a top-level-only types script when a named environment is selected', async () => {
+    const manifest = JSON.parse(await read('package.json'));
+    manifest.scripts.types = 'echo this-script-does-not-select-an-environment';
+    await writeFile(join(project, 'package.json'), JSON.stringify(manifest));
+    await writeFile(
+      join(project, 'wrangler.jsonc'),
+      JSON.stringify({ name: 'example', main: 'src/worker.ts', env: { staging: {} } }),
+    );
+    const result = await add('kv', 'CACHE', '--env', 'staging');
+    expect(result.code, result.output).toBe(0);
+    expect((await calls()).at(-1)).toEqual([
+      'types',
+      '--include-runtime=false',
+      '--env',
+      'staging',
+    ]);
+  });
+});
+
+describe('binding declaration type refresh failures', () => {
+  it('keeps the saved declaration and warns if the project has no package manifest', async () => {
+    await rm(join(project, 'package.json'));
+    const result = await add('binding', 'ai', 'AI');
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain('Warning: could not read package.json');
+    expect(parse(await read('wrangler.jsonc')).ai).toEqual({ binding: 'AI' });
+  });
+
+  it('requires a Workflow resource name before saving a new declaration', async () => {
+    const before = await read('wrangler.jsonc');
+    const result = await add(
+      'binding',
+      'workflows',
+      'FLOW',
+      '--options',
+      '{"class_name":"ExampleFlow"}',
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('workflows.name');
+    expect(await read('wrangler.jsonc')).toBe(before);
+    await expect(read('wrangler-calls.log')).rejects.toThrow();
   });
 });

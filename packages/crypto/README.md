@@ -2,7 +2,7 @@
 
 Asynchronous authenticated encryption using Web Crypto. The portable root has
 no framework runtime dependencies. Optional exports: `/vela`, `/tenant`,
-`/fields`, and `/files`.
+`/fields`, `/files`, and `/cloudflare`.
 
 ```ts
 import { CryptoService, LocalKeyRing } from '@velajs/crypto';
@@ -68,3 +68,95 @@ the file is complete. Consumers needing all-or-nothing publication must stage th
 plaintext until EOF. Bind the object key in caller context as shown; R2 object
 names alone are not cryptographic authority. An aborted upload may require R2's
 normal abandoned-multipart lifecycle cleanup if the service is unavailable.
+
+## Cloudflare Secrets Store
+
+`SecretsStoreKeyProvider` from `@velajs/crypto/cloudflare` implements the existing
+`KeyProvider` using native secret bindings. The subpath and portable root work
+without Vela. Secrets Store supplies key material; AES-KW wrap/unwrap still runs
+locally in Web Crypto. This is not a remote KMS and does not implement remote
+wrap/unwrap or non-exportable hardware keys.
+
+Each bound secret must contain exactly 32 random bytes encoded as canonical,
+unpadded base64url (43 characters), without whitespace or a JSON wrapper.
+The provider imports a nonextractable AES-KW key and clears its decoded temporary
+byte array; JavaScript strings returned by the binding cannot be zeroed.
+Key IDs use 1–128 ASCII letters, digits, `.`, `_`, `:`, or `-`, starting with a
+letter or digit. IDs are copied from configuration and never change in a provider.
+Do not use mutable aliases such as `current` as envelope key IDs.
+
+```ts
+import { CryptoService } from '@velajs/crypto';
+import { SecretsStoreKeyProvider, type SecretsStoreSecret } from '@velajs/crypto/cloudflare';
+
+interface Env {
+  KEY_2026_08: SecretsStoreSecret;
+  KEY_2026_09: SecretsStoreSecret;
+}
+
+// Cache by the native environment object, never one process-global service.
+const services = new WeakMap<Env, CryptoService>();
+function cryptoFor(env: Env): CryptoService {
+  let service = services.get(env);
+  if (!service) {
+    service = new CryptoService(new SecretsStoreKeyProvider({
+      activeKeyId: 'key-2026-09',
+      keys: { 'key-2026-08': env.KEY_2026_08, 'key-2026-09': env.KEY_2026_09 },
+      // Optional: reuse imported keys for one minute. Default 0 re-reads every operation.
+      cacheTtlMs: 60_000,
+    }));
+    services.set(env, service);
+  }
+  return service;
+}
+
+export default {
+  async fetch(_request: Request, env: Env) {
+    const service = cryptoFor(env);
+    const context = { namespace: 'documents:production', purpose: 'content' };
+    const encrypted = await service.encryptText('synthetic text', context);
+    return new Response(encrypted);
+  },
+};
+```
+
+Configure a separate binding per key version with `secrets_store_secrets`:
+
+```jsonc
+{
+  "secrets_store_secrets": [
+    { "binding": "KEY_2026_08", "store_id": "<STORE_ID>", "secret_name": "document-key-2026-08" },
+    { "binding": "KEY_2026_09", "store_id": "<STORE_ID>", "secret_name": "document-key-2026-09" }
+  ]
+}
+```
+
+Reads start on `current()`/`get()` during an operation, not in the constructor.
+For Vela, construct this provider in `CryptoModule.registerAsync({ inject: [ENV],
+useFactory: env => ({ provider: new SecretsStoreKeyProvider(...) }) })` using a
+typed environment token. Keep asynchronous reads out of synchronous `registerAs`
+configuration factories. Applications that need eager validation can await
+`provider.current()` during their supported asynchronous initialization.
+
+Concurrent reads of one ID share a pending load. Completed keys are reused only
+within `cacheTtlMs`; expiry or `provider.invalidate(id)` re-reads on the next
+operation. `invalidate()` evicts all keys. In-flight operations may finish with
+their original key; invalidation does not cancel them. No stale key is served if
+a refresh fails, and failed loads can retry. A positive TTL delays detection of
+secret deletion/changes until expiry or invalidation; it is not an immediate
+revocation mechanism. Errors contain a fixed message with no original binding
+error or cause, secret value, key bytes, or ID.
+
+Rotate by adding a new secret under a new immutable ID and constructing a new
+provider whose active ID selects it. Keep old bindings until their ciphertext
+has been re-encrypted. Never update an existing key secret in place: an instance
+remembers each successfully observed material fingerprint across invalidation and
+rejects reassignment to different bytes. That check is local to the instance;
+it cannot detect changes that happened before startup or in other isolates.
+Enforce immutable versioned secrets in deployment and key-management policy.
+Unknown decryption IDs return `undefined`, so envelope authentication fails.
+
+Cloudflare supports local Secrets Store values separate from production. See
+[Workers bindings and local setup](https://developers.cloudflare.com/secrets-store/integrations/workers/).
+The package's `test:workers` command exercises its built exports, native local
+Secrets Store bindings and Web Crypto in workerd without Node compatibility.

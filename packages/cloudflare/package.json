@@ -1,6 +1,6 @@
 {
   "name": "@velajs/cloudflare",
-  "version": "1.33.0",
+  "version": "1.34.0",
   "description": "Cloudflare Workers integration for Vela framework",
   "keywords": [
     "cloudflare",
@@ -52,6 +52,14 @@
       "types": "./dist/entrypoints.d.ts",
       "import": "./dist/entrypoints.js"
     },
+    "./pipelines": {
+      "types": "./dist/pipelines.d.ts",
+      "import": "./dist/pipelines.js"
+    },
+    "./queue-events": {
+      "types": "./dist/queue-events.d.ts",
+      "import": "./dist/queue-events.js"
+    },
     "./queues": {
       "types": "./dist/queues.d.ts",
       "import": "./dist/queues.js"
@@ -67,6 +75,10 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.js"
+    },
+    "./tracing": {
+      "types": "./dist/tracing.d.ts",
+      "import": "./dist/tracing.js"
     },
     "./workflows": {
       "types": "./dist/workflows.d.ts",

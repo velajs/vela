@@ -183,10 +183,25 @@ try {
   `unexported-workflow` (see [deployment](deployment.md)).
 
 For portable workflow definitions shared with other execution adapters, see
-[`@velajs/workflow`](../packages/workflow/README.md#cloudflare-and-dependency-injection).
+[`@velajs/workflow`](../packages/workflow/README.md).
+
+## Portable definitions and compiled agents
+
 `VelaWorkflowDefinition(app, { params, inject, useFactory })` from the separate
 `@velajs/cloudflare/workflow-definitions` entrypoint runs those definitions and
 compiled agents through this same native host lifecycle. Trigger validation
-precedes dependency resolution; the factory returns `{ definition, run }` in
+precedes application startup and dependency resolution; the factory returns `{ definition, run }` in
 each run's execution scope. The binding accepts schema inputs while the handler
 receives schema outputs. `run` remains an explicit application dispatcher.
+
+Use `runCloudflareWorkflow` from `@velajs/workflow/cloudflare` inside the existing
+host's `run(event, step)` to execute `defineWorkflow` or `compileAgent` definitions.
+Pass a required Standard Schema for the actual native payload and an authenticated
+`run` dispatcher injected into that host. The helper keeps native steps and
+replay, translating portable terminal errors inside callbacks and at the run
+boundary. The native host remains responsible for lifecycle and DI scopes.
+
+See the [adapter contract](../packages/workflow/README.md#cloudflare-execution)
+for replay constraints, native subscription cleanup and deletion semantics, and
+[the runnable approval Worker](../apps/agent-approvals/README.md#native-worker)
+for a compiled agent, SQLite thread store and signed internal dispatch.

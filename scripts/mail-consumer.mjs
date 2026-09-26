@@ -8,6 +8,7 @@ const root = new URL('../', import.meta.url);
 const subpaths = [
   '@velajs/mail',
   '@velajs/mail/transports/resend',
+  '@velajs/mail/transports/cloudflare',
   '@velajs/mail/transports/catcher',
   '@velajs/mail/testing',
 ];

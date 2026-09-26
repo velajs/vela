@@ -647,3 +647,31 @@ describe('vela cf sync plan', () => {
     expect(kebabCase('SignupFlow')).toBe('signup-flow');
   });
 });
+
+describe('shared binding collision checks', () => {
+  it('does not plan queue, Durable Object or Workflow bindings over another native kind', () => {
+    const config = wrangler(
+      JSON.stringify({
+        name: 'example',
+        flagship: [{ binding: 'EMAILS' }],
+        secrets_store_secrets: [
+          { binding: 'CHAT_ROOM', store_id: 'example', secret_name: 'example' },
+        ],
+        ai: { binding: 'SIGNUP_FLOW' },
+      }),
+    );
+    const plan = planCloudflareSync(config, undefined, APP);
+    expect(
+      plan.changes.filter(
+        (change) =>
+          ['queues', 'durable_objects', 'workflows'].includes(String(change.path[0])) &&
+          change.path.at(-1) !== 'consumers',
+      ),
+    ).toEqual([]);
+    expect(
+      plan.warnings.filter(
+        (warning) => warning.includes('is taken') || warning.includes('name is taken'),
+      ),
+    ).toHaveLength(3);
+  });
+});

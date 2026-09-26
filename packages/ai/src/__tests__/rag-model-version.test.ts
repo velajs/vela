@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineRag, memoryVectors } from '../rag';
+import { defineRag, memoryVectors, memoryPublications } from '../rag';
 import type { RagVectors } from '../rag';
 import { keywordEmbedder } from './support';
 
@@ -7,8 +7,10 @@ describe('defineRag — embeddingModelVersion partitioning', () => {
   it('a version bump partitions the vector space (old vectors unreachable to new queries)', async () => {
     const vectors: RagVectors = memoryVectors();
     const embed = keywordEmbedder();
+    const publications = memoryPublications();
 
     const v1 = defineRag({
+      publications,
       name: 'model-version',
       vectors,
       embed,
@@ -17,6 +19,7 @@ describe('defineRag — embeddingModelVersion partitioning', () => {
       resolveNamespace: ({ selector }) => selector,
     });
     const v2 = defineRag({
+      publications,
       name: 'model-version',
       vectors,
       embed,
@@ -39,6 +42,7 @@ describe('defineRag — embeddingModelVersion partitioning', () => {
   it('rejects an invalid version tag', () => {
     expect(() =>
       defineRag({
+        publications: memoryPublications(),
         name: 'bad-version',
         vectors: memoryVectors(),
         embed: keywordEmbedder(),
@@ -55,15 +59,22 @@ describe('unambiguous model and tenant partitions', () => {
       const vectors = memoryVectors();
       const common = { vectors, embed: keywordEmbedder(), allowSharedNamespace: true };
       const tagged = defineRag({
+        publications: memoryPublications(),
         ...common,
         embeddingModelVersion: 'v1',
         resolveNamespace: () => (tenant === 'v1::tenant' ? 'tenant' : undefined),
       });
-      const untagged = defineRag({ ...common, resolveNamespace: () => tenant });
+      const untagged = defineRag({
+        publications: memoryPublications(),
+        ...common,
+        resolveNamespace: () => tenant,
+      });
       await tagged.sync([{ id: 'same', text: 'alpha private' }]);
       expect((await untagged.retrieve('alpha')).chunks).toHaveLength(0);
       await untagged.sync([{ id: 'same', text: 'beta private' }]);
-      await untagged.remove('same');
+      await untagged.remove('same', {
+        expectedRevision: (await untagged.inspect('same'))!.revision,
+      });
       expect((await tagged.retrieve('alpha')).chunks[0]?.text).toBe('alpha private');
     },
   );

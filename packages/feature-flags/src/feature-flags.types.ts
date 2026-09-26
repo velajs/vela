@@ -47,14 +47,16 @@ export type FlagKey = keyof FeatureFlagRegistry extends never
  */
 export type FlagManifest = Record<string, FlagValue>;
 
-/** Why an evaluation returned the value it did. */
-export type FlagEvaluationReason = 'STATIC' | 'DEFAULT' | 'ERROR';
+/** Provider-defined reason, or UNKNOWN for drivers without evaluation metadata. */
+export type FlagEvaluationReason = string;
 
-/** A flag value plus the metadata the service synthesizes around a driver read. */
-export interface FlagEvaluationDetails<T extends FlagValue = FlagValue> {
+/** Provider metadata is preserved; unavailable reasons are UNKNOWN. */
+export interface FlagEvaluationDetails<T = FlagValue> {
   flagKey: string;
   value: T;
   reason: FlagEvaluationReason;
+  variant?: string;
+  errorCode?: string;
   errorMessage?: string;
 }
 

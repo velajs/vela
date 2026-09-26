@@ -4,6 +4,12 @@ Nest-style modules, dependency injection, controllers, queue consumers, cron tri
 and live WebSockets on Cloudflare Workers. HTTP routing uses Hono. Bindings use the
 platform's native types.
 
+The [native composition example](../../apps/cloudflare-composition/README.md)
+combines request-scoped `ENV` injection with Browser Run Quick Actions, Workers AI
+and AI Gateway, VPC through `HttpService`, and authorized R2-to-WebP Images transforms.
+It keeps destination/model policy on the server, bounds I/O and cancellation, and
+separates local emulation from opt-in live acceptance without additional packages.
+
 ## Native environment and application lifetime
 
 The Worker's native environment is the framework `ENV` from `@velajs/vela`.
@@ -287,6 +293,78 @@ handlers still need the idempotency appropriate to their delivery semantics.
 See [execution scopes](../../docs/execution-scopes.md) for lifetime ownership,
 stream boundaries, cancellation and optional transport integration.
 
+## Native handler tracing
+
+Import `CloudflareTracingInterceptor` from the optional
+`@velajs/cloudflare/tracing` entrypoint and register it on HTTP controllers or
+`VelaEntrypoint` hosts with `@UseInterceptors`. It uses the native
+`cloudflare:workers` tracing API; the package root does not import it.
+
+```ts
+import { Controller, Get, Injectable, Module, UseInterceptors } from '@velajs/vela';
+import { defineCloudflareApp } from '@velajs/cloudflare';
+import { VelaEntrypoint } from '@velajs/cloudflare/entrypoints';
+import { CloudflareTracingInterceptor } from '@velajs/cloudflare/tracing';
+
+@Controller('/status')
+@UseInterceptors(CloudflareTracingInterceptor)
+class StatusController {
+  @Get()
+  async read() {
+    return { ready: true };
+  }
+}
+
+@Injectable()
+@UseInterceptors(CloudflareTracingInterceptor)
+class StatusHost {
+  async read() {
+    return { ready: true };
+  }
+}
+
+@Module({ controllers: [StatusController] })
+class AppModule {}
+
+const app = defineCloudflareApp(AppModule);
+export class Status extends VelaEntrypoint(app, StatusHost, { rpc: ['read'] }) {}
+export default app.worker;
+```
+
+Enable traces in Wrangler and choose an application sampling rate:
+
+```toml
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+```
+
+The interceptor calls `next.handle()` inside `tracing.enterSpan()` and returns
+its promise. Native child spans and awaited platform calls run within that
+callback's async context. Cloudflare owns sampling, span completion and export,
+including its service RPC transport instrumentation. Unsampled calls still run
+normally. Use a Workers runtime with the
+[native custom-span API](https://developers.cloudflare.com/workers/observability/traces/custom-spans/).
+
+Span names are fixed: `vela.http.handler` and `vela.rpc.handler`. Sampled spans
+add only `vela.handler.class` and `vela.handler.method`, each limited to 128
+characters. Symbol method names are omitted. Labels use runtime names, which
+may change with minification. No request values, arguments, errors, identifiers,
+HTTP status or outcome attributes are added by this interceptor. Other execution
+kinds pass through without a span.
+
+The span covers the handler and inner interceptors until their returned promise
+settles. Guards and pipes run earlier; response streams, deferred work and scope
+disposal can outlive it. This integration does not implement Vela's portable
+`Telemetry` interface or expose parent selection, span IDs or trace-header
+propagation. See [observability](../../docs/observability.md) for that separate API.
+
+The workerd tests exercise nested HTTP/RPC and KV calls, concurrent environments,
+errors and disabled sampling. They do not inspect exported span trees or assert
+parent IDs. Inspect sampled traces with Wrangler's
+[local tracing tools](https://developers.cloudflare.com/changelog/post/2026-08-04-local-tracing/)
+when verifying the runtime's exported hierarchy.
+
 ## Typed provider factories
 
 Bindings retain their full native API and generic parameters. There are no
@@ -315,6 +393,15 @@ Use native `env.DB`, `env.CACHE`, `env.FILES`, `env.JOBS`, `env.AI`,
 `env.VECTORIZE`, or `env.HYPERDRIVE` directly. Inject `ENV` in constructors
 (`@InjectEnv()`) and factories (`inject: [ENV]`); it works the same in HTTP,
 queue, cron and Durable Object code.
+
+## Platform event subscriptions
+
+`@velajs/cloudflare/queue-events` composes inside `@QueueConsumer` to validate
+Cloudflare event subscription envelopes and Standard Schema payloads. It awaits
+explicit handlers, acknowledges each success and retries failed messages through
+the native queue policy. Use a dedicated queue with trusted producer permissions;
+metadata checks are not authentication and duplicate deliveries require consumer
+idempotency. See the [Worker build example and settlement guide](../../docs/cloudflare-queue-events.md).
 
 ## Queues and cron
 
@@ -578,13 +665,45 @@ application that fails to start is logged to the console instead. See
 ## Bindings by name
 
 Module options name a binding instead of holding it. `kv`, `r2`, `d1`,
-`queue`, `durableObject`, `rateLimit` and `workflow` each take `{ binding }`, the name
+`queue`, `durableObject`, `rateLimit`, `workflow`, `flagship` and
+`secretsStoreSecret` each take `{ binding }`, the name
 declared in the Wrangler configuration, and read nothing when declared: calling
 the reference with an application's `ENV` returns the typed native binding, or
 fails naming the binding and the Wrangler key that declares it
 (`ENV.UPLOADS is not set: declare the R2 bucket binding 'UPLOADS' under r2_buckets …`).
 The drivers and stores below are built on them, so one static module graph
 serves every environment.
+
+`flagship` returns the native `Flagship` handle, including typed value and detail
+methods. `secretsStoreSecret` returns a native `SecretsStoreSecret` handle; call
+`get()` to read its current value. References perform structural checks only:
+they do not read secrets, evaluate flags, cache results, create resources or prove
+remote availability. Native method errors and local-development behavior are
+unchanged. Use current generated Wrangler types or Workers types containing
+these native interfaces (validated with Wrangler 4.135.0 and Workers types
+5.20260920.1).
+
+```ts
+import { flagship, secretsStoreSecret } from '@velajs/cloudflare';
+
+const flags = flagship({ binding: 'FLAGS' });
+const apiKey = secretsStoreSecret({ binding: 'API_KEY' });
+
+// In request/application scope, using that application's environment:
+async function readSettings(env: Env) {
+  const enabled = await flags(env).getBooleanValue('new-layout', false);
+  const key = await apiKey(env).get();
+  return { enabled, key };
+}
+```
+
+Declare `FLAGS` under `flagship` with an `app_id`, and `API_KEY` under
+`secrets_store_secrets` with a `store_id` and `secret_name`, separately for each
+named environment. `vela add binding` can write those config declarations;
+resource setup remains explicit. See Cloudflare's [Flagship binding API](https://developers.cloudflare.com/flagship/binding/)
+and [Secrets Store Workers integration](https://developers.cloudflare.com/secrets-store/integrations/workers/)
+for native methods and local setup. In particular, local Secrets Store values
+are separate from production secrets.
 
 ## Rate limiting
 
@@ -734,6 +853,90 @@ it('processes a created todo', async () => {
   work (`waitUntil`) and closes the application.
 
 The subpath is not part of any Worker bundle: import it from tests only.
+
+## Validated Pipelines producers
+
+`@velajs/cloudflare/pipelines` adds producer validation to a configured native
+stream handle. It is an optional adapter subpath: there is no module, queue
+driver, or replacement for the native Pipelines API.
+
+Configure the stream in Wrangler and regenerate your environment types:
+
+```jsonc
+{
+  "pipelines": [{ "binding": "EVENT_STREAM", "stream": "<STREAM_ID>" }],
+}
+```
+
+Use a Standard Schema validator whose **output** matches the deployed stream
+schema. Synchronous and asynchronous transforms are supported; `send()` takes
+schema **inputs** and sends the validated outputs:
+
+```ts
+import { ENV, InjectionToken, defineProvider } from '@velajs/vela';
+import { createPipelinesWriter, type PipelinesWriter } from '@velajs/cloudflare/pipelines';
+import { z } from 'zod';
+
+const event = z.object({
+  id: z.string().min(1),
+  count: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().nonnegative()),
+});
+
+export const EVENTS = new InjectionToken<PipelinesWriter<z.input<typeof event>>>('events');
+
+// Add this provider to your application's providers. ENV and the writer belong
+// to that application; do not capture a request's environment at module scope.
+export const eventsProvider = defineProvider(EVENTS, {
+  inject: [ENV],
+  useFactory: (env) => createPipelinesWriter(env.EVENT_STREAM, { schema: event }),
+});
+
+// In a provider that injects EVENTS:
+// await this.events.send([{ id: 'sample-1', count: '2' }]);
+```
+
+The factory also works directly with `createPipelinesWriter(env.EVENT_STREAM,
+{ schema: event })`. The binding is structural (`send(records): Promise<void>`),
+remains available as `env.EVENT_STREAM`, and needs no `cloudflare:pipelines`
+runtime import. Generated `Pipeline<RecordType>` bindings check schema output
+compatibility at compile time. Select the stream through trusted configuration;
+the writer does not accept a stream name or endpoint from a record or request.
+
+Each nonempty `send(records)` validates all records before making one native
+call. A failure rejects without sending any records; validation may stop at the
+first error. Standard Schema failures use `SchemaValidationError` from
+`@velajs/vela/validation`, with the record index prefixed to each issue path.
+Validator exceptions and native failures propagate. There is no automatic retry,
+batch splitting, rate limiter, or buffering. Empty batches reject.
+
+After schema transforms, each record must be a plain JSON object. Nested objects
+and dense arrays may contain strings, booleans, null, and finite numbers. The
+writer rejects undefined values (including explicitly undefined optional fields),
+functions, symbols, bigint, non-finite numbers, cycles, class instances, `Date`,
+`Map`, `Set`, typed arrays, getters, non-enumerable or symbol properties, extra
+array properties, and `toJSON` functions. Convert special values in your schema.
+Validated outputs are copied before the next asynchronous validation, so later
+mutations cannot alter already checked records. Callers must not mutate inputs
+while their schema is validating them.
+
+The writer measures the UTF-8 encoding of compact JSON outputs, including escapes,
+commas and array brackets, against a conservative **5,000,000-byte request
+ceiling**. A single record must fit inside that same JSON array (at most
+4,999,998 bytes). The current [Cloudflare limits](https://developers.cloudflare.com/pipelines/platform/limits/)
+document 5 MB per ingestion request without a separate record size cap; this
+adapter does not invent one. Oversize records or batches reject with `RangeError`;
+non-JSON output rejects with `TypeError`.
+
+`send()` resolves to `void` only after native ingestion acceptance. Cloudflare
+[accepts but later drops invalid structured events](https://developers.cloudflare.com/pipelines/streams/writing-to-streams/#schema-validation),
+so keep your producer schema aligned with the configured stream. Resolution
+provides no query visibility, transaction, application exactly-once, or terminal
+storage guarantee. A failed native request may have reached the service; any
+retry and deduplication policy belongs to the application.
+
+Tests cover producer behavior and native type compatibility. Workerd tests also
+exercise Miniflare's local Pipelines binding, whose `send()` is a no-op; they
+provide no remote ingestion, schema enforcement, or downstream storage proof.
 
 ## Development
 

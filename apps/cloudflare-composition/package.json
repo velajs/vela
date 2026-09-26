@@ -1,0 +1,34 @@
+{
+  "name": "vela-cloudflare-composition",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:workers": "vitest run --config vitest.config.workers.ts",
+    "test:remote": "node test/remote.mjs",
+    "cf:types": "wrangler types --include-runtime=false --strict-vars=false --env-file .dev.vars.example"
+  },
+  "dependencies": {
+    "@ai-sdk/provider": "4.0.3",
+    "@velajs/ai": "workspace:*",
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "ai": "catalog:",
+    "workers-ai-provider": "4.0.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

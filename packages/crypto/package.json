@@ -1,6 +1,6 @@
 {
   "name": "@velajs/crypto",
-  "version": "1.28.0",
+  "version": "1.29.0",
   "description": "Portable crypto for Vela and Cloudflare Workers",
   "keywords": [
     "cloudflare-workers",
@@ -48,6 +48,10 @@
     "./files": {
       "types": "./dist/files/index.d.ts",
       "import": "./dist/files/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
     }
   },
   "publishConfig": {
@@ -56,6 +60,7 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
+    "test:workers": "pnpm build && node --test tests/secrets-store.workers.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "lint": "oxlint .",
     "format": "oxfmt .",

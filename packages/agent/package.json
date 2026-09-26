@@ -1,6 +1,6 @@
 {
   "name": "@velajs/agent",
-  "version": "1.30.0",
+  "version": "1.31.0",
   "description": "Durable AI tool orchestration, scoped thread storage, and human approvals over Vela workflows.",
   "keywords": [
     "agent",
@@ -46,6 +46,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
     }
   },
   "publishConfig": {
@@ -60,7 +64,8 @@
     "format:check": "oxfmt --check .",
     "publint": "publint",
     "attw": "attw --pack . --profile esm-only",
-    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw",
+    "test:workers": "vitest run --config vitest.config.workers.ts"
   },
   "dependencies": {
     "@cfworker/json-schema": "catalog:",
@@ -71,6 +76,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "@types/node": "catalog:",
     "@velajs/ai": "workspace:*",
     "@velajs/mail": "workspace:*",
@@ -86,8 +92,8 @@
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@velajs/ai": "workspace:^1.1.0",
-    "@velajs/mail": "workspace:^1.33.0",
+    "@velajs/ai": "workspace:^1.3.0",
+    "@velajs/mail": "workspace:^1.34.0",
     "ai": "^7.0.26",
     "zod": "^4.4.3"
   },

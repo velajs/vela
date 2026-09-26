@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { defineRag, memoryVectors } from '../rag';
+import { defineRag, memoryVectors, memoryPublications } from '../rag';
 import { keywordEmbedder, pipeSplitter } from './support';
 
 describe('defineRag — ranking controls', () => {
   it('minScore drops matches below the threshold', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'rank-minscore',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -26,6 +27,7 @@ describe('defineRag — ranking controls', () => {
 
   it('per-document importance re-weights (and reorders) matches', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'rank-importance',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -48,6 +50,7 @@ describe('defineRag — ranking controls', () => {
 
   it('rejects a negative importance', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'rank-bad-importance',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -61,6 +64,7 @@ describe('defineRag — ranking controls', () => {
 
   it('chunkContext stitches neighbouring chunks into each match', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'rank-context',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -85,6 +89,7 @@ describe('defineRag — ranking controls', () => {
 
   it('rejects retrieval and context limits above their security caps', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'rank-limits',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),

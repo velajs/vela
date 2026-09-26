@@ -5,13 +5,11 @@ import { fixedWindowChunks } from './chunk';
 import { DEFAULT_SYNC_CONCURRENCY, mapWithConcurrency } from './concurrent';
 import type {
   RemoveOptions,
+  InspectOptions,
   Rag,
   RagConfig,
   RagDocument,
-  RagStoredChunk,
-  RagStoredVector,
   RagVectorMatch,
-  RagVectorRecord,
   RetrievedChunk,
   RetrieveOptions,
   RetrieveResult,
@@ -19,6 +17,11 @@ import type {
   RagToolOptions,
   SyncOptions,
   SyncResult,
+  RagPublication,
+  RagPublicationTransaction,
+  RagIndexingResult,
+  ReconcileOptions,
+  ReconcileResult,
 } from './types';
 
 const DEFAULT_CHUNK_SIZE = 1000;
@@ -33,7 +36,6 @@ const MAX_CHUNKS_PER_DOCUMENT = 4096;
 const MAX_CHUNK_BYTES = 64 * 1024;
 const MAX_TOTAL_CHUNK_BYTES = 4 * 1024 * 1024;
 const MAX_METADATA_BYTES = 64 * 1024;
-const MAX_STORED_METADATA_BYTES = 192 * 1024;
 const MAX_CONTEXT_BYTES = 2 * 1024 * 1024;
 const MAX_VECTOR_DIMENSIONS = 8192;
 const MAX_NAMESPACE_BYTES = 512;
@@ -48,29 +50,6 @@ const bytes = (value: string): number => textEncoder.encode(value).byteLength;
 
 /** `^[A-Za-z0-9._-]{1,40}$` — the shape allowed for {@link RagConfig.embeddingModelVersion}. */
 const MODEL_VERSION_PATTERN = /^[\w.-]{1,40}$/;
-
-// Reserved metadata keys the helper writes onto each chunk vector. Namespaced so
-// they never collide with caller metadata, and stripped back out before caller
-// metadata is returned.
-const META_SOURCE = '@velajs/ai:rag/source';
-const META_INDEX = '@velajs/ai:rag/index';
-const META_TEXT = '@velajs/ai:rag/text';
-const META_HASH = '@velajs/ai:rag/hash';
-const META_COUNT = '@velajs/ai:rag/count';
-const META_IMPORTANCE = '@velajs/ai:rag/importance';
-const META_MODEL = '@velajs/ai:rag/model';
-const META_MANIFEST = '@velajs/ai:rag/manifest';
-
-const RESERVED_KEYS = new Set([
-  META_SOURCE,
-  META_INDEX,
-  META_TEXT,
-  META_HASH,
-  META_COUNT,
-  META_IMPORTANCE,
-  META_MODEL,
-  META_MANIFEST,
-]);
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
   if (value === null || typeof value !== 'object') return false;
@@ -114,49 +93,11 @@ const requireCallerMetadata = (
   return result.value;
 };
 
-const boundedStoredVectors = (
-  value: unknown,
-  requestedIds: ReadonlyArray<string>,
-): RagStoredVector[] => {
-  let candidates: ReadonlyArray<unknown>;
-  try {
-    if (!Array.isArray(value)) return [];
-    candidates = value;
-  } catch {
-    return [];
-  }
-  let inspected: ReadonlyArray<unknown>;
-  try {
-    inspected = candidates.slice(0, requestedIds.length);
-  } catch {
-    return [];
-  }
-  const requested = new Set(requestedIds);
-  const accepted: RagStoredVector[] = [];
-
-  for (const candidate of inspected) {
-    if (!isPlainRecord(candidate)) continue;
-    const idDescriptor = Object.getOwnPropertyDescriptor(candidate, 'id');
-    const metadataDescriptor = Object.getOwnPropertyDescriptor(candidate, 'metadata');
-    if (idDescriptor === undefined || !('value' in idDescriptor)) continue;
-    const id = idDescriptor.value;
-    if (typeof id !== 'string' || !requested.has(id)) continue;
-    if (metadataDescriptor !== undefined && !('value' in metadataDescriptor)) continue;
-    const metadata = boundedMetadata(metadataDescriptor?.value, MAX_STORED_METADATA_BYTES);
-    if (!metadata.valid) continue;
-
-    const record: RagStoredVector = { id };
-    if (metadata.value !== undefined) record.metadata = metadata.value;
-    accepted.push(record);
-  }
-
-  return accepted;
-};
-
 const metadataMatchesFilter = (
   metadata: Record<string, unknown> | undefined,
   filter: Record<string, unknown>,
 ): boolean => {
+  if (Object.keys(filter).length === 0) return true;
   if (metadata === undefined) return false;
   for (const [key, expected] of Object.entries(filter)) {
     if (!Object.hasOwn(metadata, key) || !Object.is(metadata[key], expected)) return false;
@@ -165,11 +106,7 @@ const metadataMatchesFilter = (
 };
 
 /** Bound and validate the runtime output of an untrusted vector adapter. */
-const boundedVectorMatches = (
-  value: unknown,
-  topK: number,
-  filter: Record<string, unknown>,
-): RagVectorMatch[] => {
+const boundedVectorMatches = (value: unknown, topK: number): RagVectorMatch[] => {
   let candidates: ReadonlyArray<unknown>;
   try {
     if (!Array.isArray(value)) return [];
@@ -192,13 +129,11 @@ const boundedVectorMatches = (
     if (!isPlainRecord(candidate)) continue;
     const idDescriptor = Object.getOwnPropertyDescriptor(candidate, 'id');
     const scoreDescriptor = Object.getOwnPropertyDescriptor(candidate, 'score');
-    const metadataDescriptor = Object.getOwnPropertyDescriptor(candidate, 'metadata');
     if (
       idDescriptor === undefined ||
       !('value' in idDescriptor) ||
       scoreDescriptor === undefined ||
-      !('value' in scoreDescriptor) ||
-      (metadataDescriptor !== undefined && !('value' in metadataDescriptor))
+      !('value' in scoreDescriptor)
     ) {
       continue;
     }
@@ -210,16 +145,12 @@ const boundedVectorMatches = (
       bytes(id) > MAX_ADAPTER_ID_BYTES ||
       seen.has(id) ||
       typeof score !== 'number' ||
-      !Number.isFinite(score)
+      !Number.isFinite(score) ||
+      score < 0
     ) {
       continue;
     }
-    const metadata = boundedMetadata(metadataDescriptor?.value, MAX_STORED_METADATA_BYTES);
-    if (!metadata.valid || !metadataMatchesFilter(metadata.value, filter)) continue;
-
-    const match: RagVectorMatch = { id, score };
-    if (metadata.value !== undefined) match.metadata = metadata.value;
-    accepted.push(match);
+    accepted.push({ id, score });
     seen.add(id);
   }
 
@@ -242,70 +173,168 @@ const parseToolInput = (input: unknown): { query: string } => {
   throw new Error('@velajs/ai/rag: tool input must contain only a bounded string query');
 };
 
-/** The segment prepended to a chunk id to scope it to its namespace. */
-const namespaceSegment = (namespace: string | undefined): string =>
-  namespace === undefined ? '' : `${encodeURIComponent(namespace)}#`;
-
-const sourceSegment = (sourceId: string): string => encodeURIComponent(sourceId);
-
-/** Stable manifest id atomically pointing at the committed generation. */
-const manifestId = (namespace: string | undefined, sourceId: string): string =>
-  `${namespaceSegment(namespace)}${sourceSegment(sourceId)}#manifest`;
-
-/** Generation-specific chunk id; text and vector records always share it. */
-const chunkId = (
-  namespace: string | undefined,
-  sourceId: string,
-  generation: string,
-  index: number,
-): string => `${namespaceSegment(namespace)}${sourceSegment(sourceId)}#${generation}#${index}`;
-
-/**
- * Invert {@link chunkId}. The (caller-known) namespace prefix is stripped first;
- * the chunk index is then the final `#`-delimited segment, so source ids may
- * themselves contain `#`.
- */
-const parseChunkId = (
-  id: string,
-  namespace: string | undefined,
-): { sourceId: string; generation: string; chunkIndex: number } | undefined => {
-  const prefix = namespaceSegment(namespace);
-  const body = prefix !== '' && id.startsWith(prefix) ? id.slice(prefix.length) : id;
-  const indexCut = body.lastIndexOf('#');
-  const generationCut = body.lastIndexOf('#', indexCut - 1);
-  if (indexCut <= 0 || generationCut <= 0) return undefined;
-  const index = Number(body.slice(indexCut + 1));
-  const generation = body.slice(generationCut + 1, indexCut);
-  if (!Number.isInteger(index) || index < 0 || !/^[a-f0-9]{64}$/.test(generation)) {
-    return undefined;
-  }
-  try {
-    return {
-      sourceId: decodeURIComponent(body.slice(0, generationCut)),
-      generation,
-      chunkIndex: index,
-    };
-  } catch {
-    return undefined;
-  }
-};
-
-/** Encode both dimensions so tagged/untagged and shared/tenant spaces never alias. */
 const foldModelVersion = (namespace: string | undefined, tag: string | undefined): string =>
-  `@velajs/ai/rag:v1:${tag ?? ''}:${namespace === undefined ? 'shared' : `tenant:${namespace}`}`;
+  JSON.stringify(['rag-v2', namespace ?? null, tag ?? null]);
 
-/** Strip reserved keys, returning caller metadata (or `undefined` if none remains). */
-const callerMetadata = (
-  metadata: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined => {
-  if (metadata === undefined) {
-    return undefined;
+interface PublicationChunk {
+  id: string;
+  key: string;
+  sourceId: string;
+  revision: string;
+  chunkIndex: number;
+  text: string;
+}
+interface PublicationJournal {
+  revision: string;
+  chunks: number;
+}
+const isRevision = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+const storedObject = (value: unknown): Record<string, unknown> => {
+  try {
+    if (!isPlainRecord(value)) throw new Error('record required');
+    const decoded: unknown = JSON.parse(
+      canonicalJson(value, {
+        maxBytes: 1024 * 1024,
+        maxDepth: MAX_JSON_DEPTH + 3,
+        maxNodes: MAX_JSON_NODES + MAX_CHUNKS_PER_DOCUMENT + 32,
+        maxKeys: MAX_CHUNKS_PER_DOCUMENT,
+      }),
+    );
+    if (!isPlainRecord(decoded)) throw new Error('record required');
+    return decoded;
+  } catch {
+    throw new Error('@velajs/ai/rag: corrupt publication record');
   }
-
-  const entries = Object.entries(metadata).filter(([key]) => !RESERVED_KEYS.has(key));
-
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 };
+const parseIndexing = (value: unknown): RagIndexingResult => {
+  const record = storedObject(value);
+  if (
+    (record.status !== 'visible' && record.status !== 'accepted') ||
+    !Array.isArray(record.mutationIds) ||
+    record.mutationIds.length > MAX_CHUNKS_PER_DOCUMENT ||
+    record.mutationIds.some((id) => typeof id !== 'string' || bytes(id) > 128)
+  )
+    throw new Error('@velajs/ai/rag: corrupt indexing receipt');
+  return { status: record.status, mutationIds: record.mutationIds };
+};
+const parsePublication = (value: unknown): RagPublication | undefined => {
+  if (value === undefined) return undefined;
+  const record = storedObject(value);
+  if (
+    typeof record.sourceId !== 'string' ||
+    !record.sourceId.isWellFormed() ||
+    !record.sourceId.trim() ||
+    bytes(record.sourceId) > MAX_SOURCE_ID_BYTES ||
+    !isRevision(record.revision) ||
+    !['pending', 'published', 'deleted'].includes(String(record.state)) ||
+    typeof record.chunks !== 'number' ||
+    !Number.isInteger(record.chunks) ||
+    record.chunks < 0 ||
+    record.chunks > MAX_CHUNKS_PER_DOCUMENT ||
+    typeof record.hash !== 'string' ||
+    (record.hash !== '' && !/^[a-f0-9]{64}$/.test(record.hash)) ||
+    typeof record.importance !== 'number' ||
+    !Number.isFinite(record.importance) ||
+    record.importance < 0
+  )
+    throw new Error('@velajs/ai/rag: corrupt publication head');
+  const metadata = requireCallerMetadata(record.metadata, record.sourceId);
+  return {
+    sourceId: record.sourceId,
+    revision: record.revision,
+    state: record.state as RagPublication['state'],
+    chunks: record.chunks,
+    hash: record.hash,
+    importance: record.importance,
+    ...(metadata === undefined ? {} : { metadata }),
+    ...(record.indexing === undefined ? {} : { indexing: parseIndexing(record.indexing) }),
+  };
+};
+const parseChunk = (value: unknown): PublicationChunk | undefined => {
+  if (value === undefined) return undefined;
+  const record = storedObject(value);
+  if (
+    typeof record.key !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(record.key) ||
+    !isRevision(record.revision) ||
+    typeof record.chunkIndex !== 'number' ||
+    !Number.isInteger(record.chunkIndex) ||
+    record.chunkIndex < 0 ||
+    record.chunkIndex >= MAX_CHUNKS_PER_DOCUMENT ||
+    record.id !== `${record.key}:${record.revision}:${record.chunkIndex}` ||
+    typeof record.text !== 'string' ||
+    bytes(record.text) > MAX_CHUNK_BYTES ||
+    typeof record.sourceId !== 'string' ||
+    !record.sourceId.isWellFormed() ||
+    bytes(record.sourceId) > MAX_SOURCE_ID_BYTES
+  )
+    throw new Error('@velajs/ai/rag: corrupt publication chunk');
+  return {
+    id: record.id,
+    key: record.key,
+    sourceId: record.sourceId,
+    revision: record.revision,
+    chunkIndex: record.chunkIndex,
+    text: record.text,
+  };
+};
+const parseJournal = (value: unknown): PublicationJournal => {
+  const record = storedObject(value);
+  if (
+    !isRevision(record.revision) ||
+    typeof record.chunks !== 'number' ||
+    !Number.isInteger(record.chunks) ||
+    record.chunks < 0 ||
+    record.chunks > MAX_CHUNKS_PER_DOCUMENT
+  )
+    throw new Error('@velajs/ai/rag: corrupt publication journal');
+  return { revision: record.revision, chunks: record.chunks };
+};
+const sourceDigest = async (sourceId: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(sourceId));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+const getPublication = async (
+  tx: RagPublicationTransaction,
+  key: string,
+): Promise<RagPublication | undefined> => {
+  const head = parsePublication(await tx.get<unknown>(key));
+  if (head && key !== `h:${await sourceDigest(head.sourceId)}`)
+    throw new Error('@velajs/ai/rag: corrupt publication source key');
+  return head;
+};
+const getChunk = async (
+  tx: RagPublicationTransaction,
+  key: string,
+  sourceId?: string,
+): Promise<PublicationChunk | undefined> => {
+  const chunk = parseChunk(await tx.get<unknown>(key));
+  if (
+    chunk &&
+    (key !== `c:${chunk.id}` ||
+      chunk.key !== (await sourceDigest(chunk.sourceId)) ||
+      (sourceId !== undefined && sourceId !== chunk.sourceId))
+  )
+    throw new Error('@velajs/ai/rag: corrupt chunk identity at publication key');
+  return chunk;
+};
+
+/** Failed submissions may already have reached the index. Resume by revision. */
+export class RagIndexingError extends Error {
+  constructor(
+    readonly sourceId: string,
+    readonly revision: string,
+    cause: unknown,
+  ) {
+    super(
+      `@velajs/ai/rag: indexing ${sourceId} (${revision}) failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+    this.name = 'RagIndexingError';
+  }
+}
 
 /** A source id is percent-encoded so untrusted ids cannot inject prompt headers. */
 const sourceHeader = (chunk: Pick<RetrievedChunk, 'sourceId' | 'chunkIndex'>): string =>
@@ -315,32 +344,16 @@ const sourceHeader = (chunk: Pick<RetrievedChunk, 'sourceId' | 'chunkIndex'>): s
 const assembleContext = (chunks: ReadonlyArray<RetrievedChunk>): string =>
   chunks.map((chunk) => `${sourceHeader(chunk)}${chunk.text}`).join('\n\n');
 
-/**
- * Declare a RAG index over a bring-your-own vector store and embedder. Returns
- * `{ sync, retrieve, remove, asTool }` — no per-request binding, no I/O until a
- * method runs.
- *
- * ```ts
- * import { defineRag, memoryVectors } from '@velajs/ai/rag';
- *
- * const docs = defineRag({
- *   name: 'docs',
- *   vectors: myVectorStore,
- *   embed: (text) => embedText(text),
- *   resolveNamespace: ({ selector, auth }) => authorizeTenant(auth, selector).tenantId,
- * });
- *
- * await docs.sync([{ id: 'guide', text: manual }], { namespace: tenantId, auth: identity });
- * const result = await docs.retrieve(question, { namespace: tenantId, auth: identity });
- * ```
- */
 export const defineRag = (config: RagConfig): Rag => {
   const name = config.name ?? 'default';
   const chunkSize = config.chunkSize ?? DEFAULT_CHUNK_SIZE;
   const chunkOverlap = config.chunkOverlap ?? DEFAULT_CHUNK_OVERLAP;
   const defaultTopK = config.topK ?? DEFAULT_TOP_K;
   const modelTag = config.embeddingModelVersion;
-  const { vectors, textStore, embed } = config;
+  const { vectors, publications, embed } = config;
+  if (!Number.isInteger(vectors.maxTopK) || vectors.maxTopK < 1 || vectors.maxTopK > MAX_TOP_K)
+    throw new Error('@velajs/ai/rag: vector maxTopK must be 1..100');
+  if (!publications) throw new Error('@velajs/ai/rag: publications store is required');
 
   if (!Number.isInteger(chunkSize) || chunkSize < 1) {
     throw new Error('@velajs/ai/rag: `chunkSize` must be a positive integer');
@@ -352,7 +365,11 @@ export const defineRag = (config: RagConfig): Rag => {
     );
   }
 
-  if (!Number.isInteger(defaultTopK) || defaultTopK < 1 || defaultTopK > MAX_TOP_K) {
+  if (
+    !Number.isInteger(defaultTopK) ||
+    defaultTopK < 1 ||
+    defaultTopK > Math.min(MAX_TOP_K, vectors.maxTopK)
+  ) {
     throw new Error(`@velajs/ai/rag: \`topK\` must be an integer between 1 and ${MAX_TOP_K}`);
   }
 
@@ -390,7 +407,7 @@ export const defineRag = (config: RagConfig): Rag => {
 
   /** Resolve the actual partition from trusted server context; raw values are selectors only. */
   const resolveEffectiveNamespace = async (
-    operation: 'sync' | 'retrieve' | 'remove',
+    operation: 'sync' | 'retrieve' | 'remove' | 'inspect' | 'reconcile',
     scope: SyncOptions | RetrieveOptions | RemoveOptions | undefined,
   ): Promise<string | undefined> => {
     const selector = scope?.namespace;
@@ -439,339 +456,303 @@ export const defineRag = (config: RagConfig): Rag => {
     return foldModelVersion(namespace, modelTag);
   };
 
-  /** Read the atomic manifest for a source's committed generation. */
-  const readHead = async (
-    sourceId: string,
-    effectiveNamespace: string | undefined,
-  ): Promise<{ hash?: string; chunks?: number }> => {
-    const id = manifestId(effectiveNamespace, sourceId);
-    const rawHeads = await vectors.getByIds([id], {
-      namespace: effectiveNamespace,
-    });
-    const head = boundedStoredVectors(rawHeads, [id]).find((record) => record.id === id);
-
-    const hash = head?.metadata?.[META_HASH];
-    const chunks = head?.metadata?.[META_COUNT];
-    const manifest = head?.metadata?.[META_MANIFEST];
-    const result: { hash?: string; chunks?: number } = {};
-
-    if (manifest !== true) return result;
-
-    if (typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash)) {
-      result.hash = hash;
-    }
-
-    if (
-      typeof chunks === 'number' &&
-      Number.isInteger(chunks) &&
-      chunks > 0 &&
-      chunks <= MAX_CHUNKS_PER_DOCUMENT
-    ) {
-      result.chunks = chunks;
-    }
-
-    return result;
-  };
-
-  const deleteChunkRange = async (
-    sourceId: string,
-    generation: string,
-    from: number,
-    to: number,
-    effectiveNamespace: string | undefined,
-  ): Promise<void> => {
-    const ids = Array.from({ length: Math.max(0, to - from) }, (_, offset) =>
-      chunkId(effectiveNamespace, sourceId, generation, from + offset),
-    );
-
-    if (ids.length === 0) {
-      return;
-    }
-
-    await vectors.deleteByIds(ids, { namespace: effectiveNamespace });
-    await textStore?.remove(ids, { namespace: effectiveNamespace });
-  };
-
-  const syncDocument = async (
-    document: RagDocument,
-    options: SyncOptions | undefined,
-    effectiveNamespace: string | undefined,
-  ): Promise<SyncResult> => {
-    if (
-      typeof document.id !== 'string' ||
-      !document.id.isWellFormed() ||
-      document.id.trim().length === 0 ||
-      bytes(document.id) > MAX_SOURCE_ID_BYTES
-    ) {
-      throw new Error(
-        `@velajs/ai/rag: source ids must be non-empty strings of at most ${MAX_SOURCE_ID_BYTES} bytes`,
-      );
-    }
-    if (typeof document.text !== 'string' || bytes(document.text) > MAX_DOCUMENT_BYTES) {
-      throw new Error(
-        `@velajs/ai/rag: document "${document.id}" exceeds the ${MAX_DOCUMENT_BYTES}-byte limit`,
-      );
-    }
-    if (
-      document.importance !== undefined &&
-      (typeof document.importance !== 'number' ||
-        !Number.isFinite(document.importance) ||
-        document.importance < 0)
-    ) {
-      throw new Error('@velajs/ai/rag: `importance` must be a non-negative finite number');
-    }
-    const sourceMetadata = requireCallerMetadata(document.metadata, document.id);
-
-    const rawPieces: unknown = splitter(document.text);
-    if (!Array.isArray(rawPieces) || rawPieces.length > MAX_CHUNKS_PER_DOCUMENT) {
-      throw new Error(
-        `@velajs/ai/rag: custom chunkers must return at most ${MAX_CHUNKS_PER_DOCUMENT} string chunks`,
-      );
-    }
-    const candidates: ReadonlyArray<unknown> = rawPieces;
-    const pieces: string[] = [];
-    let totalChunkBytes = 0;
-    for (const piece of candidates) {
-      if (typeof piece !== 'string' || bytes(piece) > MAX_CHUNK_BYTES) {
-        throw new Error(
-          `@velajs/ai/rag: every chunk must be a string of at most ${MAX_CHUNK_BYTES} bytes`,
-        );
-      }
-      totalChunkBytes += bytes(piece);
-      if (totalChunkBytes > MAX_TOTAL_CHUNK_BYTES) {
-        throw new Error(
-          `@velajs/ai/rag: chunk output exceeds the ${MAX_TOTAL_CHUNK_BYTES}-byte aggregate limit`,
-        );
-      }
-      pieces.push(piece);
-    }
-    const fingerprintDocument: Pick<RagDocument, 'text' | 'metadata' | 'importance'> = {
-      text: document.text,
-    };
-    if (sourceMetadata !== undefined) fingerprintDocument.metadata = sourceMetadata;
-    if (document.importance !== undefined) fingerprintDocument.importance = document.importance;
-    const hash = await documentFingerprint(
-      fingerprintDocument,
-      modelTag,
-      pieces,
-      textStore !== undefined,
-    );
-    const previous = await readHead(document.id, effectiveNamespace);
-
-    // Unchanged content is a no-op re-sync: skip embedding and writes.
-    if (previous.hash === hash && previous.chunks !== undefined) {
-      return {
-        id: document.id,
-        chunks: previous.chunks,
-        ids: Array.from({ length: previous.chunks }, (_, index) =>
-          chunkId(effectiveNamespace, document.id, hash, index),
-        ),
-        unchanged: true,
-      };
-    }
-
-    const ids = pieces.map((_, index) => chunkId(effectiveNamespace, document.id, hash, index));
-
-    if (pieces.length === 0 && options?.allowEmpty === false) {
-      throw new Error(
-        `@velajs/ai/rag: source "${document.id}" produced zero chunks — set { allowEmpty: true } to allow this`,
-      );
-    }
-
-    // Prepare every embedding before mutating either store. Chunk metadata
-    // carries the generation hash so retrieval can reject partially staged
-    // records whose hash does not match the committed head.
-    const records = await mapWithConcurrency(
-      pieces,
-      DEFAULT_SYNC_CONCURRENCY,
-      async (piece, chunkIndex): Promise<RagVectorRecord> => {
-        const id = ids[chunkIndex] as string;
-        const metadata: Record<string, unknown> = {
-          ...sourceMetadata,
-          [META_SOURCE]: document.id,
-          [META_INDEX]: chunkIndex,
-          [META_HASH]: hash,
-          [META_MANIFEST]: false,
-        };
-
-        if (!textStore) {
-          metadata[META_TEXT] = piece;
-        }
-
-        if (document.importance !== undefined) {
-          metadata[META_IMPORTANCE] = document.importance;
-        }
-
-        return {
-          id,
-          vector: await embedText(piece),
-          metadata,
-        };
-      },
-    );
-
-    const storedChunks: RagStoredChunk[] = pieces.map((text, chunkIndex) => ({
-      id: ids[chunkIndex] as string,
-      sourceId: document.id,
-      chunkIndex,
-      text,
-    }));
-    const previousIds =
-      previous.hash === undefined
-        ? []
-        : Array.from({ length: previous.chunks ?? 0 }, (_, index) =>
-            chunkId(effectiveNamespace, document.id, previous.hash!, index),
-          );
-
-    if (records.length === 0) {
-      await vectors.deleteByIds([manifestId(effectiveNamespace, document.id), ...previousIds], {
-        namespace: effectiveNamespace,
-      });
-      await textStore?.remove(previousIds, { namespace: effectiveNamespace });
-      return { id: document.id, chunks: 0, ids: [], unchanged: false };
-    }
-
-    let publishing = false;
-    try {
-      if (storedChunks.length > 0 && textStore) {
-        await textStore.put(storedChunks, { namespace: effectiveNamespace });
-      }
-
-      // All text/vector ids are generation-specific, so old authorized readers
-      // can never hydrate newly staged text. The stable manifest flips only
-      // after every new record is durable.
-      await mapWithConcurrency(records, DEFAULT_SYNC_CONCURRENCY, async (record) => {
-        await vectors.upsert([record], { namespace: effectiveNamespace });
-      });
-
-      const first = records[0]!;
-      publishing = true;
-      await vectors.upsert(
-        [
-          {
-            id: manifestId(effectiveNamespace, document.id),
-            vector: first.vector,
-            metadata: {
-              [META_SOURCE]: document.id,
-              [META_HASH]: hash,
-              [META_COUNT]: pieces.length,
-              [META_MANIFEST]: true,
-              ...(modelTag !== undefined ? { [META_MODEL]: modelTag } : {}),
-            },
-          },
-        ],
-        { namespace: effectiveNamespace },
-      );
-    } catch (error) {
-      await textStore?.remove(ids, { namespace: effectiveNamespace });
-      await vectors.deleteByIds(
-        [...(publishing ? [manifestId(effectiveNamespace, document.id)] : []), ...ids],
-        {
-          namespace: effectiveNamespace,
-        },
-      );
-      throw error;
-    }
-
-    for (const [chunkIndex, text] of pieces.entries()) {
-      options?.onChunk?.({
-        sourceId: document.id,
-        chunkIndex,
-        id: ids[chunkIndex] as string,
-        text,
-        total: pieces.length,
-      });
-    }
-
-    // A shrinking re-sync leaves stale trailing chunks — delete them so they can
-    // no longer match. New chunks are already written, so retrieval sees no gap.
-    if (previous.hash !== undefined && previous.chunks !== undefined) {
-      await deleteChunkRange(document.id, previous.hash, 0, previous.chunks, effectiveNamespace);
-    }
-
-    return { id: document.id, chunks: pieces.length, ids, unchanged: false };
-  };
-
-  const sync = async (
-    docs: ReadonlyArray<RagDocument>,
-    options?: SyncOptions,
-  ): Promise<ReadonlyArray<SyncResult>> => {
-    if (!Array.isArray(docs) || docs.length > MAX_DOCUMENTS_PER_SYNC) {
-      throw new Error(
-        `@velajs/ai/rag: sync accepts at most ${MAX_DOCUMENTS_PER_SYNC} documents per call`,
-      );
-    }
-
-    const effectiveNamespace = await resolveEffectiveNamespace('sync', options);
-    const results: SyncResult[] = [];
-
-    const inputs: ReadonlyArray<unknown> = docs;
-    for (const input of inputs) {
-      if (!isPlainRecord(input)) {
-        throw new Error('@velajs/ai/rag: every document must be a plain object');
-      }
-      const id = Object.getOwnPropertyDescriptor(input, 'id');
-      const text = Object.getOwnPropertyDescriptor(input, 'text');
-      const metadata = Object.getOwnPropertyDescriptor(input, 'metadata');
-      const importance = Object.getOwnPropertyDescriptor(input, 'importance');
-      if (
-        id === undefined ||
-        !('value' in id) ||
-        text === undefined ||
-        !('value' in text) ||
-        (metadata !== undefined && !('value' in metadata)) ||
-        (importance !== undefined && !('value' in importance))
-      ) {
-        throw new Error('@velajs/ai/rag: document fields must be own data properties');
-      }
-      const rawId: unknown = id.value;
-      const rawText: unknown = text.value;
-      if (typeof rawId !== 'string' || typeof rawText !== 'string') {
-        throw new Error('@velajs/ai/rag: document id and text must be strings');
-      }
-      const document: RagDocument = { id: rawId, text: rawText };
-      if (metadata !== undefined) {
-        const rawMetadata: unknown = metadata.value;
-        if (!isPlainRecord(rawMetadata)) {
-          throw new Error('@velajs/ai/rag: document metadata must be a plain JSON object');
-        }
-        document.metadata = rawMetadata;
-      }
-      if (importance !== undefined) {
-        const rawImportance: unknown = importance.value;
-        if (typeof rawImportance !== 'number') {
-          throw new Error('@velajs/ai/rag: document importance must be a number');
-        }
-        document.importance = rawImportance;
-      }
-      // Keep document publication ordered and bound concurrent embedding/storage work per source.
-      // oxlint-disable-next-line eslint/no-await-in-loop
-      results.push(await syncDocument(document, options, effectiveNamespace));
-    }
-
-    return results;
-  };
-
-  const remove = async (id: string, options?: RemoveOptions): Promise<void> => {
+  const sourceKey = async (id: string): Promise<string> => {
     if (
       typeof id !== 'string' ||
       !id.isWellFormed() ||
-      id.trim().length === 0 ||
+      !id.trim() ||
       bytes(id) > MAX_SOURCE_ID_BYTES
     ) {
       throw new Error(
         `@velajs/ai/rag: source ids must be non-empty strings of at most ${MAX_SOURCE_ID_BYTES} bytes`,
       );
     }
+    return sourceDigest(id);
+  };
+  const idsFor = (key: string, revision: string, count: number): string[] =>
+    Array.from({ length: count }, (_, i) => `${key}:${revision}:${i}`);
+  const checkRevision = (
+    head: RagPublication | undefined,
+    expected: string | null | undefined,
+  ): void => {
+    if ((head?.revision ?? null) !== (expected ?? null))
+      throw new Error('@velajs/ai/rag: revision conflict; inspect the source before replacing it');
+  };
+  const mergeReceipts = (receipts: RagIndexingResult[]): RagIndexingResult => ({
+    status: receipts.some((item) => item.status === 'accepted') ? 'accepted' : 'visible',
+    mutationIds: receipts.flatMap((item) => item.mutationIds),
+  });
+  const readHead = (key: string, namespace: string | undefined) =>
+    publications.transaction({ namespace }, (tx) => getPublication(tx, `h:${key}`));
+  const requireCurrent = (head: RagPublication | undefined, revision: string): RagPublication => {
+    if (!head || head.revision !== revision || head.state === 'deleted')
+      throw new Error('@velajs/ai/rag: revision superseded or deleted');
+    return head;
+  };
 
-    const effectiveNamespace = await resolveEffectiveNamespace('remove', options);
-    const previous = await readHead(id, effectiveNamespace);
-    if (previous.hash !== undefined && previous.chunks !== undefined) {
-      await deleteChunkRange(id, previous.hash, 0, previous.chunks, effectiveNamespace);
+  // Journal and text are persisted before any index side effects. Reconciliation
+  // may re-embed and repeat an ambiguous upsert, always with the same attempt IDs.
+  const indexRevision = async (
+    key: string,
+    revision: string,
+    namespace: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<RagPublication> => {
+    signal?.throwIfAborted();
+    const head = requireCurrent(await readHead(key, namespace), revision);
+    const receipts: RagIndexingResult[] = [];
+    const ids = idsFor(key, revision, head.chunks);
+    for (let offset = 0; offset < ids.length; offset += 32) {
+      signal?.throwIfAborted();
+      // oxlint-disable-next-line eslint/no-await-in-loop
+      const chunks = await publications.transaction({ namespace }, async (tx) => {
+        requireCurrent(await getPublication(tx, `h:${key}`), revision);
+        return Promise.all(
+          ids.slice(offset, offset + 32).map((id) => getChunk(tx, `c:${id}`, head.sourceId)),
+        );
+      });
+      // oxlint-disable-next-line eslint/no-await-in-loop
+      const records = await mapWithConcurrency(chunks, DEFAULT_SYNC_CONCURRENCY, async (chunk) => {
+        signal?.throwIfAborted();
+        if (!chunk) throw new Error('@velajs/ai/rag: publication chunk missing');
+        return { id: chunk.id, vector: await embedText(chunk.text) };
+      });
+      signal?.throwIfAborted();
+      // oxlint-disable-next-line eslint/no-await-in-loop
+      requireCurrent(await readHead(key, namespace), revision);
+      // A concurrent remove can win while this network call is in flight. Its
+      // tombstone/current revision remains authoritative even if this arrives late.
+      // oxlint-disable-next-line eslint/no-await-in-loop
+      receipts.push(parseIndexing(await vectors.upsert(records, { namespace })));
     }
-    await vectors.deleteByIds([manifestId(effectiveNamespace, id)], {
-      namespace: effectiveNamespace,
+    signal?.throwIfAborted();
+    return publications.transaction({ namespace }, async (tx) => {
+      const current = requireCurrent(await getPublication(tx, `h:${key}`), revision);
+      const published: RagPublication = {
+        ...current,
+        state: 'published',
+        indexing: mergeReceipts(receipts),
+      };
+      await tx.put(`h:${key}`, published);
+      return published;
     });
+  };
+
+  const replace = async (
+    document: RagDocument,
+    options: SyncOptions | undefined,
+    namespace: string | undefined,
+  ): Promise<SyncResult> => {
+    const key = await sourceKey(document.id);
+    if (typeof document.text !== 'string' || bytes(document.text) > MAX_DOCUMENT_BYTES)
+      throw new Error(`@velajs/ai/rag: document exceeds the ${MAX_DOCUMENT_BYTES}-byte limit`);
+    if (
+      document.importance !== undefined &&
+      (!Number.isFinite(document.importance) || document.importance < 0)
+    )
+      throw new Error('@velajs/ai/rag: `importance` must be a non-negative finite number');
+    const metadata = requireCallerMetadata(document.metadata, document.id);
+    const rawPieces: unknown = splitter(document.text);
+    if (!Array.isArray(rawPieces) || rawPieces.length > MAX_CHUNKS_PER_DOCUMENT)
+      throw new Error(
+        `@velajs/ai/rag: custom chunkers must return at most ${MAX_CHUNKS_PER_DOCUMENT} string chunks`,
+      );
+    const pieces: string[] = [];
+    let total = 0;
+    for (const piece of rawPieces) {
+      if (typeof piece !== 'string' || bytes(piece) > MAX_CHUNK_BYTES)
+        throw new Error(
+          `@velajs/ai/rag: every chunk must be a string of at most ${MAX_CHUNK_BYTES} bytes`,
+        );
+      total += bytes(piece);
+      if (total > MAX_TOTAL_CHUNK_BYTES)
+        throw new Error(
+          `@velajs/ai/rag: chunk output exceeds the ${MAX_TOTAL_CHUNK_BYTES}-byte aggregate limit`,
+        );
+      pieces.push(piece);
+    }
+    if (!pieces.length && options?.allowEmpty === false)
+      throw new Error('@velajs/ai/rag: source produced zero chunks');
+    const hash = await documentFingerprint(document, modelTag, pieces);
+    const revision = crypto.randomUUID();
+    const ids = idsFor(key, revision, pieces.length);
+    options?.signal?.throwIfAborted();
+    const claimed = await publications.transaction({ namespace }, async (tx) => {
+      const old = await getPublication(tx, `h:${key}`);
+      checkRevision(old, document.expectedRevision);
+      if (old?.state === 'published' && old.hash === hash) return { head: old, unchanged: true };
+      if (old)
+        await Promise.all(idsFor(key, old.revision, old.chunks).map((id) => tx.delete(`c:${id}`)));
+      const head: RagPublication = {
+        sourceId: document.id,
+        revision,
+        state: pieces.length ? 'pending' : 'deleted',
+        chunks: pieces.length,
+        hash,
+        importance: document.importance ?? 1,
+        ...(metadata === undefined ? {} : { metadata }),
+      };
+      await tx.put(`h:${key}`, head);
+      await tx.put(`j:${key}:${revision}`, {
+        revision,
+        chunks: pieces.length,
+      } satisfies PublicationJournal);
+      await Promise.all(
+        pieces.map((text, chunkIndex) =>
+          tx.put(`c:${ids[chunkIndex]!}`, {
+            id: ids[chunkIndex]!,
+            sourceId: document.id,
+            key,
+            revision,
+            chunkIndex,
+            text,
+          } satisfies PublicationChunk),
+        ),
+      );
+      return { head, unchanged: false };
+    });
+    let published = claimed.head;
+    if (!claimed.unchanged && pieces.length) {
+      try {
+        published = await indexRevision(key, revision, namespace, options?.signal);
+      } catch (cause) {
+        throw new RagIndexingError(document.id, revision, cause);
+      }
+    }
+    const publishedIds = idsFor(key, published.revision, published.chunks);
+    if (!claimed.unchanged)
+      pieces.forEach((text, chunkIndex) =>
+        options?.onChunk?.({
+          sourceId: document.id,
+          chunkIndex,
+          id: publishedIds[chunkIndex]!,
+          text,
+          total: pieces.length,
+        }),
+      );
+    return {
+      id: document.id,
+      revision: published.revision,
+      publication: published.state === 'deleted' ? 'deleted' : 'published',
+      chunks: published.chunks,
+      ids: publishedIds,
+      unchanged: claimed.unchanged,
+      ...(published.indexing === undefined ? {} : { indexing: published.indexing }),
+    };
+  };
+
+  const sync = async (
+    docs: ReadonlyArray<RagDocument>,
+    options?: SyncOptions,
+  ): Promise<ReadonlyArray<SyncResult>> => {
+    if (!Array.isArray(docs) || docs.length > MAX_DOCUMENTS_PER_SYNC)
+      throw new Error(
+        `@velajs/ai/rag: sync accepts at most ${MAX_DOCUMENTS_PER_SYNC} documents per call`,
+      );
+    const namespace = await resolveEffectiveNamespace('sync', options);
+    const results: SyncResult[] = [];
+    for (const input of docs) {
+      if (!isPlainRecord(input))
+        throw new Error('@velajs/ai/rag: every document must be a plain object');
+      for (const field of ['id', 'text', 'metadata', 'importance', 'expectedRevision']) {
+        const descriptor = Object.getOwnPropertyDescriptor(input, field);
+        if (descriptor && !('value' in descriptor))
+          throw new Error('@velajs/ai/rag: document fields must be own data properties');
+      }
+      if (typeof input.id !== 'string' || typeof input.text !== 'string')
+        throw new Error('@velajs/ai/rag: document id and text must be strings');
+      if (
+        input.expectedRevision !== undefined &&
+        input.expectedRevision !== null &&
+        !isRevision(input.expectedRevision)
+      )
+        throw new Error('@velajs/ai/rag: expectedRevision must be a revision or null');
+      const metadata = requireCallerMetadata(input.metadata, input.id);
+      if (input.importance !== undefined && typeof input.importance !== 'number')
+        throw new Error('@velajs/ai/rag: importance must be a number');
+      const document: RagDocument = {
+        id: input.id,
+        text: input.text,
+        ...(metadata === undefined ? {} : { metadata }),
+        ...(input.importance === undefined ? {} : { importance: input.importance }),
+        ...(input.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: input.expectedRevision }),
+      };
+      // oxlint-disable-next-line eslint/no-await-in-loop
+      results.push(await replace(document, options, namespace));
+    }
+    return results;
+  };
+
+  const inspect = async (
+    id: string,
+    options?: InspectOptions,
+  ): Promise<RagPublication | undefined> => {
+    const namespace = await resolveEffectiveNamespace('inspect', options);
+    return readHead(await sourceKey(id), namespace);
+  };
+  const remove = async (id: string, options?: RemoveOptions): Promise<RagPublication> => {
+    const namespace = await resolveEffectiveNamespace('remove', options);
+    const key = await sourceKey(id);
+    const revision = crypto.randomUUID();
+    return publications.transaction({ namespace }, async (tx) => {
+      const old = await getPublication(tx, `h:${key}`);
+      checkRevision(old, options?.expectedRevision);
+      if (old)
+        await Promise.all(
+          idsFor(key, old.revision, old.chunks).map((chunk) => tx.delete(`c:${chunk}`)),
+        );
+      const head: RagPublication = {
+        sourceId: id,
+        revision,
+        state: 'deleted',
+        chunks: 0,
+        hash: '',
+        importance: 1,
+      };
+      await tx.put(`h:${key}`, head);
+      return head;
+    });
+  };
+  const reconcile = async (id: string, options: ReconcileOptions): Promise<ReconcileResult> => {
+    const namespace = await resolveEffectiveNamespace('reconcile', options);
+    const key = await sourceKey(id);
+    const limit = options.limit ?? 10;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+      throw new Error('@velajs/ai/rag: reconciliation limit must be 1..100');
+    let head = await readHead(key, namespace);
+    checkRevision(head, options.revision);
+    if (!head) throw new Error('@velajs/ai/rag: source missing');
+    if (head.state === 'pending' || (head.state === 'published' && options.reindex === true))
+      head = await indexRevision(key, options.revision, namespace, options.signal);
+    const journals = await publications.transaction({ namespace }, async (tx) => {
+      checkRevision(await getPublication(tx, `h:${key}`), options.revision);
+      return tx.list<PublicationJournal>({
+        prefix: `j:${key}:`,
+        after: options.after,
+        limit: limit + 1,
+      });
+    });
+    const cleanup: RagIndexingResult[] = [];
+    const page = [...journals].slice(0, limit);
+    for (const [journalKey, rawJournal] of page) {
+      const journal = parseJournal(rawJournal);
+      if (journalKey !== `j:${key}:${journal.revision}`)
+        throw new Error('@velajs/ai/rag: corrupt journal key');
+      options.signal?.throwIfAborted();
+      if (journal.revision === head.revision) continue;
+      const ids = idsFor(key, journal.revision, journal.chunks);
+      if (ids.length) {
+        // oxlint-disable-next-line eslint/no-await-in-loop
+        cleanup.push(await vectors.deleteByIds(ids, { namespace }));
+      }
+    }
+    return {
+      publication: head,
+      cleanup,
+      ...(journals.size > limit ? { cursor: page.at(-1)![0] } : {}),
+    };
   };
 
   /** Resolve a named filter, or pass a literal filter object through. */
@@ -809,232 +790,6 @@ export const defineRag = (config: RagConfig): Rag => {
     return bounded.value;
   };
 
-  /** Fetch chunk texts by id — from the text store, or from vector metadata. */
-  const textsByIds = async (
-    ids: ReadonlyArray<string>,
-    effectiveNamespace: string | undefined,
-  ): Promise<Map<string, string>> => {
-    const texts = new Map<string, string>();
-
-    if (ids.length === 0) {
-      return texts;
-    }
-
-    if (textStore) {
-      const rawStored: unknown = await textStore.getMany(ids, { namespace: effectiveNamespace });
-      if (!Array.isArray(rawStored)) return texts;
-      const stored: ReadonlyArray<unknown> = rawStored;
-
-      for (const [position, id] of ids.entries()) {
-        const text = stored[position];
-
-        if (typeof text === 'string' && bytes(text) <= MAX_CHUNK_BYTES) {
-          texts.set(id, text);
-        }
-      }
-
-      return texts;
-    }
-
-    const rawRecords = await vectors.getByIds(ids, { namespace: effectiveNamespace });
-    const records = boundedStoredVectors(rawRecords, ids);
-
-    for (const record of records) {
-      const text = record.metadata?.[META_TEXT];
-
-      if (typeof text === 'string' && bytes(text) <= MAX_CHUNK_BYTES) {
-        texts.set(record.id, text);
-      }
-    }
-
-    return texts;
-  };
-
-  /** Turn raw vector matches into ranked chunks, folding in per-source importance. */
-  const parseMatches = (
-    matches: ReadonlyArray<RagVectorMatch>,
-    effectiveNamespace: string | undefined,
-  ): RetrievedChunk[] =>
-    matches.flatMap((match) => {
-      const metadata = match.metadata ?? {};
-      const parsed = parseChunkId(match.id, effectiveNamespace);
-      if (parsed === undefined) return [];
-      const rawImportance = metadata[META_IMPORTANCE];
-      const importance =
-        typeof rawImportance === 'number' && Number.isFinite(rawImportance) && rawImportance >= 0
-          ? rawImportance
-          : 1;
-      const rawText = metadata[META_TEXT];
-      if (
-        rawText !== undefined &&
-        (typeof rawText !== 'string' || bytes(rawText) > MAX_CHUNK_BYTES)
-      ) {
-        return [];
-      }
-      const score = match.score * importance;
-      if (!Number.isFinite(score)) return [];
-      const caller = callerMetadata(metadata);
-
-      const chunk: RetrievedChunk = {
-        id: match.id,
-        sourceId: parsed.sourceId,
-        chunkIndex: parsed.chunkIndex,
-        text: typeof rawText === 'string' ? rawText : '',
-        score,
-        importance,
-      };
-
-      if (caller !== undefined) {
-        chunk.metadata = caller;
-      }
-
-      return [chunk];
-    });
-
-  /** Drop staged/stale matches whose generation is not the committed head. */
-  const committedMatches = async (
-    matches: ReadonlyArray<RagVectorMatch>,
-    effectiveNamespace: string | undefined,
-  ): Promise<RagVectorMatch[]> => {
-    const prefix = namespaceSegment(effectiveNamespace);
-    const candidates = matches.flatMap((match) => {
-      if (prefix !== '' && !match.id.startsWith(prefix)) return [];
-      const parsed = parseChunkId(match.id, effectiveNamespace);
-      if (parsed === undefined || match.metadata?.[META_MANIFEST] !== false) return [];
-      const storedSource = match.metadata?.[META_SOURCE];
-      const storedIndex = match.metadata?.[META_INDEX];
-      const hash = match.metadata?.[META_HASH];
-      if (
-        storedSource !== parsed.sourceId ||
-        storedIndex !== parsed.chunkIndex ||
-        hash !== parsed.generation ||
-        bytes(parsed.sourceId) > MAX_SOURCE_ID_BYTES
-      ) {
-        return [];
-      }
-      return [
-        {
-          match,
-          sourceId: parsed.sourceId,
-          hash: parsed.generation,
-        },
-      ];
-    });
-    const headIds = [
-      ...new Set(candidates.map(({ sourceId }) => manifestId(effectiveNamespace, sourceId))),
-    ];
-    const rawHeads = await vectors.getByIds(headIds, { namespace: effectiveNamespace });
-    const heads = boundedStoredVectors(rawHeads, headIds);
-    const committed = new Map<string, string>();
-    for (const head of heads) {
-      const hash = head.metadata?.[META_HASH];
-      if (
-        head.metadata?.[META_MANIFEST] === true &&
-        typeof hash === 'string' &&
-        /^[a-f0-9]{64}$/.test(hash)
-      ) {
-        committed.set(head.id, hash);
-      }
-    }
-    return candidates.flatMap(({ match, sourceId, hash }) =>
-      committed.get(manifestId(effectiveNamespace, sourceId)) === hash ? [match] : [],
-    );
-  };
-
-  /** In text-store mode, hydrate each chunk's text; drop chunks whose text is gone. */
-  const hydrateFromStore = async (
-    chunks: RetrievedChunk[],
-    effectiveNamespace: string | undefined,
-  ): Promise<RetrievedChunk[]> => {
-    if (!textStore) {
-      return chunks;
-    }
-
-    const texts = await textsByIds(
-      chunks.map((chunk) => chunk.id),
-      effectiveNamespace,
-    );
-
-    return chunks.flatMap((chunk) => {
-      const text = texts.get(chunk.id);
-
-      return text === undefined ? [] : [{ ...chunk, text }];
-    });
-  };
-
-  /** Stitch each chunk's ± `chunkContext` neighbours into its text, in document order. */
-  const expandChunks = async (
-    chunks: ReadonlyArray<RetrievedChunk>,
-    options: RetrieveOptions | undefined,
-    effectiveNamespace: string | undefined,
-  ): Promise<RetrievedChunk[]> => {
-    const before = options?.chunkContext?.before ?? 0;
-    const after = options?.chunkContext?.after ?? 0;
-
-    if (before === 0 && after === 0) {
-      return [...chunks];
-    }
-
-    if (!Number.isInteger(before) || before < 0 || !Number.isInteger(after) || after < 0) {
-      throw new Error(
-        '@velajs/ai/rag: `chunkContext.before`/`chunkContext.after` must be non-negative integers',
-      );
-    }
-    if (before > MAX_CHUNK_CONTEXT || after > MAX_CHUNK_CONTEXT) {
-      throw new Error(
-        `@velajs/ai/rag: chunk context is capped at ${MAX_CHUNK_CONTEXT} chunks per side`,
-      );
-    }
-
-    const known = new Map(chunks.map((chunk) => [chunk.id, chunk.text]));
-    const neighbourIds = new Set<string>();
-
-    for (const chunk of chunks) {
-      const generation = parseChunkId(chunk.id, effectiveNamespace)?.generation;
-      if (generation === undefined) continue;
-      for (let offset = -before; offset <= after; offset += 1) {
-        const neighbourIndex = chunk.chunkIndex + offset;
-        const id = chunkId(effectiveNamespace, chunk.sourceId, generation, neighbourIndex);
-
-        if (offset !== 0 && neighbourIndex >= 0 && !known.has(id)) {
-          neighbourIds.add(id);
-        }
-      }
-    }
-
-    const neighbourTexts = await textsByIds([...neighbourIds], effectiveNamespace);
-    const textAt = (sourceId: string, generation: string, index: number): string | undefined => {
-      const id = chunkId(effectiveNamespace, sourceId, generation, index);
-
-      return known.get(id) ?? neighbourTexts.get(id);
-    };
-
-    return chunks.map((chunk) => {
-      const parts: string[] = [];
-      const generation = parseChunkId(chunk.id, effectiveNamespace)?.generation;
-
-      for (let offset = -before; offset <= after; offset += 1) {
-        const text =
-          offset === 0
-            ? chunk.text
-            : generation === undefined
-              ? undefined
-              : textAt(chunk.sourceId, generation, chunk.chunkIndex + offset);
-
-        if (text !== undefined) {
-          parts.push(text);
-        }
-      }
-
-      const text = parts.join('\n');
-
-      // A wide context request over maximum-sized custom chunks must not turn a
-      // bounded retrieval into a multi-megabyte amplification. Keep the ranked
-      // chunk itself when neighbour expansion would exceed the result budget.
-      return bytes(text) <= MAX_CONTEXT_BYTES ? { ...chunk, text } : { ...chunk };
-    });
-  };
-
   /** Keep the assembled prompt/result under a deterministic byte budget. */
   const boundResultChunks = (chunks: ReadonlyArray<RetrievedChunk>): RetrievedChunk[] => {
     const accepted: RetrievedChunk[] = [];
@@ -1070,10 +825,9 @@ export const defineRag = (config: RagConfig): Rag => {
     const effectiveFilter = {
       ...callerFilter,
       ...boundedRls.value,
-      [META_MANIFEST]: false,
     };
     const topK = options?.topK ?? defaultTopK;
-    if (!Number.isInteger(topK) || topK < 1 || topK > MAX_TOP_K) {
+    if (!Number.isInteger(topK) || topK < 1 || topK > Math.min(MAX_TOP_K, vectors.maxTopK)) {
       throw new Error(`@velajs/ai/rag: \`topK\` must be an integer between 1 and ${MAX_TOP_K}`);
     }
     if (
@@ -1099,15 +853,75 @@ export const defineRag = (config: RagConfig): Rag => {
       vector: await embedText(query),
       topK,
       namespace: effectiveNamespace,
-      filter: effectiveFilter,
-      returnMetadata: 'all',
     });
-    const matches = boundedVectorMatches(rawMatches, topK, effectiveFilter);
-
-    let chunks = await hydrateFromStore(
-      parseMatches(await committedMatches(matches, effectiveNamespace), effectiveNamespace),
-      effectiveNamespace,
-    );
+    const matches = boundedVectorMatches(rawMatches, topK);
+    // The entire authoritative read is one serializable snapshot. Revocation
+    // linearizes here; an already returned response cannot be recalled.
+    let chunks = await publications.transaction({ namespace: effectiveNamespace }, async (tx) => {
+      const candidates: { stored: PublicationChunk; head: RagPublication; score: number }[] = [];
+      for (const match of matches) {
+        // oxlint-disable-next-line eslint/no-await-in-loop
+        const stored = await getChunk(tx, `c:${match.id}`);
+        if (!stored || stored.id !== match.id) continue;
+        // oxlint-disable-next-line eslint/no-await-in-loop
+        const head = await getPublication(tx, `h:${stored.key}`);
+        if (
+          !head ||
+          head.state !== 'published' ||
+          head.revision !== stored.revision ||
+          head.sourceId !== stored.sourceId ||
+          stored.chunkIndex >= head.chunks ||
+          !metadataMatchesFilter(head.metadata, effectiveFilter)
+        )
+          continue;
+        const score = match.score * head.importance;
+        if (
+          !Number.isFinite(score) ||
+          (options?.minScore !== undefined && score < options.minScore)
+        )
+          continue;
+        candidates.push({ stored, head, score });
+      }
+      candidates.sort((left, right) => right.score - left.score);
+      const output: RetrievedChunk[] = [];
+      let outputBytes = 0;
+      for (const { stored, head, score } of candidates) {
+        const headerBytes = bytes(sourceHeader(stored)) + (output.length ? 2 : 0);
+        const remaining = MAX_CONTEXT_BYTES - outputBytes - headerBytes;
+        if (bytes(stored.text) > remaining) break;
+        const parts: string[] = [];
+        let expandedBytes = 0;
+        for (
+          let index = Math.max(0, stored.chunkIndex - before);
+          index <= Math.min(head.chunks - 1, stored.chunkIndex + after);
+          index++
+        ) {
+          // oxlint-disable-next-line eslint/no-await-in-loop
+          const neighbor = await getChunk(
+            tx,
+            `c:${stored.key}:${stored.revision}:${index}`,
+            head.sourceId,
+          );
+          if (neighbor) {
+            expandedBytes += bytes(neighbor.text) + (parts.length ? 1 : 0);
+            if (expandedBytes > remaining) break;
+            parts.push(neighbor.text);
+          }
+        }
+        const text = expandedBytes <= remaining ? parts.join('\n') : stored.text;
+        outputBytes += headerBytes + bytes(text);
+        output.push({
+          id: stored.id,
+          sourceId: stored.sourceId,
+          chunkIndex: stored.chunkIndex,
+          text,
+          score,
+          importance: head.importance,
+          ...(head.metadata === undefined ? {} : { metadata: head.metadata }),
+        });
+      }
+      return output;
+    });
 
     // Importance can reorder; re-rank on the adjusted score before thresholding.
     chunks.sort((left, right) => right.score - left.score);
@@ -1119,7 +933,7 @@ export const defineRag = (config: RagConfig): Rag => {
 
     options?.onRetrieve?.({ query, matches: chunks.length });
 
-    chunks = boundResultChunks(await expandChunks(chunks, options, effectiveNamespace));
+    chunks = boundResultChunks(chunks);
 
     const sources: RagSource[] = [];
     const seen = new Set<string>();
@@ -1187,14 +1001,13 @@ export const defineRag = (config: RagConfig): Rag => {
       },
     });
 
-  return { sync, retrieve, remove, asTool };
+  return { sync, retrieve, remove, inspect, reconcile, asTool };
 };
 
 const documentFingerprint = async (
   document: Pick<RagDocument, 'text' | 'metadata' | 'importance'>,
   modelTag: string | undefined,
   pieces: ReadonlyArray<string>,
-  externalText: boolean,
 ): Promise<string> => {
   const canonical = canonicalJson(
     {
@@ -1203,7 +1016,6 @@ const documentFingerprint = async (
       importance: document.importance ?? null,
       modelTag: modelTag ?? null,
       pieces,
-      externalText,
     },
     // JSON escaping can expand control characters by up to six bytes each. The
     // raw document and metadata limits are enforced before this bounded hash.

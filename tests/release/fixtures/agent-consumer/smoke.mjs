@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { z } from 'zod';
 import { MockLanguageModelV4 } from 'ai/test';
 import { createAi } from '@velajs/ai';
-import { defineRag, memoryVectors } from '@velajs/ai/rag';
+import { defineRag, memoryPublications, memoryVectors } from '@velajs/ai/rag';
 import { parseInboundEmail } from '@velajs/mail';
 import { isWorkflowDefinition } from '@velajs/workflow';
 import {
@@ -26,6 +26,7 @@ const identity = { ownerId: 'owner', tenantId: 'tenant' };
 const models = createAi({ defaultModel: new MockLanguageModelV4() });
 const rag = defineRag({
   vectors: memoryVectors(),
+  publications: memoryPublications(),
   embed: () => [1],
   resolveNamespace: ({ auth, selector }) => {
     assert.equal(typeof auth?.tenantId, 'string');

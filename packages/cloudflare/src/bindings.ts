@@ -85,3 +85,30 @@ export function workflow<Params = unknown>(ref: BindingRef): Binding<Workflow<Pa
     accepts: (value): value is Workflow<Params> => hasOperations(value, ['create', 'get']),
   })(ref);
 }
+
+/** A native Flagship binding declared under `flagship`. No flag values are cached. */
+export const FLAGSHIP: BindingKind<Flagship> = {
+  name: 'Flagship',
+  configKey: 'flagship',
+  accepts: (value): value is Flagship =>
+    hasOperations(value, [
+      'get',
+      'getBooleanValue',
+      'getStringValue',
+      'getNumberValue',
+      'getObjectValue',
+      'getBooleanDetails',
+      'getStringDetails',
+      'getNumberDetails',
+      'getObjectDetails',
+    ]),
+};
+export const flagship = /* @__PURE__ */ defineBinding(FLAGSHIP);
+
+/** A secret handle declared under `secrets_store_secrets`; resolve its value with `get()`. */
+export const SECRETS_STORE_SECRET: BindingKind<SecretsStoreSecret> = {
+  name: 'Secrets Store secret',
+  configKey: 'secrets_store_secrets',
+  accepts: (value): value is SecretsStoreSecret => hasOperations(value, ['get']),
+};
+export const secretsStoreSecret = /* @__PURE__ */ defineBinding(SECRETS_STORE_SECRET);

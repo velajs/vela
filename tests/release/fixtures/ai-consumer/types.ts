@@ -5,7 +5,14 @@ import {
   type LanguageModel,
   type EmbeddingModel,
 } from '@velajs/ai';
-import { defineRag, memoryVectors, type Rag, type RetrieveResult } from '@velajs/ai/rag';
+import {
+  defineRag,
+  memoryVectors,
+  memoryPublications,
+  type Rag,
+  type RetrieveResult,
+} from '@velajs/ai/rag';
+import { createAiSearch, type AiSearch, type AiSearchResult } from '@velajs/ai/ai-search';
 import { MockLanguageModelV4, MockEmbeddingModelV4 } from 'ai/test';
 import { z } from 'zod';
 
@@ -20,6 +27,7 @@ export const model: LanguageModel = models.model();
 export const embedding: EmbeddingModel = models.embeddingModel();
 export const rag: Rag = defineRag({
   vectors: memoryVectors(),
+  publications: memoryPublications(),
   embed: () => [1],
   allowSharedNamespace: true,
 });
@@ -37,3 +45,13 @@ export const zodTool = tool({
   inputSchema: z.object({ query: z.string() }),
   execute: ({ query }): Promise<RetrieveResult> => rag.retrieve(query),
 });
+
+export const managed: AiSearch = createAiSearch({
+  binding: { search: async () => ({ chunks: [] }) },
+  instanceIds: ['manuals'],
+  authorizeSource: ({ instanceId, key }) => instanceId === 'manuals' && key === 'guide/v1.md',
+});
+export const managedTool = managed.asTool();
+export const managedResult: Promise<AiSearchResult> = managed.retrieve('guide');
+
+export { vectorizeVectors, durableObjectPublications } from '@velajs/ai/vectorize';

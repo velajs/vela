@@ -199,3 +199,24 @@ describe('FeatureFlagGuard (integration)', () => {
     await asyncApp.close();
   });
 });
+
+describe('native provider errors at route gates', () => {
+  it.each(['DEFAULT', 'TARGETING_MATCH', 'UNKNOWN'])(
+    'denies an error code with reason %s',
+    async (reason) => {
+      const driver = Object.assign(memoryFlagDriver(), {
+        getBooleanDetails: async (flagKey: string) => ({
+          flagKey,
+          value: true,
+          reason,
+          errorCode: 'PROVIDER_FAILURE',
+        }),
+      });
+      const app = await appWith(guardedController(), driver, {
+        manifest: { 'new-checkout': true },
+      });
+      expect((await app.request('/checkout/v2')).status).toBe(404);
+      expect((await app.request('/checkout/beta')).status).toBe(403);
+    },
+  );
+});

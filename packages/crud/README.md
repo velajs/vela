@@ -230,3 +230,17 @@ owned CRUD transactions. Versioned resources require a same-owner transaction
 store; plain independent stores are rejected before writes. See
 [transactional history](../../docs/transactional-history.md) for schema migration,
 tenant isolation and the `withCrudTransactionStore` native integration helper.
+
+### Request-owned databases
+
+Use `CrudModule.forRequestAsync({ inject, useFactory(lifetime, ...dependencies) })`
+with `acquireCrudDatabases({ acquire, create, release })` for a request-connected
+client. The helper owns construction failures and an idempotent release; managed
+HTTP/event scopes close the lease after work and response streams settle.
+`forFeature` resource tokens are request-scoped and require a managed invocation,
+including when the native database remains application-owned. Resolve them through
+`runInEntrypointScope` or the current HTTP child, rather than `app.get`.
+
+See [the lifecycle contract](../../docs/multi-database.md#request-owned-connections)
+and the [pg/Drizzle Hyperdrive example](../../apps/hyperdrive-crud/README.md) for
+sequential/transactional usage, cleanup errors, migration and freshness policy.

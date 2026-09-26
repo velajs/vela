@@ -11,7 +11,7 @@ const shippedSources = (dir: string): string[] => {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (entry.name === '__tests__') continue;
+      if (entry.name === '__tests__' || entry.name === 'cloudflare') continue;
       out.push(...shippedSources(join(dir, entry.name)));
     } else if (entry.name.endsWith('.ts')) {
       out.push(join(dir, entry.name));

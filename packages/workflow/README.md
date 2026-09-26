@@ -152,12 +152,100 @@ and reset during active execution are rejected.
 Run the [approval example](../../apps/workflow-lab/README.md) with
 `pnpm --filter @velajs/example-workflow-lab start` after building dependencies.
 
+## Cloudflare execution
+
+`@velajs/cloudflare/workflows` already supplies `VelaWorkflow(app, Host)`, a DI
+host inside the native `WorkflowEntrypoint`. The optional
+`@velajs/workflow/cloudflare` subpath bridges portable definitions to that host,
+or to a hand-written native entrypoint:
+
+```ts
+import { WorkflowEntrypoint } from 'cloudflare:workers';
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { z } from 'zod';
+import { defineWorkflow } from '@velajs/workflow';
+import { runCloudflareWorkflow } from '@velajs/workflow/cloudflare';
+
+const schema = z.object({ reportId: z.string().min(1) });
+const report = defineWorkflow<z.output<typeof schema>>({
+  handler: (ctx) => ctx.step.do('prepare', async () => ({ id: ctx.params.reportId })),
+});
+export class ReportWorkflow extends WorkflowEntrypoint<Record<string, unknown>> {
+  run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    return runCloudflareWorkflow(report, {
+      event, step, env: this.env, schema,
+      run: async () => { throw new Error('This workflow has no dispatch routes'); },
+    });
+  }
+}
+```
+
+The required Standard Schema validates the actual ingress payload, including
+async schemas and transformations, before constructing the typed context. Keep
+validators deterministic across replays. `waitForEvent` payloads remain unknown
+and need their own validation. Schemas establish shape, not identity or permission.
+
+`run` is required and scoped to this invocation. In a Vela host, inject
+`InternalDispatcher` and adapt the portable target to a permitted path or typed
+application route, as in the DI example below. That dispatcher signs calls and
+retains the request pipeline, guards and filters.
+The adapter does not infer credentials from params or keep global environment,
+application, dispatcher, or result caches. See the runnable
+[agent approval Worker](../../apps/agent-approvals/README.md#native-worker) for the
+DI host, signed route, durable store and authenticated ingress together.
+
+Cloudflare owns every step, retry, wait, sleep, compensation and replay. The
+adapter wraps callbacks only to translate `WorkflowNonRetryableError` into the
+native `cloudflare:workflows` error, including raw `ctx.step.do`, reusable
+`runStep`, rollback and top-level failures. Native conversion keeps the name
+`NonRetryableError`; a custom portable name prefixes the message so it cannot
+accidentally re-enable retries. Other errors and engine interruptions
+pass through unchanged. A Vela exception filter can still intentionally catch a
+failure; do not swallow terminal errors in a catch-all filter.
+
+Portable durations/configuration and returned values are forwarded for native
+validation. Native serialization, size limits, naming rules and retry behavior
+still apply. The portable contract does not expose dynamic retry-delay functions,
+sensitive step output flags, streaming step output, or native step-event metadata.
+Use the host's original `WorkflowStep` for native-only operations. Effects outside
+steps can repeat, and effects inside steps still need downstream idempotency
+across the effect/checkpoint crash window. Deploy incompatible definition changes
+under a new Workflow class/name when existing instances may replay.
+
+### Native subscriptions and deletion
+
+Keep the original native binding for `instance.subscribe()`, `instance.delete()`
+and `binding.deleteBatch()`. These capabilities do not widen `WorkflowInstanceLike`
+or `WorkflowBindingLike`; `createWorkflows` remains a portable producer facade.
+Deletion stops an active instance without rollback and removes execution history.
+It does not remove agent claims, messages or approvals. Never use deletion/restart
+as a retry mechanism for a run whose remote effects may already have happened.
+
+`workflowEventStream({ instance, authorize, signal?, cursor?, filter? })` adapts
+native subscriptions to a backpressured `ReadableStream<WorkflowInstanceEvent>`.
+`authorize(instanceId)` must throw on denial; it runs before subscription and
+before/after each pending read. Authorize the instance's owner/tenant using trusted
+server metadata, including permission to see step outputs. The stream disposes
+its native RPC subscription on normal completion, read failure, denial, abort,
+and consumer cancellation. Propagate client disconnects to `signal` or cancel the
+body/reader. Use an abort signal for credential expiry or immediate revocation
+while `next()` is blocked. No HTTP endpoint or public authorization policy is
+created by this helper; native execution events are not agent chat deltas.
+
+Native workerd tests cover transformed/invalid payloads, retries, terminal errors,
+compensation, wait/resume, retained subscriptions and deletion. For Cloudflare's
+current contracts see [Workers API](https://developers.cloudflare.com/workflows/build/workers-api/),
+[subscription lifecycle](https://developers.cloudflare.com/workflows/build/subscribe-to-instance-events/)
+and [instance deletion](https://developers.cloudflare.com/workflows/build/trigger-workflows/#delete-workflow-instances).
+
 ## Cloudflare and dependency injection
 
 The portable root and `/harness` remain independent of Vela and Cloudflare.
 `VelaWorkflow(app, Host)` from `@velajs/cloudflare/workflows` runs an injectable
-class whose `run(event, step)` uses the native platform API. For a portable
-definition, use the separate `@velajs/cloudflare/workflow-definitions` entrypoint:
+class whose `run(event, step)` uses the native platform API, including the
+standalone `runCloudflareWorkflow` adapter above. To declare a portable definition
+with a typed injection tuple and validation before application startup, use the
+separate `@velajs/cloudflare/workflow-definitions` entrypoint:
 
 ```ts
 import { Injectable, Module } from '@velajs/vela';

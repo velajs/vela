@@ -1,0 +1,14 @@
+{
+  "name": "vela-hyperdrive-crud",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "ACCESS_TOKEN": "" },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/vela_synthetic",
+    },
+  ],
+}

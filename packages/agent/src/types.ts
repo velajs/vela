@@ -262,7 +262,7 @@ export interface AgentRunResult {
 }
 
 /** The public HITL resume-event type. */
-export const AGENT_APPROVAL_EVENT_TYPE = 'agent:approval';
+export const AGENT_APPROVAL_EVENT_TYPE = 'agent-approval';
 
 /**
  * The payload an app's resume endpoint sends to a parked run. Every binding is

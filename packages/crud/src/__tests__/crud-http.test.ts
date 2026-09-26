@@ -23,6 +23,7 @@ import { Crud } from '../crud.decorator';
 import { Override } from '../override.decorator';
 import { CrudCtx, type CrudRequestContext } from '../crud-context.decorator';
 import { CrudModule } from '../crud.module';
+import { runInEntrypointScope } from '@velajs/vela/module-kit';
 import { crudResourceToken } from '../crud.tokens';
 import { MissingTenantResolverError, type CrudConfig } from '../crud.types';
 import { defineModel } from '../model/define-model';
@@ -780,10 +781,13 @@ describe('CrudModule', () => {
     expect(((await list.json()) as { result: Row[] }).result).toHaveLength(1);
 
     // The compiled resource is injectable.
-    const resource = app.get(crudResourceToken('thing'));
-    expect(resource.name).toBe('thing');
-    const direct = await resource.execute('list', { query: {} });
-    expect(direct.status).toBe(200);
+    expect(() => app.get(crudResourceToken('thing'))).toThrow(/request.scoped/);
+    await runInEntrypointScope(app.getContainer(), async (scope) => {
+      const resource = await scope.resolveAsync(crudResourceToken('thing'));
+      expect(resource.name).toBe('thing');
+      const direct = await resource.execute('list', { query: {} });
+      expect(direct.status).toBe(200);
+    });
   });
 
   it('rejects one path that two different features register, in either import order', async () => {

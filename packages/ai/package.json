@@ -1,6 +1,6 @@
 {
   "name": "@velajs/ai",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "description": "Provider-neutral model resolution and tenant-scoped retrieval for Vela and the AI SDK",
   "keywords": [
     "ai",
@@ -23,6 +23,7 @@
   },
   "files": [
     "dist",
+    "docs",
     "examples",
     "README.md",
     "LICENSE",
@@ -40,6 +41,14 @@
     "./rag": {
       "types": "./dist/rag/index.d.ts",
       "import": "./dist/rag/index.js"
+    },
+    "./ai-search": {
+      "types": "./dist/ai-search/index.d.ts",
+      "import": "./dist/ai-search/index.js"
+    },
+    "./vectorize": {
+      "types": "./dist/vectorize/index.d.ts",
+      "import": "./dist/vectorize/index.js"
     }
   },
   "publishConfig": {
@@ -48,6 +57,7 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
+    "test:workers": "vitest run --config vitest.config.workers.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "lint": "oxlint .",
     "format": "oxfmt .",
@@ -55,7 +65,8 @@
     "publint": "publint",
     "attw": "attw --pack . --profile esm-only",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw",
-    "example": "node examples/tenant-search.mjs"
+    "example": "node examples/tenant-search.mjs",
+    "test:vectorize:live": "node scripts/vectorize-live.mjs"
   },
   "dependencies": {
     "@types/json-schema": "catalog:"

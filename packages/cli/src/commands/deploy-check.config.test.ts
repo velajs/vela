@@ -196,3 +196,30 @@ describe('deployment configuration', () => {
     expect(selectDeploymentTarget(raw, 'staging').main).toBeNull();
   });
 });
+
+describe('native binding deployment projection', () => {
+  it('includes native names without leaking resource identifiers or configuration values', () => {
+    const target = selectDeploymentTarget({
+      ...config(),
+      flagship: [{ binding: 'FLAGS', app_id: 'redacted-app' }],
+      secrets_store_secrets: [
+        { binding: 'KEY', store_id: 'redacted-store', secret_name: 'redacted-name' },
+      ],
+      ai: { binding: 'AI' },
+      send_email: [{ name: 'MAIL', destination_address: 'redacted@example.com' }],
+      assets: { binding: 'ASSETS', directory: './public' },
+      future_resource: { entirely: 'unknown' },
+    });
+    expect(target.bindings).toEqual(
+      expect.arrayContaining([
+        { name: 'FLAGS', kind: 'flagship' },
+        { name: 'KEY', kind: 'secrets_store_secrets' },
+        { name: 'AI', kind: 'ai' },
+        { name: 'MAIL', kind: 'send_email' },
+        { name: 'ASSETS', kind: 'assets' },
+      ]),
+    );
+    expect(JSON.stringify(target)).not.toContain('redacted');
+    expect(JSON.stringify(target)).not.toContain('unknown');
+  });
+});

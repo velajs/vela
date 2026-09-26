@@ -162,12 +162,23 @@ describe('scoped asynchronous cache', () => {
 
   it('handles concurrent misses independently without sharing mutable handler results', async () => {
     const cache = createService().scope(publicScope);
-    const loader = vi.fn(async () => ({ count: 1 }));
-    const results = await Promise.all([
+    const bothStarted = deferred<void>();
+    const release = deferred<void>();
+    let started = 0;
+    const loader = vi.fn(async () => {
+      if (++started === 2) bothStarted.resolve();
+      // Keep both misses in flight even if their asynchronous hashes finish at different times.
+      await release.promise;
+      return { count: 1 };
+    });
+    const pending = Promise.all([
       cache.remember('key', loader),
       cache.remember('key', loader),
     ]);
+    await bothStarted.promise;
     expect(loader).toHaveBeenCalledTimes(2);
+    release.resolve();
+    const results = await pending;
     expect(results[0]).not.toBe(results[1]);
     const hit = await cache.remember('key', loader);
     expect(hit).toEqual({ count: 1 });

@@ -64,7 +64,7 @@ export function lazyProvider<T, const Inject extends readonly Token[] = readonly
  * checked when the module loads.
  *
  * ```ts
- * export function registerMessages(messages: Messages): DynamicModule {
+ * export function messageContribution(messages: Messages): DynamicModule {
  *   return sideEffectModule('I18nMessages', {
  *     providers: [{ provide: I18N_MESSAGES, useValue: messages }],
  *     exports: [I18N_MESSAGES],

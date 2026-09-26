@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { resendTransport } from '@velajs/mail/transports/resend';
+import { cloudflareEmailTransport } from '@velajs/mail/transports/cloudflare';
 import { createMailCatcher } from '@velajs/mail/transports/catcher';
 import { assertCount, assertSent, extractLink } from '@velajs/mail/testing';
 
@@ -28,3 +29,14 @@ const resend = resendTransport({
   },
 });
 assert.equal((await resend.deliver(built)).id, 'fixture-delivery');
+const cloudflare = cloudflareEmailTransport({
+  binding: {
+    async send(message) {
+      assert.deepEqual(message.to, ['to@example.com']);
+      assert.equal(message.text, built.text);
+      assert.equal(message.envelope, undefined);
+      return { messageId: 'native-fixture' };
+    },
+  },
+});
+assert.deepEqual(await cloudflare.deliver(built), { id: 'native-fixture', provider: 'cloudflare' });

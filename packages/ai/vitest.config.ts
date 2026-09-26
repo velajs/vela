@@ -4,6 +4,6 @@ export default defineConfig({
   test: {
     globals: false,
     include: ['src/**/*.test.ts'],
-    exclude: ['node_modules', 'dist'],
+    exclude: ['node_modules', 'dist', 'src/__tests__/workers/**'],
   },
 });

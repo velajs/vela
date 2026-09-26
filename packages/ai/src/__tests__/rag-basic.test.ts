@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { defineRag, memoryVectors } from '../rag';
-import { keywordEmbedder, memoryTextStore, pipeSplitter } from './support';
+import { defineRag, memoryVectors, memoryPublications } from '../rag';
+import { keywordEmbedder, pipeSplitter } from './support';
 
-describe('defineRag — sync + retrieve (metadata mode)', () => {
+describe('defineRag — authoritative sync + retrieve', () => {
   it('chunks, embeds, upserts, and retrieves prompt-ready context', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'basic-metadata',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -26,7 +27,7 @@ describe('defineRag — sync + retrieve (metadata mode)', () => {
     expect(found.chunks.length).toBeGreaterThan(0);
     expect(found.chunks[0]?.sourceId).toBe('doc-a');
     expect(found.chunks[0]?.text).toContain('alpha');
-    // Caller metadata survives; reserved bookkeeping keys are stripped.
+    // Metadata comes from the current authoritative publication.
     expect(found.chunks[0]?.metadata).toEqual({ title: 'A' });
     expect(JSON.stringify(found.chunks[0]?.metadata)).not.toContain('@velajs/ai:rag');
     // Prompt context carries an attributable source header.
@@ -35,11 +36,12 @@ describe('defineRag — sync + retrieve (metadata mode)', () => {
     expect(found.sources[0]).toMatchObject({ id: 'doc-a', weight: 1 });
   });
 
-  it('retrieves via a pluggable text store (text out of vector metadata)', async () => {
+  it('retrieves authoritative text without vector metadata', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'basic-textstore',
       vectors: memoryVectors(),
-      textStore: memoryTextStore(),
+
       embed: keywordEmbedder(),
       chunk: pipeSplitter,
       allowSharedNamespace: true,
@@ -54,6 +56,7 @@ describe('defineRag — sync + retrieve (metadata mode)', () => {
 
   it('remove() deletes every chunk of a source', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'basic-remove',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -64,13 +67,14 @@ describe('defineRag — sync + retrieve (metadata mode)', () => {
     await rag.sync([{ id: 'doc', text: 'alpha|beta|gamma' }]);
     expect((await rag.retrieve('alpha', { topK: 5 })).chunks.length).toBeGreaterThan(0);
 
-    await rag.remove('doc');
+    await rag.remove('doc', { expectedRevision: (await rag.inspect('doc'))!.revision });
 
     expect((await rag.retrieve('alpha', { topK: 5 })).chunks).toHaveLength(0);
   });
 
   it('exposes retrieve as an AI SDK tool wired to the index', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'basic-tool',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),

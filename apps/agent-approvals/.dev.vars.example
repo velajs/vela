@@ -1,0 +1,2 @@
+DEMO_TOKEN="local-demo-only-replace-before-use"
+URL_SIGNING_SECRET="local-signing-only-replace-before-use"
