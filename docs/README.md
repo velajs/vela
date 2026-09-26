@@ -50,6 +50,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 
 - [Cloudflare security](cloudflare-security.md): platform identity, signed R2
   URLs, and Durable Object WebSockets.
+- [Cloudflare service acceptance](cloudflare-live-validation.md): opt-in service
+  probes, exported traces, account delivery and downstream ingestion checks.
 - [HTTP contracts and clients](client/HTTP.md): route options, shared `defineRoute`
   contracts, form and multipart bodies, generated clients and Hono RPC.
 - [Outbound HTTP](http-client.md): injectable transports, cancellation, byte limits,
