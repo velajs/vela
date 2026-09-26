@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { EmbeddingModel, LanguageModel, Tool } from '../index';
 import { createAi, embed, generateText, jsonSchema, streamText, tool } from '../index';
 import type { Ai, AiProvider, ModelInput } from '../index';
-import { defineRag, memoryVectors } from '../rag';
+import { defineRag, memoryVectors, memoryPublications } from '../rag';
 import type {
   Rag,
   RagConfig,
@@ -49,7 +49,9 @@ describe('rag type surface', () => {
     expectTypeOf(defineRag).returns.toEqualTypeOf<Rag>();
     expectTypeOf<Awaited<ReturnType<Rag['sync']>>>().toEqualTypeOf<ReadonlyArray<SyncResult>>();
     expectTypeOf<Awaited<ReturnType<Rag['retrieve']>>>().toEqualTypeOf<RetrieveResult>();
-    expectTypeOf<Awaited<ReturnType<Rag['remove']>>>().toEqualTypeOf<void>();
+    expectTypeOf<Awaited<ReturnType<Rag['remove']>>>().toEqualTypeOf<
+      import('../rag').RagPublication
+    >();
     expectTypeOf<ReturnType<Rag['asTool']>>().toEqualTypeOf<
       Tool<{ query: string }, RetrieveResult>
     >();
@@ -67,8 +69,13 @@ describe('rag type surface', () => {
   it('accepts a sync or async embedder in the config', () => {
     // Both a sync and an async embedder are valid RagConfig.embed values.
     expectTypeOf<RagConfig['embed']>().toBeCallableWith('text');
-    const syncEmbed = defineRag({ vectors: memoryVectors(), embed: (t: string) => [t.length] });
+    const syncEmbed = defineRag({
+      publications: memoryPublications(),
+      vectors: memoryVectors(),
+      embed: (t: string) => [t.length],
+    });
     const asyncEmbed = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: async (t: string) => [t.length],
     });

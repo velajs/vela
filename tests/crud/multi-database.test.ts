@@ -7,6 +7,7 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { Module, VelaFactory } from '@velajs/vela';
+import { runInEntrypointScope } from '@velajs/vela/module-kit';
 import {
   resolveCrudDatabase,
   resolveCrudDatabaseSync,
@@ -115,13 +116,17 @@ describe('named databases', () => {
       expect(() =>
         resolveCrudDatabaseSync(a.getContainer(), { model: item, database: 'missing' }),
       ).toThrow('Unknown database');
-      const ar = a.getContainer().resolve(crudResourceToken('item', 'main'));
-      const br = b.getContainer().resolve(crudResourceToken('item', 'main'));
-      await expect(
-        crudTransaction({ runtime: ar.config.adapter }, {}, async (transaction) => {
-          await expect(br.execute('list', { transaction })).rejects.toThrow('Foreign');
+      await runInEntrypointScope(a.getContainer(), (firstScope) =>
+        runInEntrypointScope(b.getContainer(), async (secondScope) => {
+          const ar = await firstScope.resolveAsync(crudResourceToken('item', 'main'));
+          const br = await secondScope.resolveAsync(crudResourceToken('item', 'main'));
+          await expect(
+            crudTransaction({ runtime: ar.config.adapter }, {}, async (transaction) => {
+              await expect(br.execute('list', { transaction })).rejects.toThrow('Foreign');
+            }),
+          ).rejects.toThrow('rolled back');
         }),
-      ).rejects.toThrow('rolled back');
+      );
     } finally {
       await a.close();
       await b.close();
@@ -138,7 +143,9 @@ describe('named databases', () => {
         (await app.getHonoApp().request('/main/items', json({ id: 'd', title: 'default' }))).status,
       ).toBe(201);
       expect((await app.getHonoApp().request('/other/items/d')).status).toBe(404);
-      expect(app.getContainer().resolve(crudResourceToken('item')).config.database).toBe('main');
+      await runInEntrypointScope(app.getContainer(), async (scope) => {
+        expect((await scope.resolveAsync(crudResourceToken('item'))).config.database).toBe('main');
+      });
     } finally {
       await app.close();
     }
@@ -233,21 +240,25 @@ describe('named databases', () => {
     const a = await appFor(registry);
     const b = await appFor(registry);
     try {
-      const first = a.getContainer().resolve(crudResourceToken('item', 'main'));
-      const second = b.getContainer().resolve(crudResourceToken('item', 'main'));
-      await expect(
-        crudTransaction({ runtime: first.config.adapter }, {}, async (transaction) => {
-          await second.execute('list', { transaction });
+      await runInEntrypointScope(a.getContainer(), (firstScope) =>
+        runInEntrypointScope(b.getContainer(), async (secondScope) => {
+          const first = await firstScope.resolveAsync(crudResourceToken('item', 'main'));
+          const second = await secondScope.resolveAsync(crudResourceToken('item', 'main'));
+          await expect(
+            crudTransaction({ runtime: first.config.adapter }, {}, async (transaction) => {
+              await second.execute('list', { transaction });
+            }),
+          ).rejects.toThrow('Foreign');
+          expect(a.getContainer().resolve(CRUD_DATABASES)).not.toBe(
+            b.getContainer().resolve(CRUD_DATABASES),
+          );
+          await first.config.adapter.requestScope(async (scope) => {
+            await expect(
+              second.config.adapter.readOne({ field: 'id', value: '1' }, {}, scope),
+            ).rejects.toThrow('Foreign');
+          });
         }),
-      ).rejects.toThrow('Foreign');
-      expect(a.getContainer().resolve(CRUD_DATABASES)).not.toBe(
-        b.getContainer().resolve(CRUD_DATABASES),
       );
-      await first.config.adapter.requestScope(async (scope) => {
-        await expect(
-          second.config.adapter.readOne({ field: 'id', value: '1' }, {}, scope),
-        ).rejects.toThrow('Foreign');
-      });
     } finally {
       await a.close();
       await b.close();

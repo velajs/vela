@@ -157,41 +157,11 @@ search with current authority, publish a replacement, revoke access, and tombsto
 the source while checking that stale results are denied. No live resources are
 created by the package tests.
 
-## Why no Vectorize driver is exported
+## Vectorize-owned retrieval
 
-A method-forwarding adapter would violate the current `RagVectors` contract.
-
-| Boundary | Vela contract | Native Vectorize constraint / required adapter work |
-| --- | --- | --- |
-| IDs and partitions | Opaque namespace/source IDs plus a 64-character generation hash and separators | IDs and namespace names are limited to 64 bytes. Even a one-character RAG source produces an oversized chunk ID. |
-| Payload | Up to 64 KiB chunk text and 64 KiB source metadata | 10 KiB vector metadata and 1,536 dimensions require validation and external text/metadata storage. |
-| Ranking | RAG requests all metadata and allows `topK` up to 100 | Queries returning all metadata allow at most 50 results. Silent clamping changes retrieval semantics. |
-| Exact-ID operations | Every get/delete is namespace-scoped | Native get/delete accept IDs alone. Query namespaces do not scope those operations. |
-| Publication | All staged chunks/text visible before an atomic manifest replacement | Upsert/delete acknowledge asynchronous mutations; acknowledgement is not a visibility or atomicity barrier. |
-
-See the official [limits](https://developers.cloudflare.com/vectorize/platform/limits/)
-and [client API](https://developers.cloudflare.com/vectorize/reference/client-api/).
-
-The inconsistency has a concrete counterexample: acknowledge staged chunk writes,
-then acknowledge the manifest replacement, while a replica still returns the
-previous manifest and old chunks. A changed ACL can appear to have completed while
-that replica still serves the old authorized generation. Another replica could
-see the manifest before all new chunks. A completed `sync` would no longer mean
-the publication promised by the existing RAG contract. Deletion has the same
-stale-manifest problem. Querying once or receiving a mutation ID does not prove
-visibility for other readers.
-
-A future driver needs a versioned, domain-separated digest mapping of the full
-opaque namespace and logical ID into native IDs, plus authoritative reverse
-mapping with full-tuple verification. The map must detect collisions and enforce
-ownership before get/delete; no truncation or reconstruction of RAG IDs is safe.
-It also needs a durable publication/text/metadata store, writer serialization,
-atomic heads and tombstones, and reconciliation of accepted or ambiguous native
-mutations. A hash mapping alone solves none of the publication requirements.
-
-Even a strongly consistent manifest store cannot prove distributed vector-query
-visibility. A sound design must supply a documented native visibility barrier,
-serve staged data through an authoritative query path with the required semantics,
-or introduce a separate retrieval contract that explicitly permits delayed recall.
-The latter must not masquerade as today's `RagVectors`. This release leaves that
-driver deferred and preserves the existing RAG contract unchanged.
+For application-owned chunking and embeddings, use the optional
+[`@velajs/ai/vectorize` driver](vectorize.md) with a required authoritative
+publication store. The redesigned `RagVectors` contract explicitly permits
+asynchronous indexing and separates search candidates from revision/ACL authority.
+It does not infer query visibility from mutation receipts or processed markers.
+Existing custom RAG stores must follow the [migration guide](rag-migration.md).

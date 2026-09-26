@@ -45,6 +45,10 @@
     "./ai-search": {
       "types": "./dist/ai-search/index.d.ts",
       "import": "./dist/ai-search/index.js"
+    },
+    "./vectorize": {
+      "types": "./dist/vectorize/index.d.ts",
+      "import": "./dist/vectorize/index.js"
     }
   },
   "publishConfig": {
@@ -61,7 +65,8 @@
     "publint": "publint",
     "attw": "attw --pack . --profile esm-only",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw",
-    "example": "node examples/tenant-search.mjs"
+    "example": "node examples/tenant-search.mjs",
+    "test:vectorize:live": "node scripts/vectorize-live.mjs"
   },
   "dependencies": {
     "@types/json-schema": "catalog:"

@@ -13,7 +13,12 @@ import type { VersioningStore } from './versioning/index';
 import type { RuntimeCrudConfig } from './crud.types';
 import { ConfigurationException } from './envelope/errors';
 
-async function optional<T>(container: Container, token: InjectionToken<T>): Promise<T | undefined> {
+type DatabaseResolver = Pick<Container, 'has' | 'resolveAsync'>;
+
+async function optional<T>(
+  container: DatabaseResolver,
+  token: InjectionToken<T>,
+): Promise<T | undefined> {
   return container.has(token) ? container.resolveAsync(token) : undefined;
 }
 
@@ -78,7 +83,7 @@ function defaults(
 
 /** Shared HTTP/headless resolution. Named databases never borrow a different database's stores. */
 export async function resolveCrudDatabase(
-  container: Container,
+  container: DatabaseResolver,
   config: RuntimeCrudConfig,
   registration?: Registration,
 ): Promise<Resolved> {

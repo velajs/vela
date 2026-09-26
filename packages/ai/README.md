@@ -87,127 +87,127 @@ cache a provider holding one environment's credentials in a process-global
 singleton. Request identity belongs in operation arguments, never mutable shared
 configuration. A separate `AiModule` would only duplicate Vela's existing DI API.
 
+## Workers AI and AI Gateway composition
+
+The [native composition example](../../apps/cloudflare-composition/README.md) uses
+`workers-ai-provider@4.0.0` with AI SDK 7.0.26 and the existing `createAi` API. It
+constructs the provider from each request's `env.AI`, fixes the model and output
+limits on the server, and selects AI Gateway through the provider's native gateway
+option. Request-bound tools validate input and capture authorized ownership.
+Streaming failures and cancellation propagate through an owned deadline; forwarding
+an abort signal does not confirm upstream inference cancellation. The example
+includes local contract/native tests and a separate opt-in deployed-fixture check.
+
 ## Retrieval
 
-`defineRag(config)` returns `{ sync, retrieve, remove, asTool }`. It owns chunking
-and embedding; adapters receive precomputed vectors. No I/O runs at construction.
+`defineRag` owns chunking, embedding and authoritative publication. Supply both
+`vectors` (candidate search) and `publications` (serializable revision, text and
+ACL storage). Construct them per environment; every writer and reader of an index
+must use the same authority. No I/O runs at construction.
 
 ```ts
 import { defineRag } from '@velajs/ai/rag';
 
 const docs = defineRag({
-  name: 'support-docs',
-  vectors: myVectorStore,
-  embed: async (text) => (await embed({ model: models.embeddingModel(), value: text })).embedding,
-  embeddingModelVersion: 'support-embed-v1',
-  resolveNamespace: ({ selector, auth, operation }) => {
-    // Application functions validate trusted identity, membership and write access.
-    return authorizeIndexOperation(auth, selector, operation).tenantId;
-  },
-  rlsFilter: (auth) => ({ team: requireIdentity(auth).team }),
+  vectors: myVectorIndex,
+  publications: myPublicationStore,
+  embed: async text => (await embed({ model: models.embeddingModel(), value: text })).embedding,
+  embeddingModelVersion: 'manuals-v1',
+  resolveNamespace: ({ selector, auth, operation }) =>
+    authorizeIndexOperation(auth, selector, operation).tenantId,
+  rlsFilter: auth => ({ team: requireIdentity(auth).team }),
 });
-
-await docs.sync([{ id: 'guide', text: manual, metadata: { team: 'support' } }], {
-  auth: writerIdentity,
+const [created] = await docs.sync([
+  { id: 'guide', text: manual, metadata: { team: 'support' } },
+], { auth: writerIdentity });
+const [updated] = await docs.sync([
+  { id: 'guide', text: revisedManual, metadata: { team: 'support' },
+    expectedRevision: created.revision },
+], { auth: writerIdentity });
+const result = await docs.retrieve(question, { auth: verifiedIdentity });
+const search = docs.asTool({ auth: verifiedIdentity });
+const tombstone = await docs.remove('guide', {
+  auth: writerIdentity, expectedRevision: updated.revision,
 });
-const { context, chunks, sources } = await docs.retrieve(question, {
-  namespace: requestedTenantId,
-  auth: verifiedIdentity,
-  topK: 5,
-  minScore: 0.5,
-  chunkContext: { before: 1, after: 1 },
-});
-// Create this tool for each request; model input contains only { query }.
-const search = docs.asTool({ auth: verifiedIdentity, namespace: requestedTenantId });
+await docs.reconcile('guide', { auth: writerIdentity, revision: tombstone.revision });
 ```
 
-Run the credential-free tenant, tool, and re-sync example from the repository:
+`sync` returns `revision`, `publication`, `indexing`, chunk count/IDs and `unchanged`.
+`publication: 'published'` means the revision is authorized for retrieval.
+`indexing.status: 'accepted'` means mutations were acknowledged; search may still
+return no new chunks or stale candidates. Only synchronous stores return `visible`.
+Empty/deleted sync results omit indexing status. `remove` commits a tombstone and deletes authoritative text immediately; physical
+vector cleanup is a separate `reconcile` operation.
 
-```sh
-pnpm --filter @velajs/ai build
-pnpm --filter @velajs/ai example
-```
+Creation uses omitted/null `expectedRevision`; replacement/removal requires the
+current token from a prior result or trusted `inspect`. CAS conflicts never silently
+retry a different revision. Each changed attempt gets a fresh random revision.
+Identical input with the current token skips embedding. Multiple documents in a
+sync call commit individually, in order; the call is not a batch transaction.
 
-See [examples/tenant-search.mjs](examples/tenant-search.mjs). Its word-count
-embedder and `memoryVectors()` are for local demonstration, not semantic search
-or durable production storage.
+A changed sync first atomically revokes the previous revision and stores pending
+text plus a recovery journal. It then embeds/submits and publishes only after all
+submissions acknowledge. Failure leaves the new revision pending and **does not
+restore the old ACL or content**. `RagIndexingError` includes the revision; use
+`inspect` after an ambiguous storage failure, and `reconcile(id, { revision })` to
+resume after a crash. It re-embeds pending text (or a published revision with `reindex: true`) with the configured model,
+so keep the embedder fixed within an embedding-model partition. Concurrent retries
+of one immutable revision may duplicate upserts safely. An `AbortSignal` stops
+further work; already submitted writes cannot be recalled. To cancel the revision
+permanently, remove it using its token. Stale completion cannot undo a tombstone.
 
-### Adapter contract
+`reconcile` also submits obsolete-ID deletions in bounded journal pages (`limit`
+1–100, default 10; pass returned `cursor` as `after`). It deliberately retains
+compact retired journals and tombstones, since delayed writes can arrive after
+cleanup. Repeat sweeps from the beginning after workers drain. Journal storage
+grows with revision history; plan quota monitoring and offline retention. There is
+no automatic proof that physical cleanup is final, and no automatic journal purge.
+Retired text and ACLs are removed at replacement/deletion; only revision/count
+cleanup data remains. Native administrative tools may reclaim a retired partition
+once all writers are stopped and retention requirements are satisfied.
 
-`RagVectors` implements namespace-scoped `upsert`, `query`, `getByIds`, and
-`deleteByIds`. `query` accepts a vector, `topK`, and a scalar-equality metadata
-filter. `getByIds` returns records by exact IDs, omitting misses. An optional
-`RagTextStore` supplies `put`, ordered `getMany`, and `remove` to keep text outside
-vector metadata. Every vector/text operation must enforce its namespace.
+### Storage, authorization and limits
 
-Adapter namespaces and chunk IDs are opaque. The namespace encodes the verified
-tenant (or explicit shared space) and embedding-model version without ambiguity.
-Do not truncate, normalize, split, or reconstruct it. `name` only labels the tool;
-use separate stores or distinct server-owned namespace prefixes for separate
-indexes. Match the target database's ID/metadata limits in your adapter; the
-framework's upper bounds may exceed them.
+`RagVectors` contains `upsert`, `query`, `deleteByIds`, and `maxTopK`. Writes return
+explicit mutation results; exceptions may mean partial or ambiguous submission.
+Candidate scores are finite, nonnegative similarities. `RagPublications` provides
+serializable transactions over namespace-isolated JSON values, with rollback and
+strong reads. Its callback must contain storage operations only and may be retried.
+No stale cache, eventually consistent KV, or replicated index can act as authority.
+`memoryVectors()` and `memoryPublications()` are local, non-durable references.
+Use [the Durable Object adapter and recipe](docs/vectorize.md) for native storage.
 
-Publication requires atomic replacement of one manifest record and visibility of
-all staged chunks/text before its replacement. Stores with eventual consistency
-must supply those guarantees in the adapter. **Serialize `sync` and `remove` for
-the same source and namespace across all writers**, for example through a queue
-or a Durable Object. The generic interface has no distributed compare-and-swap;
-it cannot coordinate concurrent writers in different application instances.
+Retrieval searches once, then reads current heads, text, ACLs and requested
+neighbors in one authoritative transaction. It ignores unpublished/superseded
+matches and applies `rlsFilter` over caller scalar filters. The authorization
+snapshot linearizes at that transaction; a response already returned cannot be
+recalled. Failed authority reads reject retrieval. Stale/denied candidates can
+reduce results below `topK`; there is no query pagination or automatic refill.
+`importance` multiplies nonnegative similarity before `minScore` filtering.
+The memory index maps cosine to `(cosine + 1) / 2` (zero-norm vectors score zero).
 
-### Tenant and authorization boundaries
-
-- Operation `namespace` is an untrusted selector. `resolveNamespace` verifies it
-  against trusted server identity and returns the canonical, non-empty tenant
-  partition. It receives `sync`, `retrieve`, or `remove` so writes can require
-  stronger permissions. Never copy request JSON into `auth` as verified identity.
-- Without a resolver, namespace selectors fail closed. A genuinely single-tenant
-  index must explicitly set `allowSharedNamespace: true`; `requireNamespace: true`
-  overrides that setting. Resolvers returning whitespace or padded names fail.
-- `rlsFilter(auth)` applies to retrieval only. Its scalar metadata predicates
-  override caller predicates; the helper also rechecks them locally. Missing or
-  invalid identity should throw in your policy. Returning `undefined` adds no ACL.
-- Source metadata applies to every chunk in that source, including neighboring
-  context. Named filters in `config.filters` are conveniences, not authorization.
-- `asTool` validates a bounded `{ query: string }` input, rejects extra fields,
-  and takes identity/namespace only from server options. Build it per request.
-- Retrieved text is untrusted data. Keep it in a data/user-context channel and
-  enforce tool permissions outside the prompt. Encoded source headers provide
-  attribution, not protection against instructions inside documents.
-
-### Re-sync and embedding versions
-
-Re-sync fingerprints use SHA-256 over text, metadata/ACLs, importance, chunk
-output, text-storage mode, and the embedding-model tag. Identical input skips
-embedding and writes; changing ACLs, chunking, or storage mode replaces the
-source. Generation-specific IDs isolate staged text from the previous ACL. A
-manifest selects the committed generation, then stale records are removed.
-Rollback waits for in-flight writes. A pre-publication failure leaves the previous
-source available; an ambiguous manifest-write failure invalidates its manifest
-and requires re-sync. Cleanup failures surface to the caller and need retry or
-adapter reconciliation. Empty chunk output removes the previous source unless
-`allowEmpty: false` rejects it first.
+Namespace arguments are untrusted selectors. `resolveNamespace` authorizes them
+against server identity for `sync`, `retrieve`, `remove`, `inspect`, and `reconcile`.
+Inspection/reconciliation expose writer state and must require writer access.
+Without a resolver, explicitly enable `allowSharedNamespace` for single-tenant
+use; `requireNamespace` overrides it. `name` labels tools only; independent indexes
+need different storage or server-owned namespaces. Treat source text as untrusted
+reference data and enforce model-tool permissions outside the prompt.
 
 Set `embeddingModelVersion` to a stable tag (`[A-Za-z0-9._-]`, 1–40 characters).
-Change it whenever the model, dimensions, or embedding preprocessing changes,
-then re-sync all documents. Old model spaces stay isolated and need separate
-cleanup. An omitted tag selects an untagged space whose embedder must remain
-fixed. Replacing a text-store backend with another backend also requires a fresh
-partition or complete re-index; two external stores share the same storage mode.
+Change it when the model, dimensions or preprocessing changes, then re-sync into
+the new partition. Old partitions require separate cleanup. ACL/metadata changes
+through sync create a new revision and re-embed; this release has no ACL-only edit
+API. A current server-side `rlsFilter` can revoke an identity without re-embedding.
 
-### Ranking and limits
+Bounds: 100 documents per sync, 1 MiB document, 64 KiB chunk, 4,096 chunks and
+4 MiB total chunk text per document, 64 KiB JSON metadata, 32 KiB query, 8,192
+portable embedding dimensions, `topK` at most the adapter cap and 100, 20 neighbors
+per side, and 2 MiB assembled context. Persisted records are validated before use;
+corrupt publication/journal data fails closed. Adapter namespaces/IDs are opaque.
 
-`retrieve` returns ranked `chunks`, deduplicated `sources`, and attributable
-`context`. `importance` is a non-negative per-source score multiplier; `minScore`
-applies after multiplication. Ranking adjusts only the adapter's `topK`
-candidates, so request a larger candidate set when boosts matter. `chunkContext`
-fetches neighbors from the same generation; use zero overlap to avoid repeated
-text. `memoryVectors()` skips candidates with mismatched embedding dimensions.
-
-Bounds: 100 documents per sync, 1 MiB per document, 64 KiB per chunk, 4,096 chunks
-and 4 MiB of chunk output per document, 64 KiB source metadata, 32 KiB query,
-8,192 embedding dimensions, `topK <= 100`, 20 neighbors per side, and 2 MiB assembled
-context. External metadata must be bounded plain JSON. Malformed/oversized
-adapter records are dropped and excess query results are sliced before inspection.
+Run the local example with `pnpm --filter @velajs/ai example` after building.
+See [migration instructions](docs/rag-migration.md) for the breaking store contract.
 
 ## Cloudflare managed retrieval
 
@@ -221,8 +221,7 @@ Use immutable item keys for each content revision so current authority can rejec
 stale indexed content. Keep native instance management, built-in storage uploads,
 indexing, and deletion on the binding. See the
 [Cloudflare retrieval guide](docs/cloudflare-retrieval.md) for the native ingestion
-recipe, authorization/publication requirements, limits, and why Vectorize cannot
-be connected by forwarding `RagVectors` methods.
+recipe, authorization/publication requirements, limits, and the separate [Vectorize publication adapter](docs/vectorize.md).
 
 Run the credential-free publication and revocation example after building:
 
@@ -236,7 +235,7 @@ Core exports: `createAi`; types `Ai`, `AiProvider`, `CreateAiOptions`, `ModelInp
 `EmbeddingModelInput`; SDK exports `generateText`, `streamText`, `embed`, `tool`,
 `jsonSchema`, `LanguageModel`, `EmbeddingModel`, `Tool`.
 
-RAG exports: `defineRag`, `memoryVectors`, `fixedWindowChunks`,
+RAG exports: `defineRag`, `memoryVectors`, `memoryPublications`, `RagIndexingError`, `fixedWindowChunks`,
 `mapWithConcurrency`, `DEFAULT_SYNC_CONCURRENCY`, and the types in
 [`src/rag/index.ts`](https://github.com/velajs/vela/blob/main/packages/ai/src/rag/index.ts).
 

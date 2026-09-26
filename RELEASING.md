@@ -82,8 +82,9 @@ that check.
 
 When `@velajs/ai` is in the release, the consumer gate additionally installs its
 exact archive in an independent fixture, without Vela or a provider package. It
-checks both the base and `/rag` exports, TypeScript/AI SDK/Zod compatibility,
-tenant isolation, tool validation, and re-sync. Run it independently with
+checks the base, `/rag`, `/ai-search` and `/vectorize` exports,
+TypeScript/AI SDK/Zod compatibility, tenant isolation, tool validation,
+revision replacement and publication authority. Run it independently with
 `node scripts/ai-consumer.mjs /absolute/path/to/velajs-ai-<version>.tgz`.
 
 When the release includes `@velajs/workflow`, the consumer gate also installs its

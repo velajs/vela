@@ -4,6 +4,12 @@ Nest-style modules, dependency injection, controllers, queue consumers, cron tri
 and live WebSockets on Cloudflare Workers. HTTP routing uses Hono. Bindings use the
 platform's native types.
 
+The [native composition example](../../apps/cloudflare-composition/README.md)
+combines request-scoped `ENV` injection with Browser Run Quick Actions, Workers AI
+and AI Gateway, VPC through `HttpService`, and authorized R2-to-WebP Images transforms.
+It keeps destination/model policy on the server, bounds I/O and cancellation, and
+separates local emulation from opt-in live acceptance without additional packages.
+
 ## Native environment and application lifetime
 
 The Worker's native environment is the framework `ENV` from `@velajs/vela`.

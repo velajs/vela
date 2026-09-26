@@ -48,8 +48,16 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 
 ## Integrations
 
+- [Native Cloudflare composition](../apps/cloudflare-composition/README.md): tested Browser Run,
+  Workers AI / AI Gateway, VPC and Images recipes with authorization and bounded I/O.
+- [Hyperdrive CRUD](../apps/hyperdrive-crud/README.md): invocation-owned PostgreSQL
+  connections through the existing Drizzle adapter.
+- [Vectorize retrieval](../packages/ai/docs/vectorize.md): candidate search with
+  authoritative publication storage, revisions and reconciliation.
 - [Cloudflare security](cloudflare-security.md): platform identity, signed R2
   URLs, and Durable Object WebSockets.
+- [Cloudflare service acceptance](cloudflare-live-validation.md): opt-in service
+  probes, exported traces, account delivery and downstream ingestion checks.
 - [HTTP contracts and clients](client/HTTP.md): route options, shared `defineRoute`
   contracts, form and multipart bodies, generated clients and Hono RPC.
 - [Outbound HTTP](http-client.md): injectable transports, cancellation, byte limits,

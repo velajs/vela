@@ -62,3 +62,26 @@ defineProvider(new InjectionToken<typeof native>('native-database'), {
   inject: [registryToken],
   useFactory: async (registry) => registry.get('primary').handle,
 });
+
+// Request factories infer ordinary dependencies, with the lifetime supplied first.
+import { CrudModule } from '../crud.module';
+import { acquireCrudDatabases } from '../request-databases';
+import type { ExecutionLifetime } from '@velajs/vela';
+CrudModule.forRequestAsync({
+  inject: [environment],
+  useFactory: (lifetime, env) => {
+    expectTypeOf(lifetime).toEqualTypeOf<ExecutionLifetime>();
+    expectTypeOf(env.database).toEqualTypeOf<typeof native>();
+    return acquireCrudDatabases({
+      acquire: () => env.database,
+      create: () => databases,
+      release() {},
+    });
+  },
+});
+CrudModule.forRequestAsync({
+  useFactory: (lifetime) => {
+    expectTypeOf(lifetime).toEqualTypeOf<ExecutionLifetime>();
+    return acquireCrudDatabases({ acquire: () => native, create: () => databases, release() {} });
+  },
+});

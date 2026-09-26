@@ -139,6 +139,7 @@ export {
   type CrudDatabaseResource,
 } from './databases';
 export { resolveCrudDatabase, resolveCrudDatabaseSync } from './resolve-database';
+export { acquireCrudDatabases, CrudDatabaseLease } from './request-databases';
 export type { RuntimeCrudConfig } from './crud.types';
 
 export * from './service/index';

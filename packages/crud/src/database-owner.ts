@@ -1,11 +1,33 @@
 import type { AdapterScope, RuntimeAdapter, TransactionContext } from './adapter/contract';
 import type { TransactionStoreBinding, TransactionStoreErrorObserver } from './kernel/transaction';
 
-/** One application registration's scope namespace, shared by its resource adapters. */
+/** One registration's scope namespace; request leases also guard lifetime and admission. */
 export class DatabaseAdapterOwner {
+  constructor(
+    private readonly assertLifetime?: () => void,
+    private readonly gate = { busy: false },
+  ) {}
+  private assertActive(): void {
+    this.assertLifetime?.();
+  }
   readonly #scopes = new WeakMap<AdapterScope, AdapterScope>();
   readonly #nativeOwners = new Set<object>();
   readonly #stores = new WeakMap<object, object>();
+
+  async #exclusive<T>(work: () => T | Promise<T>): Promise<T> {
+    this.assertActive();
+    if (!this.assertLifetime) return work();
+    if (this.gate.busy)
+      throw new Error(
+        'Request database already has an active operation; await it or pass its transaction scope',
+      );
+    this.gate.busy = true;
+    try {
+      return await work();
+    } finally {
+      this.gate.busy = false;
+    }
+  }
 
   bindTransactionStore<Store>(
     binding: TransactionStoreBinding<Store>,
@@ -26,23 +48,44 @@ export class DatabaseAdapterOwner {
   bindStore<Store extends { readonly transaction?: TransactionStoreBinding<Store> }>(
     store: Store,
   ): Store {
-    if (!store.transaction || store.transaction.owner === this) return store;
+    if ((!store.transaction && !this.assertLifetime) || store.transaction?.owner === this)
+      return store;
     const previous = this.#stores.get(store);
     if (previous) return previous as Store;
-    const transaction = this.bindTransactionStore(store.transaction);
+    const transaction = store.transaction
+      ? this.bindTransactionStore(store.transaction)
+      : undefined;
+    const assertActive = () => this.assertActive();
+    const invoke = (work: () => unknown) => (this.assertLifetime ? this.#exclusive(work) : work());
     // Preserve class-private state: methods and accessors use the original store.
     const bound = new Proxy(Object.create(Object.getPrototypeOf(store)) as Store, {
       get(_target, key) {
+        assertActive();
         if (key === 'transaction') return transaction;
         const value: unknown = Reflect.get(store, key, store);
-        return typeof value === 'function' ? value.bind(store) : value;
+        return typeof value === 'function'
+          ? (...args: unknown[]) => {
+              assertActive();
+              return invoke(() => value.apply(store, args));
+            }
+          : value;
       },
-      set: (_target, key, value) => key !== 'transaction' && Reflect.set(store, key, value, store),
-      deleteProperty: (_target, key) => key !== 'transaction' && Reflect.deleteProperty(store, key),
-      defineProperty: (_target, key, descriptor) =>
-        key !== 'transaction' &&
-        descriptor.configurable !== false &&
-        Reflect.defineProperty(store, key, descriptor),
+      set: (_target, key, value) => {
+        assertActive();
+        return key !== 'transaction' && Reflect.set(store, key, value, store);
+      },
+      deleteProperty: (_target, key) => {
+        assertActive();
+        return key !== 'transaction' && Reflect.deleteProperty(store, key);
+      },
+      defineProperty: (_target, key, descriptor) => {
+        assertActive();
+        return (
+          key !== 'transaction' &&
+          descriptor.configurable !== false &&
+          Reflect.defineProperty(store, key, descriptor)
+        );
+      },
       // The virtual target must stay extensible for forwarded own-property descriptors.
       preventExtensions: () => false,
       setPrototypeOf: () => false,
@@ -65,6 +108,7 @@ export class DatabaseAdapterOwner {
   }
 
   #native(scope: AdapterScope): AdapterScope {
+    this.assertActive();
     const native = this.#scopes.get(scope);
     if (!native) throw new TypeError('Foreign or expired database registration scope');
     return native;
@@ -75,24 +119,57 @@ export class DatabaseAdapterOwner {
     work: (scope: AdapterScope) => Promise<T>,
     context?: TransactionContext,
   ): Promise<T> {
-    return method(async (native) => {
-      const scope = Object.freeze({ tx: native.tx });
-      this.#scopes.set(scope, native);
-      try {
-        return await work(scope);
-      } finally {
-        this.#scopes.delete(scope);
-      }
-    }, context);
+    this.assertActive();
+    return this.#exclusive(() =>
+      method(async (native) => {
+        const scope = Object.freeze({ tx: native.tx });
+        this.#scopes.set(scope, native);
+        try {
+          return await work(scope);
+        } finally {
+          this.#scopes.delete(scope);
+        }
+      }, context),
+    );
   }
 
   bind(adapter: RuntimeAdapter): RuntimeAdapter {
     if (adapter.transactionOwner) this.#nativeOwners.add(adapter.transactionOwner);
-    const { aggregate, search, restore, upsertOne, updateWhere, createMany, nested, relations } =
-      adapter;
+    const {
+      aggregate,
+      search,
+      restore,
+      upsertOne,
+      updateWhere,
+      createMany,
+      nested,
+      relations,
+      atomicBatch,
+    } = adapter;
     return {
       ...adapter,
       transactionOwner: adapter.transactionOwner ? this : undefined,
+      ...(atomicBatch && this.assertLifetime
+        ? {
+            atomicBatch: {
+              owner: atomicBatch.owner,
+              create: (input, options) => {
+                this.assertActive();
+                return atomicBatch.create(input, options);
+              },
+              update: (lookup, patch, options) => {
+                this.assertActive();
+                return atomicBatch.update(lookup, patch, options);
+              },
+              delete: (lookup, options, write) => {
+                this.assertActive();
+                return atomicBatch.delete(lookup, options, write);
+              },
+              execute: (commands, context) =>
+                this.#exclusive(() => atomicBatch.execute(commands, context)),
+            },
+          }
+        : {}),
       requestScope: (work, ctx) => this.#run(adapter.requestScope.bind(adapter), work, ctx),
       transaction: (work, ctx) => this.#run(adapter.transaction.bind(adapter), work, ctx),
       create: (row, scope) => adapter.create(row, this.#native(scope)),

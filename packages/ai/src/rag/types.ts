@@ -1,7 +1,7 @@
 import type { Tool } from 'ai';
 
 /**
- * Scope shared by public RAG operations and vector/text-store calls. At the
+ * Scope shared by public RAG operations and vector/publication-store calls. At the
  * public API, `namespace` is an untrusted selector consumed by
  * {@link RagConfig.resolveNamespace}; adapters receive an opaque partition encoding that result and the model tag.
  * At the public API, `undefined` selects explicitly enabled shared space.
@@ -13,7 +13,7 @@ export interface NamespaceScope {
 }
 
 /** Operations for which a trusted namespace must be resolved. */
-export type RagNamespaceOperation = 'sync' | 'retrieve' | 'remove';
+export type RagNamespaceOperation = 'sync' | 'retrieve' | 'remove' | 'inspect' | 'reconcile';
 
 /**
  * Input to {@link RagConfig.resolveNamespace}. `selector` is request-controlled
@@ -26,7 +26,7 @@ export interface RagNamespaceResolution {
   auth?: unknown;
 }
 
-/** Resolve the namespace used at the vector/text-store boundary. */
+/** Resolve the namespace used at the vector/publication-store boundary. */
 export type RagNamespaceResolver = (
   input: RagNamespaceResolution,
 ) => Promise<string | undefined> | string | undefined;
@@ -38,96 +38,99 @@ export type RagNamespaceResolver = (
  */
 export type RagEmbedder = (text: string) => Promise<ReadonlyArray<number>> | ReadonlyArray<number>;
 
-/** A vector to write, with its id and optional metadata. */
+/** Immutable revision-specific embedding. Application data stays in publications. */
 export interface RagVectorRecord {
   id: string;
   vector: ReadonlyArray<number>;
-  metadata?: Record<string, unknown>;
 }
-
-/** One ranked hit from {@link RagVectors.query}. */
+/** Untrusted ranked candidate. Scores must be finite and nonnegative; higher means closer. */
 export interface RagVectorMatch {
   id: string;
-  /** Similarity score; higher is better. */
   score: number;
-  metadata?: Record<string, unknown>;
 }
-
-/** A record fetched by id from {@link RagVectors.getByIds} (no vector, just metadata). */
-export interface RagStoredVector {
-  id: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface RagVectorQuery {
-  /** The precomputed query vector (the helper embeds the query text for you). */
+export interface RagVectorQuery extends NamespaceScope {
   vector: ReadonlyArray<number>;
   topK: number;
-  namespace?: string | undefined;
-  /** Metadata equality predicate; a match must satisfy every key. */
-  filter?: Record<string, unknown> | undefined;
-  /**
-   * How much stored metadata to return on matches. `'all'` is required for
-   * metadata-mode retrieval (chunk text lives in metadata); `'indexed'` suffices
-   * when a {@link RagTextStore} holds the text.
-   */
-  returnMetadata?: 'all' | 'indexed' | 'none' | undefined;
 }
-
 /**
- * The pluggable vector-store seam. Bring your own — any store that can hold
- * precomputed vectors keyed by id, scoped by namespace, satisfies it. The RAG
- * helper never imports a concrete store; a Cloudflare Vectorize adapter, an
- * in-memory store ({@link memoryVectors}), pgvector, and so on all plug in here.
- *
- * Every method is **namespace-scoped**: a query in one namespace must never see
- * another namespace's vectors. That is the load-bearing tenant-isolation
- * boundary — enforce it in your adapter.
+ * Namespace-isolated candidate index. Mutations may be eventual and may throw
+ * after partial/ambiguous submission. Repeated upserts of one ID must be safe.
+ * No publication, authorization, hydration, filtering or pagination is implied.
  */
 export interface RagVectors {
-  /** Insert or replace vectors by id within a namespace. */
-  upsert: (records: ReadonlyArray<RagVectorRecord>, options: NamespaceScope) => Promise<void>;
-  /** Rank stored vectors against a query vector, honouring `filter` and `namespace`. */
-  query: (query: RagVectorQuery) => Promise<ReadonlyArray<RagVectorMatch>>;
-  /**
-   * Fetch records by exact id (metadata only). Used for content-hash re-sync
-   * reads, `chunkContext` neighbour lookups, and metadata-mode text hydration.
-   * Missing ids are simply absent from the result.
-   */
-  getByIds: (
-    ids: ReadonlyArray<string>,
-    options: NamespaceScope,
-  ) => Promise<ReadonlyArray<RagStoredVector>>;
-  /** Delete vectors by id within a namespace. */
-  deleteByIds: (ids: ReadonlyArray<string>, options: NamespaceScope) => Promise<void>;
+  upsert(
+    records: ReadonlyArray<RagVectorRecord>,
+    scope: NamespaceScope,
+  ): Promise<RagIndexingResult>;
+  query(query: RagVectorQuery): Promise<ReadonlyArray<RagVectorMatch>>;
+  deleteByIds(ids: ReadonlyArray<string>, scope: NamespaceScope): Promise<RagIndexingResult>;
+  readonly maxTopK: number;
 }
 
-/** A chunk handed to {@link RagTextStore.put}. */
-export interface RagStoredChunk {
-  id: string;
-  sourceId: string;
-  chunkIndex: number;
-  text: string;
+/** A mutation acknowledgment, separate from authoritative publication. */
+export interface RagIndexingResult {
+  /** `visible` is reserved for synchronously queryable stores. */
+  status: 'visible' | 'accepted';
+  mutationIds: ReadonlyArray<string>;
+}
+
+/** Serializable, rollback-on-error transaction over detached JSON values. */
+export interface RagPublicationTransaction {
+  get<T>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<void>;
+  /** Lexicographic, exclusive cursor. Return at most limit entries. */
+  list<T>(options: {
+    prefix: string;
+    after?: string | undefined;
+    limit: number;
+  }): Promise<Map<string, T>>;
 }
 
 /**
- * Optional chunk-text storage. Without it, chunk text is stored inline in vector
- * metadata (metadata mode). Supplying a store (a KV namespace, a SQL table, …)
- * moves text out of the vector metadata: `sync` writes text here and `retrieve`
- * hydrates it back by chunk id. Must be idempotent by chunk `id`.
+ * Trusted authority for revisions, ACL metadata, text and recovery journals.
+ * Transactions must be serializable across ALL writers and readers of a scope,
+ * persist atomically, roll back on error, and never read stale replicas/caches.
+ * Callbacks may be retried: no network/index side effects inside them.
+ * The store must isolate namespaces and return detached values.
  */
-export interface RagTextStore {
-  put: (chunks: ReadonlyArray<RagStoredChunk>, options: NamespaceScope) => Promise<void>;
-  /** Fetch chunk texts by id, aligned to the input order; `undefined` for misses. */
-  getMany: (
-    ids: ReadonlyArray<string>,
-    options: NamespaceScope,
-  ) => Promise<ReadonlyArray<string | undefined>>;
-  /**
-   * Remove chunk texts by id. Required so a failed ACL/content replacement can
-   * roll back staged text instead of leaving it readable through old vectors.
-   */
-  remove: (ids: ReadonlyArray<string>, options: NamespaceScope) => Promise<void>;
+export interface RagPublications {
+  transaction<T>(
+    scope: NamespaceScope,
+    body: (tx: RagPublicationTransaction) => Promise<T>,
+  ): Promise<T>;
+}
+
+export interface RagPublication {
+  sourceId: string;
+  revision: string;
+  state: 'pending' | 'published' | 'deleted';
+  chunks: number;
+  hash: string;
+  importance: number;
+  metadata?: Record<string, unknown>;
+  /** Missing until every index submission is acknowledged. */
+  indexing?: RagIndexingResult;
+}
+
+export interface ReconcileOptions extends NamespaceScope {
+  auth?: unknown;
+  /** Required ownership token. Superseded attempts cannot resume. */
+  revision: string;
+  signal?: AbortSignal;
+  /** Also resubmit a published revision; default only resumes pending work. */
+  reindex?: boolean;
+  /** Retired revision journal page, exclusive cursor; default page size 10. */
+  after?: string;
+  limit?: number;
+}
+
+export interface ReconcileResult {
+  publication: RagPublication;
+  /** Cleanup submission acknowledgments; journals remain for later sweeps. */
+  cleanup: ReadonlyArray<RagIndexingResult>;
+  /** Supply to another reconcile call; absent at the end of this journal scan. */
+  cursor?: string;
 }
 
 /**
@@ -147,8 +150,8 @@ export interface RagConfig {
   vectors: RagVectors;
   /** Turns text into a vector; the helper embeds chunks and queries through it. */
   embed: RagEmbedder;
-  /** Optional chunk-text storage; without it text is stored in vector metadata. */
-  textStore?: RagTextStore;
+  /** Required authoritative publication/text store, independent of the index. */
+  publications: RagPublications;
 
   /**
    * A human label for this index, used only in
@@ -166,7 +169,7 @@ export interface RagConfig {
    */
   chunk?: (text: string) => ReadonlyArray<string>;
 
-  /** Default retrieval depth. Default 5; maximum 100. */
+  /** Default candidate depth. Default 5; bounded by maxTopK and 100. */
   topK?: number;
 
   /**
@@ -203,7 +206,7 @@ export interface RagConfig {
    * An opt-in embedding-model version tag that partitions the vector space, so a
    * model swap can never silently mix incompatible vector spaces (querying one
    * model's vectors with another model's query returns meaningless neighbours).
-   * When set, it is folded into the effective namespace (and chunk-id prefix) of
+   * When set, it is folded into the effective namespace of
    * every operation, so bumping it cleanly re-partitions: old vectors become
    * unreachable to new queries until sources are re-synced under the new tag.
    * Omitting it selects an untagged partition; keep its embedder fixed.
@@ -230,9 +233,11 @@ export interface RagConfig {
 export interface RagDocument {
   /** Stable source id; chunk ids derive from it. Re-syncing the same id replaces it. */
   id: string;
+  /** Compare-and-swap token. Omitted/null means create only; replacements require the current revision. */
+  expectedRevision?: string | null;
   /** The document body to chunk, embed, and upsert. */
   text: string;
-  /** Metadata copied onto every chunk of this document (e.g. title, url). */
+  /** Authoritative metadata shared by every chunk of this document (e.g. title, url). */
   metadata?: Record<string, unknown>;
   /**
    * A non-negative multiplier applied to this document's match scores at
@@ -243,6 +248,8 @@ export interface RagDocument {
 }
 
 export interface SyncOptions extends NamespaceScope {
+  /** Stops further submissions; already submitted mutations cannot be recalled. Pending work remains resumable. */
+  signal?: AbortSignal;
   /** Trusted server identity/context consumed by {@link RagConfig.resolveNamespace}. */
   auth?: unknown;
   /**
@@ -250,7 +257,7 @@ export interface SyncOptions extends NamespaceScope {
    * whitespace-only text). Default `true` (an empty document removes any previously stored source).
    */
   allowEmpty?: boolean;
-  /** Progress callback fired after each chunk is upserted. */
+  /** Fired for each chunk after authoritative publication commits. */
   onChunk?: (info: {
     sourceId: string;
     chunkIndex: number;
@@ -262,6 +269,11 @@ export interface SyncOptions extends NamespaceScope {
 
 export interface SyncResult {
   id: string;
+  revision: string;
+  /** Publication authorizes retrieval; it does not promise index visibility. */
+  publication: 'published' | 'deleted';
+  /** Absent for an empty/deleted publication; cleanup is a separate operation. */
+  indexing?: RagIndexingResult;
   /** Number of chunks the document is now stored as. */
   chunks: number;
   /** The deterministic chunk ids, in order. */
@@ -287,12 +299,19 @@ export interface RetrieveOptions extends NamespaceScope {
    * `@velajs/ai` stays decoupled from any identity type; the `rlsFilter` narrows it.
    */
   auth?: unknown;
-  /** Fires after ranking, before chunk-context expansion — for observability. */
+  /** Fires after ranking and bounded context expansion, for observability. */
   onRetrieve?: (info: { query: string; matches: number }) => void;
 }
 
+/** Trusted scope for publication inspection. */
+export interface InspectOptions extends NamespaceScope {
+  auth?: unknown;
+}
+
 /** Options for deleting a source from a trusted namespace. */
-export interface RemoveOptions extends NamespaceScope {
+export interface RemoveOptions extends InspectOptions {
+  /** Compare-and-swap token. Omitted/null means the source must not yet exist. */
+  expectedRevision?: string | null;
   /** Trusted server identity/context consumed by {@link RagConfig.resolveNamespace}. */
   auth?: unknown;
 }
@@ -306,7 +325,7 @@ export interface RetrievedChunk {
   score: number;
   /** The source-level importance weight folded into `score` (1 if none was set). */
   importance: number;
-  /** Caller metadata stored on the chunk (internal keys stripped). */
+  /** Current authoritative source metadata. */
   metadata?: Record<string, unknown>;
 }
 
@@ -314,7 +333,7 @@ export interface RagSource {
   id: string;
   /** The source's importance weight (default 1), propagated for downstream ranking. */
   weight: number;
-  /** Caller metadata from the source's best-ranked chunk (internal keys stripped). */
+  /** Current authoritative source metadata. */
   metadata?: Record<string, unknown>;
 }
 
@@ -342,8 +361,8 @@ export interface RagToolOptions extends NamespaceScope {
 export interface Rag {
   /**
    * Chunk → embed → upsert each document. Re-syncing a document id replaces it:
-   * unchanged text, metadata, chunk output and storage mode skip re-embedding, and stale
-   * trailing chunks from a shrunk document are deleted automatically.
+   * the expected revision must match; unchanged inputs skip re-embedding.
+   * Changed input revokes old content before indexing. Reconcile cleans obsolete vectors.
    */
   sync: (
     docs: ReadonlyArray<RagDocument>,
@@ -352,7 +371,11 @@ export interface Rag {
   /** Embed the query and return ranked chunks plus prompt-ready context. */
   retrieve: (query: string, options?: RetrieveOptions) => Promise<RetrieveResult>;
   /** Delete every chunk of a previously synced source. */
-  remove: (id: string, options?: RemoveOptions) => Promise<void>;
+  remove: (id: string, options?: RemoveOptions) => Promise<RagPublication>;
+  /** Trusted writer API; includes ACL metadata. Do not expose directly to readers. */
+  inspect: (id: string, options?: InspectOptions) => Promise<RagPublication | undefined>;
+  /** Resume pending/current indexing and submit a bounded page of obsolete-ID deletions. */
+  reconcile: (id: string, options: ReconcileOptions) => Promise<ReconcileResult>;
   /**
    * Expose `retrieve` as an AI SDK tool (for a `generateText`/`streamText`
    * `tools` map) so a model can search the index itself.

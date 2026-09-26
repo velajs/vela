@@ -51,6 +51,8 @@ export class CrudDatabaseRegistry<
   readonly #registrations = new Map<string, object>();
   readonly #storeOwners = new Map<string, DatabaseAdapterOwner>();
   readonly defaultDatabase: Databases[number]['name'] | undefined;
+  #assertActive: () => void = () => {};
+  #requestOwned = false;
 
   constructor(databases: Databases, options: { defaultDatabase?: Databases[number]['name'] } = {}) {
     const stores = new Set<object>();
@@ -97,16 +99,25 @@ export class CrudDatabaseRegistry<
 
   /** Runtime selection for DI/config input; unknown names fail closed. */
   resolve(name: string): CrudDatabase {
+    this.#assertActive();
     const database = this.#databases.get(name);
     if (!database) throw new ConfigurationException(`Unknown database binding '${name}'`);
     return database;
   }
 
   /** Each application gets its own registration claims even if it reuses configuration. */
-  forApplication(): CrudDatabaseRegistry {
+  forApplication(assertActive?: () => void): CrudDatabaseRegistry {
+    this.#assertActive();
+    if (this.#requestOwned)
+      throw new ConfigurationException(
+        'Request-owned databases cannot become application registrations',
+      );
     const storeOwners = new Map<string, DatabaseAdapterOwner>();
+    // One acquired resource may expose aliases or several ORM wrappers over
+    // the same socket. Names/ORM identities cannot prove native independence.
+    const gate = { busy: false };
     const databases = [...this.#databases.values()].map((database): CrudDatabase => {
-      const owner = new DatabaseAdapterOwner();
+      const owner = new DatabaseAdapterOwner(assertActive, gate);
       storeOwners.set(database.name, owner);
       return {
         ...database,
@@ -129,6 +140,8 @@ export class CrudDatabaseRegistry<
       defaultDatabase: this.defaultDatabase,
     });
     for (const [name, owner] of storeOwners) registry.#storeOwners.set(name, owner);
+    registry.#assertActive = assertActive ?? (() => {});
+    registry.#requestOwned = assertActive !== undefined;
     return registry;
   }
 
@@ -151,6 +164,7 @@ export class CrudDatabaseRegistry<
   }
 
   registerResource(database: string, name: string, registration: object): void {
+    this.#assertActive();
     const key = JSON.stringify([database, name]);
     const previous = this.#registrations.get(key);
     if (previous && previous !== registration)

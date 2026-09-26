@@ -1,23 +1,32 @@
 /**
- * `CrudModule` — defineModule-based (the queue-module template), EAGER by
- * design: adapter capability checks, tenant affirmations, and schema
- * derivation are load-time fail-fast wiring, exactly what docs/modules.md
- * says not to defer.
- *
- * - `forRoot({ adapter })` / `forRootAsync` provide the app-wide default
- *   adapter (`CRUD_DEFAULT_ADAPTER`).
- * - `forFeature([defineCrudFeature({ path, model, ... })])` synthesizes a controller per
- *   headless resource and registers its compiled engine under
- *   `crudResourceToken(name)` (options-derived providers, queue-style).
+ * CRUD module wiring. Application-owned adapters validate at bootstrap;
+ * request factories acquire and validate only inside a managed invocation.
+ * forFeature mounts controllers and provides invocation-scoped compiled
+ * resources under crudResourceToken(name, database).
  */
 
-import { Inject, Injectable, defineModule, defineProvider } from '@velajs/vela';
-import { Container, DiscoveryService, MetadataRegistry } from '@velajs/vela/module-kit';
-import type { DynamicModule, Type } from '@velajs/vela';
+import {
+  Inject,
+  Injectable,
+  defineModule,
+  defineProvider,
+  EXECUTION_LIFETIME,
+  Scope,
+  ModuleRef,
+} from '@velajs/vela';
+import {
+  Container,
+  DiscoveryService,
+  MetadataRegistry,
+  referenceKey,
+} from '@velajs/vela/module-kit';
+import type { DynamicModule, Type, Token, ModuleImport, ExecutionLifetime } from '@velajs/vela';
+import type { InferTokens, FactoryInject } from '@velajs/vela/module-kit';
+import type { CrudDatabaseLease } from './request-databases';
 import type { CrudAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import type { CrudDatabaseRegistry } from './databases';
-import { resolveCrudDatabase } from './resolve-database';
+import { resolveCrudDatabase, resolveCrudDatabaseSync } from './resolve-database';
 import { compileResource } from './kernel/resource';
 import {
   CRUD_DATABASES,
@@ -47,6 +56,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModul
   name: 'Crud',
   setup: ({ OPTIONS }) => ({
     providers: [
+      CrudDatabaseRegistrations,
       defineProvider(CRUD_DATABASES, {
         useFactory: (options) => {
           if (!options.adapter && !options.databases)
@@ -90,6 +100,18 @@ interface MountedFeature {
 }
 const mountedFeatures = new WeakMap<Type, MountedFeature>();
 
+class CrudDatabaseRegistrations {
+  constructor(private readonly container: Container) {}
+  onModuleInit(): void {
+    if (this.container.getVisibleProviderSnapshots(CRUD_DATABASES).length > 1)
+      throw new ConfigurationException(
+        'Multiple CRUD database providers: choose one forRoot or forRequestAsync registration',
+      );
+  }
+}
+Injectable()(CrudDatabaseRegistrations);
+Inject(Container)(CrudDatabaseRegistrations, undefined, 0);
+
 // The routes a controller path mounts, however it is spelled: routes join the
 // path without its trailing slash, a parameter segment matches whatever it is
 // named, and repeated slashes (which proxies and clients commonly collapse)
@@ -112,11 +134,15 @@ function canonicalPath(path: string): string {
  */
 class CrudFeaturePaths {
   readonly #discovery: DiscoveryService;
-  constructor(discovery: DiscoveryService) {
+  constructor(
+    discovery: DiscoveryService,
+    private readonly container: Container,
+  ) {
     this.#discovery = discovery;
   }
   onModuleInit(): void {
     const byPath = new Map<string, MountedFeature>();
+    const byResource = new Map<string, MountedFeature>();
     const registrations = this.#discovery.getRegistrations({ metadataOnly: true, deferLazy: true });
     for (const { metatype } of registrations) {
       const mounted = mountedFeatures.get(metatype);
@@ -131,13 +157,80 @@ class CrudFeaturePaths {
             'one shared defineCrudFeature(...) definition wherever it is registered.',
         );
       }
+      const resourceKey = JSON.stringify([
+        mounted.database,
+        resourceNames(mounted.definition.config).singular,
+      ]);
+      const resource = byResource.get(resourceKey);
+      const requestDatabase = this.container.getResolvedScope(CRUD_DATABASES) === Scope.REQUEST;
+      if (
+        (mounted.database !== undefined ||
+          (requestDatabase && !mounted.definition.config.adapter)) &&
+        resource &&
+        resource.definition !== mounted.definition
+      )
+        throw new ConfigurationException(
+          `Duplicate CRUD resource '${resourceNames(mounted.definition.config).singular}'`,
+        );
+      byResource.set(resourceKey, mounted);
+      // Validate application-owned adapters eagerly without opening request databases.
+      if (!requestDatabase) {
+        const resolved = resolveCrudDatabaseSync(
+          this.container,
+          {
+            ...mounted.definition.config,
+            database: mounted.database,
+          },
+          { name: resourceNames(mounted.definition.config).singular, identity: mounted.definition },
+        );
+        compileResource(
+          resourceNames(resolved).singular,
+          toEngineConfig(resolved, resolved.adapter),
+        );
+      }
     }
   }
 }
 Injectable()(CrudFeaturePaths);
 Inject(DiscoveryService)(CrudFeaturePaths, undefined, 0);
+Inject(Container)(CrudFeaturePaths, undefined, 1);
 
 export class CrudModule extends ConfigurableModuleClass {
+  /** Acquire lazily in a managed HTTP/event scope. Consumers inherit request scope. */
+  static forRequestAsync<const Inject extends readonly Token[] = readonly []>(
+    options: {
+      imports?: ModuleImport[];
+      useFactory: (
+        lifetime: ExecutionLifetime,
+        ...dependencies: InferTokens<Inject>
+      ) => CrudDatabaseLease | Promise<CrudDatabaseLease>;
+    } & FactoryInject<Inject>,
+  ): DynamicModule {
+    if (options.inject === undefined && options.useFactory.length > 1)
+      throw new ConfigurationException(
+        'forRequestAsync factory dependencies require inject tokens',
+      );
+    // FactoryInject permits omission only for an empty dependency tuple.
+    const inject = (options.inject ?? []) as Inject;
+    return {
+      module: CrudModule,
+      key: `request-databases:${referenceKey(options)}`,
+      imports: options.imports,
+      providers: [
+        CrudDatabaseRegistrations,
+        defineProvider(CRUD_DATABASES, {
+          scope: Scope.REQUEST,
+          inject: [EXECUTION_LIFETIME, ...inject] as const,
+          useFactory: async (lifetime, ...dependencies) => {
+            if (!lifetime.active) throw new Error('Execution lifetime is closed');
+            const lease = await options.useFactory(lifetime, ...dependencies);
+            return lease.claim(lifetime);
+          },
+        }),
+      ],
+      exports: [CRUD_DATABASES],
+    };
+  }
   /**
    * Mounts headless resources. Controllers are synthesized (and their routes
    * stamped) synchronously here; the compiled engine resource is provided
@@ -181,14 +274,33 @@ export class CrudModule extends ConfigurableModuleClass {
       const config = feature.config;
       const names = resourceNames(config);
       return defineProvider(crudResourceToken(names.singular, config.database), {
-        useFactory: async (container) => {
-          const resolved = await resolveCrudDatabase(container, config, {
-            name: names.singular,
-            identity: feature,
-          });
-          return compileResource(names.singular, toEngineConfig(resolved, resolved.adapter));
+        scope: Scope.REQUEST,
+        useFactory: async (container, moduleRef, lifetime) => {
+          if (!lifetime.active) throw new Error('Execution lifetime is closed');
+          const resolved = await resolveCrudDatabase(
+            {
+              has: container.has.bind(container),
+              resolveAsync: (token) => moduleRef.resolve(token, undefined, { strict: false }),
+            },
+            config,
+            {
+              name: names.singular,
+              identity: feature.definition,
+            },
+          );
+          const resource = compileResource(
+            names.singular,
+            toEngineConfig(resolved, resolved.adapter),
+          );
+          return {
+            ...resource,
+            async execute(verb, request) {
+              if (!lifetime.active) throw new Error('Execution lifetime is closed');
+              return resource.execute(verb, request);
+            },
+          };
         },
-        inject: [Container],
+        inject: [Container, ModuleRef, EXECUTION_LIFETIME],
       });
     });
 

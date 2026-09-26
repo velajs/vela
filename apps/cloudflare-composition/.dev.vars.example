@@ -1,0 +1,2 @@
+# Copy to .dev.vars; choose a fresh local secret before using the HTTP routes.
+DEMO_TOKEN=""
