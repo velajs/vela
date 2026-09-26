@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineRag, memoryVectors } from '../rag';
+import { defineRag, memoryVectors, memoryPublications } from '../rag';
 import type { RagConfig, RagNamespaceResolver } from '../rag';
 import { keywordEmbedder } from './support';
 
@@ -21,6 +21,7 @@ const trustedTenantResolver: RagNamespaceResolver = ({ selector, auth }) => {
 describe('defineRag — tenant isolation (fail closed)', () => {
   it('cross-namespace retrieval returns nothing', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-cross',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -52,6 +53,7 @@ describe('defineRag — tenant isolation (fail closed)', () => {
 
   it('treats route namespace values as selectors and verifies trusted membership', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-selector',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -68,6 +70,7 @@ describe('defineRag — tenant isolation (fail closed)', () => {
 
   it('rejects raw namespace selectors when no trusted resolver is configured', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-raw-selector',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -85,6 +88,7 @@ describe('defineRag — tenant isolation (fail closed)', () => {
     });
 
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-rls',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -111,6 +115,7 @@ describe('defineRag — tenant isolation (fail closed)', () => {
 
   it('requireNamespace throws (never silently touches the shared space)', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-require',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -129,6 +134,7 @@ describe('defineRag — tenant isolation (fail closed)', () => {
 
   it('denies the shared namespace unless it is explicitly enabled', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-shared-denied',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -141,6 +147,7 @@ describe('defineRag — tenant isolation (fail closed)', () => {
 
   it('allows an explicitly configured single-tenant shared namespace', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-shared-allowed',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -153,6 +160,7 @@ describe('defineRag — tenant isolation (fail closed)', () => {
 
   it('keeps an explicit NUL namespace isolated from the shared partition', async () => {
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-sentinel',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -177,6 +185,7 @@ describe('defineRag — tenant isolation (fail closed)', () => {
       admin: { filter: { role: 'admin' } },
     }) as NonNullable<RagConfig['filters']>;
     const rag = defineRag({
+      publications: memoryPublications(),
       name: 'iso-inherited-filter',
       vectors: memoryVectors(),
       embed: keywordEmbedder(),
@@ -194,6 +203,7 @@ it('preserves maximum-size canonical tenant and source identifiers without ambig
   const tenant = '\0'.repeat(512);
   const source = '\0'.repeat(512);
   const rag = defineRag({
+    publications: memoryPublications(),
     vectors: memoryVectors(),
     embed: () => [1],
     resolveNamespace: () => tenant,
@@ -206,6 +216,7 @@ it.each(['', ' tenant', 'tenant ', '  '])(
   'rejects noncanonical resolved namespace %j',
   async (namespace) => {
     const rag = defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: () => [1],
       resolveNamespace: () => namespace,

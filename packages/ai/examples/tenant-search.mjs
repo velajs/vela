@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { defineRag, memoryVectors } from '@velajs/ai/rag';
+import { defineRag, memoryVectors, memoryPublications } from '@velajs/ai/rag';
 
 // Local demonstration only: replace this word-count embedder and memory store
 // with your chosen AI SDK embedding model and a durable RagVectors adapter.
@@ -7,6 +7,7 @@ const vocabulary = ['refund', 'shipping', 'invoice'];
 const docs = defineRag({
   name: 'support',
   vectors: memoryVectors(),
+  publications: memoryPublications(),
   embed: (text) => vocabulary.map((word) => text.toLowerCase().split(word).length - 1),
   embeddingModelVersion: 'word-count-v1',
   resolveNamespace: ({ auth, selector }) => {
@@ -41,8 +42,16 @@ await assert.rejects(
   docs.retrieve('refund', { auth: alice, namespace: 'shop-b' }),
   /Tenant denied/,
 );
-const update = [{ id: 'policy', text: 'Refund within 21 days.', metadata: { team: 'support' } }];
-await docs.sync(update, { auth: alice });
+const update = [
+  {
+    expectedRevision: (await docs.inspect('policy', { auth: alice })).revision,
+    id: 'policy',
+    text: 'Refund within 21 days.',
+    metadata: { team: 'support' },
+  },
+];
+const [updated] = await docs.sync(update, { auth: alice });
+update[0].expectedRevision = updated.revision;
 assert.equal((await docs.sync(update, { auth: alice }))[0].unchanged, true);
 const revised = await docs.retrieve('refund', { auth: alice });
 assert.equal(revised.chunks[0].text, 'Refund within 21 days.');

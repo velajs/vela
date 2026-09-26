@@ -48,7 +48,7 @@ export async function verifyAiPackage(tarball) {
     path: consumer,
     status: 'passed',
     package: '@velajs/ai',
-    subpaths: ['.', './rag', './ai-search'],
+    subpaths: ['.', './rag', './ai-search', './vectorize'],
     ai,
     zod,
     archiveIntegrity: `sha512-${createHash('sha512')
@@ -57,7 +57,7 @@ export async function verifyAiPackage(tarball) {
   };
   await writeFile(join(consumer, 'proof.json'), JSON.stringify(proof, null, 2) + '\n');
   process.stdout.write(
-    `PASS: packed @velajs/ai base, /rag and /ai-search imports, types, tools and tenant isolation (${consumer})\n`,
+    `PASS: packed @velajs/ai base, /rag , /ai-search and /vectorize imports, types, tools and tenant isolation (${consumer})\n`,
   );
   return proof;
 }

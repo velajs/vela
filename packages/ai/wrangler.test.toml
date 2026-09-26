@@ -1,0 +1,9 @@
+name = "ai-publication-tests"
+main = "src/__tests__/workers/entry.ts"
+compatibility_date = "2026-09-25"
+[[durable_objects.bindings]]
+name = "PUBLICATIONS"
+class_name = "PublicationHost"
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PublicationHost"]

@@ -1,12 +1,13 @@
 import { asSchema } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { defineRag, memoryVectors } from '../rag';
+import { defineRag, memoryVectors, memoryPublications } from '../rag';
 
 const execution = { toolCallId: 'search', messages: [], context: {} };
 
 describe('request-bound RAG tools', () => {
   const rag = () =>
     defineRag({
+      publications: memoryPublications(),
       vectors: memoryVectors(),
       embed: () => [1],
       resolveNamespace: ({ auth, selector }) => {

@@ -1,4 +1,4 @@
-import type { RagEmbedder, RagTextStore } from '../rag';
+import type { RagEmbedder } from '../rag';
 
 /**
  * A tiny deterministic embedder for tests: a bag-of-keywords vector over a fixed
@@ -36,49 +36,6 @@ export const countingEmbedder = (base: RagEmbedder = keywordEmbedder()): Countin
   };
 
   return { embed, callCount: () => calls, texts };
-};
-
-const TEXT_SHARED = ' shared';
-
-/** An in-memory {@link RagTextStore} for exercising text-store mode. */
-export const memoryTextStore = (): RagTextStore => {
-  const partitions = new Map<string, Map<string, string>>();
-
-  const bucket = (namespace: string | undefined): Map<string, string> => {
-    const key = namespace ?? TEXT_SHARED;
-    let existing = partitions.get(key);
-
-    if (existing === undefined) {
-      existing = new Map();
-      partitions.set(key, existing);
-    }
-
-    return existing;
-  };
-
-  return {
-    put: async (chunks, { namespace }) => {
-      const store = bucket(namespace);
-
-      for (const chunk of chunks) {
-        store.set(chunk.id, chunk.text);
-      }
-    },
-    getMany: async (ids, { namespace }) => {
-      const store = partitions.get(namespace ?? TEXT_SHARED);
-
-      return ids.map((id) => store?.get(id));
-    },
-    remove: async (ids, { namespace }) => {
-      const store = partitions.get(namespace ?? TEXT_SHARED);
-
-      if (store !== undefined) {
-        for (const id of ids) {
-          store.delete(id);
-        }
-      }
-    },
-  };
 };
 
 /** A splitter that cuts on `|` — lets a test place known keywords in known chunks. */

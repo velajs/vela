@@ -1,4 +1,4 @@
-export { defineRag } from './define-rag';
+export { defineRag, RagIndexingError } from './define-rag';
 export { fixedWindowChunks } from './chunk';
 export { memoryVectors } from './memory-vectors';
 export { DEFAULT_SYNC_CONCURRENCY, mapWithConcurrency } from './concurrent';
@@ -14,10 +14,8 @@ export type {
   RagEmbedder,
   RagNamedFilter,
   RemoveOptions,
+  InspectOptions,
   RagSource,
-  RagStoredChunk,
-  RagStoredVector,
-  RagTextStore,
   RagToolOptions,
   RagVectorMatch,
   RagVectorQuery,
@@ -28,4 +26,14 @@ export type {
   RetrieveResult,
   SyncOptions,
   SyncResult,
+} from './types';
+
+export { memoryPublications } from './memory-publications';
+export type {
+  RagPublications,
+  RagPublicationTransaction,
+  RagPublication,
+  RagIndexingResult,
+  ReconcileOptions,
+  ReconcileResult,
 } from './types';
