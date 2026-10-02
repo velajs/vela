@@ -13,7 +13,7 @@
     "cf:types": "wrangler types --include-runtime=false --strict-vars=false --env-file .dev.vars.example"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.3",
+    "@ai-sdk/provider": "4.0.19",
     "@velajs/ai": "workspace:*",
     "@velajs/cloudflare": "workspace:*",
     "@velajs/vela": "workspace:*",

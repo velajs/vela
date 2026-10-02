@@ -14,12 +14,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@better-auth/drizzle-adapter": "^1.7.5",
+    "@better-auth/drizzle-adapter": "^1.7.6",
     "@velajs/better-auth": "workspace:*",
     "@velajs/cloudflare": "workspace:*",
     "@velajs/vela": "workspace:*",
-    "better-auth": "^1.7.5",
-    "drizzle-orm": "^0.45.2",
+    "better-auth": "^1.7.6",
+    "drizzle-orm": "^0.45.3",
     "hono": "catalog:",
     "zod": "catalog:"
   },

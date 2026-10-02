@@ -82,7 +82,7 @@
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "dependencies": {
-    "@cedar-policy/cedar-wasm": "4.12.0"
+    "@cedar-policy/cedar-wasm": "4.13.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",

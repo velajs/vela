@@ -59,12 +59,12 @@
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "clipanion": "^4.0.0-rc.4",
     "jsonc-parser": "3.3.1",
     "magic-string": "1.4.2",
-    "oxc-parser": "0.151.0",
-    "smol-toml": "1.8.0",
+    "oxc-parser": "0.152.0",
+    "smol-toml": "1.9.0",
     "zod": "catalog:"
   },
   "devDependencies": {

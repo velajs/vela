@@ -52,10 +52,10 @@
     "@velajs/react": "workspace:*"
   },
   "devDependencies": {
-    "@better-auth/expo": "^1.6.0",
+    "@better-auth/expo": "^1.7.6",
     "@swc/core": "catalog:",
     "@types/react": "^19.0.0",
-    "better-auth": "^1.6.0",
+    "better-auth": "^1.7.6",
     "react": "^19.0.0",
     "tsdown": "catalog:",
     "typescript": "catalog:",
