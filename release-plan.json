@@ -1,34 +1,10 @@
 {
-  "version": "2026-09-26",
+  "version": "1.36.0",
   "packages": [
-    {
-      "name": "@velajs/authz",
-      "path": "packages/authz",
-      "version": "1.33.0",
-      "summary": "See packages/authz/CHANGELOG.md."
-    },
-    {
-      "name": "@velajs/authz-cedar",
-      "path": "packages/authz-cedar",
-      "version": "1.33.0",
-      "summary": "See packages/authz-cedar/CHANGELOG.md."
-    },
-    {
-      "name": "@velajs/better-auth",
-      "path": "packages/better-auth",
-      "version": "1.33.0",
-      "summary": "See packages/better-auth/CHANGELOG.md."
-    },
-    {
-      "name": "@velajs/tenant",
-      "path": "packages/tenant",
-      "version": "1.33.0",
-      "summary": "See packages/tenant/CHANGELOG.md."
-    },
     {
       "name": "@velajs/vela",
       "path": "packages/vela",
-      "version": "1.35.0",
+      "version": "1.36.0",
       "summary": "See packages/vela/CHANGELOG.md."
     }
   ]
