@@ -89,3 +89,31 @@ void pending.then(([created, updated]) => {
   return [label, next, unknownField];
 });
 void [upload, wrongFile, wrongLabels, size, parsed, invalidated, Forms, counting];
+
+// Documentation supports module setup and ordinary injectable custom controllers.
+import { Inject } from '@velajs/vela';
+import { OpenApiModule, OpenApiService, type OpenApiModuleOptions } from '@velajs/vela/openapi';
+const docsOptions: OpenApiModuleOptions = {
+  ui: 'scalar',
+  uiOptions: { lang: 'en', scriptUrl: '/assets/reference.js' },
+  transformDocument: (document) => ({
+    ...document,
+    info: { ...document.info, title: 'Public API' },
+  }),
+};
+OpenApiModule.forRoot(docsOptions);
+OpenApiModule.forRootAsync({
+  path: '/schema',
+  ui: 'swagger',
+  useFactory: () => ({ info: { title: 'Async API' } }),
+});
+class CustomReferenceController {
+  constructor(@Inject(OpenApiService) private readonly docs: OpenApiService) {}
+  read() {
+    return this.docs.getDocument();
+  }
+  page(): Response {
+    return this.docs.renderUi({ ui: 'redoc', specUrl: '/schema' });
+  }
+}
+void CustomReferenceController;

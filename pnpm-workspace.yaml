@@ -39,3 +39,7 @@ autoInstallPeers: false
 strictPeerDependencies: false
 minimumReleaseAgeExclude:
   - "@cloudflare/workers-types@5.20260920.1"
+
+# Miniflare pins the vulnerable patch; keep its HTTP client on the security fix.
+overrides:
+  "undici@7.29.0": 7.29.1

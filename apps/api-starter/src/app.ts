@@ -135,6 +135,7 @@ class TodoGateway {}
     WebSocketModule.forRoot(),
     LiveModule.forRoot(),
     OpenApiModule.forRoot({
+      decorators: [Public(true)],
       path: '/openapi.json',
       info: { title: 'Vela API starter', version: '1.0.0' },
     }),

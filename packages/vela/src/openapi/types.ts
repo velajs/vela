@@ -174,6 +174,8 @@ export interface ApiResponseOptions {
 export type ApiResponseEntry = ApiResponseOptions;
 
 export interface CreateOpenApiDocumentOptions extends RoutePathOptions {
+  /** Customize the completed document, for both offline generation and served documents. */
+  transformDocument?: (document: OpenApiDocument) => OpenApiDocument;
   info?: Partial<OpenApiInfo>;
   /**
    * Declare top-level tag groups with descriptions and an explicit order
@@ -201,6 +203,40 @@ export interface CreateOpenApiDocumentOptions extends RoutePathOptions {
 }
 
 export type OpenApiUi = 'swagger' | 'scalar' | 'redoc';
+
+export interface OpenApiUiOptions {
+  title?: string;
+  lang?: string;
+  /** Override the UI script URL, for example with a pinned CDN version or a local asset. */
+  scriptUrl?: string;
+  /** Override the Swagger UI stylesheet URL. */
+  styleUrl?: string;
+  /** Response headers, including an application-specific Content-Security-Policy. */
+  headers?: Record<string, string>;
+}
+
+export interface RenderOpenApiUiOptions extends OpenApiUiOptions {
+  ui?: OpenApiUi;
+  /** Served JSON URL. Defaults to the module's document route, including its global prefix. */
+  specUrl?: string;
+}
+
+export interface OpenApiModuleOptions extends Omit<
+  CreateOpenApiDocumentOptions,
+  keyof RoutePathOptions
+> {
+  /** Document route, relative to the application's global prefix. Default `/openapi.json`. */
+  path?: string;
+  /** Optional documentation UI. Disabled by default. */
+  ui?: OpenApiUi;
+  /** UI route, relative to the application's global prefix. Default `/docs`. */
+  uiPath?: string;
+  uiOptions?: OpenApiUiOptions;
+  /** Set false to export OpenApiService without mounting the built-in controllers. */
+  mount?: boolean;
+  /** Controller metadata and pipeline decorators, in TypeScript declaration order. */
+  decorators?: readonly ClassDecorator[];
+}
 
 export interface MountOpenApiOptions {
   /** Pre-built OpenAPI document to serve. */

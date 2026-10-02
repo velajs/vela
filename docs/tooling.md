@@ -296,26 +296,36 @@ An application serves its OpenAPI 3.1 document by importing `OpenApiModule` from
 export class AppModule {}
 ```
 
-The document covers the controllers the application serves, in the order the
-root module declares them, including routes that route contributors such as
-`@Crud()` document, under the application's global prefix; a module a testing
-module replaced with `overrideModule()` is documented as its replacement. It does not read the application's `globalPrefixOptions` or `versioning`:
-when the application excludes routes from the prefix or sets `versioning.prefix`,
-pass the same `globalPrefixOptions` and `versioning` to `OpenApiModule.forRoot()`
-so the document's paths match the served routes. The document is built on the
-first request and kept for that application, so each Workers environment
-documents its own application. The document route is served
-at `path` exactly as given, outside the global prefix, runs no guards, and is
-left out of the document itself. `forRoot` also accepts `tags`, `servers`,
-`securitySchemes` and `security`; `forRootAsync` reads them through DI. Mark a
-controller or handler with `@ApiExclude()` to leave it out of the document and
-the generated client while still serving it.
+The document covers the controllers the application serves, including contributor
+routes and testing-module replacements. It reads the application's actual global
+prefix, prefix exclusions and URI versioning. Generation is lazy and cached per
+application; the documentation routes themselves are excluded.
 
-`vela openapi dump` writes the same document from `vela.config.ts`, and
-`vela client generate` turns it into a typed `hc` contract; see
-[the HTTP client guide](client/HTTP.md). `createOpenApiDocument(root, options)`
-remains available for custom serving, and `app.mountOpenApi()` serves a built
-document with the Scalar, Swagger UI or ReDoc pages.
+Add `ui: 'scalar'`, `'swagger'` or `'redoc'` to serve a page at `uiPath` (default
+`/docs`). Both `path` and `uiPath` follow the global prefix and are version-neutral.
+These are ordinary controller routes: global guards, middleware, interceptors and
+filters apply. `decorators: [UseGuards(DocsGuard)]` attaches controller policy; use
+an authentication package's public/optional-auth decorator explicitly when needed.
+`uiOptions` configures title, language, script and stylesheet URLs (including pinned
+or self-hosted assets), and response headers such as Content-Security-Policy.
+
+`forRootAsync` takes the structural options `path`, `ui`, `uiPath`, `mount` and
+`decorators` alongside its factory. The factory resolves `info`, `tags`, `servers`,
+`securitySchemes`, `security`, `uiOptions` and `transformDocument` through DI.
+
+For custom endpoints, register `OpenApiModule.forRoot({ mount: false })` and inject
+`OpenApiService` into your own controller. `getDocument()` returns the same cached
+application document; `renderUi({ ui, specUrl, ...uiOptions })` returns an HTML
+Response with optional overrides. Mark that controller `@ApiExclude()` if its
+routes should be omitted from documentation and generated clients.
+
+`createOpenApiDocument(root, options)` remains available for offline generation.
+Its `transformDocument(document)` callback also runs on served documents; share
+those options with offline tooling when customizing paths or security metadata.
+`vela openapi dump` reads `vela.config.ts`, and `vela client generate` builds a typed
+`hc` contract; see [the HTTP client guide](client/HTTP.md). `app.mountOpenApi()`
+is the lower-level API for a prebuilt document and UI pages: those raw mounts keep
+exact paths and do not run the controller pipeline.
 
 ## Release artifacts
 

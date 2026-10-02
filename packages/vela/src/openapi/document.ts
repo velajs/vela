@@ -578,5 +578,5 @@ export function openApiDocumentFor(
     document.tags = tags;
   }
 
-  return document;
+  return options.transformDocument ? options.transformDocument(document) : document;
 }

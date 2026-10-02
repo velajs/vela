@@ -118,7 +118,7 @@ Declaration entry: `./dist/index.d.ts`
 
 ```ts
 import { Et as defineProvider, Ft as VelaHonoEnv, G as ENV, It as VelaMiddlewareHandler, K as InjectEnv, Mt as Scope, Nt as VelaContext, Ot as forwardRef, Pt as VelaHono, Q as DependencyToken, a as ExecutionContext, at as InjectableOptions, bt as TypedProviderLiteral, c as HttpExecutionContext, d as PipeTransform, ht as ProviderLiteral, i as ExceptionFilter, l as NestInterceptor, mt as ProviderDefinition, n as CallHandler, o as HandlerFunction, ot as InjectionToken, pt as Provider, q as VelaEnv, r as CanActivate, s as HttpArgumentsHost, t as ArgumentMetadata, tt as ForwardRef, u as NestMiddleware, vt as Token, xt as TypedToken, yt as Type } from "<internal:types-http-hono.types.d.ts>";
-import { D as ModuleRefContext, E as ModuleRef, O as ModuleRefLookupOptions, S as VelaApplicationContext, _ as ErrorMatcher, b as matchesAny, t as VelaApplication, v as ErrorReportContext, x as ApplicationContextLookupOptions, y as ExceptionHandler } from "<internal:application.d.ts>";
+import { A as ModuleRefContext, C as matchesAny, S as ExceptionHandler, T as VelaApplicationContext, b as ErrorMatcher, j as ModuleRefLookupOptions, k as ModuleRef, t as VelaApplication, w as ApplicationContextLookupOptions, x as ErrorReportContext } from "<internal:application.d.ts>";
 import { b as VERSION_NEUTRAL, f as ModuleOptions, i as DynamicModule, t as AsyncModuleOptions, u as ModuleImport, x as VersionValue, y as RouteVersion } from "<internal:types-http-version.d.ts>";
 import { a as RouteHandlerResult, c as RouteResponseFormat, i as RouteFormBody, l as RouteResponseOptions, n as RouteBodyOptions, o as RouteJsonBody, s as RouteMultipartBody, t as RouteBinaryBody, u as RouteSchemaResult } from "<internal:route-contract-http-route-contract.d.ts>";
 import { C as CorsOptions, S as RouteInfo, _ as RoutePathOptions, d as VelaQuerySecurityOptions, f as VelaSecurityOptions, g as GlobalPrefixOptions, l as VelaBodyLimitOverride, u as VelaBodySecurityOptions, v as VersioningOptions, x as NestModule, y as MiddlewareConsumer } from "<internal:route.manager.d.ts>";
@@ -849,7 +849,7 @@ Declaration entry: `./dist/internal.d.ts`
 ```ts
 import "<internal:metadata.d.ts>";
 import { $ as Diagnostics, J as Container, Z as ContainerOptions, _t as ROOT_MODULE_ID, gt as ProviderSnapshot, ot as InjectionToken, ut as ModuleScope } from "<internal:types-http-hono.types.d.ts>";
-import { S as VelaApplicationContext, t as VelaApplication } from "<internal:application.d.ts>";
+import { T as VelaApplicationContext, t as VelaApplication } from "<internal:application.d.ts>";
 import { i as RouteManagerOptions, r as RouteManager } from "<internal:route.manager.d.ts>";
 import { a as createRequestContext, c as applyRuntimeAdapters, d as BootstrapResult, f as bootstrap, l as BootstrapInternals, m as ModuleOverrides, p as ModuleLoader, s as RuntimeAdapter, u as BootstrapOptions } from "<internal:request-context.d.ts>";
 import { a as getModuleMetadata, o as isModule, s as ConfigStore, t as ComponentManager } from "<internal:component.manager.d.ts>";
@@ -1005,7 +1005,7 @@ Declaration entry: `./dist/module-kit.d.ts`
 ```ts
 import { n as getMetadata, t as defineMetadata } from "<internal:metadata.d.ts>";
 import { At as METADATA_KEYS, Ct as UnresolvedDependencyError, Dt as describeToken, J as Container, Pt as VelaHono, St as UnresolvedDependency, Tt as assertFactoryInject, X as Constructor, Y as CheckedProviders, a as ExecutionContext, c as HttpExecutionContext, ct as MissingInjectionMetadataReason, dt as ModuleVisibilityError, et as FactoryInject, ft as MultipleProvidersFoundError, jt as ParamType, kt as HttpMethod, lt as ModuleDescription, nt as InferToken, r as CanActivate, rt as InferTokens, st as MissingInjectionMetadataError, vt as Token, wt as UnresolvedDependencyReason, yt as Type } from "<internal:types-http-hono.types.d.ts>";
-import { C as EntrypointRegistry, T as registerEntrypointKind, p as OpenApiPathItem, w as getEntrypointKinds } from "<internal:application.d.ts>";
+import { D as getEntrypointKinds, E as EntrypointRegistry, O as registerEntrypointKind, m as OpenApiPathItem } from "<internal:application.d.ts>";
 import { a as FilterType, c as InterceptorType, h as PipeType, l as MiddlewareType, o as GuardType } from "<internal:types-http-version.d.ts>";
 import { a as CreateDiscoverableDecoratorOptions, i as DiscoveryService, n as DiscoveredRegistration, o as DiscoverableDecorator, r as DiscoveryFilter, s as createDiscoverableDecorator, t as DiscoveredRegisteredMethodMeta } from "<internal:discovery.service.d.ts>";
 import { i as contributesEntrypoints, n as Entrypoint, r as EntrypointKind, t as ContributesEntrypoints } from "<internal:entrypoint.types.d.ts>";
@@ -1319,24 +1319,34 @@ Declaration entry: `./dist/openapi/index.d.ts`
 ```ts
 import "<internal:metadata.d.ts>";
 import { yt as Type } from "<internal:types-http-hono.types.d.ts>";
-import { a as CreateOpenApiDocumentOptions, c as MountOpenApiOptions, d as OpenApiOperation, f as OpenApiParameter, g as OpenApiUi, h as OpenApiResponse, i as ApiResponseOptions, l as OpenApiDocument, m as OpenApiRequestBody, n as ApiDocMetadata, o as HttpVerb, p as OpenApiPathItem, r as ApiResponseEntry, s as JsonSchema, u as OpenApiInfo } from "<internal:application.d.ts>";
+import { _ as OpenApiUi, a as CreateOpenApiDocumentOptions, c as MountOpenApiOptions, d as OpenApiModuleOptions, f as OpenApiOperation, g as OpenApiResponse, h as OpenApiRequestBody, i as ApiResponseOptions, l as OpenApiDocument, m as OpenApiPathItem, n as ApiDocMetadata, o as HttpVerb, p as OpenApiParameter, r as ApiResponseEntry, s as JsonSchema, u as OpenApiInfo, v as OpenApiUiOptions, y as RenderOpenApiUiOptions } from "<internal:application.d.ts>";
 import { i as DynamicModule } from "<internal:types-http-version.d.ts>";
+import { r as RouteManager } from "<internal:route.manager.d.ts>";
 import { At as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
 
 export declare function createOpenApiDocument(rootModule: Type | DynamicModule, options?: CreateOpenApiDocumentOptions): OpenApiDocument;
 
-interface OpenApiModuleOptions extends Omit<CreateOpenApiDocumentOptions, 'globalPrefix'> {
-
-  path?: string;
-}
+type StructuralOptions = 'path' | 'ui' | 'uiPath' | 'mount' | 'decorators';
 
 declare const ConfigurableModuleClass: ConfigurableModuleClassType<OpenApiModuleOptions, "forRoot", "create", {
   isGlobal?: boolean;
-}, never>;
+}, StructuralOptions>;
 type OpenApiModuleRegistration = Parameters<(typeof ConfigurableModuleClass)['forRoot']>[0];
 export declare class OpenApiModule extends ConfigurableModuleClass {
 
   static forRoot(options?: OpenApiModuleRegistration): DynamicModule;
+}
+
+export declare class OpenApiService {
+  private readonly options;
+  private readonly routes;
+  private readonly root;
+  private document;
+  constructor(options: OpenApiModuleOptions, routes: RouteManager, root: Type | DynamicModule);
+
+  getDocument(): OpenApiDocument;
+
+  renderUi(overrides?: RenderOpenApiUiOptions): Response;
 }
 
 export declare function ApiExclude(): MethodDecorator & ClassDecorator;
@@ -1351,7 +1361,7 @@ export declare function ApiResponse(options: ApiResponseOptions): MethodDecorato
 
 export declare function zodToJsonSchema(schema: unknown, direction?: 'input' | 'output', libraryOptions?: Record<string, unknown>): JsonSchema;
 
-export type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions, CreateOpenApiDocumentOptions, HttpVerb, JsonSchema, MountOpenApiOptions, OpenApiDocument, OpenApiInfo, OpenApiModuleOptions, OpenApiOperation, OpenApiParameter, OpenApiPathItem, OpenApiRequestBody, OpenApiResponse, OpenApiUi };
+export type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions, CreateOpenApiDocumentOptions, HttpVerb, JsonSchema, MountOpenApiOptions, OpenApiDocument, OpenApiInfo, OpenApiModuleOptions, OpenApiOperation, OpenApiParameter, OpenApiPathItem, OpenApiRequestBody, OpenApiResponse, OpenApiUi, OpenApiUiOptions, RenderOpenApiUiOptions };
 ```
 
 ## `./queue`
@@ -1363,7 +1373,7 @@ Declaration entry: `./dist/queue/index.d.ts`
 ```ts
 import "<internal:metadata.d.ts>";
 import { J as Container, ot as InjectionToken, q as VelaEnv, vt as Token } from "<internal:types-http-hono.types.d.ts>";
-import { C as EntrypointRegistry } from "<internal:application.d.ts>";
+import { E as EntrypointRegistry } from "<internal:application.d.ts>";
 import { i as DynamicModule } from "<internal:types-http-version.d.ts>";
 import { l as StandardSchemaV1 } from "<internal:parse-schema.d.ts>";
 import { i as DiscoveryService } from "<internal:discovery.service.d.ts>";
@@ -2374,6 +2384,8 @@ interface ApiResponseOptions {
 
 type ApiResponseEntry = ApiResponseOptions;
 interface CreateOpenApiDocumentOptions extends RoutePathOptions {
+
+  transformDocument?: (document: OpenApiDocument) => OpenApiDocument;
   info?: Partial<OpenApiInfo>;
 
   tags?: Array<{
@@ -2388,6 +2400,34 @@ interface CreateOpenApiDocumentOptions extends RoutePathOptions {
   security?: OpenApiSecurityRequirement[];
 }
 type OpenApiUi = 'swagger' | 'scalar' | 'redoc';
+interface OpenApiUiOptions {
+  title?: string;
+  lang?: string;
+
+  scriptUrl?: string;
+
+  styleUrl?: string;
+
+  headers?: Record<string, string>;
+}
+interface RenderOpenApiUiOptions extends OpenApiUiOptions {
+  ui?: OpenApiUi;
+
+  specUrl?: string;
+}
+interface OpenApiModuleOptions extends Omit<CreateOpenApiDocumentOptions, keyof RoutePathOptions> {
+
+  path?: string;
+
+  ui?: OpenApiUi;
+
+  uiPath?: string;
+  uiOptions?: OpenApiUiOptions;
+
+  mount?: boolean;
+
+  decorators?: readonly ClassDecorator[];
+}
 interface MountOpenApiOptions {
 
   document: OpenApiDocument;
@@ -2432,7 +2472,7 @@ declare class VelaApplication extends VelaApplicationContext {
   mountOpenApi(options: MountOpenApiOptions): this;
 }
 
-export { EntrypointRegistry as C, ModuleRefContext as D, ModuleRef as E, ModuleRefLookupOptions as O, VelaApplicationContext as S, registerEntrypointKind as T, ErrorMatcher as _, CreateOpenApiDocumentOptions as a, matchesAny as b, MountOpenApiOptions as c, OpenApiOperation as d, OpenApiParameter as f, OpenApiUi as g, OpenApiResponse as h, ApiResponseOptions as i, OpenApiDocument as l, OpenApiRequestBody as m, ApiDocMetadata as n, HttpVerb as o, OpenApiPathItem as p, ApiResponseEntry as r, JsonSchema as s, VelaApplication as t, OpenApiInfo as u, ErrorReportContext as v, getEntrypointKinds as w, ApplicationContextLookupOptions as x, ExceptionHandler as y };
+export { ModuleRefContext as A, matchesAny as C, getEntrypointKinds as D, EntrypointRegistry as E, registerEntrypointKind as O, ExceptionHandler as S, VelaApplicationContext as T, OpenApiUi as _, CreateOpenApiDocumentOptions as a, ErrorMatcher as b, MountOpenApiOptions as c, OpenApiModuleOptions as d, OpenApiOperation as f, OpenApiResponse as g, OpenApiRequestBody as h, ApiResponseOptions as i, ModuleRefLookupOptions as j, ModuleRef as k, OpenApiDocument as l, OpenApiPathItem as m, ApiDocMetadata as n, HttpVerb as o, OpenApiParameter as p, ApiResponseEntry as r, JsonSchema as s, VelaApplication as t, OpenApiInfo as u, OpenApiUiOptions as v, ApplicationContextLookupOptions as w, ErrorReportContext as x, RenderOpenApiUiOptions as y };
 ```
 
 ### `<internal:binding.d.ts>`
@@ -2850,7 +2890,7 @@ export { UnsupportedMediaTypeException as S, RequestTimeoutException as _, Forbi
 ```ts
 import "<internal:metadata.d.ts>";
 import { J as Container, X as Constructor, a as ExecutionContext, at as InjectableOptions, d as PipeTransform, et as FactoryInject, i as ExceptionFilter, l as NestInterceptor, mt as ProviderDefinition, o as HandlerFunction, ot as InjectionToken, pt as Provider, q as VelaEnv, r as CanActivate, rt as InferTokens, t as ArgumentMetadata, tt as ForwardRef, u as NestMiddleware, vt as Token, xt as TypedToken, yt as Type } from "<internal:types-http-hono.types.d.ts>";
-import { S as VelaApplicationContext, t as VelaApplication, v as ErrorReportContext, y as ExceptionHandler } from "<internal:application.d.ts>";
+import { S as ExceptionHandler, T as VelaApplicationContext, t as VelaApplication, x as ErrorReportContext } from "<internal:application.d.ts>";
 import { a as FilterType, c as InterceptorType, h as PipeType, i as DynamicModule, l as MiddlewareType, n as ComponentType, o as GuardType, r as ComponentTypeMap, u as ModuleImport } from "<internal:types-http-version.d.ts>";
 import { c as StandardJSONSchemaV1, l as StandardSchemaV1, n as SchemaOutput, r as ValidationSchema, t as SchemaInput } from "<internal:parse-schema.d.ts>";
 import "<internal:route-contract-http-route-contract.d.ts>";

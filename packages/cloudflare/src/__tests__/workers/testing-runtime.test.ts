@@ -152,7 +152,7 @@ describe('createTestingWorker under workerd', () => {
     class DocumentedModule {}
     const worker = await createTestingWorker(DocumentedModule, { globalPrefix: '/api' });
     try {
-      const response = await worker.fetch('/openapi.json');
+      const response = await worker.fetch('/api/openapi.json');
       expect(response.status).toBe(200);
       const document: unknown = await response.json();
       expect(document).toMatchObject({
