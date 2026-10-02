@@ -1,5 +1,13 @@
 # @velajs/cli
 
+## 1.35.1
+
+### Patch Changes
+
+- 4fd1b5e: Update generated projects to pin core 1.36.0, including the configurable OpenAPI controller pipeline and injectable documentation service.
+- Updated dependencies [f70b426]
+  - @velajs/vela@1.36.0
+
 ## 1.35.0
 
 ### Minor Changes
