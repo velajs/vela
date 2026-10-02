@@ -70,7 +70,7 @@
     "@velajs/cloudflare": "workspace:*",
     "@velajs/tenant": "workspace:*",
     "@velajs/vela": "workspace:*",
-    "graphql": "16.14.2",
+    "graphql": "17.0.2",
     "graphql-yoga": "5.24.1",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
