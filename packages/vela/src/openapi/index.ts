@@ -6,6 +6,7 @@ import '../metadata';
 
 export { createOpenApiDocument } from './document';
 export { OpenApiModule } from './openapi.module';
+export { OpenApiService } from './openapi.service';
 export type { OpenApiModuleOptions } from './openapi.module';
 export { ApiDoc, ApiExclude, ApiTags, ApiResponse, isApiExcluded } from './decorators';
 export { zodToJsonSchema } from './zod-to-json-schema';
@@ -18,6 +19,8 @@ export type {
   JsonSchema,
   MountOpenApiOptions,
   OpenApiUi,
+  OpenApiUiOptions,
+  RenderOpenApiUiOptions,
   OpenApiDocument,
   OpenApiInfo,
   OpenApiOperation,

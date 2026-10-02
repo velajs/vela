@@ -1,110 +1,77 @@
-import { InjectionToken, type Type } from '../container/types';
-import { Controller } from '../http/decorators';
-import { registerRouteContributor } from '../http/route-contributor';
-import { RouteManager } from '../http/route.manager';
-import { defineMetadata } from '../metadata';
+import { Inject } from '../container/decorators';
+import { Controller, Get } from '../http/decorators';
+import { VERSION_NEUTRAL } from '../http/version';
 import { defineModule } from '../module/define-module';
-import { collectControllers } from '../module/graph';
-import { ROOT_MODULE } from '../module/root-module';
 import type { DynamicModule } from '../registry/types';
-import { openApiDocumentFor } from './document';
-import type { CreateOpenApiDocumentOptions, OpenApiDocument } from './types';
+import { ApiExclude } from './decorators';
+import { OPENAPI_OPTIONS, OpenApiService } from './openapi.service';
+import type { OpenApiModuleOptions } from './types';
 
-export interface OpenApiModuleOptions extends Omit<CreateOpenApiDocumentOptions, 'globalPrefix'> {
-  /**
-   * Path the JSON document is served on, exactly as given: the global prefix
-   * is not prepended. Default `/openapi.json`.
-   */
-  path?: string;
-}
+export type { OpenApiModuleOptions } from './types';
 
-const DOCUMENT_ENDPOINT = 'vela:openapi:document-endpoint';
 const CONCRETE_PATH = /^(?:\/[A-Za-z0-9._~-]+)+$/;
+type StructuralOptions = 'path' | 'ui' | 'uiPath' | 'mount' | 'decorators';
 
-function isOptions(value: unknown): value is OpenApiModuleOptions {
-  return typeof value === 'object' && value !== null;
+function validatePath(name: string, path: string): void {
+  if (typeof path !== 'string' || !CONCRETE_PATH.test(path)) {
+    throw new TypeError(`OpenApiModule ${name} must be a concrete absolute path; got '${path}'.`);
+  }
 }
 
-/**
- * The controllers the application serves, each once: those the root module
- * declares in its declaration order, then any other (a module a testing
- * module substituted) in registration order.
- */
-function servedControllers(routeManager: RouteManager, root: Type | DynamicModule): Type[] {
-  const served = [...new Set(routeManager.getControllers().map(({ controller }) => controller))];
-  const declared = collectControllers(root);
-  const rank = new Map(declared.map((controller, index) => [controller, index]));
-  return served.toSorted(
-    (a, b) => (rank.get(a) ?? declared.length) - (rank.get(b) ?? declared.length),
-  );
-}
-
-registerRouteContributor({
-  id: 'vela:openapi',
-  claimsMetaKey: DOCUMENT_ENDPOINT,
-  async buildRoutes(app, context) {
-    const token = context.meta;
-    if (!(token instanceof InjectionToken)) throw new TypeError('Invalid OpenApiModule metadata.');
-    const [owner, ...others] = context.container.getOwnerModuleIds(context.controller);
-    if (owner === undefined || others.length > 0) {
-      throw new Error('An OpenApiModule document endpoint must have exactly one module owner.');
+/** Application-scoped documentation with the normal controller pipeline and optional UI. */
+const { ConfigurableModuleClass } = defineModule<OpenApiModuleOptions, StructuralOptions>({
+  name: 'OpenApi',
+  optionsToken: OPENAPI_OPTIONS,
+  structural: ['path', 'ui', 'uiPath', 'mount', 'decorators'],
+  defaults: { path: '/openapi.json', uiPath: '/docs', mount: true },
+  key: () => 'default',
+  setup: ({ options }) => {
+    const { path = '/openapi.json', uiPath = '/docs', ui, mount = true, decorators = [] } = options;
+    validatePath('path', path);
+    validatePath('uiPath', uiPath);
+    if (ui !== undefined && !['scalar', 'swagger', 'redoc'].includes(ui)) {
+      throw new TypeError(`Unknown OpenApiModule UI '${ui}'.`);
     }
-    const options: unknown = await context.container.resolveAsync(token, owner);
-    if (!isOptions(options)) throw new TypeError('OpenApiModule options must be an object.');
-    const { path = '/openapi.json', ...documentOptions } = options;
-    if (typeof path !== 'string' || !CONCRETE_PATH.test(path)) {
-      throw new TypeError(
-        `OpenApiModule path must be a concrete absolute path such as '/openapi.json'; got '${String(path)}'.`,
+    if (ui && path === uiPath) {
+      throw new TypeError('OpenApiModule path and uiPath must be different.');
+    }
+    if (!mount) return { providers: [OpenApiService], exports: [OpenApiService] };
+
+    @ApiExclude()
+    @Controller({ version: VERSION_NEUTRAL })
+    class OpenApiController {
+      constructor(@Inject(OpenApiService) private readonly docs: OpenApiService) {}
+
+      @Get(path)
+      document() {
+        return this.docs.getDocument();
+      }
+
+      page() {
+        return this.docs.renderUi();
+      }
+    }
+    if (ui) {
+      Get(uiPath)(
+        OpenApiController.prototype,
+        'page',
+        Object.getOwnPropertyDescriptor(OpenApiController.prototype, 'page')!,
       );
     }
-    if (app.routes.some((route) => route.path === path && route.method !== 'ALL')) {
-      throw new Error(`OpenApiModule path '${path}' conflicts with an existing route.`);
+    // Like TypeScript's stacked decorators, the first declared decorator runs last.
+    for (const decorator of [...decorators].reverse()) {
+      const replacement = decorator(OpenApiController);
+      if (replacement !== undefined && replacement !== OpenApiController) {
+        throw new TypeError(
+          'OpenApiModule decorators must annotate the controller, not replace it.',
+        );
+      }
     }
-
-    // The controllers this application serves, which a testing module's
-    // overrideModule() may have replaced, in the order the application root
-    // declares them. The document is built on the first request and kept for
-    // this application only: every application (one per environment on
-    // Workers) documents its own global prefix.
-    const routeManager = context.container.resolve(RouteManager);
-    const root = context.container.resolve(ROOT_MODULE);
-    const globalPrefix = context.globalPrefix;
-    let document: OpenApiDocument | undefined;
-    app.get(path, (c) => {
-      document ??= openApiDocumentFor(servedControllers(routeManager, root), {
-        ...documentOptions,
-        globalPrefix,
-      });
-      return c.json(document);
-    });
-  },
-});
-
-/**
- * Serves the application's OpenAPI 3.1 document, Nest's `SwaggerModule`
- * without the setup call:
- *
- * ```ts
- * @Module({
- *   imports: [OpenApiModule.forRoot({ path: '/openapi.json', info: { title: 'API', version: '1.0.0' } })],
- * })
- * export class AppModule {}
- * ```
- *
- * The document covers the controllers the application serves (after any
- * testing-module `overrideModule()`) under its global prefix. The document route itself, and anything marked `@ApiExclude()`, is
- * left out. Routes run no guards: put a document you want to protect behind
- * consumer middleware.
- */
-const { ConfigurableModuleClass } = defineModule<OpenApiModuleOptions>({
-  name: 'OpenApi',
-  setup: ({ OPTIONS }) => {
-    // One endpoint class per module instance, like RpcModule's: it declares no
-    // routes of its own and carries the options token its contributor reads.
-    class OpenApiDocumentEndpoint {}
-    Controller()(OpenApiDocumentEndpoint);
-    defineMetadata(DOCUMENT_ENDPOINT, OPTIONS, OpenApiDocumentEndpoint);
-    return { controllers: [OpenApiDocumentEndpoint] };
+    return {
+      controllers: [OpenApiController],
+      providers: [OpenApiService],
+      exports: [OpenApiService],
+    };
   },
 });
 

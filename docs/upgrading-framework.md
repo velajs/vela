@@ -1,5 +1,21 @@
 # Upgrading framework integrations
 
+## OpenAPI module controller pipeline (1.36.0)
+
+`OpenApiModule` routes now follow the application's global prefix and normal
+controller pipeline. With `globalPrefix: '/api'`, the default JSON route moves
+from `/openapi.json` to `/api/openapi.json`. To keep an unprefixed route, add it
+to `globalPrefixOptions.exclude`. Global guards now protect documentation too;
+configure `decorators` with the appropriate public/optional-auth metadata and
+local guards for the desired policy.
+
+Move `path` out of `forRootAsync` factories and alongside the factory. `path`,
+`ui`, `uiPath`, `mount` and `decorators` are structural options. Remove duplicated
+`globalPrefixOptions` and `versioning` from module options: the module reads the
+application's actual routing settings. Use `ui`/`uiOptions` for built-in pages,
+or `mount: false` and injectable `OpenApiService` for custom controllers.
+
+
 ## Request-owned CRUD databases
 
 `CrudModule.forFeature` now provides invocation-scoped resources. Replace

@@ -14,7 +14,28 @@ import { OpenApiModule } from '@velajs/vela/openapi';
 export class AppModule {}
 ```
 
-The route serves the document of the controllers the application serves (in the root module's declaration order, contributor paths included; a module a testing module replaced with `overrideModule()` is documented as its replacement) under the app's global prefix, built on the first request and kept for that application; there is no `OpenApiController` to write. `path` (default `/openapi.json`) is mounted as given, outside the global prefix; the route runs no guards and leaves itself out of the document. Options: `path`, `info`, `tags`, `servers`, `securitySchemes`, `security`; `forRootAsync` resolves them through DI. `@ApiExclude()` on a controller or handler leaves it out of the document and generated clients while it is still served (`isApiExcluded(target, handler?)` reads it).
+The document is generated lazily for each application from its served controllers,
+including contributor routes and testing-module replacements. Actual global prefix,
+prefix exclusions and versioning are read from the application automatically.
+`path` (default `/openapi.json`) and `uiPath` (default `/docs`) follow the global
+prefix and are version-neutral. Add `ui: 'scalar'`, `'swagger'` or `'redoc'` to
+mount the UI. Documentation endpoints are excluded from generated documents.
+
+Built-in routes run the normal controller pipeline, including global guards.
+Attach controller policy with `decorators: [UseGuards(DocsGuard)]`; use public or
+optional-auth metadata from the authentication package when appropriate.
+`uiOptions` accepts `title`, `lang`, `scriptUrl`, `styleUrl` (Swagger) and response
+`headers`, including CSP. Script URLs can use pinned CDN versions or local assets.
+
+`forRootAsync` takes `path`, `ui`, `uiPath`, `mount` and `decorators` alongside the
+factory. Its factory returns the other options: `info`, `tags`, `servers`,
+`securitySchemes`, `security`, `uiOptions`, `transformDocument`.
+
+For custom endpoints, import `OpenApiModule.forRoot({ mount: false })` and inject
+`OpenApiService`. `getDocument()` returns the cached application document;
+`renderUi({ ui, specUrl, ...uiOptions })` returns a native HTML Response. The
+service remains available without default routes. Mark custom docs controllers
+`@ApiExclude()` to omit them from documents and generated clients.
 
 ## Generating the document
 
@@ -31,7 +52,7 @@ const document = createOpenApiDocument(AppModule, {
 });
 ```
 
-`CreateOpenApiDocumentOptions`: `info?` (`{ title?, version?, description? }`), `globalPrefix?`, `tags?` (`[{ name, description? }]`), `servers?`, `securitySchemes?`, `security?`. Defaults: `openapi: '3.1.0'`, title `'Vela API'`, version `'1.0.0'`. Paths are derived from controllers (`:id` → `{id}`); `@velajs/crud` (>= 1.18) stamps real controller routes so its paths, operationIds, and DTO component schemas come through this same walk. `RouteContributor` packages fold additional generated paths in.
+`CreateOpenApiDocumentOptions`: `info?` (`{ title?, version?, description? }`), `globalPrefix?`, `tags?` (`[{ name, description? }]`), `servers?`, `securitySchemes?`, `security?`, `globalPrefixOptions?`, `versioning?`, `transformDocument?`. The transform receives the completed document and returns the document to use, in both offline and served generation. Defaults: `openapi: '3.1.0'`, title `'Vela API'`, version `'1.0.0'`. Paths are derived from controllers (`:id` → `{id}`); `@velajs/crud` (>= 1.18) stamps real controller routes so its paths, operationIds, and DTO component schemas come through this same walk. `RouteContributor` packages fold additional generated paths in.
 
 ## Documenting operations
 
@@ -62,7 +83,9 @@ If a route is named (`@Get(path, { name })`), that name becomes the OpenAPI `ope
 
 ## Serving the docs UI
 
-`app.mountOpenApi(options)` serves the JSON spec and one or more UIs:
+`OpenApiModule` is the default for generated documents and protected UI routes.
+`app.mountOpenApi(options)` is a lower-level alternative for a prebuilt document:
+it serves exact paths outside the global prefix and controller pipeline.
 
 ```ts
 const document = createOpenApiDocument(AppModule);
