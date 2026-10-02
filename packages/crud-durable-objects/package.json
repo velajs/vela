@@ -56,7 +56,7 @@
     "@velajs/crud": "workspace:*",
     "@velajs/crud-drizzle": "workspace:*",
     "@velajs/vela": "workspace:*",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.3",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",

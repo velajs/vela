@@ -19,7 +19,7 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
-    "@better-auth/drizzle-adapter": "^1.7.5",
+    "@better-auth/drizzle-adapter": "^1.7.6",
     "@velajs/better-auth": "workspace:*",
     "@velajs/client": "workspace:*",
     "@velajs/cloudflare": "workspace:*",
@@ -28,8 +28,8 @@
     "@velajs/live-protocol": "workspace:*",
     "@velajs/studio": "workspace:*",
     "@velajs/vela": "workspace:*",
-    "better-auth": "^1.7.5",
-    "drizzle-orm": "^0.45.2",
+    "better-auth": "^1.7.6",
+    "drizzle-orm": "^0.45.3",
     "hono": "catalog:",
     "zod": "catalog:"
   },
@@ -46,6 +46,6 @@
     "vite": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:",
-    "ws": "^8.18.3"
+    "ws": "^8.22.0"
   }
 }

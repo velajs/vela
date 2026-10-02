@@ -90,7 +90,7 @@
     "@velajs/crud": "workspace:*",
     "@velajs/feature-flags": "workspace:*",
     "@velajs/vela": "workspace:*",
-    "better-auth": "^1.2.0",
+    "better-auth": "^1.7.6",
     "hono": "catalog:",
     "miniflare": "5.20260918.0-alpha",
     "tsdown": "catalog:",
