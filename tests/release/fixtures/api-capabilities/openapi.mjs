@@ -17,7 +17,7 @@ export async function verifyOpenApi() {
     }
   }
   Controller('/records')(RecordsController);
-  route(RecordsController, 'list', '/');
+  route(RecordsController, 'list', '');
   const guard = {
     canActivate: (context) =>
       context.switchToHttp().getRequest().headers.get('x-docs') === 'allowed',
@@ -68,7 +68,7 @@ export async function verifyOpenApi() {
   Inject(OpenApiService)(CustomController, undefined, 0);
   Controller('/schema')(CustomController);
   ApiExclude()(CustomController);
-  route(CustomController, 'read', '/');
+  route(CustomController, 'read', '');
   class CustomModule {}
   Module({
     imports: [OpenApiModule.forRoot({ mount: false, info: { title: 'Custom reference' } })],
