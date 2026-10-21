@@ -59,7 +59,7 @@
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "clipanion": "^4.0.0-rc.4",
     "jsonc-parser": "3.3.1",
     "magic-string": "1.4.2",
