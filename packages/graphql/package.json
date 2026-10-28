@@ -58,7 +58,7 @@
     "test:workers": "vitest run --config vitest.config.workers.ts"
   },
   "dependencies": {
-    "@graphql-tools/utils": "^12.0.1"
+    "@graphql-tools/utils": "^12.0.2"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
