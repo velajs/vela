@@ -13,12 +13,12 @@
     "cf:types": "wrangler types --include-runtime=false --strict-vars=false --env-file .dev.vars.example"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.3",
+    "@ai-sdk/provider": "4.0.34",
     "@velajs/ai": "workspace:*",
     "@velajs/cloudflare": "workspace:*",
     "@velajs/vela": "workspace:*",
     "ai": "catalog:",
-    "workers-ai-provider": "4.0.0",
+    "workers-ai-provider": "4.0.1",
     "zod": "catalog:"
   },
   "devDependencies": {

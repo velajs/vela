@@ -53,10 +53,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.101.2",
-    "@tanstack/react-router": "^1.170.18",
+    "@tanstack/react-query": "^5.105.0",
+    "@tanstack/react-router": "^1.170.46",
     "@tanstack/react-table": "^8.21.3",
-    "@tanstack/react-virtual": "^3.14.6",
+    "@tanstack/react-virtual": "^3.14.24",
     "@velajs/studio-protocol": "workspace:*"
   },
   "devDependencies": {
@@ -69,8 +69,8 @@
     "@velajs/studio-fixtures": "workspace:*",
     "esbuild": "^0.28.1",
     "happy-dom": "^20.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.3",
     "tsdown": "catalog:",
     "typescript": "catalog:",

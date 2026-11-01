@@ -38,10 +38,10 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.4",
-    "@libsql/client": "^0.17.4",
+    "@electric-sql/pglite": "^0.5.13",
+    "@libsql/client": "^0.18.0",
     "@velajs/crud": "workspace:*",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.4",
     "drizzle-zod": "^0.8.3",
     "tsdown": "catalog:",
     "typescript": "catalog:",

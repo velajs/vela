@@ -54,7 +54,7 @@
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "dependencies": {
-    "jose": "^6.2.3"
+    "jose": "^6.2.14"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
