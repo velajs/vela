@@ -16,8 +16,8 @@
     "@velajs/cloudflare": "workspace:*",
     "@velajs/graphql": "workspace:*",
     "@velajs/vela": "workspace:*",
-    "graphql": "16.14.2",
-    "graphql-yoga": "5.24.1",
+    "graphql": "17.0.2",
+    "graphql-yoga": "6.0.1",
     "zod": "catalog:"
   },
   "devDependencies": {
