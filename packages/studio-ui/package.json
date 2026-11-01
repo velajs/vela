@@ -55,7 +55,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-router": "^1.170.18",
-    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-table": "^9.3.1",
     "@tanstack/react-virtual": "^3.14.6",
     "@velajs/studio-protocol": "workspace:*"
   },
@@ -68,7 +68,7 @@
     "@types/react-dom": "^19.0.0",
     "@velajs/studio-fixtures": "workspace:*",
     "esbuild": "^0.28.1",
-    "happy-dom": "^20.0.0",
+    "happy-dom": "^21.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.3.3",
