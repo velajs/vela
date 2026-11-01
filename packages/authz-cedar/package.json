@@ -82,13 +82,13 @@
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "dependencies": {
-    "@cedar-policy/cedar-wasm": "4.12.0"
+    "@cedar-policy/cedar-wasm": "4.14.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@cloudflare/workers-types": "catalog:",
-    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite": "^0.5.13",
     "@types/node": "catalog:",
     "@velajs/testing": "workspace:*",
     "@velajs/vela": "workspace:*",
