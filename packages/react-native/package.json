@@ -55,7 +55,7 @@
     "@better-auth/expo": "^1.6.0",
     "@swc/core": "catalog:",
     "@types/react": "^19.0.0",
-    "better-auth": "^1.6.0",
+    "better-auth": "^1.7.7",
     "react": "^19.0.0",
     "tsdown": "catalog:",
     "typescript": "catalog:",
