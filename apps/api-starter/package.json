@@ -19,7 +19,7 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
-    "@better-auth/drizzle-adapter": "^1.7.5",
+    "@better-auth/drizzle-adapter": "^1.7.7",
     "@velajs/better-auth": "workspace:*",
     "@velajs/client": "workspace:*",
     "@velajs/cloudflare": "workspace:*",
