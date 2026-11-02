@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@better-auth/drizzle-adapter": "^1.7.5",
+    "@better-auth/drizzle-adapter": "^1.7.7",
     "@velajs/better-auth": "workspace:*",
     "@velajs/cloudflare": "workspace:*",
     "@velajs/vela": "workspace:*",
